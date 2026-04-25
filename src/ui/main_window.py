@@ -14,6 +14,7 @@ class MainWindow(wx.Frame):
         self._cells = []
         self._shift_pad = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
         self._last_pad = None
+        self._autoplay = True
         self._init_sound()
         self._build_ui()
         self.Centre()
@@ -30,8 +31,14 @@ class MainWindow(wx.Frame):
 
     def _build_ui(self):
         panel = wx.Panel(self)
-        grid = wx.GridSizer(self.ROWS, self.COLS, 2, 2)
 
+        self._status_ctrl = wx.TextCtrl(
+            panel,
+            style=wx.TE_READONLY | wx.TE_LEFT | wx.BORDER_SIMPLE,
+        )
+        self._status_ctrl.SetValue("ShiftPad: 1/8")
+
+        grid = wx.GridSizer(self.ROWS, self.COLS, 2, 2)
         for r in range(self.ROWS):
             row = []
             for c in range(self.COLS):
@@ -42,7 +49,11 @@ class MainWindow(wx.Frame):
                 row.append(cb)
             self._cells.append(row)
 
-        panel.SetSizer(grid)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._status_ctrl, 0, wx.EXPAND | wx.ALL, 4)
+        vbox.Add(grid, 1, wx.EXPAND)
+        panel.SetSizer(vbox)
+
         self.Fit()
         self._cells[0][0].SetFocus()
 
@@ -50,11 +61,19 @@ class MainWindow(wx.Frame):
         self._cur_row = row
         self._cur_col = col
 
+    def _show_status(self, msg):
+        self._status_ctrl.SetValue(msg)
+        self._status_ctrl.SetFocus()
+        wx.CallAfter(self._cells[self._cur_row][self._cur_col].SetFocus)
+
     def _move(self, dr, dc):
         r = max(0, min(self.ROWS - 1, self._cur_row + dr))
         c = max(0, min(self.COLS - 1, self._cur_col + dc))
         if r == self._cur_row and c == self._cur_col:
             wx.Bell()
+        else:
+            if dr != 0 and self._autoplay:
+                self._play(r)
         self._cells[r][c].SetFocus()
 
     def _play(self, idx):
@@ -82,9 +101,13 @@ class MainWindow(wx.Frame):
         elif key == wx.WXK_NUMPAD9:
             if self._last_pad is not None:
                 self._play(self._last_pad)
+        elif key == wx.WXK_NUMPAD0:
+            self._snd.stop_all()
         elif key == wx.WXK_NUMPAD_ADD:
             self._shift_pad = min(8, self._shift_pad + 8)
+            self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
         elif key == wx.WXK_NUMPAD_SUBTRACT:
             self._shift_pad = max(0, self._shift_pad - 8)
+            self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
         else:
             event.Skip()

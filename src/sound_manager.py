@@ -49,6 +49,11 @@ class SoundManager(object):
 
     #----------------------------------------
  
+    def stop_all(self):
+        pygame.mixer.stop()
+
+    #----------------------------------------
+
     def set_volume(self, volume):
         for sound in self.drum_sounds:
             sound.set_volume(volume / 100)
