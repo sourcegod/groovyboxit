@@ -20,7 +20,7 @@ class MainWindow(wx.Frame):
         for r in range(self.ROWS):
             row = []
             for c in range(self.COLS):
-                cb = wx.CheckBox(panel, label=f"{r + 1}/{c + 1}")
+                cb = wx.CheckBox(panel, label=f"Pad{r + 1}/{c + 1}")
                 cb.Bind(wx.EVT_KEY_DOWN, self._on_key)
                 cb.Bind(wx.EVT_SET_FOCUS, lambda e, r=r, c=c: self._set_cursor(r, c))
                 grid.Add(cb, 0, wx.EXPAND)
@@ -38,6 +38,8 @@ class MainWindow(wx.Frame):
     def _move(self, dr, dc):
         r = max(0, min(self.ROWS - 1, self._cur_row + dr))
         c = max(0, min(self.COLS - 1, self._cur_col + dc))
+        if r == self._cur_row and c == self._cur_col:
+            wx.Bell()
         self._cells[r][c].SetFocus()
 
     def _on_key(self, event):
