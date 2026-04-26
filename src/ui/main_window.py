@@ -92,6 +92,13 @@ class MainWindow(wx.Frame):
             self._move(0, -1)
         elif key == wx.WXK_RIGHT:
             self._move(0, 1)
+        elif key == wx.WXK_SPACE:
+            if self._player.playing:
+                self._player.stop_pattern()
+                self._show_status("Pattern: Stop")
+            else:
+                self._player.play_pattern()
+                self._show_status("Pattern: Play")
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             cb = self._cells[self._cur_row][self._cur_col]
             if event.ShiftDown():
@@ -123,6 +130,12 @@ class MainWindow(wx.Frame):
             else:
                 self._player.play_click()
                 self._show_status("Click: On")
+        elif key == ord('p'):
+            self._player.play_pattern()
+            self._show_status("Pattern: Play")
+        elif key == ord('P'):
+            self._player.stop_pattern()
+            self._show_status("Pattern: Stop")
         elif key == ord('('):
             self._player.set_bpm(self._player.bpm + 5)
             self._show_status(f"BPM: {self._player.bpm}")
