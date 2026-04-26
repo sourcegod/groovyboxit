@@ -142,6 +142,17 @@ class MainWindow(wx.Frame):
         elif key == ord('P'):
             self._player.stop_pattern()
             self._show_status("Pattern: Stop")
+        elif key == ord('v'):
+            self._player.stop_all()
+            self._show_status("Stop All")
+        elif key == ord('e'):
+            for c in range(self.COLS):
+                self._set_cell(self._cur_row, c, True)
+            self._show_status(f"Ligne {self._cur_row + 1}: tout coché")
+        elif key == ord('E'):
+            for c in range(self.COLS):
+                self._set_cell(self._cur_row, c, False)
+            self._show_status(f"Ligne {self._cur_row + 1}: tout décoché")
         elif key == ord('('):
             self._player.set_bpm(self._player.bpm + 5)
             self._show_status(f"BPM: {self._player.bpm}")
