@@ -83,6 +83,7 @@ class DrumPlayer:
         self.current_step = 0
         self.beat_counter = 0
         self.cycle_counter = 0
+        self.sound_man.stop_all()
 
     #--------------------------------------------------------------------------
 

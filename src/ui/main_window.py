@@ -1,7 +1,7 @@
 import os
 import wx
 from sound_manager import SoundManager
-
+from drum_player import DrumPlayer
 
 class MainWindow(wx.Frame):
     ROWS = 16
@@ -28,6 +28,7 @@ class MainWindow(wx.Frame):
         click2 = os.path.join(media_dir, "low_wood_block_mono.wav")
         self._snd = SoundManager(media_lst, click1, click2)
         self._snd.load_sounds()
+        self._player = DrumPlayer(self._snd)
 
     def _build_ui(self):
         panel = wx.Panel(self)
@@ -44,6 +45,7 @@ class MainWindow(wx.Frame):
             for c in range(self.COLS):
                 cb = wx.CheckBox(panel, label=f"Pad{r + 1}/{c + 1}")
                 cb.Bind(wx.EVT_KEY_DOWN, self._on_key)
+                cb.Bind(wx.EVT_CHAR, self._on_char)
                 cb.Bind(wx.EVT_SET_FOCUS, lambda e, r=r, c=c: self._set_cursor(r, c))
                 grid.Add(cb, 0, wx.EXPAND)
                 row.append(cb)
@@ -77,7 +79,7 @@ class MainWindow(wx.Frame):
         self._cells[r][c].SetFocus()
 
     def _play(self, idx):
-        self._snd.play_sound(idx)
+        self._player.play_sound(idx)
         self._last_pad = idx
 
     def _on_key(self, event):
@@ -102,12 +104,30 @@ class MainWindow(wx.Frame):
             if self._last_pad is not None:
                 self._play(self._last_pad)
         elif key == wx.WXK_NUMPAD0:
-            self._snd.stop_all()
+            self._player.stop_all()
         elif key == wx.WXK_NUMPAD_ADD:
             self._shift_pad = min(8, self._shift_pad + 8)
             self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
         elif key == wx.WXK_NUMPAD_SUBTRACT:
             self._shift_pad = max(0, self._shift_pad - 8)
             self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
+        else:
+            event.Skip()
+
+    def _on_char(self, event):
+        key = event.GetKeyCode()
+        if key in (ord('c'), ord('C')):
+            if self._player.clicking:
+                self._player.stop_click()
+                self._show_status("Click: Off")
+            else:
+                self._player.play_click()
+                self._show_status("Click: On")
+        elif key == ord('('):
+            self._player.set_bpm(self._player.bpm + 5)
+            self._show_status(f"BPM: {self._player.bpm}")
+        elif key == ord(')'):
+            self._player.set_bpm(self._player.bpm - 5)
+            self._show_status(f"BPM: {self._player.bpm}")
         else:
             event.Skip()
