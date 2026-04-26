@@ -109,6 +109,11 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
+    def load_pattern(self, pattern):
+        self.pattern = [row[:] for row in pattern]
+
+    #--------------------------------------------------------------------------
+
     def play_sound(self, index):
         self.sound_man.play_sound(index)
 

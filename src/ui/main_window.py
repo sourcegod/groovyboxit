@@ -3,6 +3,22 @@ import wx
 from sound_manager import SoundManager
 from drum_player import DrumPlayer
 
+
+def _build_pattern_01():
+    p = [[False] * 16 for _ in range(16)]
+    p[0][0] = p[0][4] = p[0][8] = p[0][12] = True
+    p[4][2] = p[4][6] = p[4][10] = True
+    p[5][1:4] = [True] * 3
+    p[5][5:8] = [True] * 3
+    p[5][9:12] = [True] * 3
+    p[5][13:16] = [True] * 3
+    p[7][15] = True
+    p[8][14] = True
+    p[9][13] = True
+    p[10][0] = True
+    return p
+
+
 class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
@@ -71,6 +87,11 @@ class MainWindow(wx.Frame):
     def _on_checkbox(self, row, col):
         self._player.pattern[row][col] = self._cells[row][col].GetValue()
 
+    def _refresh_grid(self):
+        for r in range(self.ROWS):
+            for c in range(self.COLS):
+                self._cells[r][c].SetValue(self._player.pattern[r][c])
+
     def _show_status(self, msg):
         self._status_ctrl.SetValue(msg)
         self._status_ctrl.SetFocus()
@@ -92,6 +113,9 @@ class MainWindow(wx.Frame):
 
     def _on_key(self, event):
         key = event.GetKeyCode()
+        # DEBUG
+        # if key not in (wx.WXK_CONTROL, wx.WXK_SHIFT, wx.WXK_ALT):
+        #     wx.MessageBox(f"key={key}  ctrl={event.ControlDown()}", "DEBUG", wx.OK)
         if key == wx.WXK_UP:
             self._move(-1, 0)
         elif key == wx.WXK_DOWN:
@@ -136,6 +160,14 @@ class MainWindow(wx.Frame):
             else:
                 self._player.play_click()
                 self._show_status("Click: On")
+        elif key == ord('l'):
+            self._player.load_pattern(_build_pattern_01())
+            self._refresh_grid()
+            self._show_status("Pattern initial chargé")
+        elif key == ord('L'):
+            self._player.load_pattern([[False] * self.COLS for _ in range(self.ROWS)])
+            self._refresh_grid()
+            self._show_status("Pattern réinitialisé")
         elif key == ord('p'):
             self._player.play_pattern()
             self._show_status("Pattern: Play")
@@ -161,3 +193,4 @@ class MainWindow(wx.Frame):
             self._show_status(f"BPM: {self._player.bpm}")
         else:
             event.Skip()
+
