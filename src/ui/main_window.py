@@ -46,6 +46,7 @@ class MainWindow(wx.Frame):
                 cb = wx.CheckBox(panel, label=f"Pad{r + 1}/{c + 1}")
                 cb.Bind(wx.EVT_KEY_DOWN, self._on_key)
                 cb.Bind(wx.EVT_CHAR, self._on_char)
+                cb.Bind(wx.EVT_CHECKBOX, lambda e, r=r, c=c: self._on_checkbox(r, c))
                 cb.Bind(wx.EVT_SET_FOCUS, lambda e, r=r, c=c: self._set_cursor(r, c))
                 grid.Add(cb, 0, wx.EXPAND)
                 row.append(cb)
@@ -62,6 +63,13 @@ class MainWindow(wx.Frame):
     def _set_cursor(self, row, col):
         self._cur_row = row
         self._cur_col = col
+
+    def _set_cell(self, row, col, value):
+        self._cells[row][col].SetValue(value)
+        self._player.pattern[row][col] = value
+
+    def _on_checkbox(self, row, col):
+        self._player.pattern[row][col] = self._cells[row][col].GetValue()
 
     def _show_status(self, msg):
         self._status_ctrl.SetValue(msg)
@@ -100,11 +108,9 @@ class MainWindow(wx.Frame):
                 self._player.play_pattern()
                 self._show_status("Pattern: Play")
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            cb = self._cells[self._cur_row][self._cur_col]
-            if event.ShiftDown():
-                cb.SetValue(False)
-            else:
-                cb.SetValue(not cb.GetValue())
+            r, c = self._cur_row, self._cur_col
+            new_val = False if event.ShiftDown() else not self._cells[r][c].GetValue()
+            self._set_cell(r, c, new_val)
         elif wx.WXK_NUMPAD1 <= key <= wx.WXK_NUMPAD8:
             self._play((key - wx.WXK_NUMPAD1) + self._shift_pad)
         elif key == wx.WXK_NUMPAD9:
