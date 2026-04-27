@@ -24,7 +24,7 @@ class MainWindow(wx.Frame):
     COLS = 16
 
     def __init__(self):
-        super().__init__(None, title="GrooveboxIt")
+        super().__init__(None, title="GroovyboxIt")
         self._cur_row = 0
         self._cur_col = 0
         self._cells = []
