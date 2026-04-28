@@ -60,7 +60,7 @@ class MainWindow(wx.Frame):
             row = []
             for c in range(self.COLS):
                 cb = wx.CheckBox(panel, label=f"Pad{r + 1}/{c + 1}")
-                cb.Bind(wx.EVT_KEY_DOWN, self._on_key)
+                cb.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
                 cb.Bind(wx.EVT_CHAR, self._on_char)
                 cb.Bind(wx.EVT_CHECKBOX, lambda e, r=r, c=c: self._on_checkbox(r, c))
                 cb.Bind(wx.EVT_SET_FOCUS, lambda e, r=r, c=c: self._set_cursor(r, c))
@@ -111,12 +111,48 @@ class MainWindow(wx.Frame):
         self._player.play_sound(idx)
         self._last_pad = idx
 
-    def _on_key(self, event):
+    def _on_key_down(self, event):
+        # Note: Use event.GetKeyCode() function to filtering events, instead the constants event.keycode.
         key = event.GetKeyCode()
+        controlDown = event.ControlDown()
+        shiftDown = event.ShiftDown()
+        altDown = event.AltDown()
+        print(f"on_key_down, Keycode: {key}")
+        # print("\a")
+        """
         # DEBUG
-        # if key not in (wx.WXK_CONTROL, wx.WXK_SHIFT, wx.WXK_ALT):
-        #     wx.MessageBox(f"key={key}  ctrl={event.ControlDown()}", "DEBUG", wx.OK)
-        if key == wx.WXK_UP:
+        if controlDown or shiftDown or altDown:
+            print("\a")
+        """
+
+        """
+        # Note: (wx.WXK_CONTROL, wx.WXK_SHIFT, wx.WXK_ALT)
+        # Do not work on Linux
+        # Use instead: event.ControlDown(), event.ShiftDown(), event.AltDown() functions.
+        print("a")
+        """
+
+        # if controlDown:    
+        if controlDown and key == ord('D'): # Ctrl+D
+            self._player.load_pattern([[False] * self.COLS for _ in range(self.ROWS)])
+            self._refresh_grid()
+            self._show_status("Pattern réinitialisé")
+
+        elif controlDown and key == ord('P'): # Ctrl+P
+            self._player.load_pattern(_build_pattern_01())
+            self._refresh_grid()
+            self._show_status("Pattern initial chargé")
+
+        elif controlDown and key == ord('E'): # Ctrl+E
+            for c in range(self.COLS):
+                self._set_cell(self._cur_row, c, True)
+            self._show_status(f"Ligne {self._cur_row + 1}: tout coché")
+        elif shiftDown and key == ord('E'): # Shift+E
+            for c in range(self.COLS):
+                self._set_cell(self._cur_row, c, False)
+            self._show_status(f"Ligne {self._cur_row + 1}: tout décoché")
+
+        elif key == wx.WXK_UP:
             self._move(-1, 0)
         elif key == wx.WXK_DOWN:
             self._move(1, 0)
@@ -124,13 +160,6 @@ class MainWindow(wx.Frame):
             self._move(0, -1)
         elif key == wx.WXK_RIGHT:
             self._move(0, 1)
-        elif key == wx.WXK_SPACE:
-            if self._player.playing:
-                self._player.stop_pattern()
-                self._show_status("Pattern: Stop")
-            else:
-                self._player.play_pattern()
-                self._show_status("Pattern: Play")
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             r, c = self._cur_row, self._cur_col
             new_val = False if event.ShiftDown() else not self._cells[r][c].GetValue()
@@ -153,38 +182,28 @@ class MainWindow(wx.Frame):
 
     def _on_char(self, event):
         key = event.GetKeyCode()
-        if key in (ord('c'), ord('C')):
+        # DEBUG
+        print(f"On_char, Keycode: {key}")
+        # print("\a")
+        
+        if key == ord('c'):
             if self._player.clicking:
                 self._player.stop_click()
                 self._show_status("Click: Off")
             else:
                 self._player.play_click()
                 self._show_status("Click: On")
-        elif key == ord('l'):
-            self._player.load_pattern(_build_pattern_01())
-            self._refresh_grid()
-            self._show_status("Pattern initial chargé")
-        elif key == ord('L'):
-            self._player.load_pattern([[False] * self.COLS for _ in range(self.ROWS)])
-            self._refresh_grid()
-            self._show_status("Pattern réinitialisé")
-        elif key == ord('p'):
-            self._player.play_pattern()
-            self._show_status("Pattern: Play")
-        elif key == ord('P'):
-            self._player.stop_pattern()
-            self._show_status("Pattern: Stop")
+        elif key == ord(' ') or key == ord('p'): # space, p
+            if self._player.playing:
+                self._player.stop_pattern()
+                self._show_status("Pattern: Stop")
+            else:
+                self._player.play_pattern()
+                self._show_status("Pattern: Play")
+
         elif key == ord('v'):
             self._player.stop_all()
             self._show_status("Stop All")
-        elif key == ord('e'):
-            for c in range(self.COLS):
-                self._set_cell(self._cur_row, c, True)
-            self._show_status(f"Ligne {self._cur_row + 1}: tout coché")
-        elif key == ord('E'):
-            for c in range(self.COLS):
-                self._set_cell(self._cur_row, c, False)
-            self._show_status(f"Ligne {self._cur_row + 1}: tout décoché")
         elif key == ord('('):
             self._player.set_bpm(self._player.bpm + 5)
             self._show_status(f"BPM: {self._player.bpm}")
