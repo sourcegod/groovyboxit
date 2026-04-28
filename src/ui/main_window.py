@@ -55,6 +55,16 @@ class MainWindow(wx.Frame):
         )
         self._status_ctrl.SetValue("ShiftPad: 1/8")
 
+        self._bpm_ctrl = wx.TextCtrl(
+            panel,
+            style=wx.TE_READONLY | wx.TE_CENTER | wx.BORDER_SIMPLE,
+            size=(80, -1),
+        )
+
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
+        hbox.Add(self._bpm_ctrl, 0, wx.EXPAND)
+
         grid = wx.GridSizer(self.ROWS, self.COLS, 2, 2)
         for r in range(self.ROWS):
             row = []
@@ -69,10 +79,11 @@ class MainWindow(wx.Frame):
             self._cells.append(row)
 
         vbox = wx.BoxSizer(wx.VERTICAL)
-        vbox.Add(self._status_ctrl, 0, wx.EXPAND | wx.ALL, 4)
+        vbox.Add(hbox, 0, wx.EXPAND | wx.ALL, 4)
         vbox.Add(grid, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
+        self._update_bpm_display()
         self.Fit()
         self._cells[0][0].SetFocus()
 
@@ -91,6 +102,9 @@ class MainWindow(wx.Frame):
         for r in range(self.ROWS):
             for c in range(self.COLS):
                 self._cells[r][c].SetValue(self._player.pattern[r][c])
+
+    def _update_bpm_display(self):
+        self._bpm_ctrl.SetValue(f"BPM: {self._player.bpm}")
 
     def _show_status(self, msg):
         self._status_ctrl.SetValue(msg)
@@ -206,10 +220,10 @@ class MainWindow(wx.Frame):
             self._show_status("Stop All")
         elif key == ord('('):
             self._player.set_bpm(self._player.bpm + 5)
-            self._show_status(f"BPM: {self._player.bpm}")
+            self._update_bpm_display()
         elif key == ord(')'):
             self._player.set_bpm(self._player.bpm - 5)
-            self._show_status(f"BPM: {self._player.bpm}")
+            self._update_bpm_display()
         else:
             event.Skip()
 
