@@ -22,6 +22,9 @@ def _build_pattern_01():
 class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
+    _QUANT = ["1/1", "1/2", "1/4", "1/8", "1/16"]
+    # Intervalle de colonnes correspondant à chaque valeur de quantification
+    _QUANT_STEP = {"1/1": 16, "1/2": 8, "1/4": 4, "1/8": 2, "1/16": 1}
 
     def __init__(self):
         super().__init__(None, title="GroovyboxIt")
@@ -61,9 +64,20 @@ class MainWindow(wx.Frame):
             size=(80, -1),
         )
 
+        quant_label = wx.StaticText(panel, label="Quant:")
+        self._quant_list = wx.ListBox(
+            panel,
+            choices=self._QUANT,
+            style=wx.LB_SINGLE,
+        )
+        self._quant_list.SetSelection(len(self._QUANT) - 1)  # défaut: 1/16
+        self._quant_list.Bind(wx.EVT_KEY_DOWN, self._on_quant_key)
+
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
-        hbox.Add(self._bpm_ctrl, 0, wx.EXPAND)
+        hbox.Add(self._bpm_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
+        hbox.Add(quant_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox.Add(self._quant_list, 0, wx.EXPAND)
 
         grid = wx.GridSizer(self.ROWS, self.COLS, 2, 2)
         for r in range(self.ROWS):
@@ -102,6 +116,21 @@ class MainWindow(wx.Frame):
         for r in range(self.ROWS):
             for c in range(self.COLS):
                 self._cells[r][c].SetValue(self._player.pattern[r][c])
+
+    def _on_quant_key(self, event):
+        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            self._apply_quant()
+        else:
+            event.Skip()
+
+    def _apply_quant(self):
+        quant = self._QUANT[self._quant_list.GetSelection()]
+        step = self._QUANT_STEP[quant]
+        for c in range(self.COLS):
+            self._set_cell(self._cur_row, c, False)
+        for c in range(0, self.COLS, step):
+            self._set_cell(self._cur_row, c, True)
+        self._show_status(f"Ligne {self._cur_row + 1}: {quant} coché")
 
     def _update_bpm_display(self):
         self._bpm_ctrl.SetValue(f"BPM: {self._player.bpm}")
@@ -158,9 +187,7 @@ class MainWindow(wx.Frame):
             self._show_status("Pattern initial chargé")
 
         elif controlDown and key == ord('E'): # Ctrl+E
-            for c in range(self.COLS):
-                self._set_cell(self._cur_row, c, True)
-            self._show_status(f"Ligne {self._cur_row + 1}: tout coché")
+            self._apply_quant()
         elif shiftDown and key == ord('E'): # Shift+E
             for c in range(self.COLS):
                 self._set_cell(self._cur_row, c, False)
