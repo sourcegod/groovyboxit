@@ -59,11 +59,9 @@ class MainWindow(wx.Frame):
         )
         self._status_ctrl.SetValue("ShiftPad: 1/8")
 
-        self._bpm_ctrl = wx.TextCtrl(
-            panel,
-            style=wx.TE_READONLY | wx.TE_CENTER | wx.BORDER_SIMPLE,
-            size=(80, -1),
-        )
+        bpm_label = wx.StaticText(panel, label="BPM:")
+        self._bpm_ctrl = wx.SpinCtrl(panel, min=5, max=600, initial=self._player.bpm, size=(80, -1))
+        self._bpm_ctrl.Bind(wx.EVT_SPINCTRL, self._on_bpm_spin)
 
         vol_label = wx.StaticText(panel, label="Vol:")
         self._volume_ctrl = wx.SpinCtrl(panel, min=0, max=100, initial=self._player.volume, size=(70, -1))
@@ -80,6 +78,7 @@ class MainWindow(wx.Frame):
 
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
+        hbox.Add(bpm_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._bpm_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
         hbox.Add(vol_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._volume_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
@@ -102,7 +101,6 @@ class MainWindow(wx.Frame):
         vbox.Add(grid, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
-        self._update_bpm_display()
         self.Fit()
         self._cells[0][0].SetFocus()
 
@@ -134,13 +132,18 @@ class MainWindow(wx.Frame):
             self._set_cell(self._cur_row, c, True)
         self._show_status(f"Ligne {self._cur_row + 1}: {quant} coché")
 
+    def _on_bpm_spin(self, event):
+        bpm = self._bpm_ctrl.GetValue()
+        self._player.set_bpm(bpm)
+        self._show_status(f"BPM: {bpm}")
+
     def _on_volume_spin(self, event):
         vol = self._volume_ctrl.GetValue()
         self._player.set_volume(vol)
         self._show_status(f"Volume: {vol}")
 
     def _update_bpm_display(self):
-        self._bpm_ctrl.SetValue(f"BPM: {self._player.bpm}")
+        self._bpm_ctrl.SetValue(self._player.bpm)
 
     def _show_status(self, msg):
         focused = wx.Window.FindFocus()
@@ -196,9 +199,7 @@ class MainWindow(wx.Frame):
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
             elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
-                delta = 1 if key == wx.WXK_UP else -1
-                self._player.set_bpm(self._player.bpm + delta)
-                self._update_bpm_display()
+                event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
             elif key == wx.WXK_UP:
                 self._move(-1, 0)
             elif key == wx.WXK_DOWN:
