@@ -65,6 +65,10 @@ class MainWindow(wx.Frame):
             size=(80, -1),
         )
 
+        vol_label = wx.StaticText(panel, label="Vol:")
+        self._volume_ctrl = wx.SpinCtrl(panel, min=0, max=100, initial=self._player.volume, size=(70, -1))
+        self._volume_ctrl.Bind(wx.EVT_SPINCTRL, self._on_volume_spin)
+
         quant_label = wx.StaticText(panel, label="Quant:")
         self._quant_list = wx.ListBox(
             panel,
@@ -77,6 +81,8 @@ class MainWindow(wx.Frame):
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
         hbox.Add(self._bpm_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
+        hbox.Add(vol_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox.Add(self._volume_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
         hbox.Add(quant_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._quant_list, 0, wx.EXPAND)
 
@@ -128,6 +134,11 @@ class MainWindow(wx.Frame):
             self._set_cell(self._cur_row, c, True)
         self._show_status(f"Ligne {self._cur_row + 1}: {quant} coché")
 
+    def _on_volume_spin(self, event):
+        vol = self._volume_ctrl.GetValue()
+        self._player.set_volume(vol)
+        self._show_status(f"Volume: {vol}")
+
     def _update_bpm_display(self):
         self._bpm_ctrl.SetValue(f"BPM: {self._player.bpm}")
 
@@ -156,8 +167,9 @@ class MainWindow(wx.Frame):
         ukey = event.GetUnicodeKey()   # caractère traduit (layout-aware)
         ctrl  = event.ControlDown()
         shift = event.ShiftDown()
-        on_list = (wx.Window.FindFocus() == self._quant_list)
-        on_bpm  = (wx.Window.FindFocus() == self._bpm_ctrl)
+        on_list   = (wx.Window.FindFocus() == self._quant_list)
+        on_bpm    = (wx.Window.FindFocus() == self._bpm_ctrl)
+        on_volume = (wx.Window.FindFocus() == self._volume_ctrl)
 
         # --- Raccourcis Ctrl ---
         if ctrl and key == ord('D'):
@@ -181,6 +193,8 @@ class MainWindow(wx.Frame):
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
             if on_list:
                 event.Skip()   # laisser la ListBox gérer sa propre navigation
+            elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
+                event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
             elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
                 delta = 1 if key == wx.WXK_UP else -1
                 self._player.set_bpm(self._player.bpm + delta)
@@ -246,7 +260,18 @@ class MainWindow(wx.Frame):
         elif ukey == ord(')') or key == ord(')'):
             self._player.set_bpm(self._player.bpm - 5)
             self._update_bpm_display()
+        elif ukey == ord('+') or key == ord('+'):
+            self._player.set_volume(self._player.volume + 1)
+            self._volume_ctrl.SetValue(self._player.volume)
+            self._show_status(f"Volume: {self._player.volume}")
+        ### Note: même bug AZERTY que '(' → '-' est key=54 ('6') au lieu de key=45.
+        ### Les touches non-shiftées aux positions de chiffres renvoient le code US du chiffre.
+        ### Les touches shiftées (+, ), ...) fonctionnent via ukey (GetUnicodeKey traduit).
+        elif ukey == ord('-') or key == ord('-') or (not shift and not ctrl and key == ord('6')):
+            self._player.set_volume(self._player.volume - 1)
+            self._volume_ctrl.SetValue(self._player.volume)
+            self._show_status(f"Volume: {self._player.volume}")
 
         else:
-            # print(f"DEBUG key={key} ukey={ukey} shift={shift} ctrl={ctrl} char={chr(ukey) if ukey > 31 else '?'}")
+            print(f"DEBUG key={key} ukey={ukey} shift={shift} ctrl={ctrl} char={chr(ukey) if ukey > 31 else '?'}")
             event.Skip()
