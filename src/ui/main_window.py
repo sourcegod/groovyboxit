@@ -22,8 +22,17 @@ def _build_pattern_01():
 class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
-    _QUANT = ["1/1", "1/2", "1/4", "1/8", "1/16"]
-    _QUANT_STEP = {"1/1": 16, "1/2": 8, "1/4": 4, "1/8": 2, "1/16": 1}
+    _QUANT = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16"]
+    _QUANT_STEP = {
+        "1/1":  16,
+        "1/2":  8,
+        "1/3":  [i * 16 / 3  for i in range(3)],
+        "1/4":  4,
+        "1/6":  [i * 16 / 6  for i in range(6)],
+        "1/8":  2,
+        "1/12": [i * 16 / 12 for i in range(12)],
+        "1/16": 1,
+    }
 
     def __init__(self):
         super().__init__(None, title="GroovyboxIt")
@@ -111,26 +120,45 @@ class MainWindow(wx.Frame):
     def _set_cell(self, row, col, value):
         self._cells[row][col].SetValue(value)
         self._player.pattern[row][col] = value
+        # Édition manuelle → positions entières, on recalcule float_offsets depuis la grille
+        self._player.float_offsets[row] = [
+            float(c) for c in range(self.COLS) if self._player.pattern[row][c]
+        ]
 
     def _on_checkbox(self, row, col):
         self._player.pattern[row][col] = self._cells[row][col].GetValue()
+        self._player.float_offsets[row] = [
+            float(c) for c in range(self.COLS) if self._player.pattern[row][c]
+        ]
 
     def _refresh_grid(self):
         for r in range(self.ROWS):
             for c in range(self.COLS):
                 self._cells[r][c].SetValue(self._player.pattern[r][c])
+            self._player.float_offsets[r] = [
+                float(c) for c in range(self.COLS) if self._player.pattern[r][c]
+            ]
 
     def _on_quant_select(self, event):
         self._apply_quant()
 
     def _apply_quant(self):
         quant = self._QUANT[self._quant_list.GetSelection()]
-        step = self._QUANT_STEP[quant]
+        val = self._QUANT_STEP[quant]
+        float_pos = val if isinstance(val, list) else [float(c) for c in range(0, self.COLS, val)]
+        # Effacer la ligne sans toucher à float_offsets (mis à jour ci-dessous)
+        row = self._cur_row
         for c in range(self.COLS):
-            self._set_cell(self._cur_row, c, False)
-        for c in range(0, self.COLS, step):
-            self._set_cell(self._cur_row, c, True)
-        self._show_status(f"Ligne {self._cur_row + 1}: {quant} coché")
+            self._cells[row][c].SetValue(False)
+            self._player.pattern[row][c] = False
+        # Positions arrondies pour la grille visuelle
+        for fp in float_pos:
+            c = min(self.COLS - 1, round(fp))
+            self._cells[row][c].SetValue(True)
+            self._player.pattern[row][c] = True
+        # Positions flottantes exactes pour le séquenceur
+        self._player.float_offsets[row] = sorted(float_pos)
+        self._show_status(f"Ligne {row + 1}: {quant} coché")
 
     def _on_bpm_spin(self, event):
         bpm = self._bpm_ctrl.GetValue()
@@ -233,22 +261,25 @@ class MainWindow(wx.Frame):
             self._shift_pad = max(0, self._shift_pad - 8)
             self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
 
-        # --- Raccourcis caractères (ukey = caractère traduit, indépendant du layout) ---
-        elif ukey == ord('c'):
+        # --- Raccourcis caractères ---
+        # ukey (GetUnicodeKey) est fiable uniquement dans EVT_CHAR, pas dans EVT_CHAR_HOOK
+        # (retourne WXK_NONE=0 sur certains GTK). Fallback sur key (GetKeyCode) qui renvoie
+        # le code ASCII majuscule de la touche physique, indépendamment du layout pour a-z.
+        elif ukey == ord('c') or (not ctrl and not shift and key == ord('C')):
             if self._player.clicking:
                 self._player.stop_click()
                 self._show_status("Click: Off")
             else:
                 self._player.play_click()
                 self._show_status("Click: On")
-        elif ukey in (ord(' '), ord('p')):
+        elif ukey in (ord(' '), ord('p')) or (not ctrl and key in (wx.WXK_SPACE, ord('P'))):
             if self._player.playing:
                 self._player.stop_pattern()
                 self._show_status("Pattern: Stop")
             else:
                 self._player.play_pattern()
                 self._show_status("Pattern: Play")
-        elif ukey == ord('v'):
+        elif ukey == ord('v') or (not ctrl and not shift and key == ord('V')):
             self._player.stop_all()
             self._show_status("Stop All")
         ### Note: Sur GTK+AZERTY, GetKeyCode() renvoie le code US de la position physique
