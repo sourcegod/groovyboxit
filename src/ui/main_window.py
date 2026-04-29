@@ -220,6 +220,23 @@ class MainWindow(wx.Frame):
                 self._set_cell(self._cur_row, c, False)
             self._show_status(f"Ligne {self._cur_row + 1}: tout décoché")
 
+        # --- Tab / Shift+Tab : navigation entre widgets principaux ---
+        # Les CheckBoxes étant dans l'ordre de tabulation par défaut, Tab navigue
+        # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.
+        # Ordre : BPM → Volume → Quant → Grille → BPM (et inverse pour Shift+Tab).
+        elif key == wx.WXK_TAB:
+            focused = wx.Window.FindFocus()
+            order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list]
+            if focused in order:
+                idx = order.index(focused)
+                if shift:
+                    target = self._cells[self._cur_row][self._cur_col] if idx == 0 else order[idx - 1]
+                else:
+                    target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 else order[idx + 1]
+            else:
+                target = self._bpm_ctrl if not shift else self._quant_list
+            target.SetFocus()
+
         # --- Flèches : navigation grille ou liste selon le focus ---
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
             if on_list:
