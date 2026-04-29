@@ -23,7 +23,6 @@ class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
     _QUANT = ["1/1", "1/2", "1/4", "1/8", "1/16"]
-    # Intervalle de colonnes correspondant à chaque valeur de quantification
     _QUANT_STEP = {"1/1": 16, "1/2": 8, "1/4": 4, "1/8": 2, "1/16": 1}
 
     def __init__(self):
@@ -36,6 +35,8 @@ class MainWindow(wx.Frame):
         self._autoplay = True
         self._init_sound()
         self._build_ui()
+        # EVT_CHAR_HOOK remonte la hiérarchie depuis n'importe quel widget natif
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Centre()
 
     def _init_sound(self):
@@ -71,7 +72,7 @@ class MainWindow(wx.Frame):
             style=wx.LB_SINGLE,
         )
         self._quant_list.SetSelection(len(self._QUANT) - 1)  # défaut: 1/16
-        self._quant_list.Bind(wx.EVT_KEY_DOWN, self._on_quant_key)
+        self._quant_list.Bind(wx.EVT_LISTBOX, self._on_quant_select)
 
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
@@ -84,8 +85,6 @@ class MainWindow(wx.Frame):
             row = []
             for c in range(self.COLS):
                 cb = wx.CheckBox(panel, label=f"Pad{r + 1}/{c + 1}")
-                cb.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
-                cb.Bind(wx.EVT_CHAR, self._on_char)
                 cb.Bind(wx.EVT_CHECKBOX, lambda e, r=r, c=c: self._on_checkbox(r, c))
                 cb.Bind(wx.EVT_SET_FOCUS, lambda e, r=r, c=c: self._set_cursor(r, c))
                 grid.Add(cb, 0, wx.EXPAND)
@@ -117,11 +116,8 @@ class MainWindow(wx.Frame):
             for c in range(self.COLS):
                 self._cells[r][c].SetValue(self._player.pattern[r][c])
 
-    def _on_quant_key(self, event):
-        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self._apply_quant()
-        else:
-            event.Skip()
+    def _on_quant_select(self, event):
+        self._apply_quant()
 
     def _apply_quant(self):
         quant = self._QUANT[self._quant_list.GetSelection()]
@@ -136,9 +132,10 @@ class MainWindow(wx.Frame):
         self._bpm_ctrl.SetValue(f"BPM: {self._player.bpm}")
 
     def _show_status(self, msg):
+        focused = wx.Window.FindFocus()
         self._status_ctrl.SetValue(msg)
-        self._status_ctrl.SetFocus()
-        wx.CallAfter(self._cells[self._cur_row][self._cur_col].SetFocus)
+        if focused:
+            wx.CallAfter(focused.SetFocus)
 
     def _move(self, dr, dc):
         r = max(0, min(self.ROWS - 1, self._cur_row + dr))
@@ -154,57 +151,59 @@ class MainWindow(wx.Frame):
         self._player.play_sound(idx)
         self._last_pad = idx
 
-    def _on_key_down(self, event):
-        # Note: Use event.GetKeyCode() function to filtering events, instead the constants event.keycode.
-        key = event.GetKeyCode()
-        controlDown = event.ControlDown()
-        shiftDown = event.ShiftDown()
-        altDown = event.AltDown()
-        print(f"on_key_down, Keycode: {key}")
-        # print("\a")
-        """
-        # DEBUG
-        if controlDown or shiftDown or altDown:
-            print("\a")
-        """
+    def _on_char_hook(self, event):
+        key  = event.GetKeyCode()
+        ukey = event.GetUnicodeKey()   # caractère traduit (layout-aware)
+        ctrl  = event.ControlDown()
+        shift = event.ShiftDown()
+        on_list = (wx.Window.FindFocus() == self._quant_list)
+        on_bpm  = (wx.Window.FindFocus() == self._bpm_ctrl)
 
-        """
-        # Note: (wx.WXK_CONTROL, wx.WXK_SHIFT, wx.WXK_ALT)
-        # Do not work on Linux
-        # Use instead: event.ControlDown(), event.ShiftDown(), event.AltDown() functions.
-        print("a")
-        """
-
-        # if controlDown:    
-        if controlDown and key == ord('D'): # Ctrl+D
+        # --- Raccourcis Ctrl ---
+        if ctrl and key == ord('D'):
             self._player.load_pattern([[False] * self.COLS for _ in range(self.ROWS)])
             self._refresh_grid()
             self._show_status("Pattern réinitialisé")
-
-        elif controlDown and key == ord('P'): # Ctrl+P
+        elif ctrl and key == ord('P'):
             self._player.load_pattern(_build_pattern_01())
             self._refresh_grid()
             self._show_status("Pattern initial chargé")
-
-        elif controlDown and key == ord('E'): # Ctrl+E
+        elif ctrl and key == ord('E'):
             self._apply_quant()
-        elif shiftDown and key == ord('E'): # Shift+E
+
+        # --- Shift+E : décocher toute la ligne ---
+        elif shift and not ctrl and key == ord('E'):
             for c in range(self.COLS):
                 self._set_cell(self._cur_row, c, False)
             self._show_status(f"Ligne {self._cur_row + 1}: tout décoché")
 
-        elif key == wx.WXK_UP:
-            self._move(-1, 0)
-        elif key == wx.WXK_DOWN:
-            self._move(1, 0)
-        elif key == wx.WXK_LEFT:
-            self._move(0, -1)
-        elif key == wx.WXK_RIGHT:
-            self._move(0, 1)
+        # --- Flèches : navigation grille ou liste selon le focus ---
+        elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
+            if on_list:
+                event.Skip()   # laisser la ListBox gérer sa propre navigation
+            elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
+                delta = 1 if key == wx.WXK_UP else -1
+                self._player.set_bpm(self._player.bpm + delta)
+                self._update_bpm_display()
+            elif key == wx.WXK_UP:
+                self._move(-1, 0)
+            elif key == wx.WXK_DOWN:
+                self._move(1, 0)
+            elif key == wx.WXK_LEFT:
+                self._move(0, -1)
+            else:
+                self._move(0, 1)
+
+        # --- Entrée : appliquer quant (ListBox) ou basculer cellule (grille) ---
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            r, c = self._cur_row, self._cur_col
-            new_val = False if event.ShiftDown() else not self._cells[r][c].GetValue()
-            self._set_cell(r, c, new_val)
+            if on_list:
+                self._apply_quant()
+            else:
+                r, c = self._cur_row, self._cur_col
+                new_val = False if shift else not self._cells[r][c].GetValue()
+                self._set_cell(r, c, new_val)
+
+        # --- NumPad ---
         elif wx.WXK_NUMPAD1 <= key <= wx.WXK_NUMPAD8:
             self._play((key - wx.WXK_NUMPAD1) + self._shift_pad)
         elif key == wx.WXK_NUMPAD9:
@@ -218,39 +217,36 @@ class MainWindow(wx.Frame):
         elif key == wx.WXK_NUMPAD_SUBTRACT:
             self._shift_pad = max(0, self._shift_pad - 8)
             self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
-        else:
-            event.Skip()
 
-    def _on_char(self, event):
-        key = event.GetKeyCode()
-        # DEBUG
-        print(f"On_char, Keycode: {key}")
-        # print("\a")
-        
-        if key == ord('c'):
+        # --- Raccourcis caractères (ukey = caractère traduit, indépendant du layout) ---
+        elif ukey == ord('c'):
             if self._player.clicking:
                 self._player.stop_click()
                 self._show_status("Click: Off")
             else:
                 self._player.play_click()
                 self._show_status("Click: On")
-        elif key == ord(' ') or key == ord('p'): # space, p
+        elif ukey in (ord(' '), ord('p')):
             if self._player.playing:
                 self._player.stop_pattern()
                 self._show_status("Pattern: Stop")
             else:
                 self._player.play_pattern()
                 self._show_status("Pattern: Play")
-
-        elif key == ord('v'):
+        elif ukey == ord('v'):
             self._player.stop_all()
             self._show_status("Stop All")
-        elif key == ord('('):
+        ### Note: Sur GTK+AZERTY, GetKeyCode() renvoie le code US de la position physique
+        ### (touche '(' → key=53 comme '5') au lieu du caractère produit (key=40).
+        ### GetUnicodeKey() ne corrige pas ce problème. On ajoute key==ord('5') sans
+        ### modificateur comme repli AZERTY. La touche ')' échappe à ce bug par hasard.
+        elif ukey == ord('(') or key == ord('(') or (not shift and not ctrl and key == ord('5')):
             self._player.set_bpm(self._player.bpm + 5)
             self._update_bpm_display()
-        elif key == ord(')'):
+        elif ukey == ord(')') or key == ord(')'):
             self._player.set_bpm(self._player.bpm - 5)
             self._update_bpm_display()
-        else:
-            event.Skip()
 
+        else:
+            # print(f"DEBUG key={key} ukey={ukey} shift={shift} ctrl={ctrl} char={chr(ukey) if ukey > 31 else '?'}")
+            event.Skip()
