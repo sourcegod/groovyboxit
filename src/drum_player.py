@@ -86,11 +86,11 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def _run_thread(self):
-        measure_secs = 16 * self.step_duration
         measure_start = time.perf_counter()
 
         while (self.playing or self.clicking) and not self.stop_event.is_set():
             self._wakeup.clear()
+            measure_secs = 16 * self.step_duration
             now = time.perf_counter()
 
             # Avancer measure_start si la mesure précédente est terminée
@@ -161,6 +161,7 @@ class DrumPlayer:
         if 5 <= bpm <= 600:
             self.bpm = bpm
             self.step_duration = 60.0 / self.bpm / 4
+            self._wakeup.set()
 
     #--------------------------------------------------------------------------
 
