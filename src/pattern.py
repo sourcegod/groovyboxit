@@ -41,3 +41,28 @@ class Pattern:
             [[False] * self._num_steps for _ in range(self._num_bars)]
             for _ in range(self._num_tracks)
         ]
+
+    #--------------------------------------------------------------------------
+
+    def new_pattern(self, num_bars=1, num_steps=16):
+        self._num_bars  = num_bars
+        self._num_steps = num_steps
+        self._curpattern = [
+            [[False] * self._num_steps for _ in range(self._num_bars)]
+            for _ in range(self._num_tracks)
+        ]
+
+    #--------------------------------------------------------------------------
+
+    def load_pattern(self, pattern):
+        self._num_tracks = len(pattern)
+        self._num_bars   = len(pattern[0])    if pattern          else 1
+        self._num_steps  = len(pattern[0][0]) if pattern and pattern[0] else 16
+        self._curpattern = [[bar[:] for bar in track] for track in pattern]
+
+    #--------------------------------------------------------------------------
+
+    def reset_pattern(self):
+        for track in self._curpattern:
+            for bar in track:
+                bar[:] = [False] * len(bar)

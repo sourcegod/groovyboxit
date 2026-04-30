@@ -5,17 +5,17 @@ from drum_player import DrumPlayer
 
 
 def _build_pattern_01():
-    p = [[False] * 16 for _ in range(16)]
-    p[0][0] = p[0][4] = p[0][8] = p[0][12] = True
-    p[4][2] = p[4][6] = p[4][10] = True
-    p[5][1:4] = [True] * 3
-    p[5][5:8] = [True] * 3
-    p[5][9:12] = [True] * 3
-    p[5][13:16] = [True] * 3
-    p[7][15] = True
-    p[8][14] = True
-    p[9][13] = True
-    p[10][0] = True
+    p = [[[False] * 16] for _ in range(16)]
+    p[0][0][0] = p[0][0][4] = p[0][0][8] = p[0][0][12] = True
+    p[4][0][2] = p[4][0][6] = p[4][0][10] = True
+    p[5][0][1:4] = [True] * 3
+    p[5][0][5:8] = [True] * 3
+    p[5][0][9:12] = [True] * 3
+    p[5][0][13:16] = [True] * 3
+    p[7][0][15] = True
+    p[8][0][14] = True
+    p[9][0][13] = True
+    p[10][0][0] = True
     return p
 
 
@@ -119,24 +119,23 @@ class MainWindow(wx.Frame):
 
     def _set_cell(self, row, col, value):
         self._cells[row][col].SetValue(value)
-        self._player.pattern[row][col] = value
-        # Édition manuelle → positions entières, on recalcule float_offsets depuis la grille
+        self._player._pattern._curpattern[row][0][col] = value
         self._player.float_offsets[row] = [
-            float(c) for c in range(self.COLS) if self._player.pattern[row][c]
+            float(c) for c in range(self.COLS) if self._player._pattern._curpattern[row][0][c]
         ]
 
     def _on_checkbox(self, row, col):
-        self._player.pattern[row][col] = self._cells[row][col].GetValue()
+        self._player._pattern._curpattern[row][0][col] = self._cells[row][col].GetValue()
         self._player.float_offsets[row] = [
-            float(c) for c in range(self.COLS) if self._player.pattern[row][c]
+            float(c) for c in range(self.COLS) if self._player._pattern._curpattern[row][0][c]
         ]
 
     def _refresh_grid(self):
         for r in range(self.ROWS):
             for c in range(self.COLS):
-                self._cells[r][c].SetValue(self._player.pattern[r][c])
+                self._cells[r][c].SetValue(self._player._pattern._curpattern[r][0][c])
             self._player.float_offsets[r] = [
-                float(c) for c in range(self.COLS) if self._player.pattern[r][c]
+                float(c) for c in range(self.COLS) if self._player._pattern._curpattern[r][0][c]
             ]
 
     def _on_quant_select(self, event):
@@ -150,12 +149,12 @@ class MainWindow(wx.Frame):
         row = self._cur_row
         for c in range(self.COLS):
             self._cells[row][c].SetValue(False)
-            self._player.pattern[row][c] = False
+            self._player._pattern._curpattern[row][0][c] = False
         # Positions arrondies pour la grille visuelle
         for fp in float_pos:
             c = min(self.COLS - 1, round(fp))
             self._cells[row][c].SetValue(True)
-            self._player.pattern[row][c] = True
+            self._player._pattern._curpattern[row][0][c] = True
         # Positions flottantes exactes pour le séquenceur
         self._player.float_offsets[row] = sorted(float_pos)
         self._show_status(f"Ligne {row + 1}: {quant} coché")
@@ -204,7 +203,7 @@ class MainWindow(wx.Frame):
 
         # --- Raccourcis Ctrl ---
         if ctrl and key == ord('D'):
-            self._player.load_pattern([[False] * self.COLS for _ in range(self.ROWS)])
+            self._player.load_pattern([[[False] * self.COLS] for _ in range(self.ROWS)])
             self._refresh_grid()
             self._show_status("Pattern réinitialisé")
         elif ctrl and key == ord('P'):

@@ -1,6 +1,8 @@
 import time
 import threading
 
+from pattern import Pattern
+
 
 class DrumPlayer:
     def __init__(self, sound_manager=None):
@@ -12,8 +14,8 @@ class DrumPlayer:
         self.clicking = False
         self.bpm = 100
         self.volume = 80
-        self.pattern = [[False] * 16 for _ in range(16)]
-        self.float_offsets = [[] for _ in range(16)]
+        self._pattern = Pattern()
+        self.float_offsets = [[] for _ in range(self._pattern._num_tracks)]
         self.last_played_pad = 0
         self.step_duration = 60.0 / self.bpm / 4
 
@@ -90,7 +92,8 @@ class DrumPlayer:
 
         while (self.playing or self.clicking) and not self.stop_event.is_set():
             self._wakeup.clear()
-            measure_secs = 16 * self.step_duration
+            total_steps  = self._pattern._num_bars * self._pattern._num_steps
+            measure_secs = total_steps * self.step_duration
             now = time.perf_counter()
 
             # Avancer measure_start si la mesure précédente est terminée
@@ -102,7 +105,7 @@ class DrumPlayer:
             # (on exclut ceux déjà passés avec une petite tolérance)
             events = []
             if self.playing:
-                for row in range(16):
+                for row in range(self._pattern._num_tracks):
                     for offset in self.float_offsets[row]:
                         t_sec = offset * self.step_duration
                         if t_sec > elapsed - 0.002:
@@ -143,12 +146,23 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
+    def _compute_offsets(self):
+        self.float_offsets = []
+        for track in self._pattern._curpattern:
+            offsets = []
+            base = 0
+            for bar in track:
+                for step_idx, active in enumerate(bar):
+                    if active:
+                        offsets.append(float(base + step_idx))
+                base += len(bar)
+            self.float_offsets.append(offsets)
+
+    #--------------------------------------------------------------------------
+
     def load_pattern(self, pattern):
-        self.pattern = [row[:] for row in pattern]
-        self.float_offsets = [
-            [float(c) for c in range(len(row)) if row[c]]
-            for row in pattern
-        ]
+        self._pattern.load_pattern(pattern)
+        self._compute_offsets()
 
     #--------------------------------------------------------------------------
 
