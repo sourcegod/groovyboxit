@@ -203,7 +203,7 @@ class MainWindow(wx.Frame):
 
         # --- Raccourcis Ctrl ---
         if ctrl and key == ord('D'):
-            self._player.load_pattern([[[False] * self.COLS] for _ in range(self.ROWS)])
+            self._player._pattern.reset_pattern()
             self._refresh_grid()
             self._show_status("Pattern réinitialisé")
         elif ctrl and key == ord('P'):
