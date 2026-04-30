@@ -14,8 +14,9 @@ class DrumPlayer:
         self.clicking = False
         self.bpm = 100
         self.volume = 80
-        self._pattern = Pattern()
-        self.float_offsets = [[] for _ in range(self._pattern._num_tracks)]
+        self._pattern   = Pattern()
+        self._cur_track = 0
+        self.float_offsets = [[] for _ in range(self._pattern._num_pads)]
         self.last_played_pad = 0
         self.step_duration = 60.0 / self.bpm / 4
 
@@ -105,11 +106,11 @@ class DrumPlayer:
             # (on exclut ceux déjà passés avec une petite tolérance)
             events = []
             if self.playing:
-                for row in range(self._pattern._num_tracks):
-                    for offset in self.float_offsets[row]:
+                for pad in range(self._pattern._num_pads):
+                    for offset in self.float_offsets[pad]:
                         t_sec = offset * self.step_duration
                         if t_sec > elapsed - 0.002:
-                            events.append((t_sec, row))
+                            events.append((t_sec, pad))
             if self.clicking:
                 for beat in range(4):
                     t_sec = beat * 4 * self.step_duration
@@ -148,10 +149,10 @@ class DrumPlayer:
 
     def _compute_offsets(self):
         self.float_offsets = []
-        for track in self._pattern._curpattern:
+        for pad in self._pattern._curpattern[self._cur_track]:
             offsets = []
             base = 0
-            for bar in track:
+            for bar in pad:
                 for step_idx, active in enumerate(bar):
                     if active:
                         offsets.append(float(base + step_idx))
