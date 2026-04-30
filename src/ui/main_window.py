@@ -274,6 +274,11 @@ class MainWindow(wx.Frame):
             else:
                 self._player.play_click()
                 self._show_status("Click: On")
+        elif shift and not ctrl and (ukey == ord('p') or key == ord('P')):
+            self._player._pattern.gen_pattern(self._player._cur_track)
+            self._player._compute_offsets()
+            self._refresh_grid()
+            self._show_status("Pattern aléatoire généré")
         elif ukey in (ord(' '), ord('p')) or (not ctrl and key in (wx.WXK_SPACE, ord('P'))):
             if self._player.playing:
                 self._player.stop_pattern()

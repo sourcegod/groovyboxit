@@ -1,3 +1,6 @@
+import random
+
+
 class Track:
     DRUM  = "drum"
     SYNTH = "synth"
@@ -75,6 +78,18 @@ class Pattern:
             for pad in track:
                 for bar in pad:
                     bar[:] = [False] * len(bar)
+
+    #--------------------------------------------------------------------------
+
+    def gen_pattern(self, track=0):
+        self.reset_pattern()
+        num_pads = random.randint(1, 4)
+        pads     = random.sample(range(self._num_pads), num_pads)
+        for pad in pads:
+            num_steps = random.randint(1, 8)
+            steps     = random.sample(range(self._num_steps), num_steps)
+            for step in steps:
+                self._curpattern[track][pad][0][step] = True
 
     #--------------------------------------------------------------------------
 
