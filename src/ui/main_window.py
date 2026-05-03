@@ -5,6 +5,44 @@ from drum_player import DrumPlayer
 from pattern import Pattern
 
 
+class SavePatternDialog(wx.Dialog):
+    def __init__(self, parent, cur_idx, cur_name=""):
+        super().__init__(parent, title="Enregistrer le pattern")
+
+        list_label = wx.StaticText(self, label="Numéro de pattern :")
+        self._list = wx.ListBox(
+            self,
+            choices=[f"{i:02d}" for i in range(1, 100)],
+            style=wx.LB_SINGLE,
+        )
+        self._list.SetSelection(cur_idx)
+
+        name_label = wx.StaticText(self, label="Nom (optionnel) :")
+        self._name_ctrl = wx.TextCtrl(self, value=cur_name)
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        ok_btn = wx.Button(self, wx.ID_OK, "Ok")
+        ok_btn.SetDefault()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(list_label,      0, wx.ALL, 6)
+        vbox.Add(self._list,      1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(name_label,      0, wx.LEFT | wx.RIGHT, 6)
+        vbox.Add(self._name_ctrl, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,       0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._list.SetFocus()
+
+    def get_selection(self):
+        return self._list.GetSelection()
+
+    def get_name(self):
+        return self._name_ctrl.GetValue().strip()
+
 
 class MainWindow(wx.Frame):
     ROWS = 16
@@ -32,7 +70,6 @@ class MainWindow(wx.Frame):
         self._init_sound()
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
-        self._player._pattern = self._pattern_list[0]
         self._build_ui()
         # EVT_CHAR_HOOK remonte la hiérarchie depuis n'importe quel widget natif
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
@@ -78,7 +115,7 @@ class MainWindow(wx.Frame):
         pattern_label = wx.StaticText(panel, label="Pat:")
         self._pattern_listbox = wx.ListBox(
             panel,
-            choices=[f"{i:02d}" for i in range(1, 100)],
+            choices=[self._pattern_label(i) for i in range(99)],
             style=wx.LB_SINGLE,
         )
         self._pattern_listbox.SetSelection(0)
@@ -142,12 +179,51 @@ class MainWindow(wx.Frame):
     def _on_pattern_select(self, event):
         self._switch_pattern(self._pattern_listbox.GetSelection())
 
+    def _is_pattern_empty(self, pat):
+        return not any(
+            step
+            for track in pat._curpattern
+            for pad in track
+            for bar in pad
+            for step in bar
+        )
+
+    def _pattern_label(self, idx):
+        pat = self._pattern_list[idx]
+        if pat._name:
+            return f"{idx + 1:02d} - {pat._name}"
+        if self._is_pattern_empty(pat):
+            return f"{idx + 1:02d} (Unused)"
+        return f"{idx + 1:02d}"
+
+    def _refresh_pattern_listbox(self):
+        sel = self._pattern_listbox.GetSelection()
+        self._pattern_listbox.Set([self._pattern_label(i) for i in range(99)])
+        self._pattern_listbox.SetSelection(sel if sel != wx.NOT_FOUND else 0)
+
     def _switch_pattern(self, idx):
         self._cur_pattern_idx = idx
-        self._player._pattern = self._pattern_list[idx]
+        self._player._pattern.load_pattern(self._pattern_list[idx]._curpattern)
         self._player._compute_offsets()
         self._refresh_grid()
         self._show_status(f"Pattern {idx + 1:02d}")
+
+    def _save_pattern(self):
+        self._pattern_list[self._cur_pattern_idx].load_pattern(self._player._pattern._curpattern)
+        self._refresh_pattern_listbox()
+        self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
+
+    def _save_pattern_as(self):
+        cur_name = self._pattern_list[self._cur_pattern_idx]._name
+        dlg = SavePatternDialog(self, self._cur_pattern_idx, cur_name)
+        if dlg.ShowModal() == wx.ID_OK:
+            idx  = dlg.get_selection()
+            name = dlg.get_name()
+            self._pattern_list[idx].load_pattern(self._player._pattern._curpattern)
+            self._pattern_list[idx]._name = name
+            self._refresh_pattern_listbox()
+            self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
+        dlg.Destroy()
 
     def _on_quant_select(self, event):
         self._apply_quant()
@@ -215,7 +291,11 @@ class MainWindow(wx.Frame):
         on_volume       = (focused == self._volume_ctrl)
 
         # --- Raccourcis Ctrl ---
-        if ctrl and key == ord('D'):
+        if ctrl and shift and key == ord('W'):
+            self._save_pattern_as()
+        elif ctrl and key == ord('W'):
+            self._save_pattern()
+        elif ctrl and key == ord('D'):
             self._player._pattern.reset_pattern()
             self._refresh_grid()
             self._show_status("Pattern réinitialisé")
