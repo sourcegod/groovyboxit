@@ -1,3 +1,4 @@
+import json
 import os
 import wx
 from sound_manager import SoundManager
@@ -70,14 +71,17 @@ class MainWindow(wx.Frame):
         self._init_sound()
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
+        self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
         self._build_ui()
+        self._load_preset()
         # EVT_CHAR_HOOK remonte la hiérarchie depuis n'importe quel widget natif
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Centre()
 
     def _init_sound(self):
         ui_dir = os.path.dirname(os.path.abspath(__file__))
-        base_dir = os.path.dirname(os.path.dirname(ui_dir))
+        self._base_dir = os.path.dirname(os.path.dirname(ui_dir))
+        base_dir = self._base_dir
         media_dir = os.path.join(base_dir, "media")
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
         click1 = os.path.join(media_dir, "hi_wood_block_mono.wav")
@@ -225,6 +229,58 @@ class MainWindow(wx.Frame):
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
         dlg.Destroy()
 
+    def _save_preset(self):
+        os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
+        data = {
+            "version": 1,
+            "patterns": [
+                {
+                    "name":       pat._name,
+                    "bpm":        pat._bpm,
+                    "num_bars":   pat._num_bars,
+                    "num_steps":  pat._num_steps,
+                    "curpattern": pat._curpattern,
+                }
+                for pat in self._pattern_list
+            ],
+        }
+        with open(self._preset_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
+
+    def _save_preset_as(self):
+        presets_dir = os.path.dirname(self._preset_path)
+        os.makedirs(presets_dir, exist_ok=True)
+        dlg = wx.FileDialog(
+            self,
+            message="Enregistrer le preset sous…",
+            defaultDir=presets_dir,
+            defaultFile=os.path.basename(self._preset_path),
+            wildcard="Preset JSON (*.json)|*.json",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            self._preset_path = dlg.GetPath()
+            self._save_preset()
+        dlg.Destroy()
+
+    def _load_preset(self):
+        if not os.path.exists(self._preset_path):
+            return
+        with open(self._preset_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for i, p in enumerate(data.get("patterns", [])):
+            if i >= len(self._pattern_list):
+                break
+            pat = self._pattern_list[i]
+            pat._name      = p.get("name", "")
+            pat._bpm       = p.get("bpm", 100)
+            pat._num_bars  = p.get("num_bars", 1)
+            pat._num_steps = p.get("num_steps", 16)
+            pat.load_pattern(p["curpattern"])
+        self._refresh_pattern_listbox()
+        self._switch_pattern(0)
+
     def _on_quant_select(self, event):
         self._apply_quant()
 
@@ -284,14 +340,21 @@ class MainWindow(wx.Frame):
         ukey = event.GetUnicodeKey()   # caractère traduit (layout-aware)
         ctrl  = event.ControlDown()
         shift = event.ShiftDown()
+        alt   = event.AltDown()
         focused       = wx.Window.FindFocus()
         on_quant_list   = (focused == self._quant_list)
         on_pattern_list = (focused == self._pattern_listbox)
         on_bpm          = (focused == self._bpm_ctrl)
         on_volume       = (focused == self._volume_ctrl)
 
+        # --- Raccourcis Alt ---
+        if alt and not ctrl and shift and key == ord('W'):
+            self._save_preset_as()
+        elif alt and not ctrl and not shift and key == ord('W'):
+            self._save_preset()
+
         # --- Raccourcis Ctrl ---
-        if ctrl and shift and key == ord('W'):
+        elif ctrl and shift and key == ord('W'):
             self._save_pattern_as()
         elif ctrl and key == ord('W'):
             self._save_pattern()
