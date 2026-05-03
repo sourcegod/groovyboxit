@@ -2,6 +2,7 @@ import os
 import wx
 from sound_manager import SoundManager
 from drum_player import DrumPlayer
+from pattern import Pattern
 
 
 
@@ -29,6 +30,9 @@ class MainWindow(wx.Frame):
         self._last_pad = None
         self._autoplay = True
         self._init_sound()
+        self._pattern_list = [Pattern() for _ in range(99)]
+        self._cur_pattern_idx = 0
+        self._player._pattern = self._pattern_list[0]
         self._build_ui()
         # EVT_CHAR_HOOK remonte la hiérarchie depuis n'importe quel widget natif
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
@@ -71,6 +75,15 @@ class MainWindow(wx.Frame):
         self._quant_list.SetSelection(len(self._QUANT) - 1)  # défaut: 1/16
         self._quant_list.Bind(wx.EVT_LISTBOX, self._on_quant_select)
 
+        pattern_label = wx.StaticText(panel, label="Pat:")
+        self._pattern_listbox = wx.ListBox(
+            panel,
+            choices=[f"{i:02d}" for i in range(1, 100)],
+            style=wx.LB_SINGLE,
+        )
+        self._pattern_listbox.SetSelection(0)
+        self._pattern_listbox.Bind(wx.EVT_LISTBOX, self._on_pattern_select)
+
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
         hbox.Add(bpm_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -78,7 +91,9 @@ class MainWindow(wx.Frame):
         hbox.Add(vol_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._volume_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
         hbox.Add(quant_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        hbox.Add(self._quant_list, 0, wx.EXPAND)
+        hbox.Add(self._quant_list, 0, wx.EXPAND | wx.RIGHT, 8)
+        hbox.Add(pattern_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox.Add(self._pattern_listbox, 0, wx.EXPAND)
 
         grid = wx.GridSizer(self.ROWS, self.COLS, 2, 2)
         for r in range(self.ROWS):
@@ -123,6 +138,16 @@ class MainWindow(wx.Frame):
             self._player.float_offsets[r] = [
                 float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][r][0][c]
             ]
+
+    def _on_pattern_select(self, event):
+        self._switch_pattern(self._pattern_listbox.GetSelection())
+
+    def _switch_pattern(self, idx):
+        self._cur_pattern_idx = idx
+        self._player._pattern = self._pattern_list[idx]
+        self._player._compute_offsets()
+        self._refresh_grid()
+        self._show_status(f"Pattern {idx + 1:02d}")
 
     def _on_quant_select(self, event):
         self._apply_quant()
@@ -183,9 +208,11 @@ class MainWindow(wx.Frame):
         ukey = event.GetUnicodeKey()   # caractère traduit (layout-aware)
         ctrl  = event.ControlDown()
         shift = event.ShiftDown()
-        on_list   = (wx.Window.FindFocus() == self._quant_list)
-        on_bpm    = (wx.Window.FindFocus() == self._bpm_ctrl)
-        on_volume = (wx.Window.FindFocus() == self._volume_ctrl)
+        focused       = wx.Window.FindFocus()
+        on_quant_list   = (focused == self._quant_list)
+        on_pattern_list = (focused == self._pattern_listbox)
+        on_bpm          = (focused == self._bpm_ctrl)
+        on_volume       = (focused == self._volume_ctrl)
 
         # --- Raccourcis Ctrl ---
         if ctrl and key == ord('D'):
@@ -210,8 +237,7 @@ class MainWindow(wx.Frame):
         # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.
         # Ordre : BPM → Volume → Quant → Grille → BPM (et inverse pour Shift+Tab).
         elif key == wx.WXK_TAB:
-            focused = wx.Window.FindFocus()
-            order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list]
+            order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list, self._pattern_listbox]
             if focused in order:
                 idx = order.index(focused)
                 if shift:
@@ -219,12 +245,12 @@ class MainWindow(wx.Frame):
                 else:
                     target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 else order[idx + 1]
             else:
-                target = self._bpm_ctrl if not shift else self._quant_list
+                target = self._bpm_ctrl if not shift else self._pattern_listbox
             target.SetFocus()
 
         # --- Flèches : navigation grille ou liste selon le focus ---
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
-            if on_list:
+            if on_quant_list or on_pattern_list:
                 event.Skip()   # laisser la ListBox gérer sa propre navigation
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
@@ -241,8 +267,10 @@ class MainWindow(wx.Frame):
 
         # --- Entrée : appliquer quant (ListBox) ou basculer cellule (grille) ---
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            if on_list:
+            if on_quant_list:
                 self._apply_quant()
+            elif on_pattern_list:
+                pass  # la sélection est déjà appliquée via EVT_LISTBOX
             else:
                 r, c = self._cur_row, self._cur_col
                 new_val = False if shift else not self._cells[r][c].GetValue()
