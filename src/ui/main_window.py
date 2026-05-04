@@ -348,8 +348,10 @@ class MainWindow(wx.Frame):
         on_volume       = (focused == self._volume_ctrl)
 
         # --- Raccourcis Alt ---
+        # --- Alt+Shift+W : Enregistrer Sous le fichier de preset  ---
         if alt and not ctrl and shift and key == ord('W'):
             self._save_preset_as()
+        # --- Alt+W : Enregistrer le fichier de preset  ---
         elif alt and not ctrl and not shift and key == ord('W'):
             self._save_preset()
 
