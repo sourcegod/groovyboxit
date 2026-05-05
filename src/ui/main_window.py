@@ -6,6 +6,47 @@ from drum_player import DrumPlayer
 from pattern import Pattern
 
 
+def _load_keyboard_help():
+    path = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs", "shortcuts.md")
+    )
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return f"(Fichier d'aide introuvable : {path})"
+
+_KEYBOARD_HELP = _load_keyboard_help()
+
+
+class KeyboardHelpDialog(wx.Dialog):
+    def __init__(self, parent):
+        super().__init__(parent, title="Aide clavier")
+
+        text = wx.TextCtrl(
+            self,
+            value=_KEYBOARD_HELP,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_LEFT | wx.HSCROLL,
+            size=(420, 460),
+        )
+        text.SetFont(wx.Font(
+            10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL
+        ))
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        ok_btn = wx.Button(self, wx.ID_OK, "Fermer")
+        ok_btn.SetDefault()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(text,      1, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        ok_btn.SetFocus()
+
+
 class QuantizeDialog(wx.Dialog):
     def __init__(self, parent, cur_idx):
         super().__init__(parent, title="Quantisation du pattern")
@@ -325,6 +366,11 @@ class MainWindow(wx.Frame):
         self._refresh_grid()
         self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[self._player.quant_idx]}")
 
+    def _show_keyboard_help(self):
+        dlg = KeyboardHelpDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
+
     def _quantize_pattern_dialog(self):
         dlg    = QuantizeDialog(self, self._player.quant_idx)
         result = dlg.ShowModal()
@@ -385,11 +431,15 @@ class MainWindow(wx.Frame):
         on_bpm          = (focused == self._bpm_ctrl)
         on_volume       = (focused == self._volume_ctrl)
 
+        # --- F1 : Aide clavier ---
+        if key == wx.WXK_F1:
+            self._show_keyboard_help()
+
         # --- Raccourcis Alt ---
         # --- Alt+Shift+W : Enregistrer Sous le fichier de preset  ---
-        if alt and not ctrl and shift and key == ord('W'):
+        elif alt and not ctrl and shift and key == ord('W'):
             self._save_preset_as()
-        # --- Alt+W : Enregistrer le fichier de preset  ---
+        # --- Alt+W : Enregistrer le fichier de preset ---
         elif alt and not ctrl and not shift and key == ord('W'):
             self._save_preset()
 
