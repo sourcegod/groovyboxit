@@ -13,6 +13,7 @@ Shift+P          Générer un pattern aléatoire
 
 --- Quantisation ---
 Ctrl+E           Appliquer la quant à la ligne courante
+Ctrl+Shift+E     Choisir la ligne + quant et générer le motif
 Shift+E          Décocher toute la ligne courante
 Shift+Q          Quantiser le pattern (valeur par défaut)
 Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
