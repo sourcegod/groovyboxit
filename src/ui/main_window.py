@@ -47,6 +47,55 @@ class KeyboardHelpDialog(wx.Dialog):
         ok_btn.SetFocus()
 
 
+class GenRowDialog(wx.Dialog):
+    def __init__(self, parent, cur_row, cur_quant_idx, num_rows=16):
+        super().__init__(parent, title="Générer un motif sur une ligne")
+
+        row_label = wx.StaticText(self, label="Ligne :")
+        self._row_ctrl = wx.SpinCtrl(self, min=1, max=num_rows, size=(70, -1))
+
+        quant_label = wx.StaticText(self, label="Valeur de quantisation :")
+        self._quant_list = wx.ListBox(
+            self,
+            choices=DrumPlayer.QUANT_LIST,
+            style=wx.LB_SINGLE,
+        )
+        self._quant_list.SetSelection(cur_quant_idx)
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        apply_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_APPLY))
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(apply_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        row_box = wx.BoxSizer(wx.HORIZONTAL)
+        row_box.Add(row_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        row_box.Add(self._row_ctrl, 0)
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(row_box,          0, wx.ALL, 6)
+        vbox.Add(quant_label,      0, wx.LEFT | wx.RIGHT, 6)
+        vbox.Add(self._quant_list, 1, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,        0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._row_ctrl.SetValue(cur_row + 1)  # après Fit() : GTK réinitialise la valeur au layout
+        self._row_ctrl.SetFocus()
+
+    def get_row(self):
+        return self._row_ctrl.GetValue() - 1  # 0-based
+
+    def get_quant_idx(self):
+        sel = self._quant_list.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 7
+
+
 class QuantizeDialog(wx.Dialog):
     def __init__(self, parent, cur_idx):
         super().__init__(parent, title="Quantisation du pattern")
@@ -366,6 +415,28 @@ class MainWindow(wx.Frame):
         self._refresh_grid()
         self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[self._player.quant_idx]}")
 
+    def _gen_row_dialog(self):
+        dlg    = GenRowDialog(self, self._cur_row, self._player.quant_idx, self.ROWS)
+        result = dlg.ShowModal()
+        if result in (wx.ID_OK, wx.ID_APPLY):
+            row       = dlg.get_row()
+            quant_idx = dlg.get_quant_idx()
+            self._player.quant_idx    = quant_idx
+            self._quant_list.SetSelection(quant_idx)
+            if result == wx.ID_APPLY:
+                self._player.apply_quant_row(quant_idx, row)
+                pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
+                for c in range(self.COLS):
+                    self._cells[row][c].SetValue(bool(pad[c]))
+                self._show_status(
+                    f"Ligne {row + 1}: {DrumPlayer.QUANT_LIST[quant_idx]} généré"
+                )
+            else:
+                self._show_status(
+                    f"Défaut: ligne {row + 1}, quant {DrumPlayer.QUANT_LIST[quant_idx]}"
+                )
+        dlg.Destroy()
+
     def _show_keyboard_help(self):
         dlg = KeyboardHelpDialog(self)
         dlg.ShowModal()
@@ -456,7 +527,11 @@ class MainWindow(wx.Frame):
             self._player._pattern.build_pattern_01()
             self._refresh_grid()
             self._show_status("Pattern initial chargé")
-        elif ctrl and key == ord('E'):
+        # --- Ctrl+Shift+E : choisir ligne + quant et générer le motif ---
+        elif ctrl and shift and key == ord('E'):
+            self._gen_row_dialog()
+        # --- Ctrl+E : appliquer la quant à la ligne courante ---
+        elif ctrl and not shift and key == ord('E'):
             self._apply_quant()
         # --- Ctrl+Shift+Q : choisir la valeur de quantize et appliquer au pattern ---
         elif ctrl and shift and key == ord('Q'):
