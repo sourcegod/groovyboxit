@@ -5,6 +5,10 @@ from pattern import Pattern
 
 
 class DrumPlayer:
+    QUANT_LIST  = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16",
+                   "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
+    QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
+
     def __init__(self, sound_manager=None):
         self._play_thread = None
         self.stop_event = threading.Event()
@@ -19,6 +23,7 @@ class DrumPlayer:
         self.float_offsets = [[] for _ in range(self._pattern._num_pads)]
         self.last_played_pad = 0
         self.step_duration = 60.0 / self.bpm / 4
+        self.quant_idx = 7  # défaut: 1/16
 
     #--------------------------------------------------------------------------
 
@@ -144,6 +149,64 @@ class DrumPlayer:
                     if remaining <= 0:
                         break
                     time.sleep(min(remaining, 0.010))
+
+    #--------------------------------------------------------------------------
+
+    def apply_quant_row(self, quant_idx, row):
+        denom     = self.QUANT_STEPS[quant_idx]
+        num_steps = self._pattern._num_steps
+        grid      = [i * num_steps / denom for i in range(denom)]
+        pad       = self._pattern._curpattern[self._cur_track][row]
+        for c in range(num_steps):
+            pad[0][c] = False
+        for fp in grid:
+            c = min(num_steps - 1, round(fp))
+            pad[0][c] = True
+        self.float_offsets[row] = sorted(grid)
+
+    #--------------------------------------------------------------------------
+
+    def apply_quant_to_pattern(self, quant_idx=None):
+        if quant_idx is None:
+            quant_idx = self.quant_idx
+        denom     = self.QUANT_STEPS[quant_idx]
+        num_steps = self._pattern._num_steps
+        # grille de quantisation par mesure (positions flottantes)
+        grid_per_bar = [i * num_steps / denom for i in range(denom)]
+        # grille étendue sur toutes les mesures
+        full_grid = [
+            bar_idx * num_steps + gp
+            for bar_idx in range(self._pattern._num_bars)
+            for gp in grid_per_bar
+        ]
+
+        for pad_idx in range(self._pattern._num_pads):
+            pad = self._pattern._curpattern[self._cur_track][pad_idx]
+            # collecter les positions actives (globales)
+            active = [
+                bar_idx * num_steps + step_idx
+                for bar_idx, bar in enumerate(pad)
+                for step_idx, val in enumerate(bar)
+                if val
+            ]
+            # effacer
+            for bar in pad:
+                bar[:] = [False] * len(bar)
+            if not active:
+                self.float_offsets[pad_idx] = []
+                continue
+            # snap chaque note vers le point de grille le plus proche
+            snapped = set()
+            for pos in active:
+                nearest = min(full_grid, key=lambda p: abs(p - pos))
+                snapped.add(nearest)
+            # écrire dans le pattern
+            for fp in snapped:
+                bar_idx  = int(fp // num_steps)
+                step_idx = min(num_steps - 1, round(fp % num_steps))
+                if bar_idx < self._pattern._num_bars:
+                    pad[bar_idx][step_idx] = True
+            self.float_offsets[pad_idx] = sorted(snapped)
 
     #--------------------------------------------------------------------------
 

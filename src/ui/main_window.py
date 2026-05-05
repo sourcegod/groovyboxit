@@ -6,6 +6,42 @@ from drum_player import DrumPlayer
 from pattern import Pattern
 
 
+class QuantizeDialog(wx.Dialog):
+    def __init__(self, parent, cur_idx):
+        super().__init__(parent, title="Quantisation du pattern")
+
+        list_label = wx.StaticText(self, label="Valeur de quantisation :")
+        self._list = wx.ListBox(
+            self,
+            choices=DrumPlayer.QUANT_LIST,
+            style=wx.LB_SINGLE,
+        )
+        self._list.SetSelection(cur_idx)
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        apply_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_APPLY))
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(apply_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(list_label,  0, wx.ALL, 6)
+        vbox.Add(self._list,  1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._list.SetFocus()
+
+    def get_selection(self):
+        return self._list.GetSelection()
+
+
 class SavePatternDialog(wx.Dialog):
     def __init__(self, parent, cur_idx, cur_name=""):
         super().__init__(parent, title="Enregistrer le pattern")
@@ -48,17 +84,6 @@ class SavePatternDialog(wx.Dialog):
 class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
-    _QUANT = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16"]
-    _QUANT_STEP = {
-        "1/1":  16,
-        "1/2":  8,
-        "1/3":  [i * 16 / 3  for i in range(3)],
-        "1/4":  4,
-        "1/6":  [i * 16 / 6  for i in range(6)],
-        "1/8":  2,
-        "1/12": [i * 16 / 12 for i in range(12)],
-        "1/16": 1,
-    }
 
     def __init__(self):
         super().__init__(None, title="GroovyboxIt")
@@ -110,10 +135,10 @@ class MainWindow(wx.Frame):
         quant_label = wx.StaticText(panel, label="Quant:")
         self._quant_list = wx.ListBox(
             panel,
-            choices=self._QUANT,
+            choices=DrumPlayer.QUANT_LIST,
             style=wx.LB_SINGLE,
         )
-        self._quant_list.SetSelection(len(self._QUANT) - 1)  # défaut: 1/16
+        self._quant_list.SetSelection(self._player.quant_idx)
         self._quant_list.Bind(wx.EVT_LISTBOX, self._on_quant_select)
 
         pattern_label = wx.StaticText(panel, label="Pat:")
@@ -282,25 +307,38 @@ class MainWindow(wx.Frame):
         self._switch_pattern(0)
 
     def _on_quant_select(self, event):
+        self._player.quant_idx = self._quant_list.GetSelection()
         self._apply_quant()
 
     def _apply_quant(self):
-        quant = self._QUANT[self._quant_list.GetSelection()]
-        val = self._QUANT_STEP[quant]
-        float_pos = val if isinstance(val, list) else [float(c) for c in range(0, self.COLS, val)]
-        # Effacer la ligne sans toucher à float_offsets (mis à jour ci-dessous)
-        row = self._cur_row
+        row       = self._cur_row
+        quant_idx = self._quant_list.GetSelection()
+        self._player.quant_idx = quant_idx
+        self._player.apply_quant_row(quant_idx, row)
+        pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
         for c in range(self.COLS):
-            self._cells[row][c].SetValue(False)
-            self._player._pattern._curpattern[self._player._cur_track][row][0][c] = False
-        # Positions arrondies pour la grille visuelle
-        for fp in float_pos:
-            c = min(self.COLS - 1, round(fp))
-            self._cells[row][c].SetValue(True)
-            self._player._pattern._curpattern[self._player._cur_track][row][0][c] = True
-        # Positions flottantes exactes pour le séquenceur
-        self._player.float_offsets[row] = sorted(float_pos)
-        self._show_status(f"Ligne {row + 1}: {quant} coché")
+            self._cells[row][c].SetValue(bool(pad[c]))
+        self._show_status(f"Ligne {row + 1}: {DrumPlayer.QUANT_LIST[quant_idx]} coché")
+
+    def _quantize_pattern(self):
+        self._player.apply_quant_to_pattern()
+        self._refresh_grid()
+        self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[self._player.quant_idx]}")
+
+    def _quantize_pattern_dialog(self):
+        dlg    = QuantizeDialog(self, self._player.quant_idx)
+        result = dlg.ShowModal()
+        if result in (wx.ID_OK, wx.ID_APPLY):
+            idx = dlg.get_selection()
+            self._player.quant_idx = idx
+            self._quant_list.SetSelection(idx)
+            if result == wx.ID_APPLY:
+                self._player.apply_quant_to_pattern()
+                self._refresh_grid()
+                self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[idx]}")
+            else:
+                self._show_status(f"Quant par défaut: {DrumPlayer.QUANT_LIST[idx]}")
+        dlg.Destroy()
 
     def _on_bpm_spin(self, event):
         bpm = self._bpm_ctrl.GetValue()
@@ -370,6 +408,13 @@ class MainWindow(wx.Frame):
             self._show_status("Pattern initial chargé")
         elif ctrl and key == ord('E'):
             self._apply_quant()
+        # --- Ctrl+Shift+Q : choisir la valeur de quantize et appliquer au pattern ---
+        elif ctrl and shift and key == ord('Q'):
+            self._quantize_pattern_dialog()
+
+        # --- Shift+Q : quantiser le pattern courant (valeur par défaut) ---
+        elif shift and not ctrl and key == ord('Q'):
+            self._quantize_pattern()
 
         # --- Shift+E : décocher toute la ligne ---
         elif shift and not ctrl and key == ord('E'):
