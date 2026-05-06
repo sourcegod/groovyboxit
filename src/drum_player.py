@@ -8,6 +8,7 @@ class DrumPlayer:
     QUANT_LIST  = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16",
                    "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
     QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
+    NR_EVENT    = -100   # marqueur interne pour les événements Note Repeat dans la liste
 
     def __init__(self, sound_manager=None):
         self._play_thread = None
@@ -21,14 +22,18 @@ class DrumPlayer:
         self._pattern   = Pattern()
         self._cur_track = 0
         self.float_offsets = [[] for _ in range(self._pattern._num_pads)]
-        self.last_played_pad = 0
+        self.last_played_pad = None
         self.step_duration = 60.0 / self.bpm / 4
         self.quant_idx = 7  # défaut: 1/16
+        # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
+        self._nr_quant_idx       = 7
+        self._nr_get_pad         = None
+        self._note_repeat_active = False
 
     #--------------------------------------------------------------------------
 
     def start_thread(self):
-        if self._play_thread:
+        if self._play_thread and self._play_thread.is_alive():
             return
         self.stop_event.clear()
         self._play_thread = threading.Thread(target=self._run_thread, daemon=True)
@@ -60,7 +65,7 @@ class DrumPlayer:
 
     def stop_pattern(self):
         self.playing = False
-        if not self.clicking:
+        if not (self.clicking or self._note_repeat_active):
             self.stop_thread()
         else:
             self._wakeup.set()
@@ -69,7 +74,7 @@ class DrumPlayer:
 
     def play_click(self):
         self.clicking = True
-        if not self._play_thread:
+        if not (self._play_thread and self._play_thread.is_alive()):
             self.start_thread()
         else:
             self._wakeup.set()   # réveille le thread pour intégrer le click
@@ -78,7 +83,7 @@ class DrumPlayer:
 
     def stop_click(self):
         self.clicking = False
-        if not self.playing:
+        if not (self.playing or self._note_repeat_active):
             self.stop_thread()
         else:
             self._wakeup.set()   # réveille le thread pour retirer le click
@@ -86,8 +91,9 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def stop_all(self):
-        self.playing = False
-        self.clicking = False
+        self.playing            = False
+        self.clicking           = False
+        self._note_repeat_active = False
         self.stop_thread()
         self.sound_man.stop_all()
 
@@ -96,7 +102,8 @@ class DrumPlayer:
     def _run_thread(self):
         measure_start = time.perf_counter()
 
-        while (self.playing or self.clicking) and not self.stop_event.is_set():
+        while (self.playing or self.clicking or self._note_repeat_active) \
+                and not self.stop_event.is_set():
             self._wakeup.clear()
             total_steps  = self._pattern._num_bars * self._pattern._num_steps
             measure_secs = total_steps * self.step_duration
@@ -121,6 +128,15 @@ class DrumPlayer:
                     t_sec = beat * 4 * self.step_duration
                     if t_sec > elapsed - 0.002:
                         events.append((t_sec, -(beat + 1)))
+            if self._note_repeat_active:
+                denom    = self.QUANT_STEPS[self._nr_quant_idx]
+                nr_step  = 0.0
+                interval = 16.0 / denom   # en pas (float)
+                while nr_step < total_steps:
+                    t_sec = nr_step * self.step_duration
+                    if t_sec > elapsed - 0.002:
+                        events.append((t_sec, self.NR_EVENT))
+                    nr_step += interval
             events.sort()
 
             for t_sec, row in events:
@@ -140,6 +156,10 @@ class DrumPlayer:
                     break
                 if row >= 0:
                     self.sound_man.play_sound(row)
+                elif row == self.NR_EVENT:
+                    pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
+                    if pad is not None:
+                        self.sound_man.play_sound(pad)
                 else:
                     self.sound_man.play_metronome(-row - 1)
             else:
@@ -231,7 +251,28 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def play_sound(self, index):
+        self.last_played_pad = index
         self.sound_man.play_sound(index)
+
+    #--------------------------------------------------------------------------
+
+    def start_note_repeat(self, quant_idx, get_pad_func=None):
+        self._nr_quant_idx       = quant_idx
+        self._nr_get_pad         = get_pad_func or (lambda: self.last_played_pad)
+        self._note_repeat_active = True
+        if not (self._play_thread and self._play_thread.is_alive()):
+            self.start_thread()
+        else:
+            self._wakeup.set()
+
+    #--------------------------------------------------------------------------
+
+    def stop_note_repeat(self):
+        self._note_repeat_active = False
+        if not (self.playing or self.clicking):
+            self.stop_thread()
+        else:
+            self._wakeup.set()
 
     #--------------------------------------------------------------------------
 

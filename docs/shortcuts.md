@@ -22,6 +22,11 @@ Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
 Espace / P       Play / Stop pattern
 V                Stop All (sons + pattern)
 C                Toggle métronome (click)
+Q                Activer / désactiver le mode Note Repeat
+
+--- Note Repeat (mode Q actif) ---
+NumPad 1-8       Répéter le dernier pad à: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, 1/12, 1/16
+NumPad + puis 1-6  Répéter à: 1/24, 1/32, 1/48, 1/64, 1/96, 1/128
 
 --- BPM / Volume ---
 ( ou 5           BPM +5

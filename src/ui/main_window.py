@@ -180,9 +180,13 @@ class MainWindow(wx.Frame):
         self._cur_row = 0
         self._cur_col = 0
         self._cells = []
-        self._shift_pad = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
-        self._last_pad = None
-        self._autoplay = True
+        self._shift_pad     = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
+        self._last_pad      = None
+        self._autoplay      = True
+        self._note_repeat      = False
+        self._nr_active_key    = None   # touche courante "tenue" (effacée par timer)
+        self._nr_prev_key      = None   # touche qui a démarré le repeat en cours
+        self._nr_release_timer = None
         self._init_sound()
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
@@ -490,6 +494,20 @@ class MainWindow(wx.Frame):
         self._player.play_sound(idx)
         self._last_pad = idx
 
+    def _nr_arm_release(self):
+        if self._nr_release_timer:
+            self._nr_release_timer.cancel()
+        import threading as _t
+        self._nr_release_timer = _t.Timer(
+            0.050, lambda: wx.CallAfter(setattr, self, '_nr_active_key', None)
+        )
+        self._nr_release_timer.start()
+
+    def _nr_cancel_release(self):
+        if self._nr_release_timer:
+            self._nr_release_timer.cancel()
+            self._nr_release_timer = None
+
     def _on_char_hook(self, event):
         key  = event.GetKeyCode()
         ukey = event.GetUnicodeKey()   # caractère traduit (layout-aware)
@@ -540,6 +558,18 @@ class MainWindow(wx.Frame):
         # --- Shift+Q : quantiser le pattern courant (valeur par défaut) ---
         elif shift and not ctrl and key == ord('Q'):
             self._quantize_pattern()
+
+        # --- Q : activer / désactiver le mode Note Repeat ---
+        elif not ctrl and not shift and not alt and (ukey == ord('q') or key == ord('Q')):
+            self._note_repeat = not self._note_repeat
+            if self._note_repeat:
+                self._show_status("Note Repeat: ON")
+            else:
+                self._nr_cancel_release()
+                self._nr_active_key = None
+                self._nr_prev_key   = None
+                self._player.stop_note_repeat()
+                self._show_status("Note Repeat: OFF")
 
         # --- Shift+E : décocher toute la ligne ---
         elif shift and not ctrl and key == ord('E'):
@@ -593,11 +623,38 @@ class MainWindow(wx.Frame):
 
         # --- NumPad ---
         elif wx.WXK_NUMPAD1 <= key <= wx.WXK_NUMPAD8:
-            self._play((key - wx.WXK_NUMPAD1) + self._shift_pad)
+            if self._note_repeat:
+                nr_idx = (key - wx.WXK_NUMPAD1) + (8 if self._shift_pad else 0)
+                if nr_idx >= len(DrumPlayer.QUANT_LIST):
+                    pass   # hors plage (1/128+), ignorer
+                elif key == self._nr_active_key:
+                    # Même touche encore tenue → autorepeat GTK → reset timer, ignorer
+                    self._nr_arm_release()
+                elif self._player._note_repeat_active \
+                        and self._nr_active_key is None and key == self._nr_prev_key:
+                    # Touche relâchée (timer a vidé active_key) + même touche re-pressée → toggle off
+                    self._nr_cancel_release()
+                    self._nr_prev_key = None
+                    self._player.stop_note_repeat()
+                    self._show_status("Note Repeat: ON")
+                else:
+                    # Nouvelle touche ou pas de repeat actif → démarrer / changer le rythme
+                    self._nr_cancel_release()
+                    self._nr_active_key = key
+                    self._nr_prev_key   = key
+                    self._nr_arm_release()
+                    self._player.start_note_repeat(nr_idx, lambda: self._cur_row)
+                    self._show_status(f"Note Repeat: {DrumPlayer.QUANT_LIST[nr_idx]}")
+            else:
+                self._play((key - wx.WXK_NUMPAD1) + self._shift_pad)
         elif key == wx.WXK_NUMPAD9:
             if self._last_pad is not None:
                 self._play(self._last_pad)
         elif key == wx.WXK_NUMPAD0:
+            self._note_repeat   = False
+            self._nr_active_key = None
+            self._nr_prev_key   = None
+            self._nr_cancel_release()
             self._player.stop_all()
         elif key == wx.WXK_NUMPAD_ADD:
             self._shift_pad = min(8, self._shift_pad + 8)
@@ -630,6 +687,10 @@ class MainWindow(wx.Frame):
                 self._player.play_pattern()
                 self._show_status("Pattern: Play")
         elif ukey == ord('v') or (not ctrl and not shift and key == ord('V')):
+            self._note_repeat   = False
+            self._nr_active_key = None
+            self._nr_prev_key   = None
+            self._nr_cancel_release()
             self._player.stop_all()
             self._show_status("Stop All")
         ### Note: Sur GTK+AZERTY, GetKeyCode() renvoie le code US de la position physique
