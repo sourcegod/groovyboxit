@@ -29,6 +29,8 @@ class DrumPlayer:
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
         self._note_repeat_active = False
+        self.recording      = False
+        self._measure_start = None
 
     #--------------------------------------------------------------------------
 
@@ -91,9 +93,10 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def stop_all(self):
-        self.playing            = False
-        self.clicking           = False
+        self.playing             = False
+        self.clicking            = False
         self._note_repeat_active = False
+        self.recording           = False
         self.stop_thread()
         self.sound_man.stop_all()
 
@@ -112,6 +115,7 @@ class DrumPlayer:
             # Avancer measure_start si la mesure précédente est terminée
             while measure_start + measure_secs <= now:
                 measure_start += measure_secs
+            self._measure_start = measure_start
             elapsed = now - measure_start
 
             # Construire les événements restants dans cette mesure
@@ -273,6 +277,38 @@ class DrumPlayer:
             self.stop_thread()
         else:
             self._wakeup.set()
+
+    #--------------------------------------------------------------------------
+
+    def record_pattern(self):
+        self.recording = True
+        if not self.playing:
+            self.play_pattern()
+
+    #--------------------------------------------------------------------------
+
+    def stop_record(self):
+        self.recording = False
+
+    #--------------------------------------------------------------------------
+
+    def record_hit(self, pad_idx):
+        now = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref = self._measure_start if self._measure_start is not None else now
+        float_offset = ((now - ref) % measure_secs) / self.step_duration
+
+        step     = min(round(float_offset), total_steps - 1)
+        bar_idx  = step // self._pattern._num_steps
+        step_idx = step % self._pattern._num_steps
+        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = True
+
+        if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
+            self.float_offsets[pad_idx].append(float_offset)
+            self.float_offsets[pad_idx].sort()
+
+        return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
 
