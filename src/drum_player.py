@@ -30,6 +30,7 @@ class DrumPlayer:
         self._nr_get_pad         = None
         self._note_repeat_active = False
         self.recording      = False
+        self.erasing        = False
         self._measure_start = None
 
     #--------------------------------------------------------------------------
@@ -97,6 +98,7 @@ class DrumPlayer:
         self.clicking            = False
         self._note_repeat_active = False
         self.recording           = False
+        self.erasing             = False
         self.stop_thread()
         self.sound_man.stop_all()
 
@@ -289,6 +291,34 @@ class DrumPlayer:
 
     def stop_record(self):
         self.recording = False
+
+    #--------------------------------------------------------------------------
+
+    def erase_hit(self, pad_idx):
+        if not self.float_offsets[pad_idx]:
+            return None
+        now = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref = self._measure_start if self._measure_start is not None else now
+        current = ((now - ref) % measure_secs) / self.step_duration
+
+        def circ_dist(a):
+            d = abs(a - current) % total_steps
+            return min(d, total_steps - d)
+
+        idx = min(range(len(self.float_offsets[pad_idx])),
+                  key=lambda i: circ_dist(self.float_offsets[pad_idx][i]))
+        removed = self.float_offsets[pad_idx].pop(idx)
+
+        step     = min(round(removed), total_steps - 1)
+        bar_idx  = step // self._pattern._num_steps
+        step_idx = step % self._pattern._num_steps
+
+        if not any(min(round(f), total_steps - 1) == step for f in self.float_offsets[pad_idx]):
+            self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
+
+        return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
 

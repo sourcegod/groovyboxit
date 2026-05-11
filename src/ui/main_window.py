@@ -577,6 +577,17 @@ class MainWindow(wx.Frame):
                 self._set_cell(self._cur_row, c, False)
             self._show_status(f"Ligne {self._cur_row + 1}: tout décoché")
 
+        # --- E : bascule mode Erase ---
+        elif not ctrl and not shift and not alt and (ukey == ord('e') or key == ord('E')):
+            if self._player.erasing:
+                self._player.erasing = False
+                self._show_status("Erase: Off")
+            else:
+                self._player.erasing = True
+                if self._player.recording:
+                    self._player.stop_record()
+                self._show_status("Erase: On")
+
         # --- Tab / Shift+Tab : navigation entre widgets principaux ---
         # Les CheckBoxes étant dans l'ordre de tabulation par défaut, Tab navigue
         # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.
@@ -645,6 +656,13 @@ class MainWindow(wx.Frame):
                     self._nr_arm_release()
                     self._player.start_note_repeat(nr_idx, lambda: self._cur_row)
                     self._show_status(f"Note Repeat: {DrumPlayer.QUANT_LIST[nr_idx]}")
+            elif self._player.erasing:
+                pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
+                result = self._player.erase_hit(pad_idx)
+                if result:
+                    bar_idx, step_idx = result
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[pad_idx][step_idx].SetValue(False)
             else:
                 pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
                 self._play(pad_idx)
@@ -654,11 +672,18 @@ class MainWindow(wx.Frame):
                         self._cells[pad_idx][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD9:
             if self._last_pad is not None:
-                self._play(self._last_pad)
-                if self._player.recording:
-                    bar_idx, step_idx = self._player.record_hit(self._last_pad)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[self._last_pad][step_idx].SetValue(True)
+                if self._player.erasing:
+                    result = self._player.erase_hit(self._last_pad)
+                    if result:
+                        bar_idx, step_idx = result
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[self._last_pad][step_idx].SetValue(False)
+                else:
+                    self._play(self._last_pad)
+                    if self._player.recording:
+                        bar_idx, step_idx = self._player.record_hit(self._last_pad)
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[self._last_pad][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD0:
             self._note_repeat   = False
             self._nr_active_key = None
