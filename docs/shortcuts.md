@@ -27,6 +27,7 @@ Q                Activer / désactiver le mode Note Repeat
 --- Enregistrement (mode R) ---
 R                Démarrer l'enregistrement (démarre aussi la lecture)
 R (2e appui)     Arrêter l'enregistrement (lecture continue)
+Ctrl+R           Count-In : 1 mesure de métronome, puis Rec+Play démarre
 NumPad 1-8       Jouer + enregistrer le pad dans le pattern
 NumPad 9         Rejouer + enregistrer le dernier pad
 Note: en mode Note Repeat actif, les répétitions sont aussi enregistrées
