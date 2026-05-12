@@ -30,9 +30,11 @@ class DrumPlayer:
         self._nr_get_pad         = None
         self._note_repeat_active = False
         self.recording            = False
+        self.replace_recording    = False
         self.erasing              = False
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
+        self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
 
@@ -103,6 +105,7 @@ class DrumPlayer:
         self.clicking            = False
         self._note_repeat_active = False
         self.recording           = False
+        self.replace_recording   = False
         self.erasing             = False
         self._count_in           = 0
         self.stop_thread()
@@ -168,6 +171,8 @@ class DrumPlayer:
                     break
                 if row >= 0:
                     self.sound_man.play_sound(row)
+                    if self.replace_recording:
+                        self._clear_offset(row, t_sec / self.step_duration)
                 elif row == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None:
@@ -222,21 +227,14 @@ class DrumPlayer:
         ]
 
         for pad_idx in range(self._pattern._num_pads):
-            pad = self._pattern._curpattern[self._cur_track][pad_idx]
-            # collecter les positions actives (globales)
-            active = [
-                bar_idx * num_steps + step_idx
-                for bar_idx, bar in enumerate(pad)
-                for step_idx, val in enumerate(bar)
-                if val
-            ]
+            pad    = self._pattern._curpattern[self._cur_track][pad_idx]
+            active = self.float_offsets[pad_idx]
             # effacer
             for bar in pad:
                 bar[:] = [False] * len(bar)
             if not active:
-                self.float_offsets[pad_idx] = []
                 continue
-            # snap chaque note vers le point de grille le plus proche
+            # snap chaque float vers le point de grille le plus proche
             snapped = set()
             for pos in active:
                 nearest = min(full_grid, key=lambda p: abs(p - pos))
@@ -244,7 +242,7 @@ class DrumPlayer:
             # écrire dans le pattern
             for fp in snapped:
                 bar_idx  = int(fp // num_steps)
-                step_idx = min(num_steps - 1, round(fp % num_steps))
+                step_idx = round(fp % num_steps) % num_steps
                 if bar_idx < self._pattern._num_bars:
                     pad[bar_idx][step_idx] = True
             self.float_offsets[pad_idx] = sorted(snapped)
@@ -315,8 +313,9 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def stop_record(self):
-        self.recording = False
-        self._count_in = 0
+        self.recording         = False
+        self.replace_recording = False
+        self._count_in         = 0
 
     #--------------------------------------------------------------------------
 
@@ -365,6 +364,24 @@ class DrumPlayer:
 
         if self._on_recorded_cb:
             self._on_recorded_cb(pad_idx, bar_idx, step_idx)
+
+    #--------------------------------------------------------------------------
+
+    def _clear_offset(self, pad_idx, float_offset):
+        if not self.float_offsets[pad_idx]:
+            return
+        total_steps = self._pattern._num_bars * self._pattern._num_steps
+        num_steps   = self._pattern._num_steps
+        idx = min(range(len(self.float_offsets[pad_idx])),
+                  key=lambda i: abs(self.float_offsets[pad_idx][i] - float_offset))
+        removed  = self.float_offsets[pad_idx].pop(idx)
+        step     = round(removed) % total_steps
+        bar_idx  = step // num_steps
+        step_idx = step % num_steps
+        if not any(round(f) % total_steps == step for f in self.float_offsets[pad_idx]):
+            self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
+        if self._on_replaced_cb:
+            self._on_replaced_cb(pad_idx, bar_idx, step_idx)
 
     #--------------------------------------------------------------------------
 

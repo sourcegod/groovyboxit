@@ -22,7 +22,9 @@ class MainWindow(wx.Frame):
         self._cur_col = 0
         self._cells = []
         self._shift_pad     = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
-        self._last_pad      = None
+        self._last_pad            = None
+        self._erase_was_recording = False
+        self._erase_was_replace   = False
         self._autoplay      = True
         self._note_repeat      = False
         self._nr_active_key    = None   # touche courante "tenue" (effacée par timer)
@@ -51,6 +53,9 @@ class MainWindow(wx.Frame):
         self._player = DrumPlayer(self._snd)
         self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
             self._on_nr_recorded, pad, bar, step
+        )
+        self._player._on_replaced_cb = lambda pad, bar, step: wx.CallAfter(
+            self._on_note_replaced, pad, bar, step
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
 
@@ -323,6 +328,10 @@ class MainWindow(wx.Frame):
         if bar_idx == 0 and step_idx < self.COLS:
             self._cells[pad_idx][step_idx].SetValue(True)
 
+    def _on_note_replaced(self, pad_idx, bar_idx, step_idx):
+        if bar_idx == 0 and step_idx < self.COLS:
+            self._cells[pad_idx][step_idx].SetValue(False)
+
     def _on_count_in_done(self):
         self._show_status("Rec: On")
 
@@ -433,8 +442,16 @@ class MainWindow(wx.Frame):
         elif not ctrl and not shift and not alt and (ukey == ord('e') or key == ord('E')):
             if self._player.erasing:
                 self._player.erasing = False
-                self._show_status("Erase: Off")
+                if self._erase_was_recording:
+                    self._player.recording       = True
+                    self._player.replace_recording = self._erase_was_replace
+                    msg = "Erase: Off — Replace Rec: On" if self._erase_was_replace else "Erase: Off — Rec: On"
+                    self._show_status(msg)
+                else:
+                    self._show_status("Erase: Off")
             else:
+                self._erase_was_recording = self._player.recording
+                self._erase_was_replace   = self._player.replace_recording
                 self._player.erasing = True
                 if self._player.recording:
                     self._player.stop_record()
@@ -582,6 +599,16 @@ class MainWindow(wx.Frame):
         elif ctrl and not shift and not alt and key == ord('R'):
             self._player.record_pattern_with_count_in()
             self._show_status("Count-In...")
+        elif not ctrl and shift and not alt and (ukey == ord('r') or key == ord('R')):
+            if self._player.replace_recording:
+                self._player.stop_record()
+                self._show_status("Replace Rec: Off")
+            else:
+                self._player.replace_recording = True
+                self._player.recording         = True
+                if not self._player.playing:
+                    self._player.play_pattern()
+                self._show_status("Replace Rec: On")
         elif ukey == ord('r') or (not ctrl and not shift and not alt and key == ord('R')):
             if self._player.recording or self._player._count_in > 0:
                 in_count_in = self._player._count_in > 0
