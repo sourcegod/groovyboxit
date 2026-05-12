@@ -29,10 +29,12 @@ class DrumPlayer:
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
         self._note_repeat_active = False
-        self.recording        = False
-        self.erasing          = False
-        self._measure_start   = None
-        self._on_recorded_cb  = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
+        self.recording            = False
+        self.erasing              = False
+        self._measure_start       = None
+        self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
+        self._count_in            = 0     # mesures de count-in restantes avant Rec
+        self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
 
     #--------------------------------------------------------------------------
 
@@ -68,8 +70,10 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def stop_pattern(self):
-        self.playing = False
-        if not (self.clicking or self._note_repeat_active):
+        self.playing   = False
+        self.clicking  = False
+        self._count_in = 0
+        if not self._note_repeat_active:
             self.stop_thread()
         else:
             self._wakeup.set()
@@ -100,6 +104,7 @@ class DrumPlayer:
         self._note_repeat_active = False
         self.recording           = False
         self.erasing             = False
+        self._count_in           = 0
         self.stop_thread()
         self.sound_man.stop_all()
 
@@ -178,6 +183,13 @@ class DrumPlayer:
                     if remaining <= 0:
                         break
                     time.sleep(min(remaining, 0.010))
+                if self._count_in > 0 and not self._wakeup.is_set() and not self.stop_event.is_set():
+                    self._count_in -= 1
+                    if self._count_in == 0:
+                        self.playing   = True
+                        self.recording = True
+                        if self._on_count_in_done_cb:
+                            self._on_count_in_done_cb()
 
     #--------------------------------------------------------------------------
 
@@ -292,8 +304,19 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
+    def record_pattern_with_count_in(self, bars=1):
+        self.recording = False
+        self.playing   = False
+        self._count_in = bars
+        self.clicking  = True
+        self.stop_thread()
+        self.start_thread()
+
+    #--------------------------------------------------------------------------
+
     def stop_record(self):
         self.recording = False
+        self._count_in = 0
 
     #--------------------------------------------------------------------------
 

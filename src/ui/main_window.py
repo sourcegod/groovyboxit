@@ -211,6 +211,7 @@ class MainWindow(wx.Frame):
         self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
             self._on_nr_recorded, pad, bar, step
         )
+        self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
 
     def _build_ui(self):
         panel = wx.Panel(self)
@@ -481,6 +482,9 @@ class MainWindow(wx.Frame):
         if bar_idx == 0 and step_idx < self.COLS:
             self._cells[pad_idx][step_idx].SetValue(True)
 
+    def _on_count_in_done(self):
+        self._show_status("Rec: On")
+
     def _show_status(self, msg):
         focused = wx.Window.FindFocus()
         self._status_ctrl.SetValue(msg)
@@ -734,9 +738,15 @@ class MainWindow(wx.Frame):
             self._nr_cancel_release()
             self._player.stop_all()
             self._show_status("Stop All")
+        elif ctrl and not shift and not alt and key == ord('R'):
+            self._player.record_pattern_with_count_in()
+            self._show_status("Count-In...")
         elif ukey == ord('r') or (not ctrl and not shift and not alt and key == ord('R')):
-            if self._player.recording:
+            if self._player.recording or self._player._count_in > 0:
+                in_count_in = self._player._count_in > 0
                 self._player.stop_record()
+                if in_count_in:
+                    self._player.stop_click()
                 self._show_status("Rec: Off")
             else:
                 self._player.record_pattern()
