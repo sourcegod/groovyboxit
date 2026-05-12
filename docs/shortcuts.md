@@ -20,9 +20,22 @@ Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
 
 --- Lecture ---
 Espace / P       Play / Stop pattern
-V                Stop All (sons + pattern)
+V                Stop All (sons + pattern + Rec + Erase)
 C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
+
+--- Enregistrement (mode R) ---
+R                Démarrer l'enregistrement (démarre aussi la lecture)
+R (2e appui)     Arrêter l'enregistrement (lecture continue)
+NumPad 1-8       Jouer + enregistrer le pad dans le pattern
+NumPad 9         Rejouer + enregistrer le dernier pad
+Note: en mode Note Repeat actif, les répétitions sont aussi enregistrées
+
+--- Effacement en temps réel (mode E) ---
+E                Activer / désactiver le mode Erase (désactive Rec si actif)
+NumPad 1-8       Effacer l'événement le plus proche du temps d'appui
+NumPad 9         Effacer l'événement le plus proche sur le dernier pad
+V / NumPad 0     Sortir du mode Erase
 
 --- Note Repeat (mode Q actif) ---
 NumPad 1-8       Répéter le dernier pad à: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, 1/12, 1/16
