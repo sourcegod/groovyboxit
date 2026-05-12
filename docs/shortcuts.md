@@ -25,8 +25,11 @@ C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
 
 --- Enregistrement (mode R) ---
-R                Démarrer l'enregistrement (démarre aussi la lecture)
+R                Démarrer l'enregistrement en Overdub (démarre aussi la lecture)
 R (2e appui)     Arrêter l'enregistrement (lecture continue)
+Shift+R          Enregistrement en Remplacement : les notes existantes sont effacées
+                 au fil du playback, remplacées par les nouvelles frappes
+Shift+R (2e)     Arrêter le mode Remplacement
 Ctrl+R           Count-In : 1 mesure de métronome, puis Rec+Play démarre
 NumPad 1-8       Jouer + enregistrer le pad dans le pattern
 NumPad 9         Rejouer + enregistrer le dernier pad
