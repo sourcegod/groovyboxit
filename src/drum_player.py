@@ -29,9 +29,10 @@ class DrumPlayer:
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
         self._note_repeat_active = False
-        self.recording      = False
-        self.erasing        = False
-        self._measure_start = None
+        self.recording        = False
+        self.erasing          = False
+        self._measure_start   = None
+        self._on_recorded_cb  = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
 
     #--------------------------------------------------------------------------
 
@@ -166,6 +167,8 @@ class DrumPlayer:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None:
                         self.sound_man.play_sound(pad)
+                        if self.recording:
+                            self._record_nr_hit(pad, t_sec / self.step_duration)
                 else:
                     self.sound_man.play_metronome(-row - 1)
             else:
@@ -319,6 +322,24 @@ class DrumPlayer:
             self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
 
         return bar_idx, step_idx
+
+    #--------------------------------------------------------------------------
+
+    def _record_nr_hit(self, pad_idx, float_offset):
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        float_offset = float_offset % total_steps
+
+        step     = min(round(float_offset), total_steps - 1)
+        bar_idx  = step // self._pattern._num_steps
+        step_idx = step % self._pattern._num_steps
+        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = True
+
+        if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
+            self.float_offsets[pad_idx].append(float_offset)
+            self.float_offsets[pad_idx].sort()
+
+        if self._on_recorded_cb:
+            self._on_recorded_cb(pad_idx, bar_idx, step_idx)
 
     #--------------------------------------------------------------------------
 

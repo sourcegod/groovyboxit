@@ -208,6 +208,9 @@ class MainWindow(wx.Frame):
         self._snd = SoundManager(media_lst, click1, click2)
         self._snd.load_sounds()
         self._player = DrumPlayer(self._snd)
+        self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
+            self._on_nr_recorded, pad, bar, step
+        )
 
     def _build_ui(self):
         panel = wx.Panel(self)
@@ -473,6 +476,10 @@ class MainWindow(wx.Frame):
 
     def _update_bpm_display(self):
         self._bpm_ctrl.SetValue(self._player.bpm)
+
+    def _on_nr_recorded(self, pad_idx, bar_idx, step_idx):
+        if bar_idx == 0 and step_idx < self.COLS:
+            self._cells[pad_idx][step_idx].SetValue(True)
 
     def _show_status(self, msg):
         focused = wx.Window.FindFocus()
