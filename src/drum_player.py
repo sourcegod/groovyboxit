@@ -352,7 +352,9 @@ class DrumPlayer:
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
         float_offset = float_offset % total_steps
 
-        step     = min(round(float_offset), total_steps - 1)
+        if round(float_offset) >= total_steps:
+            float_offset = 0.0
+        step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
         self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = True
@@ -373,7 +375,9 @@ class DrumPlayer:
         ref = self._measure_start if self._measure_start is not None else now
         float_offset = ((now - ref) % measure_secs) / self.step_duration
 
-        step     = min(round(float_offset), total_steps - 1)
+        if round(float_offset) >= total_steps:
+            float_offset = 0.0
+        step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
         self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = True
