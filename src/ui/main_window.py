@@ -604,8 +604,11 @@ class MainWindow(wx.Frame):
                 self._player.stop_record()
                 self._show_status("Replace Rec: Off")
             else:
+                self._player._click_before_rec = self._player.clicking
                 self._player.replace_recording = True
                 self._player.recording         = True
+                if self._player.click_in_recording and not self._player.clicking:
+                    self._player.play_click()
                 if not self._player.playing:
                     self._player.play_pattern()
                 self._show_status("Replace Rec: On")

@@ -32,6 +32,8 @@ class DrumPlayer:
         self.recording            = False
         self.replace_recording    = False
         self.erasing              = False
+        self.click_in_recording   = True
+        self._click_before_rec    = False  # état du click avant d'entrer en Rec
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
@@ -296,13 +298,17 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def record_pattern(self):
+        self._click_before_rec = self.clicking
         self.recording = True
+        if self.click_in_recording and not self.clicking:
+            self.play_click()
         if not self.playing:
             self.play_pattern()
 
     #--------------------------------------------------------------------------
 
     def record_pattern_with_count_in(self, bars=1):
+        self._click_before_rec = self.clicking
         self.recording = False
         self.playing   = False
         self._count_in = bars
@@ -316,6 +322,8 @@ class DrumPlayer:
         self.recording         = False
         self.replace_recording = False
         self._count_in         = 0
+        if self.click_in_recording and not self._click_before_rec:
+            self.stop_click()
 
     #--------------------------------------------------------------------------
 
