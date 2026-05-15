@@ -142,9 +142,7 @@ class MainWindow(wx.Frame):
         for r in range(self.ROWS):
             for c in range(self.COLS):
                 self._cells[r][c].SetValue(self._player._pattern._curpattern[self._player._cur_track][r][0][c])
-            self._player.float_offsets[r] = [
-                float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][r][0][c]
-            ]
+        self._player._compute_offsets()
 
     def _on_pattern_select(self, event):
         self._switch_pattern(self._pattern_listbox.GetSelection())
@@ -402,6 +400,18 @@ class MainWindow(wx.Frame):
             self._player._pattern.build_pattern_01()
             self._refresh_grid()
             self._show_status("Pattern initial chargé")
+        elif ctrl and not shift and key == ord('F'):
+            if self._player.double_pattern():
+                self._refresh_grid()
+                self._show_status(f"Pattern doublé: {self._player._pattern._num_bars} mesures")
+            else:
+                self._show_status("Impossible de doubler (limite atteinte)")
+        elif not ctrl and shift and not alt and key == ord('F'):
+            if self._player.halve_pattern():
+                self._refresh_grid()
+                self._show_status(f"Pattern divisé: {self._player._pattern._num_bars} mesures")
+            else:
+                self._show_status("Impossible de diviser (1 mesure minimum)")
         # --- Ctrl+Shift+E : choisir ligne + quant et générer le motif ---
         elif ctrl and shift and key == ord('E'):
             self._gen_row_dialog()
@@ -588,7 +598,8 @@ class MainWindow(wx.Frame):
             self._show_status("Stop All")
         elif ctrl and not shift and not alt and key == ord('R'):
             self._player.record_pattern_with_count_in()
-            self._show_status("Count-In...")
+            n = self._player.count_in_bars
+            self._show_status(f"Count-In: {n} mesure{'s' if n > 1 else ''}..." if n else "Rec: On")
         elif not ctrl and shift and not alt and (ukey == ord('r') or key == ord('R')):
             if self._player.replace_recording:
                 self._player.stop_record()

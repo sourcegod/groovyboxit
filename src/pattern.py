@@ -93,6 +93,31 @@ class Pattern:
 
     #--------------------------------------------------------------------------
 
+    def double_bars(self):
+        """Duplique les mesures existantes (pattern deux fois plus long)."""
+        if self._num_bars * 2 > self.MAX_BARS:
+            return False
+        for track in self._curpattern:
+            for pad in track:
+                pad.extend([bar[:] for bar in pad])
+        self._num_bars *= 2
+        return True
+
+    #--------------------------------------------------------------------------
+
+    def halve_bars(self):
+        """Garde la première moitié des mesures (pattern deux fois plus court)."""
+        if self._num_bars < 2:
+            return False
+        half = self._num_bars // 2
+        for track in self._curpattern:
+            for pad in track:
+                del pad[half:]
+        self._num_bars = half
+        return True
+
+    #--------------------------------------------------------------------------
+
     def build_pattern_01(self):
         self.reset_pattern()
         p = self._curpattern

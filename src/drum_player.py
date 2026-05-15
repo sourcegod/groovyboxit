@@ -35,6 +35,7 @@ class DrumPlayer:
         self._erase_was_recording = False
         self._erase_was_replace   = False
         self.click_in_recording   = True
+        self.count_in_bars        = 1     # 0, 1, 2, 4 ou 8 mesures
         self._click_before_rec    = False  # état du click avant d'entrer en Rec
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
@@ -123,7 +124,13 @@ class DrumPlayer:
         while (self.playing or self.clicking or self._note_repeat_active) \
                 and not self.stop_event.is_set():
             self._wakeup.clear()
-            total_steps  = self._pattern._num_bars * self._pattern._num_steps
+            # Pendant le count-in, on boucle par mesure unitaire (1 bar)
+            # pour déclencher l'enregistrement exactement après 1 mesure musicale.
+            if self._count_in > 0:
+                loop_bars = 1
+            else:
+                loop_bars = self._pattern._num_bars
+            total_steps  = loop_bars * self._pattern._num_steps
             measure_secs = total_steps * self.step_duration
             now = time.perf_counter()
 
@@ -143,10 +150,12 @@ class DrumPlayer:
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, pad))
             if self.clicking:
-                for beat in range(4):
-                    t_sec = beat * 4 * self.step_duration
-                    if t_sec > elapsed - 0.002:
-                        events.append((t_sec, -(beat + 1)))
+                steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
+                for bar_idx in range(loop_bars):
+                    for beat in range(self._pattern._num_beats):
+                        t_sec = (bar_idx * self._pattern._num_steps + beat * steps_per_beat) * self.step_duration
+                        if t_sec > elapsed - 0.002:
+                            events.append((t_sec, -(beat + 1)))
             if self._note_repeat_active:
                 denom    = self.QUANT_STEPS[self._nr_quant_idx]
                 nr_step  = 0.0
@@ -213,6 +222,34 @@ class DrumPlayer:
             c = min(num_steps - 1, round(fp))
             pad[0][c] = True
         self.float_offsets[row] = sorted(grid)
+
+    #--------------------------------------------------------------------------
+
+    def double_pattern(self):
+        """Double les mesures du pattern courant. Retourne False si impossible."""
+        half_steps = self._pattern._num_bars * self._pattern._num_steps
+        if not self._pattern.double_bars():
+            return False
+        for pad_idx in range(self._pattern._num_pads):
+            shifted = [f + half_steps for f in self.float_offsets[pad_idx]]
+            self.float_offsets[pad_idx] = sorted(self.float_offsets[pad_idx] + shifted)
+        self._wakeup.set()
+        return True
+
+    #--------------------------------------------------------------------------
+
+    def halve_pattern(self):
+        """Divise par deux les mesures du pattern. Retourne False si impossible."""
+        if self._pattern._num_bars < 2:
+            return False
+        half_steps = (self._pattern._num_bars // 2) * self._pattern._num_steps
+        self._pattern.halve_bars()
+        for pad_idx in range(self._pattern._num_pads):
+            self.float_offsets[pad_idx] = [
+                f for f in self.float_offsets[pad_idx] if f < half_steps
+            ]
+        self._wakeup.set()
+        return True
 
     #--------------------------------------------------------------------------
 
@@ -309,7 +346,11 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_pattern_with_count_in(self, bars=1):
+    def record_pattern_with_count_in(self, bars=None):
+        bars = self.count_in_bars if bars is None else bars
+        if bars == 0:
+            self.record_pattern()
+            return
         self._click_before_rec = self.clicking
         self.recording = False
         self.playing   = False
