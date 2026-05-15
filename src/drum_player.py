@@ -32,6 +32,8 @@ class DrumPlayer:
         self.recording            = False
         self.replace_recording    = False
         self.erasing              = False
+        self._erase_was_recording = False
+        self._erase_was_replace   = False
         self.click_in_recording   = True
         self._click_before_rec    = False  # état du click avant d'entrer en Rec
         self._measure_start       = None
@@ -324,6 +326,34 @@ class DrumPlayer:
         self._count_in         = 0
         if self.click_in_recording and not self._click_before_rec:
             self.stop_click()
+
+    #--------------------------------------------------------------------------
+
+    def start_replace_recording(self):
+        self._click_before_rec = self.clicking
+        self.replace_recording = True
+        self.recording         = True
+        if self.click_in_recording and not self.clicking:
+            self.play_click()
+        if not self.playing:
+            self.play_pattern()
+
+    #--------------------------------------------------------------------------
+
+    def toggle_erase(self):
+        """Bascule le mode Erase. Retourne True si Erase vient d'être activé."""
+        if self.erasing:
+            self.erasing = False
+            if self._erase_was_recording:
+                self.recording         = True
+                self.replace_recording = self._erase_was_replace
+        else:
+            self._erase_was_recording = self.recording
+            self._erase_was_replace   = self.replace_recording
+            self.erasing = True
+            if self.recording:
+                self.stop_record()
+        return self.erasing
 
     #--------------------------------------------------------------------------
 

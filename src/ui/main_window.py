@@ -21,11 +21,8 @@ class MainWindow(wx.Frame):
         self._cur_row = 0
         self._cur_col = 0
         self._cells = []
-        self._shift_pad     = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
-        self._last_pad            = None
-        self._erase_was_recording = False
-        self._erase_was_replace   = False
-        self._autoplay      = True
+        self._shift_pad = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
+        self._autoplay  = True
         self._note_repeat      = False
         self._nr_active_key    = None   # touche courante "tenue" (effacée par timer)
         self._nr_prev_key      = None   # touche qui a démarré le repeat en cours
@@ -353,7 +350,6 @@ class MainWindow(wx.Frame):
 
     def _play(self, idx):
         self._player.play_sound(idx)
-        self._last_pad = idx
 
     def _nr_arm_release(self):
         if self._nr_release_timer:
@@ -440,22 +436,15 @@ class MainWindow(wx.Frame):
 
         # --- E : bascule mode Erase ---
         elif not ctrl and not shift and not alt and (ukey == ord('e') or key == ord('E')):
-            if self._player.erasing:
-                self._player.erasing = False
-                if self._erase_was_recording:
-                    self._player.recording       = True
-                    self._player.replace_recording = self._erase_was_replace
-                    msg = "Erase: Off — Replace Rec: On" if self._erase_was_replace else "Erase: Off — Rec: On"
-                    self._show_status(msg)
-                else:
-                    self._show_status("Erase: Off")
-            else:
-                self._erase_was_recording = self._player.recording
-                self._erase_was_replace   = self._player.replace_recording
-                self._player.erasing = True
-                if self._player.recording:
-                    self._player.stop_record()
+            now_erasing = self._player.toggle_erase()
+            if now_erasing:
                 self._show_status("Erase: On")
+            elif self._player.replace_recording:
+                self._show_status("Erase: Off — Replace Rec: On")
+            elif self._player.recording:
+                self._show_status("Erase: Off — Rec: On")
+            else:
+                self._show_status("Erase: Off")
 
         # --- Tab / Shift+Tab : navigation entre widgets principaux ---
         # Les CheckBoxes étant dans l'ordre de tabulation par défaut, Tab navigue
@@ -540,19 +529,20 @@ class MainWindow(wx.Frame):
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD9:
-            if self._last_pad is not None:
+            last = self._player.last_played_pad
+            if last is not None:
                 if self._player.erasing:
-                    result = self._player.erase_hit(self._last_pad)
+                    result = self._player.erase_hit(last)
                     if result:
                         bar_idx, step_idx = result
                         if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[self._last_pad][step_idx].SetValue(False)
+                            self._cells[last][step_idx].SetValue(False)
                 else:
-                    self._play(self._last_pad)
+                    self._play(last)
                     if self._player.recording:
-                        bar_idx, step_idx = self._player.record_hit(self._last_pad)
+                        bar_idx, step_idx = self._player.record_hit(last)
                         if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[self._last_pad][step_idx].SetValue(True)
+                            self._cells[last][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD0:
             self._note_repeat   = False
             self._nr_active_key = None
@@ -604,20 +594,11 @@ class MainWindow(wx.Frame):
                 self._player.stop_record()
                 self._show_status("Replace Rec: Off")
             else:
-                self._player._click_before_rec = self._player.clicking
-                self._player.replace_recording = True
-                self._player.recording         = True
-                if self._player.click_in_recording and not self._player.clicking:
-                    self._player.play_click()
-                if not self._player.playing:
-                    self._player.play_pattern()
+                self._player.start_replace_recording()
                 self._show_status("Replace Rec: On")
         elif ukey == ord('r') or (not ctrl and not shift and not alt and key == ord('R')):
             if self._player.recording or self._player._count_in > 0:
-                in_count_in = self._player._count_in > 0
                 self._player.stop_record()
-                if in_count_in:
-                    self._player.stop_click()
                 self._show_status("Rec: Off")
             else:
                 self._player.record_pattern()
