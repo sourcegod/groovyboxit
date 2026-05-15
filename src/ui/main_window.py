@@ -387,6 +387,29 @@ class MainWindow(wx.Frame):
         elif alt and not ctrl and not shift and key == ord('W'):
             self._save_preset()
 
+        # --- Alt+↑/↓ : volume pad courant ±5 ---
+        elif alt and not ctrl and not shift and key == wx.WXK_UP:
+            vm  = self._player.voice_manager
+            vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume + 5)
+            self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
+        elif alt and not ctrl and not shift and key == wx.WXK_DOWN:
+            vm  = self._player.voice_manager
+            vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume - 5)
+            self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
+
+        # --- Alt+←/→ : pan pad courant ±10 ; Alt+0 : reset centre ---
+        elif alt and not ctrl and not shift and key == wx.WXK_LEFT:
+            vm  = self._player.voice_manager
+            vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) - 10)
+            self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
+        elif alt and not ctrl and not shift and key == wx.WXK_RIGHT:
+            vm  = self._player.voice_manager
+            vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) + 10)
+            self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
+        elif alt and not ctrl and not shift and (ukey == ord('0') or key == ord('0')):
+            self._player.voice_manager.set_pan(self._cur_row, 0)
+            self._show_status(f"Pad {self._cur_row + 1}: Pan 0 (centre)")
+
         # --- Raccourcis Ctrl ---
         elif ctrl and shift and key == ord('W'):
             self._save_pattern_as()

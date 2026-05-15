@@ -32,6 +32,13 @@ Shift+X          Démuter tous les Pads
 S                Bascule le Solo du Pad courant
 Shift+S          Désolo tous les Pads
 
+--- Volume / Pan par Pad ---
+Alt+↑            Volume du Pad courant +5
+Alt+↓            Volume du Pad courant -5
+Alt+←            Pan du Pad courant -10 (vers la gauche)
+Alt+→            Pan du Pad courant +10 (vers la droite)
+Alt+0            Recentrer le Pan du Pad courant (→ 0)
+
 --- Enregistrement (mode R) ---
 R                Démarrer l'enregistrement en Overdub (démarre aussi la lecture)
 R (2e appui)     Arrêter l'enregistrement (lecture continue)
