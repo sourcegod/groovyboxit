@@ -1,10 +1,12 @@
 # Spécifications — Groovebox
 
-Application desktop Python permettant de jouer des sons via le pavé numérique et, à terme, de séquencer des patterns et des songs.
+Application desktop Python permettant de jouer des sons via le pavé numérique et de séquencer des patterns et des songs.
+
+**Note architecture** : il s'agit d'un prototype Python. Si le test est concluant, les parties nécessitant plus de performances (notamment le Moteur Audio) seront réécrites en C/C++.
 
 ---
 
-## Phase 1 — Lecture directe (Mode Drum basique)
+## Phase 1 — Lecture directe (Mode Drum basique) ✓
 
 ### Entrée clavier
 - Écoute exclusive du **pavé numérique physique** (NumPad 1–8, ou 9-16).
@@ -20,115 +22,240 @@ Application desktop Python permettant de jouer des sons via le pavé numérique 
 
 ---
 
-## Modes futurs
+## Modes d'entrée (transversaux à toutes les phases)
 
-### Mode Drum
-Lecture de chaque son à chaque pression sur une touche du pavé (comportement identique à la Phase 1, intégré dans l'interface modale).
+Chaque piste dispose d'un **mode d'entrée** sélectionnable via une liste déroulante ou les raccourcis Ctrl+1/2/3/4 :
 
-### Mode Synthé
-- L'utilisateur choisit un fichier WAV comme source sonore.
-- Les touches NumPad 1–16 jouent ce son à **16 hauteurs (pitchs) différentes**.
-- Les hauteurs sont configurables (ex. gamme diatonique, chromatique, libre).
-- Polyphonie maintenue.
-
-### Mode Séquence / Pattern
-- **99 séquences** disponibles (Seq 01–99).
-- Chaque séquence contient **8 pistes** (qui peut changer en 16 pistes plus tard), (une par pad / son).
-- Chaque séquence a un tempo (BPM) propre à elle. 
-- Chaque piste peut être de de 3 types différents: 
-  -- Type Drum: (par défaut), chaque  Pad contient un Son différent.
-  -- Type Synthé: chaque Pad est une hauteur différente (Pitch) du son choisi.
-  -- Type Midi: chaque Pad peut être joué par une entrée Midi d'un périphérique externe.
-
-- Chaque piste contient **de 1 à 128 mesures**.
-- Chaque mesure contient **de 16 à 128 Pas**, soit (16, 32, 64, 128 Pas).
-- Le nombre de Pas dans une mesure, est le nombre de division de temps par mesure.
-- Exemple 4 Pas: => 1/4 par mesure, => 4 Noires par mesure.
-- 16 Pas: => 1/16 par mesure, => 16 Double Croches par mesure.
-- 32 Pas: => 1/32 par mesure, => 32 Tripple Croches par mesure. ETC...
-
-- Chaque Pas peut être : actif ou inactif, avec vélocité et (en mode Synthé) hauteur.
-- Lecture en boucle à un **tempo en BPM** global.
-- Les pistes d'une même séquence peuvent avoir des longueurs de mesure différentes (polymétrisme optionnel).
-
-### Mode Song
-- **16 songs** disponibles (Song 01–16).
-- Chaque song est une liste ordonnée de séquences à enchaîner.
-- Lecture linéaire ; le bouclage de la song entière est optionnel.
+| Raccourci | Mode | Description |
+|---|---|---|
+| Ctrl+1 | **Pad** | Chaque NumPad déclenche un son indépendant (mode Drum Phase 1) |
+| Ctrl+2 | **Keyboard** | Chaque NumPad joue une note d'une gamme (mode Synthé) |
+| Ctrl+3 | **Chord** | Chaque NumPad joue un accord de la gamme courante |
+| Ctrl+4 | **Steps** | Grille pas-à-pas (séquenceur, comme la grille actuelle) |
 
 ---
 
- Architecture technique
+## Mode Synthé — Keyboard
 
- 
-### Stack Python recommandée
+### Principe
+- Un **Patch** (instrument) est chargé sur la piste courante.
+- Les touches NumPad 1–16 jouent les 16 notes consécutives d'une gamme choisie.
+- Le pitch est pur : **pas de changement de durée** (algorithme phase vocoder / WSOLA via `pyrubberband`).
+- **Polyphonie** maintenue.
+
+### Gammes disponibles
+- Chromatique (12 demi-tons)
+- Majeur
+- Mineur naturel
+- Pentatonique majeur
+- Pentatonique mineur
+- *(extensible)*
+
+### Navigation clavier en mode Keyboard
+- **NumPad 1–8 / 9-16** : jouer les notes de la gamme (positions 1–16)
+- **NumPad+** : décaler le clavier vers le haut (octave ou demi-ton selon config)
+- **NumPad-** : décaler le clavier vers le bas
+- **`/`** : changer de gamme (sens --)
+- **`*`** : changer de gamme (sens ++)
+
+### Pré-calcul du pitch
+- Au chargement d'un patch, les N sons nécessaires sont **pré-calculés en mémoire** (latence zéro à la frappe).
+- Le calcul se base sur les WAVs du patch et la configuration du clavier courant (gamme + octave).
+- Si la configuration change (`/`, `*`, NumPad+/-), le pré-calcul est relancé.
+
+---
+
+## Mode Synthé — Chord
+
+### Principe (inspiré du Maschine+)
+- Chaque NumPad joue un **accord majeur** par défaut, construit sur la note de la gamme courante.
+- Si une note de la **gamme mineure** est ajoutée simultanément, l'accord est altéré en **mineur**.
+- Si une **septième mineure** est ajoutée, l'accord devient **accord de septième mineur**.
+- Le mode Chord respecte la gamme et le patch chargés sur la piste.
+
+---
+
+## Patches (instruments Synthé)
+
+### Structure d'un patch
+Un patch = un sous-répertoire de `synths/`, nommé par l'instrument :
+
+```
+synths/
+├── Piano/
+│   ├── patch.json
+│   ├── C2.wav
+│   ├── G2.wav
+│   ├── C3.wav
+│   ├── G3.wav
+│   └── C4.wav
+├── Rhodes/
+│   ├── patch.json
+│   ├── C2.wav
+│   └── ...
+├── Organ/
+│   └── ...
+```
+
+### Convention de nommage des WAVs
+- Nom = note racine du fichier : `C3.wav`, `G#2.wav`, `Bb4.wav`…
+- La note racine est lue depuis le nom du fichier (pas besoin de l'indiquer séparément).
+- Au minimum **un fichier WAV par octave** pour une qualité de rééchantillonnage acceptable.
+
+### Fichier `patch.json`
+```json
+{
+  "name": "Piano",
+  "loop": false,
+  "loop_start": null,
+  "loop_end": null,
+  "samples": [
+    { "file": "C2.wav", "root": "C2" },
+    { "file": "G2.wav", "root": "G2" },
+    { "file": "C3.wav", "root": "C3" }
+  ]
+}
+```
+
+### One-shot vs Loop
+- **One-shot** (joué une fois) : Piano, Rhodes, Cloche, tout instrument à attaque percussive.
+- **Loop** (boucle en sustain) : Orgue, Saxophone, Violon, tout instrument à son tenu.
+- Le champ `loop` dans `patch.json` détermine le comportement.
+- Les points de bouclage (`loop_start`, `loop_end`) sont définis dans le JSON.
+- *À terme* : librairie de détection automatique de points de bouclage.
+
+### Liste des patches
+- Visible dans l'interface (liste déroulante ou ListBox), comme la liste des patterns.
+- Chargeable sur la piste courante.
+
+---
+
+## Stack technique
 
 | Rôle | Bibliothèque | Justification |
 |---|---|---|
-| GUI | `WxPython` | Robuste, extensible, gestion native des événements clavier | Accessibilité sur plusieurs plateformes
-| Audio (Phase 1) | `pygame.mixer` | Simple, polyphonie intégrée, latence acceptable |
-| Audio (Synthé / Séquenceur) | `sounddevice` + `numpy` | Contrôle fin du pitch et du timing |
+| GUI | `wxPython` | Robuste, accessibilité lecteur d'écran |
+| Audio Phase 1 | `pygame.mixer` | Simple, polyphonie intégrée |
+| Pitch shifting | `pyrubberband` | Bindings Python de Rubber Band (C++), pitch pur sans changement de durée |
+| Chargement WAV | `soundfile` ou `scipy.io.wavfile` | Lecture dans un tableau numpy |
+| Traitement audio | `numpy` | Manipulation des tableaux audio |
+| Effets (futur) | `pedalboard` (Spotify) | Chaîne d'effets audio |
+| Audio (futur C++) | `sounddevice` | Contrôle fin du timing et du streaming |
 
-### Structure de données clés
+---
+
+## Mode Séquence / Pattern
+
+- **99 séquences** disponibles (Seq 01–99).
+- Chaque séquence contient **8 pistes** (extensible à 16).
+- Chaque séquence a un tempo (BPM) propre.
+- Chaque piste peut être de 3 types :
+  - **Drum** (par défaut) : chaque Pad = un son différent.
+  - **Synthé** : chaque Pad = une hauteur différente (Pitch) du patch chargé.
+  - **Midi** : chaque Pad peut être joué par un périphérique MIDI externe.
+- Chaque piste contient **de 1 à 128 mesures**.
+- Chaque mesure contient **de 16 à 128 Pas** (16, 32, 64, 128).
+- Chaque Pas peut être : actif ou inactif, avec vélocité et (en mode Synthé) hauteur.
+- Les pistes d'une même séquence peuvent avoir des longueurs différentes (polymétrisme optionnel).
+
+---
+
+## Mode Song
+
+- **16 songs** disponibles (Song 01–16).
+- Chaque song est une liste ordonnée de séquences à enchaîner.
+- Lecture linéaire ; bouclage optionnel.
+
+---
+
+## Structure de données clés
+
+### TNote — structure de base d'une note
+
+Unité fondamentale commune aux patterns et aux patches. Inspirée du format MIDI.
 
 ```
-DrumBank
-  └── [16] → chemin fichier WAV
+TNote
+  ├── position  : float   position dans la mesure, en pas (0.0 = début)
+  ├── channel   : int     canal MIDI (0–15)
+  ├── pitch     : int     hauteur MIDI (0–127, 60 = Do4)
+  ├── velocity  : int     vélocité (0–127)
+  └── length    : float   durée en pas (ex. 1.0 = un pas, 4.0 = noire à 1/16)
+```
 
-SynthBank
-  └── [16] → chemin fichier WAV
+- En mode **Drum** : `pitch` = index du pad (0–15), `length` = durée du son (souvent 1 pas).
+- En mode **Synthé** : `pitch` = note MIDI absolue (calculée depuis gamme + octave).
+- En mode **Midi** : tous les champs transmis tels quels au périphérique MIDI.
+- Compatible export/import MIDI standard (SMF).
 
+### Structures globales
+
+```
+Patch
+  ├── name        : str
+  ├── loop        : bool
+  ├── loop_start  : float | None   (secondes)
+  ├── loop_end    : float | None
+  └── samples[]
+        ├── file  : str            (ex. "C3.wav")
+        └── root  : str            (note racine MIDI, ex. "C3" = 48)
 
 Pattern (Séquence)
   ├── id          : 1–99
   ├── bpm         : float
   └── tracks[8]
-        ├── track_type  : [drum_type, synth_type, midi_type]
-        ├── sample_id  : ref [DrumBank, SynthBank]
+        ├── track_type  : drum | synth | midi
+        ├── mode        : pad | keyboard | chord | steps
+        ├── patch_name  : str (si synth)
+        ├── scale       : str (si keyboard/chord)
+        ├── root_note   : str (si keyboard/chord)
         └── measures[1–128]
-              └── steps[16–128]
-                    ├── active   : bool
-                    ├── velocity : 0–127
-                    └── pitch    : demi-tons (0 = original)
+              └── notes[] : list[TNote]   (liste libre, non limitée à num_steps)
 
 Song
   ├── id          : 1–16
   └── sequence_ids[] : liste ordonnée de Pattern.id
 ```
 
-### Organisation des fichiers source (cible)
+> La grille 16×16 de l'interface (mode Steps) est une **vue quantisée** de la liste `notes[]`.
+> Cocher une case = ajouter un TNote à `position` correspondante.
+> Décocher = supprimer le TNote à cette position.
+
+---
+
+## Organisation des fichiers source (cible)
 
 ```
-groovebox/
-├── drums/          # 1.wav … 16.wav
-├── synths/          # 1.wav … 16.wav
-├── main.py           # Point d'entrée, initialisation Qt
-├── audio/
-│   ├── engine.py     # Gestion de la polyphonie et du pitch
-│   └── sequencer.py  # Horloge BPM, lecture des patterns
-├── ui/
-│   ├── main_window.py
-│   └── pads.py       # Widget des 8 pads (affichage + état)
+groovyboxit/
+├── media/              # sons drum + métronome
+├── synths/             # patches synthé (Piano/, Rhodes/, Organ/…)
+├── main.py
+├── src/
+│   ├── pattern.py
+│   ├── drum_player.py
+│   ├── sound_manager.py
+│   ├── voice_manager.py
+│   ├── synth_engine.py     # pitch shifting, gestion patches
+│   └── ui/
+│       ├── main_window.py
+│       └── dialogs.py
 └── data/
-    ├── drum_bank.py
-    ├── synth_bank.py
-    ├── pattern.py
-    └── song.py
+    └── presets/        # presets JSON
 ```
 
 ---
 
-### Sauvegarde des données
-- **Persistance** : les séquences et songs sont-elles sauvegardées sur disque (JSON).
+## Sauvegarde des données
+- Persistance : presets JSON (patterns + voix + patches chargés par piste).
 
-### Interface
-- **Interface** : affichage minimal (fenêtre + retour visuel par pad).
-- La fenêtre principale (Main Window), est représentée par une grille de 16 / 16, dont chaque colone est une (Case à cocher, pour l'accessibilité des lecteurs d'écran).
-- Chaque ligne représente le Pad (donc un son) à jouer, qui peut être atteinte par les touches (Flèches Haut / Bas)
-- Chaque colone représente un Pas, qui peut être atteinte par les touches(Flèches Gauche / Droite).
-- Chaque colone est étiquettée par son numéro de ligne et de colone, (Ex: 1/1, 1/16, 16/1, 16/16).
-- Chaque colone est une (Case à cocher), que l'on peut activer ou désactiver par la touche Entrée.
-- On peut désactiver n'importe quelle colone par les touches (Shift+Enter).
+## Interface
+- Grille 16×16 de cases à cocher (accessibilité lecteur d'écran).
+- Mode d'entrée sélectionnable par liste déroulante + Ctrl+1/2/3/4.
+- Liste de patches (comme la liste de patterns).
+- Navigation clavier complète (flèches, Entrée, raccourcis).
 
-### Points Ouverts (à voir plus tard).
-- **Synchronisation** : MIDI Clock entrant/sortant envisagé.
+## Points ouverts
+- **MIDI** : entrée pad MIDI externe, MIDI Clock entrant/sortant.
+- **Détection de points de bouclage** : librairie à identifier.
+- **Mode Chord** : définition précise des voicings et inversions d'accords.
+- **Synchronisation** : MIDI Clock entrant/sortant.
