@@ -2,6 +2,7 @@ import time
 import threading
 
 from pattern import Pattern
+from voice_manager import VoiceManager
 
 
 class DrumPlayer:
@@ -19,10 +20,11 @@ class DrumPlayer:
         self.clicking = False
         self.bpm = 100
         self.volume = 80
-        self._pattern   = Pattern()
-        self._cur_track = 0
+        self._pattern      = Pattern()
+        self._cur_track    = 0
         self.float_offsets = [[] for _ in range(self._pattern._num_pads)]
         self.last_played_pad = None
+        self.voice_manager = VoiceManager(self._pattern._num_pads)
         self.step_duration = 60.0 / self.bpm / 4
         self.quant_idx = 7  # défaut: 1/16
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
@@ -183,13 +185,22 @@ class DrumPlayer:
                 if self._wakeup.is_set():
                     break
                 if row >= 0:
-                    self.sound_man.play_sound(row)
+                    if self.voice_manager.is_audible(row):
+                        self.sound_man.play_sound(
+                            row,
+                            self.voice_manager.get_volume_factor(row),
+                            self.voice_manager.get_pan(row),
+                        )
                     if self.replace_recording:
                         self._clear_offset(row, t_sec / self.step_duration)
                 elif row == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
-                    if pad is not None:
-                        self.sound_man.play_sound(pad)
+                    if pad is not None and self.voice_manager.is_audible(pad):
+                        self.sound_man.play_sound(
+                            pad,
+                            self.voice_manager.get_volume_factor(pad),
+                            self.voice_manager.get_pan(pad),
+                        )
                         if self.recording:
                             self._record_nr_hit(pad, t_sec / self.step_duration)
                 else:
@@ -312,7 +323,12 @@ class DrumPlayer:
 
     def play_sound(self, index):
         self.last_played_pad = index
-        self.sound_man.play_sound(index)
+        if self.voice_manager.is_audible(index):
+            self.sound_man.play_sound(
+                index,
+                self.voice_manager.get_volume_factor(index),
+                self.voice_manager.get_pan(index),
+            )
 
     #--------------------------------------------------------------------------
 

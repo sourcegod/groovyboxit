@@ -29,8 +29,13 @@ class SoundManager(object):
 
     #----------------------------------------
 
-    def play_sound(self, index):
-         self.drum_sounds[index].play()
+    def play_sound(self, index, volume_factor=1.0, pan=0):
+        channel = self.drum_sounds[index].play()
+        if channel is not None and (volume_factor != 1.0 or pan != 0):
+            pan_norm = pan / 100.0
+            left  = volume_factor * (1.0 - max(0.0, pan_norm))
+            right = volume_factor * (1.0 + min(0.0, pan_norm))
+            channel.set_volume(left, right)
 
     #----------------------------------------
      
