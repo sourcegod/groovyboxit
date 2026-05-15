@@ -352,6 +352,14 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
+    def update_nr_rate(self, quant_idx):
+        """Change le taux NR à chaud sans modifier le pad en cours."""
+        self._nr_quant_idx = quant_idx
+        if self._note_repeat_active:
+            self._wakeup.set()
+
+    #--------------------------------------------------------------------------
+
     def record_pattern(self):
         self._click_before_rec = self.clicking
         self.recording = True

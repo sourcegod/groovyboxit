@@ -57,8 +57,10 @@ NumPad 9         Effacer l'événement le plus proche sur le dernier pad
 V / NumPad 0     Sortir du mode Erase
 
 --- Note Repeat (mode Q actif) ---
-NumPad 1-8       Répéter le dernier pad à: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, 1/12, 1/16
-NumPad + puis 1-6  Répéter à: 1/24, 1/32, 1/48, 1/64, 1/96, 1/128
+NumPad 1-8       Jouer le pad + lancer le repeat (re-presser pour stopper)
+1-8 (clavier)   Choisir le taux binaire : 1/1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64, 1/128
+9 (clavier)      Basculer binaire ↔ ternaire
+1-6 (ternaire)   Choisir le taux ternaire : 1/3, 1/6, 1/12, 1/24, 1/48, 1/96
 
 --- BPM / Volume ---
 ( ou 5           BPM +5

@@ -15,6 +15,9 @@ from ui.dialogs import (
 class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
+    # Indices dans QUANT_LIST pour les touches 1-8 (binaire) et 1-6 (ternaire)
+    NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]   # 1/1,1/2,1/4,1/8,1/16,1/32,1/64,1/128
+    NR_TERNARY = [2, 4, 6,  8, 10, 12]          # 1/3,1/6,1/12,1/24,1/48,1/96
 
     def __init__(self):
         super().__init__(None, title="GroovyboxIt")
@@ -24,9 +27,11 @@ class MainWindow(wx.Frame):
         self._shift_pad = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
         self._autoplay  = True
         self._note_repeat      = False
-        self._nr_active_key    = None   # touche courante "tenue" (effacée par timer)
-        self._nr_prev_key      = None   # touche qui a démarré le repeat en cours
+        self._nr_active_key    = None   # touche NumPad tenue (effacée par timer)
+        self._nr_prev_key      = None   # dernière touche NumPad ayant démarré le NR
         self._nr_release_timer = None
+        self._nr_rate_idx      = 7      # indice QUANT_LIST courant (défaut 1/16)
+        self._nr_ternary       = False  # False=binaire, True=ternaire
         self._init_sound()
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
@@ -445,6 +450,7 @@ class MainWindow(wx.Frame):
         on_pattern_list = (focused == self._pattern_listbox)
         on_bpm          = (focused == self._bpm_ctrl)
         on_volume       = (focused == self._volume_ctrl)
+        on_voice_spin   = (focused in self._vol_ctrls or focused in self._pan_ctrls)
 
         # --- F1 : Aide clavier ---
         if key == wx.WXK_F1:
@@ -529,7 +535,10 @@ class MainWindow(wx.Frame):
         elif not ctrl and not shift and not alt and (ukey == ord('q') or key == ord('Q')):
             self._note_repeat = not self._note_repeat
             if self._note_repeat:
-                self._show_status("Note Repeat: ON")
+                mode = "Ternaire" if self._nr_ternary else "Binaire"
+                self._show_status(
+                    f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
+                )
             else:
                 self._nr_cancel_release()
                 self._nr_active_key = None
@@ -599,6 +608,8 @@ class MainWindow(wx.Frame):
                 event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
             elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
+            elif on_voice_spin and key in (wx.WXK_UP, wx.WXK_DOWN):
+                event.Skip()
             elif key == wx.WXK_UP:
                 self._move(-1, 0)
             elif key == wx.WXK_DOWN:
@@ -622,27 +633,35 @@ class MainWindow(wx.Frame):
         # --- NumPad ---
         elif wx.WXK_NUMPAD1 <= key <= wx.WXK_NUMPAD8:
             if self._note_repeat:
-                nr_idx = (key - wx.WXK_NUMPAD1) + (8 if self._shift_pad else 0)
-                if nr_idx >= len(DrumPlayer.QUANT_LIST):
-                    pass   # hors plage (1/128+), ignorer
-                elif key == self._nr_active_key:
-                    # Même touche encore tenue → autorepeat GTK → reset timer, ignorer
+                pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
+                if key == self._nr_active_key:
+                    # Autorepeat GTK → reset timer uniquement
                     self._nr_arm_release()
                 elif self._player._note_repeat_active \
                         and self._nr_active_key is None and key == self._nr_prev_key:
-                    # Touche relâchée (timer a vidé active_key) + même touche re-pressée → toggle off
+                    # Même pad re-pressé après relâche → stopper NR
                     self._nr_cancel_release()
                     self._nr_prev_key = None
                     self._player.stop_note_repeat()
-                    self._show_status("Note Repeat: ON")
+                    mode = "Ternaire" if self._nr_ternary else "Binaire"
+                    self._show_status(
+                        f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
+                    )
                 else:
-                    # Nouvelle touche ou pas de repeat actif → démarrer / changer le rythme
+                    # Nouveau pad ou NR inactif → jouer + démarrer/switcher NR
                     self._nr_cancel_release()
                     self._nr_active_key = key
                     self._nr_prev_key   = key
                     self._nr_arm_release()
-                    self._player.start_note_repeat(nr_idx, lambda: self._cur_row)
-                    self._show_status(f"Note Repeat: {DrumPlayer.QUANT_LIST[nr_idx]}")
+                    self._play(pad_idx)
+                    if self._player.recording:
+                        bar_idx, step_idx = self._player.record_hit(pad_idx)
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[pad_idx][step_idx].SetValue(True)
+                    self._player.start_note_repeat(self._nr_rate_idx, lambda p=pad_idx: p)
+                    self._show_status(
+                        f"NR: Pad {pad_idx + 1} @ {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
+                    )
             elif self._player.erasing:
                 pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
                 result = self._player.erase_hit(pad_idx)
@@ -733,6 +752,26 @@ class MainWindow(wx.Frame):
             else:
                 self._player.record_pattern()
                 self._show_status("Rec: On")
+        # --- Touches 1-9 clavier standard en mode Note Repeat ---
+        # GetKeyCode() renvoie le code de position US → fonctionne sur AZERTY sans Shift.
+        elif self._note_repeat and not ctrl and not shift and not alt \
+                and not on_bpm and not on_volume and not on_voice_spin \
+                and not on_quant_list and not on_pattern_list \
+                and ord('1') <= key <= ord('9'):
+            digit = key - ord('0')   # 1..9
+            if digit == 9:
+                self._nr_ternary = not self._nr_ternary
+                mode = "Ternaire" if self._nr_ternary else "Binaire"
+                self._show_status(f"Note Repeat: mode {mode}")
+            elif self._nr_ternary and 1 <= digit <= 6:
+                self._nr_rate_idx = self.NR_TERNARY[digit - 1]
+                self._player.update_nr_rate(self._nr_rate_idx)
+                self._show_status(f"NR: {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}")
+            elif not self._nr_ternary and 1 <= digit <= 8:
+                self._nr_rate_idx = self.NR_BINARY[digit - 1]
+                self._player.update_nr_rate(self._nr_rate_idx)
+                self._show_status(f"NR: {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}")
+
         ### Note: Sur GTK+AZERTY, GetKeyCode() renvoie le code US de la position physique
         ### (touche '(' → key=53 comme '5') au lieu du caractère produit (key=40).
         ### GetUnicodeKey() ne corrige pas ce problème. On ajoute key==ord('5') sans
