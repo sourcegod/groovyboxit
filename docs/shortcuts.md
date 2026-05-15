@@ -10,6 +10,8 @@ Ctrl+Shift+W     Enregistrer le pattern sous...
 Ctrl+D           Réinitialiser le pattern (tout effacer)
 Ctrl+P           Charger le pattern de démonstration
 Shift+P          Générer un pattern aléatoire
+Ctrl+F           Doubler le pattern (duplique les mesures existantes)
+Shift+F          Diviser le pattern par deux (garde la première moitié)
 
 --- Quantisation ---
 Ctrl+E           Appliquer la quant à la ligne courante
