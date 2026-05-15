@@ -44,6 +44,12 @@ class Pattern:
         # [track][pad][bar][step]
         self._curpattern = self._make_empty()
 
+        # état des voix par pad : volume, pan, mute, solo
+        self._voices = [
+            {"volume": 100, "pan": 0, "mute": False, "solo": False}
+            for _ in range(self._num_pads)
+        ]
+
     #--------------------------------------------------------------------------
 
     def _make_empty(self):

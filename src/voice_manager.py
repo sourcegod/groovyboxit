@@ -101,3 +101,19 @@ class VoiceManager:
 
     def muted_pads(self):
         return [i for i, v in enumerate(self._voices) if v.mute]
+
+    def to_list(self):
+        return [
+            {"volume": v.volume, "pan": v.pan, "mute": v.mute, "solo": v.solo}
+            for v in self._voices
+        ]
+
+    def from_list(self, data):
+        for i, d in enumerate(data):
+            if i >= self._num_pads:
+                break
+            v = self._voices[i]
+            v.volume = max(0,    min(100, int(d.get("volume", 100))))
+            v.pan    = max(-100, min(100, int(d.get("pan",    0))))
+            v.mute   = bool(d.get("mute",  False))
+            v.solo   = bool(d.get("solo",  False))

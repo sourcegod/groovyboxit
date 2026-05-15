@@ -198,10 +198,15 @@ class MainWindow(wx.Frame):
         self._pattern_listbox.SetSelection(sel if sel != wx.NOT_FOUND else 0)
 
     def _switch_pattern(self, idx):
+        # Sauvegarder l'état des voix dans le pattern courant avant de changer
+        self._pattern_list[self._cur_pattern_idx]._voices = \
+            self._player.voice_manager.to_list()
         self._cur_pattern_idx = idx
         self._player._pattern.load_pattern(self._pattern_list[idx]._curpattern)
+        self._player.voice_manager.from_list(self._pattern_list[idx]._voices)
         self._player._compute_offsets()
         self._refresh_grid()
+        self._refresh_all_voice_display()
         self._show_status(f"Pattern {idx + 1:02d}")
 
     def _save_pattern(self):
@@ -222,6 +227,9 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _save_preset(self):
+        # Synchroniser l'état courant des voix avant sauvegarde
+        self._pattern_list[self._cur_pattern_idx]._voices = \
+            self._player.voice_manager.to_list()
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
         data = {
             "version": 1,
@@ -232,6 +240,7 @@ class MainWindow(wx.Frame):
                     "num_bars":   pat._num_bars,
                     "num_steps":  pat._num_steps,
                     "curpattern": pat._curpattern,
+                    "voices":     pat._voices,
                 }
                 for pat in self._pattern_list
             ],
@@ -270,6 +279,8 @@ class MainWindow(wx.Frame):
             pat._num_bars  = p.get("num_bars", 1)
             pat._num_steps = p.get("num_steps", 16)
             pat.load_pattern(p["curpattern"])
+            if "voices" in p:
+                pat._voices = p["voices"]
         self._refresh_pattern_listbox()
         self._switch_pattern(0)
 
