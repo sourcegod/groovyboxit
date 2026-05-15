@@ -102,6 +102,30 @@ class MainWindow(wx.Frame):
         hbox.Add(pattern_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._pattern_listbox, 0, wx.EXPAND)
 
+        # Panneau voix : M / S / SpinVol / SpinPan par ligne
+        self._mute_btns = []
+        self._solo_btns = []
+        self._vol_ctrls = []
+        self._pan_ctrls = []
+        voice_grid = wx.FlexGridSizer(self.ROWS, 4, 2, 2)
+        for r in range(self.ROWS):
+            m_btn   = wx.ToggleButton(panel, label="M", size=(26, -1))
+            s_btn   = wx.ToggleButton(panel, label="S", size=(26, -1))
+            vol_sp  = wx.SpinCtrl(panel, min=0,    max=100,  initial=100, size=(60, -1))
+            pan_sp  = wx.SpinCtrl(panel, min=-100, max=100,  initial=0,   size=(68, -1))
+            m_btn.Bind(wx.EVT_TOGGLEBUTTON, lambda e, r=r: self._on_mute_btn(r))
+            s_btn.Bind(wx.EVT_TOGGLEBUTTON, lambda e, r=r: self._on_solo_btn(r))
+            vol_sp.Bind(wx.EVT_SPINCTRL, lambda e, r=r: self._on_vol_spin(r))
+            pan_sp.Bind(wx.EVT_SPINCTRL, lambda e, r=r: self._on_pan_spin(r))
+            voice_grid.Add(m_btn,  0, wx.EXPAND)
+            voice_grid.Add(s_btn,  0, wx.EXPAND)
+            voice_grid.Add(vol_sp, 0, wx.EXPAND)
+            voice_grid.Add(pan_sp, 0, wx.EXPAND)
+            self._mute_btns.append(m_btn)
+            self._solo_btns.append(s_btn)
+            self._vol_ctrls.append(vol_sp)
+            self._pan_ctrls.append(pan_sp)
+
         grid = wx.GridSizer(self.ROWS, self.COLS, 2, 2)
         for r in range(self.ROWS):
             row = []
@@ -113,9 +137,13 @@ class MainWindow(wx.Frame):
                 row.append(cb)
             self._cells.append(row)
 
+        content_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        content_hbox.Add(voice_grid, 0, wx.EXPAND | wx.RIGHT, 4)
+        content_hbox.Add(grid,       1, wx.EXPAND)
+
         vbox = wx.BoxSizer(wx.VERTICAL)
-        vbox.Add(hbox, 0, wx.EXPAND | wx.ALL, 4)
-        vbox.Add(grid, 1, wx.EXPAND)
+        vbox.Add(hbox,         0, wx.EXPAND | wx.ALL, 4)
+        vbox.Add(content_hbox, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
         self.Fit()
@@ -330,6 +358,38 @@ class MainWindow(wx.Frame):
     def _on_count_in_done(self):
         self._show_status("Rec: On")
 
+    def _refresh_voice_display(self, pad_idx):
+        vm = self._player.voice_manager
+        v  = vm.get_voice(pad_idx)
+        self._mute_btns[pad_idx].SetValue(v.mute)
+        self._solo_btns[pad_idx].SetValue(v.solo)
+        self._vol_ctrls[pad_idx].SetValue(v.volume)
+        self._pan_ctrls[pad_idx].SetValue(v.pan)
+
+    def _on_vol_spin(self, pad_idx):
+        val = self._vol_ctrls[pad_idx].GetValue()
+        self._player.voice_manager.set_volume(pad_idx, val)
+        self._show_status(f"Pad {pad_idx + 1}: Volume {val}")
+
+    def _on_pan_spin(self, pad_idx):
+        val = self._pan_ctrls[pad_idx].GetValue()
+        self._player.voice_manager.set_pan(pad_idx, val)
+        self._show_status(f"Pad {pad_idx + 1}: Pan {val}")
+
+    def _refresh_all_voice_display(self):
+        for r in range(self.ROWS):
+            self._refresh_voice_display(r)
+
+    def _on_mute_btn(self, pad_idx):
+        muted = self._player.voice_manager.toggle_mute(pad_idx)
+        self._mute_btns[pad_idx].SetValue(muted)
+        self._show_status(f"Pad {pad_idx + 1}: Mute {'On' if muted else 'Off'}")
+
+    def _on_solo_btn(self, pad_idx):
+        soloed = self._player.voice_manager.toggle_solo(pad_idx)
+        self._solo_btns[pad_idx].SetValue(soloed)
+        self._show_status(f"Pad {pad_idx + 1}: Solo {'On' if soloed else 'Off'}")
+
     def _show_status(self, msg):
         focused = wx.Window.FindFocus()
         self._status_ctrl.SetValue(msg)
@@ -389,25 +449,30 @@ class MainWindow(wx.Frame):
 
         # --- Alt+↑/↓ : volume pad courant ±5 ---
         elif alt and not ctrl and not shift and key == wx.WXK_UP:
-            vm  = self._player.voice_manager
+            vm = self._player.voice_manager
             vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume + 5)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
         elif alt and not ctrl and not shift and key == wx.WXK_DOWN:
-            vm  = self._player.voice_manager
+            vm = self._player.voice_manager
             vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume - 5)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
 
         # --- Alt+←/→ : pan pad courant ±10 ; Alt+0 : reset centre ---
         elif alt and not ctrl and not shift and key == wx.WXK_LEFT:
-            vm  = self._player.voice_manager
+            vm = self._player.voice_manager
             vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) - 10)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
         elif alt and not ctrl and not shift and key == wx.WXK_RIGHT:
-            vm  = self._player.voice_manager
+            vm = self._player.voice_manager
             vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) + 10)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
         elif alt and not ctrl and not shift and (ukey == ord('0') or key == ord('0')):
             self._player.voice_manager.set_pan(self._cur_row, 0)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Pan 0 (centre)")
 
         # --- Raccourcis Ctrl ---
@@ -482,17 +547,21 @@ class MainWindow(wx.Frame):
         # --- X / Shift+X : mute pad courant / démuter tous ---
         elif not ctrl and not shift and not alt and (ukey == ord('x') or key == ord('X')):
             muted = self._player.voice_manager.toggle_mute(self._cur_row)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Mute {'On' if muted else 'Off'}")
         elif not ctrl and shift and not alt and (ukey == ord('x') or key == ord('X')):
             self._player.voice_manager.set_mute_all(False)
+            self._refresh_all_voice_display()
             self._show_status("Tous les Pads: Démutés")
 
         # --- S / Shift+S : solo pad courant / désolo tous ---
         elif not ctrl and not shift and not alt and (ukey == ord('s') or key == ord('S')):
             soloed = self._player.voice_manager.toggle_solo(self._cur_row)
+            self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Solo {'On' if soloed else 'Off'}")
         elif not ctrl and shift and not alt and (ukey == ord('s') or key == ord('S')):
             self._player.voice_manager.set_solo_all(False)
+            self._refresh_all_voice_display()
             self._show_status("Tous les Pads: Désolés")
 
         # --- Tab / Shift+Tab : navigation entre widgets principaux ---
