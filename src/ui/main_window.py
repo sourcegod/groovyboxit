@@ -456,6 +456,22 @@ class MainWindow(wx.Frame):
             else:
                 self._show_status("Erase: Off")
 
+        # --- X / Shift+X : mute pad courant / démuter tous ---
+        elif not ctrl and not shift and not alt and (ukey == ord('x') or key == ord('X')):
+            muted = self._player.voice_manager.toggle_mute(self._cur_row)
+            self._show_status(f"Pad {self._cur_row + 1}: Mute {'On' if muted else 'Off'}")
+        elif not ctrl and shift and not alt and (ukey == ord('x') or key == ord('X')):
+            self._player.voice_manager.set_mute_all(False)
+            self._show_status("Tous les Pads: Démutés")
+
+        # --- S / Shift+S : solo pad courant / désolo tous ---
+        elif not ctrl and not shift and not alt and (ukey == ord('s') or key == ord('S')):
+            soloed = self._player.voice_manager.toggle_solo(self._cur_row)
+            self._show_status(f"Pad {self._cur_row + 1}: Solo {'On' if soloed else 'Off'}")
+        elif not ctrl and shift and not alt and (ukey == ord('s') or key == ord('S')):
+            self._player.voice_manager.set_solo_all(False)
+            self._show_status("Tous les Pads: Désolés")
+
         # --- Tab / Shift+Tab : navigation entre widgets principaux ---
         # Les CheckBoxes étant dans l'ordre de tabulation par défaut, Tab navigue
         # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.

@@ -26,6 +26,12 @@ V                Stop All (sons + pattern + Rec + Erase)
 C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
 
+--- Mute / Solo ---
+X                Bascule le Mute du Pad courant
+Shift+X          Démuter tous les Pads
+S                Bascule le Solo du Pad courant
+Shift+S          Désolo tous les Pads
+
 --- Enregistrement (mode R) ---
 R                Démarrer l'enregistrement en Overdub (démarre aussi la lecture)
 R (2e appui)     Arrêter l'enregistrement (lecture continue)
