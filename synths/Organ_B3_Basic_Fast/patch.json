@@ -1,0 +1,29 @@
+{
+  "name": "Organ B3 Basic Fast",
+  "loop": false,
+  "loop_start": null,
+  "loop_end": null,
+  "samples": [
+    {"file": "B3 Basic Fast C1.wav",  "root": "C2"},
+    {"file": "B3 Basic Fast Eb1.wav", "root": "Eb2"},
+    {"file": "B3 Basic Fast Gb1.wav", "root": "Gb2"},
+    {"file": "B3 Basic Fast A1.wav",  "root": "A2"},
+    {"file": "B3 Basic Fast C2.wav",  "root": "C3"},
+    {"file": "B3 Basic Fast Eb2.wav", "root": "Eb3"},
+    {"file": "B3 Basic Fast Gb2.wav", "root": "Gb3"},
+    {"file": "B3 Basic Fast A2.wav",  "root": "A3"},
+    {"file": "B3 Basic Fast C3.wav",  "root": "C4"},
+    {"file": "B3 Basic Fast Eb3.wav", "root": "Eb4"},
+    {"file": "B3 Basic Fast Gb3.wav", "root": "Gb4"},
+    {"file": "B3 Basic Fast A3.wav",  "root": "A4"},
+    {"file": "B3 Basic Fast C4.wav",  "root": "C5"},
+    {"file": "B3 Basic Fast Eb4.wav", "root": "Eb5"},
+    {"file": "B3 Basic Fast Gb4.wav", "root": "Gb5"},
+    {"file": "B3 Basic Fast A4.wav",  "root": "A5"},
+    {"file": "B3 Basic Fast C5.wav",  "root": "C6"},
+    {"file": "B3 Basic Fast Eb5.wav", "root": "Eb6"},
+    {"file": "B3 Basic Fast Gb5.wav", "root": "Gb6"},
+    {"file": "B3 Basic Fast A5.wav",  "root": "A6"},
+    {"file": "B3 Basic Fast C6.wav",  "root": "C7"}
+  ]
+}

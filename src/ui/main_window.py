@@ -45,6 +45,7 @@ class MainWindow(wx.Frame):
         self._rack.set_slot(0, InstrumentType.KIT,   "Default Kit", {})
         self._rack.set_slot(1, InstrumentType.SYNTH, "Acoustic Guitar 1", {"patch": "accoustic_guitar_1"})
         self._rack.set_slot(2, InstrumentType.SYNTH, "Piano 1",           {"patch": "piano_1"})
+        self._rack.set_slot(3, InstrumentType.SYNTH, "Organ B3 Basic Fast", {"patch": "Organ_B3_Basic_Fast"})
         self._cur_slot     = 0
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._kb_last_midi = None     # dernière note MIDI jouée par le synth
@@ -881,19 +882,25 @@ class MainWindow(wx.Frame):
             self._player.stop_all()
         elif key == wx.WXK_NUMPAD_ADD:
             if self._input_mode == "keyboard":
-                self._kb_root_midi = min(115, self._kb_root_midi + 12)
-                self._update_kb_notes()
-                self._precompute_async()
-                self._show_status(f"Keyboard: octave → {midi_to_note_name(self._kb_root_midi)}")
+                if self._kb_root_midi + 12 > 96:    # C7 = limite haute
+                    wx.Bell()
+                else:
+                    self._kb_root_midi += 12
+                    self._update_kb_notes()
+                    self._precompute_async()
+                    self._show_status(f"Keyboard: octave → {midi_to_note_name(self._kb_root_midi)}")
             else:
                 self._shift_pad = min(8, self._shift_pad + 8)
                 self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
         elif key == wx.WXK_NUMPAD_SUBTRACT:
             if self._input_mode == "keyboard":
-                self._kb_root_midi = max(12, self._kb_root_midi - 12)
-                self._update_kb_notes()
-                self._precompute_async()
-                self._show_status(f"Keyboard: octave → {midi_to_note_name(self._kb_root_midi)}")
+                if self._kb_root_midi - 12 < 12:    # C0 = limite basse
+                    wx.Bell()
+                else:
+                    self._kb_root_midi -= 12
+                    self._update_kb_notes()
+                    self._precompute_async()
+                    self._show_status(f"Keyboard: octave → {midi_to_note_name(self._kb_root_midi)}")
             else:
                 self._shift_pad = max(0, self._shift_pad - 8)
                 self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
