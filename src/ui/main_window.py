@@ -44,6 +44,7 @@ class MainWindow(wx.Frame):
         self._rack         = Rack()
         self._rack.set_slot(0, InstrumentType.KIT,   "Default Kit", {})
         self._rack.set_slot(1, InstrumentType.SYNTH, "Acoustic Guitar 1", {"patch": "accoustic_guitar_1"})
+        self._rack.set_slot(2, InstrumentType.SYNTH, "Piano 1",           {"patch": "piano_1"})
         self._cur_slot     = 0
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._kb_last_midi = None     # dernière note MIDI jouée par le synth
