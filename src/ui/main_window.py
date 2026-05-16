@@ -46,6 +46,7 @@ class MainWindow(wx.Frame):
         self._rack.set_slot(1, InstrumentType.SYNTH, "A440",        {"patch": "a440"})
         self._cur_slot     = 0
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
+        self._kb_last_midi = None     # dernière note MIDI jouée par le synth
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
@@ -558,7 +559,14 @@ class MainWindow(wx.Frame):
         self._cells[r][c].SetFocus()
 
     def _play(self, idx):
-        self._player.play_sound(idx)
+        slot = self._rack.get_slot(self._cur_slot)
+        if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
+                and self._synth and self._synth.is_loaded() and idx < len(self._kb_notes):
+            midi = self._kb_notes[idx]
+            self._synth.play(midi)
+            self._kb_last_midi = midi
+        else:
+            self._player.play_sound(idx)
 
     def _nr_arm_release(self):
         if self._nr_release_timer:
@@ -785,6 +793,7 @@ class MainWindow(wx.Frame):
                         vm = self._player.voice_manager
                         v  = vm.get_voice(note_idx)
                         self._synth.play(midi, v.volume / 100.0, v.pan)
+                        self._kb_last_midi = midi
                     else:
                         self._show_status("Keyboard: aucun patch chargé (Alt+X)")
             elif self._note_repeat:
@@ -831,6 +840,7 @@ class MainWindow(wx.Frame):
                     if key == wx.WXK_NUMPAD1:
                         midi = self._synth._samples[0]["root_midi"] if self._synth._samples else 60
                         self._synth.play(midi)
+                        self._kb_last_midi = midi
                         if self._player.recording:
                             bar_idx, step_idx = self._player.record_hit(0)
                             if bar_idx == 0 and step_idx < self.COLS:
@@ -843,20 +853,25 @@ class MainWindow(wx.Frame):
                         if bar_idx == 0 and step_idx < self.COLS:
                             self._cells[pad_idx][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD9:
-            last = self._player.last_played_pad
-            if last is not None:
-                if self._player.erasing:
-                    result = self._player.erase_hit(last)
-                    if result:
-                        bar_idx, step_idx = result
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[last][step_idx].SetValue(False)
-                else:
-                    self._play(last)
-                    if self._player.recording:
-                        bar_idx, step_idx = self._player.record_hit(last)
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[last][step_idx].SetValue(True)
+            slot = self._rack.get_slot(self._cur_slot)
+            if slot.type == InstrumentType.SYNTH and self._synth and self._synth.is_loaded():
+                if self._kb_last_midi is not None:
+                    self._synth.play(self._kb_last_midi)
+            else:
+                last = self._player.last_played_pad
+                if last is not None:
+                    if self._player.erasing:
+                        result = self._player.erase_hit(last)
+                        if result:
+                            bar_idx, step_idx = result
+                            if bar_idx == 0 and step_idx < self.COLS:
+                                self._cells[last][step_idx].SetValue(False)
+                    else:
+                        self._play(last)
+                        if self._player.recording:
+                            bar_idx, step_idx = self._player.record_hit(last)
+                            if bar_idx == 0 and step_idx < self.COLS:
+                                self._cells[last][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD0:
             self._note_repeat   = False
             self._nr_active_key = None
