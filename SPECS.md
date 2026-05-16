@@ -332,13 +332,52 @@ groovyboxit/
 ---
 
 ## Sauvegarde des données
-- Persistance : presets JSON (patterns + voix + patches chargés par piste).
+- Persistance : fichier projet `.grp` (format JSON, contient Rack + patterns + songs).
 
 ## Interface
+
+### Éléments principaux
 - Grille 16×16 de cases à cocher (accessibilité lecteur d'écran).
 - Mode d'entrée sélectionnable par liste déroulante + Ctrl+1/2/3/4.
-- Liste de patches (comme la liste de patterns).
 - Navigation clavier complète (flèches, Entrée, raccourcis).
+
+### Liste des Slots (Rack)
+- Liste déroulante affichant les 16 slots avec le nom de l'instrument associé.
+- Si le slot est vide : affiche `"Empty"`.
+- Exemple : `01 - 808 Kit`, `02 - Piano`, `03 - Empty`, …
+
+### Explorateur (Alt+X)
+Boîte de dialogue permettant de naviguer et charger des ressources sonores.
+
+- **Navigation par** : Projet, Type d'instrument (Kit / Synth / Loop / Audio / Midi), Pattern, Fichier.
+- **Preview** : pré-écoute de l'instrument ou du pattern sélectionné.
+- **Autoplay** : navigation automatique avec ou sans preview.
+- Chargement dans le slot courant ou dans un slot choisi.
+
+### Liste des Tracks
+- Liste déroulante affichant les pistes de la séquence courante.
+
+### Propriétés de Piste (Ctrl+T)
+Boîte de dialogue de configuration d'une piste.
+
+| Paramètre | Valeurs |
+|---|---|
+| **Entrée** | Keyboard interne / Audio / Midi_port |
+| **Sortie** | Type d'instrument (kit / synth / loop / audio / midi_file / midi_port) |
+| **Canal** | 1 – 16 |
+| **Bank MIDI / Slot** | selon la sortie |
+| **Preset MIDI** | selon la sortie |
+| **Patch** | 0 – 128 |
+| **Velocity** | 0 – 127 |
+| **Volume** | 0 – 100 |
+| **Pan** | -100 – +100 |
+
+### Raccourcis interface
+| Raccourci | Action |
+|---|---|
+| Alt+X | Ouvrir l'Explorateur |
+| Ctrl+T | Ouvrir les Propriétés de la piste courante |
+| Ctrl+1/2/3/4 | Basculer entre les modes Pad / Keyboard / Chord / Steps |
 
 ## Points ouverts
 - **MIDI** : entrée pad MIDI externe, MIDI Clock entrant/sortant.
