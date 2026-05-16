@@ -188,10 +188,57 @@ TNote
 - En mode **Midi** : tous les champs transmis tels quels au périphérique MIDI.
 - Compatible export/import MIDI standard (SMF).
 
-### Structures globales
+### Rack d'instruments (global)
+
+Le Rack est **global et partagé par tous les patterns**. Il persiste indépendamment des patterns, comme dans Maschine+.
 
 ```
-Patch
+Rack
+  └── slots[16]           Inst 01 – Inst 16
+        ├── index         : int (0–15)
+        ├── type          : kit | synth | loop | audio | midi_file | midi_port
+        ├── name          : str          (ex. "808 Kit", "Piano", "Synth ext.")
+        └── config        : dict         (dépend du type)
+
+  Type kit       → { "samples": ["1.wav", …, "16.wav"] }
+  Type synth     → { "patch": "Piano",
+                     "scale": "major", "root_note": "C3",
+                     "cache": {(scale, octave): [pygame.Sound × 16]} }
+  Type loop      → { "file": "bassline.wav", "sync_bpm": true }
+  Type audio     → { "file": "vocal.wav", "loop": false }
+  Type midi_file → { "file": "bassline.mid" }
+  Type midi_port → { "port": "Synth MIDI Out", "channel": 0 }
+```
+
+**Correspondance type Instrument ↔ type Track :**
+
+Le `track_type` d'une piste correspond au type de l'instrument chargé dans son slot. Les 6 types sont communs aux deux :
+
+| Type | Instrument (Rack) | Comportement NumPad / lecture |
+|---|---|---|
+| **kit** | 16 WAVs indépendants | chaque pad = son différent |
+| **synth** | Patch + pitch shifting | chaque pad = hauteur de gamme |
+| **loop** | WAV synchronisé BPM | lecture / stop de la boucle |
+| **audio** | WAV one-shot ou libre | déclenche le sample |
+| **midi_file** | Fichier MIDI (.mid) | lit le fichier sur la piste |
+| **midi_port** | Port MIDI externe | envoie TNote au périphérique |
+
+**Règles du Rack :**
+- On peut charger un nouvel instrument dans un slot **sans modifier les données des patterns**.
+- Pour les slots `synth` : seule la gamme/octave active est pré-calculée ; les autres sont calculées à la demande et mises en cache.
+
+**Hiérarchie de chargement :**
+
+| Action | Slots affectés | Patterns affectés |
+|---|---|---|
+| Charger un instrument | **1 slot** seulement | aucun |
+| Charger un pattern | Les slots référencés par ses pistes | 1 pattern |
+| Charger un projet | **Les 16 slots** (Rack complet) | tous les patterns |
+
+### Structures patterns et projet
+
+```
+Patch (descripteur d'un instrument Synth sur disque)
   ├── name        : str
   ├── loop        : bool
   ├── loop_start  : float | None   (secondes)
@@ -204,13 +251,13 @@ Pattern (Séquence)
   ├── id          : 1–99
   ├── bpm         : float
   └── tracks[8]
-        ├── track_type  : drum | synth | midi
-        ├── mode        : pad | keyboard | chord | steps
-        ├── patch_name  : str (si synth)
-        ├── scale       : str (si keyboard/chord)
-        ├── root_note   : str (si keyboard/chord)
+        ├── instrument_slot : int  (0–15, référence dans le Rack global)
+        ├── track_type      : kit | synth | loop | audio | midi_file | midi_port
+        ├── mode            : pad | keyboard | chord | steps
+        ├── scale           : str  (si keyboard/chord, peut surcharger le slot)
+        ├── root_note       : str  (si keyboard/chord)
         └── measures[1–128]
-              └── notes[] : list[TNote]   (liste libre, non limitée à num_steps)
+              └── notes[]   : list[TNote]  (liste libre, non limitée à num_steps)
 
 Song
   ├── id          : 1–16
@@ -220,6 +267,43 @@ Song
 > La grille 16×16 de l'interface (mode Steps) est une **vue quantisée** de la liste `notes[]`.
 > Cocher une case = ajouter un TNote à `position` correspondante.
 > Décocher = supprimer le TNote à cette position.
+
+### Fichier projet (JSON)
+
+```json
+{
+  "version": 1,
+  "rack": {
+    "slots": [
+      { "index": 0, "type": "kit",       "name": "808 Kit",
+        "config": { "samples": ["1.wav", "..."] } },
+      { "index": 1, "type": "synth",     "name": "Piano",
+        "config": { "patch": "Piano", "scale": "major", "root_note": "C3" } },
+      { "index": 2, "type": "loop",      "name": "Bass loop",
+        "config": { "file": "bassline.wav", "sync_bpm": true } },
+      { "index": 3, "type": "midi_file", "name": "Seq MIDI",
+        "config": { "file": "sequence.mid" } },
+      { "index": 4, "type": "midi_port", "name": "Synth ext.",
+        "config": { "port": "Synth MIDI Out", "channel": 0 } }
+    ]
+  },
+  "patterns": [
+    {
+      "id": 1, "bpm": 120,
+      "tracks": [
+        { "instrument_slot": 0, "track_type": "kit",  "mode": "steps",
+          "measures": [ { "notes": [
+            { "pos": 0, "ch": 0, "pitch": 36, "vel": 100, "len": 1 }
+          ]} ] },
+        { "instrument_slot": 1, "track_type": "synth", "mode": "keyboard",
+          "scale": "major", "root_note": "C3",
+          "measures": [ { "notes": [] } ] }
+      ]
+    }
+  ],
+  "songs": []
+}
+```
 
 ---
 
