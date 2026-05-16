@@ -1,9 +1,12 @@
 import json
 import os
+import threading
 import wx
 from sound_manager import SoundManager
 from drum_player import DrumPlayer
 from pattern import Pattern
+from rack import Rack, InstrumentType
+from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name, SCALE_NAMES
 from ui.dialogs import (
     KeyboardHelpDialog,
     GenRowDialog,
@@ -33,6 +36,14 @@ class MainWindow(wx.Frame):
         self._nr_rate_idx      = 7      # indice QUANT_LIST courant (défaut 1/16)
         self._nr_ternary       = False  # False=binaire, True=ternaire
         self._init_sound()
+        self._synths_dir   = os.path.join(self._base_dir, "synths")
+        self._input_mode   = "pad"    # "pad" | "keyboard"
+        self._kb_scale     = "major"
+        self._kb_root_midi = 48       # C3
+        self._kb_notes     = []
+        self._rack         = Rack()
+        self._cur_slot     = 0
+        self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
@@ -107,6 +118,30 @@ class MainWindow(wx.Frame):
         hbox.Add(pattern_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._pattern_listbox, 0, wx.EXPAND)
 
+        # --- Barre 2 : Mode / Gamme / Slot ---
+        mode_label = wx.StaticText(panel, label="Mode:")
+        self._mode_choice = wx.ListBox(panel, choices=["Pad", "Keyboard"], style=wx.LB_SINGLE)
+        self._mode_choice.SetSelection(0)
+        self._mode_choice.Bind(wx.EVT_LISTBOX, self._on_mode_choice)
+
+        scale_label = wx.StaticText(panel, label="Gamme:")
+        self._scale_choice = wx.ListBox(panel, choices=SCALE_NAMES, style=wx.LB_SINGLE)
+        self._scale_choice.SetSelection(SCALE_NAMES.index(self._kb_scale))
+        self._scale_choice.Bind(wx.EVT_LISTBOX, self._on_scale_choice)
+
+        slot_label = wx.StaticText(panel, label="Slot:")
+        self._slot_choice = wx.ListBox(panel, choices=self._rack.labels(), style=wx.LB_SINGLE)
+        self._slot_choice.SetSelection(0)
+        self._slot_choice.Bind(wx.EVT_LISTBOX, self._on_slot_choice)
+
+        hbox2 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox2.Add(mode_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox2.Add(self._mode_choice,  0, wx.EXPAND | wx.RIGHT, 8)
+        hbox2.Add(scale_label,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox2.Add(self._scale_choice, 0, wx.EXPAND | wx.RIGHT, 8)
+        hbox2.Add(slot_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox2.Add(self._slot_choice,  0, wx.EXPAND)
+
         # Panneau voix : M / S / SpinVol / SpinPan par ligne
         self._mute_btns = []
         self._solo_btns = []
@@ -148,6 +183,7 @@ class MainWindow(wx.Frame):
 
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(hbox,         0, wx.EXPAND | wx.ALL, 4)
+        vbox.Add(hbox2,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4)
         vbox.Add(content_hbox, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
@@ -374,6 +410,102 @@ class MainWindow(wx.Frame):
     def _on_count_in_done(self):
         self._show_status("Rec: On")
 
+    # ------------------------------------------------------------------
+    # Mode Keyboard
+    # ------------------------------------------------------------------
+
+    def _update_kb_notes(self):
+        self._kb_notes = scale_midi_notes(self._kb_scale, self._kb_root_midi, 16)
+
+    def _precompute_async(self):
+        if self._synth is None or not self._synth.is_loaded():
+            return
+        notes = self._kb_notes[:]
+        def run():
+            self._synth.precompute(notes)
+            wx.CallAfter(self._show_status,
+                f"Keyboard: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)} — prêt")
+        threading.Thread(target=run, daemon=True).start()
+
+    def _set_input_mode(self, mode):
+        modes = ["pad", "keyboard"]
+        if mode not in modes:
+            return
+        self._input_mode = mode
+        self._mode_choice.SetSelection(modes.index(mode))
+        if mode == "keyboard":
+            self._update_kb_notes()
+            self._precompute_async()
+            self._show_status(
+                f"Mode: Keyboard — {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
+            )
+        else:
+            self._show_status("Mode: Pad")
+
+    def _on_mode_choice(self, event):
+        modes = ["pad", "keyboard"]
+        self._set_input_mode(modes[self._mode_choice.GetSelection()])
+
+    def _on_scale_choice(self, event):
+        self._kb_scale = SCALE_NAMES[self._scale_choice.GetSelection()]
+        self._update_kb_notes()
+        self._precompute_async()
+        self._show_status(
+            f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
+        )
+
+    def _on_slot_choice(self, event):
+        self._cur_slot = self._slot_choice.GetSelection()
+        slot = self._rack.get_slot(self._cur_slot)
+        if slot.is_empty:
+            self._show_status(f"Slot {self._cur_slot + 1:02d}: vide — Alt+X pour charger")
+        else:
+            self._show_status(f"Slot {self._cur_slot + 1:02d}: {slot.name}")
+            if slot.type == InstrumentType.SYNTH:
+                self._load_synth_from_slot(self._cur_slot)
+
+    def _update_slot_list(self):
+        self._slot_choice.Set(self._rack.labels())
+        self._slot_choice.SetSelection(self._cur_slot)
+
+    def _load_synth_from_slot(self, slot_idx):
+        slot = self._rack.get_slot(slot_idx)
+        if slot.type != InstrumentType.SYNTH:
+            return
+        patch_name = slot.config.get("patch", "")
+        if not patch_name:
+            return
+        if self._synth is None:
+            self._synth = SynthEngine(self._synths_dir)
+        self._show_status(f"Chargement du patch '{patch_name}'…")
+        def run():
+            try:
+                self._synth.load_patch(patch_name)
+                self._update_kb_notes()
+                self._synth.precompute(self._kb_notes)
+                wx.CallAfter(self._show_status,
+                    f"Patch chargé: {patch_name} — {len(self._synth._cache)} notes")
+            except Exception as e:
+                wx.CallAfter(self._show_status, f"Erreur chargement patch: {e}")
+        threading.Thread(target=run, daemon=True).start()
+
+    def _open_explorer(self):
+        start = self._synths_dir if os.path.isdir(self._synths_dir) else os.path.expanduser("~")
+        dlg = wx.DirDialog(self, "Choisir un dossier de patch (synth)",
+                           defaultPath=start,
+                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            patch_dir  = dlg.GetPath()
+            patch_name = os.path.basename(patch_dir)
+            if not os.path.exists(os.path.join(patch_dir, "patch.json")):
+                self._show_status("Dossier invalide : patch.json introuvable")
+            else:
+                self._rack.set_slot(self._cur_slot, InstrumentType.SYNTH,
+                                    patch_name, {"patch": patch_name})
+                self._update_slot_list()
+                self._load_synth_from_slot(self._cur_slot)
+        dlg.Destroy()
+
     def _refresh_voice_display(self, pad_idx):
         vm = self._player.voice_manager
         v  = vm.get_voice(pad_idx)
@@ -445,12 +577,15 @@ class MainWindow(wx.Frame):
         ctrl  = event.ControlDown()
         shift = event.ShiftDown()
         alt   = event.AltDown()
-        focused       = wx.Window.FindFocus()
+        focused         = wx.Window.FindFocus()
         on_quant_list   = (focused == self._quant_list)
         on_pattern_list = (focused == self._pattern_listbox)
         on_bpm          = (focused == self._bpm_ctrl)
         on_volume       = (focused == self._volume_ctrl)
         on_voice_spin   = (focused in self._vol_ctrls or focused in self._pan_ctrls)
+        on_mode_choice  = (focused == self._mode_choice)
+        on_scale_choice = (focused == self._scale_choice)
+        on_slot_choice  = (focused == self._slot_choice)
 
         # --- F1 : Aide clavier ---
         if key == wx.WXK_F1:
@@ -491,6 +626,8 @@ class MainWindow(wx.Frame):
             self._player.voice_manager.set_pan(self._cur_row, 0)
             self._refresh_voice_display(self._cur_row)
             self._show_status(f"Pad {self._cur_row + 1}: Pan 0 (centre)")
+        elif alt and not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
+            self._open_explorer()
 
         # --- Raccourcis Ctrl ---
         elif ctrl and shift and key == ord('W'):
@@ -523,6 +660,10 @@ class MainWindow(wx.Frame):
         # --- Ctrl+E : appliquer la quant à la ligne courante ---
         elif ctrl and not shift and key == ord('E'):
             self._apply_quant()
+        elif ctrl and not shift and not alt and key == ord('1'):
+            self._set_input_mode("pad")
+        elif ctrl and not shift and not alt and key == ord('2'):
+            self._set_input_mode("keyboard")
         # --- Ctrl+Shift+Q : choisir la valeur de quantize et appliquer au pattern ---
         elif ctrl and shift and key == ord('Q'):
             self._quantize_pattern_dialog()
@@ -589,7 +730,8 @@ class MainWindow(wx.Frame):
         # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.
         # Ordre : BPM → Volume → Quant → Grille → BPM (et inverse pour Shift+Tab).
         elif key == wx.WXK_TAB:
-            order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list, self._pattern_listbox]
+            order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list, self._pattern_listbox,
+                     self._mode_choice, self._scale_choice, self._slot_choice]
             if focused in order:
                 idx = order.index(focused)
                 if shift:
@@ -597,13 +739,13 @@ class MainWindow(wx.Frame):
                 else:
                     target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 else order[idx + 1]
             else:
-                target = self._bpm_ctrl if not shift else self._pattern_listbox
+                target = self._bpm_ctrl if not shift else self._slot_choice
             target.SetFocus()
 
         # --- Flèches : navigation grille ou liste selon le focus ---
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
-            if on_quant_list or on_pattern_list:
-                event.Skip()   # laisser la ListBox gérer sa propre navigation
+            if on_quant_list or on_pattern_list or on_mode_choice or on_scale_choice or on_slot_choice:
+                event.Skip()   # laisser le widget gérer sa propre navigation
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
             elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
@@ -632,7 +774,17 @@ class MainWindow(wx.Frame):
 
         # --- NumPad ---
         elif wx.WXK_NUMPAD1 <= key <= wx.WXK_NUMPAD8:
-            if self._note_repeat:
+            if self._input_mode == "keyboard":
+                note_idx = key - wx.WXK_NUMPAD1
+                if note_idx < len(self._kb_notes):
+                    midi = self._kb_notes[note_idx]
+                    if self._synth and self._synth.is_loaded():
+                        vm = self._player.voice_manager
+                        v  = vm.get_voice(note_idx)
+                        self._synth.play(midi, v.volume / 100.0, v.pan)
+                    else:
+                        self._show_status("Keyboard: aucun patch chargé (Alt+X)")
+            elif self._note_repeat:
                 pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
                 if key == self._nr_active_key:
                     # Autorepeat GTK → reset timer uniquement
@@ -698,11 +850,23 @@ class MainWindow(wx.Frame):
             self._nr_cancel_release()
             self._player.stop_all()
         elif key == wx.WXK_NUMPAD_ADD:
-            self._shift_pad = min(8, self._shift_pad + 8)
-            self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
+            if self._input_mode == "keyboard":
+                self._kb_root_midi = min(115, self._kb_root_midi + 12)
+                self._update_kb_notes()
+                self._precompute_async()
+                self._show_status(f"Keyboard: octave → {midi_to_note_name(self._kb_root_midi)}")
+            else:
+                self._shift_pad = min(8, self._shift_pad + 8)
+                self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
         elif key == wx.WXK_NUMPAD_SUBTRACT:
-            self._shift_pad = max(0, self._shift_pad - 8)
-            self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
+            if self._input_mode == "keyboard":
+                self._kb_root_midi = max(12, self._kb_root_midi - 12)
+                self._update_kb_notes()
+                self._precompute_async()
+                self._show_status(f"Keyboard: octave → {midi_to_note_name(self._kb_root_midi)}")
+            else:
+                self._shift_pad = max(0, self._shift_pad - 8)
+                self._show_status(f"ShiftPad: {self._shift_pad + 1}/{self._shift_pad + 8}")
 
         # --- Raccourcis caractères ---
         # ukey (GetUnicodeKey) est fiable uniquement dans EVT_CHAR, pas dans EVT_CHAR_HOOK
@@ -771,6 +935,24 @@ class MainWindow(wx.Frame):
                 self._nr_rate_idx = self.NR_BINARY[digit - 1]
                 self._player.update_nr_rate(self._nr_rate_idx)
                 self._show_status(f"NR: {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}")
+
+        # --- / et * en mode Keyboard : gamme précédente / suivante ---
+        elif self._input_mode == "keyboard" and not ctrl and not shift and not alt \
+                and key in (wx.WXK_NUMPAD_DIVIDE, ord('/')):
+            idx = (SCALE_NAMES.index(self._kb_scale) - 1) % len(SCALE_NAMES)
+            self._kb_scale = SCALE_NAMES[idx]
+            self._scale_choice.SetSelection(idx)
+            self._update_kb_notes()
+            self._precompute_async()
+            self._show_status(f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}")
+        elif self._input_mode == "keyboard" and not ctrl and not shift and not alt \
+                and key in (wx.WXK_NUMPAD_MULTIPLY, ord('*')):
+            idx = (SCALE_NAMES.index(self._kb_scale) + 1) % len(SCALE_NAMES)
+            self._kb_scale = SCALE_NAMES[idx]
+            self._scale_choice.SetSelection(idx)
+            self._update_kb_notes()
+            self._precompute_async()
+            self._show_status(f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}")
 
         ### Note: Sur GTK+AZERTY, GetKeyCode() renvoie le code US de la position physique
         ### (touche '(' → key=53 comme '5') au lieu du caractère produit (key=40).
