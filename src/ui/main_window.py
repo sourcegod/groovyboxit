@@ -39,11 +39,11 @@ class MainWindow(wx.Frame):
         self._synths_dir   = os.path.join(self._base_dir, "synths")
         self._input_mode   = "pad"    # "pad" | "keyboard"
         self._kb_scale     = "major"
-        self._kb_root_midi = 60       # C4
+        self._kb_root_midi = 48       # C3
         self._kb_notes     = []
         self._rack         = Rack()
         self._rack.set_slot(0, InstrumentType.KIT,   "Default Kit", {})
-        self._rack.set_slot(1, InstrumentType.SYNTH, "A440",        {"patch": "a440"})
+        self._rack.set_slot(1, InstrumentType.SYNTH, "Acoustic Guitar 1", {"patch": "accoustic_guitar_1"})
         self._cur_slot     = 0
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._kb_last_midi = None     # dernière note MIDI jouée par le synth
