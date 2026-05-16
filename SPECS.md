@@ -268,7 +268,9 @@ Song
 > Cocher une case = ajouter un TNote à `position` correspondante.
 > Décocher = supprimer le TNote à cette position.
 
-### Fichier projet (JSON)
+### Fichier projet (`.grp`)
+
+Extension propriétaire `.grp` (GroovyboxIt Project), format JSON interne.
 
 ```json
 {
