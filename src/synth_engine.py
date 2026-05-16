@@ -127,6 +127,7 @@ class SynthEngine:
         # Vérification (une seule fois) de la cohérence avec le mixer
         if self._mixer_freq is None:
             self._mixer_freq, _, _ = pygame.mixer.get_init()
+            pygame.mixer.set_num_channels(32)
 
         # Rééchantillonnage si le WAV n'est pas à la fréquence du mixer
         if sr != self._mixer_freq and self._mixer_freq:
@@ -148,7 +149,7 @@ class SynthEngine:
         # Normalisation douce
         peak = np.max(np.abs(data))
         if peak > 0:
-            data = data / peak * 0.9
+            data = data / peak * 0.5
 
         arr = (data * 32767).clip(-32768, 32767).astype(np.int16)
 

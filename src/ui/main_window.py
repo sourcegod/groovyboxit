@@ -39,9 +39,11 @@ class MainWindow(wx.Frame):
         self._synths_dir   = os.path.join(self._base_dir, "synths")
         self._input_mode   = "pad"    # "pad" | "keyboard"
         self._kb_scale     = "major"
-        self._kb_root_midi = 48       # C3
+        self._kb_root_midi = 60       # C4
         self._kb_notes     = []
         self._rack         = Rack()
+        self._rack.set_slot(0, InstrumentType.KIT,   "Default Kit", {})
+        self._rack.set_slot(1, InstrumentType.SYNTH, "A440",        {"patch": "a440"})
         self._cur_slot     = 0
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._pattern_list = [Pattern() for _ in range(99)]
@@ -49,6 +51,7 @@ class MainWindow(wx.Frame):
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
         self._build_ui()
         self._load_preset()
+        self._load_synth_from_slot(1)   # pré-chargement A440 en arrière-plan
         # EVT_CHAR_HOOK remonte la hiérarchie depuis n'importe quel widget natif
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Centre()
@@ -823,11 +826,22 @@ class MainWindow(wx.Frame):
                         self._cells[pad_idx][step_idx].SetValue(False)
             else:
                 pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
-                self._play(pad_idx)
-                if self._player.recording:
-                    bar_idx, step_idx = self._player.record_hit(pad_idx)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[pad_idx][step_idx].SetValue(True)
+                slot = self._rack.get_slot(self._cur_slot)
+                if slot.type == InstrumentType.SYNTH and self._synth and self._synth.is_loaded():
+                    if key == wx.WXK_NUMPAD1:
+                        midi = self._synth._samples[0]["root_midi"] if self._synth._samples else 60
+                        self._synth.play(midi)
+                        if self._player.recording:
+                            bar_idx, step_idx = self._player.record_hit(0)
+                            if bar_idx == 0 and step_idx < self.COLS:
+                                self._cells[0][step_idx].SetValue(True)
+                    # NumPad2-8 silencieux en mode Pad + Synth
+                else:
+                    self._play(pad_idx)
+                    if self._player.recording:
+                        bar_idx, step_idx = self._player.record_hit(pad_idx)
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[pad_idx][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD9:
             last = self._player.last_played_pad
             if last is not None:
@@ -936,23 +950,31 @@ class MainWindow(wx.Frame):
                 self._player.update_nr_rate(self._nr_rate_idx)
                 self._show_status(f"NR: {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}")
 
-        # --- / et * en mode Keyboard : gamme précédente / suivante ---
+        # --- NumPad/ et NumPad* en mode Keyboard : gamme précédente / suivante (bloquant) ---
         elif self._input_mode == "keyboard" and not ctrl and not shift and not alt \
-                and key in (wx.WXK_NUMPAD_DIVIDE, ord('/')):
-            idx = (SCALE_NAMES.index(self._kb_scale) - 1) % len(SCALE_NAMES)
-            self._kb_scale = SCALE_NAMES[idx]
-            self._scale_choice.SetSelection(idx)
-            self._update_kb_notes()
-            self._precompute_async()
-            self._show_status(f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}")
+                and key == wx.WXK_NUMPAD_DIVIDE:
+            idx = SCALE_NAMES.index(self._kb_scale)
+            if idx == 0:
+                wx.Bell()
+            else:
+                idx -= 1
+                self._kb_scale = SCALE_NAMES[idx]
+                self._scale_choice.SetSelection(idx)
+                self._update_kb_notes()
+                self._precompute_async()
+                self._show_status(f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}")
         elif self._input_mode == "keyboard" and not ctrl and not shift and not alt \
-                and key in (wx.WXK_NUMPAD_MULTIPLY, ord('*')):
-            idx = (SCALE_NAMES.index(self._kb_scale) + 1) % len(SCALE_NAMES)
-            self._kb_scale = SCALE_NAMES[idx]
-            self._scale_choice.SetSelection(idx)
-            self._update_kb_notes()
-            self._precompute_async()
-            self._show_status(f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}")
+                and key == wx.WXK_NUMPAD_MULTIPLY:
+            idx = SCALE_NAMES.index(self._kb_scale)
+            if idx == len(SCALE_NAMES) - 1:
+                wx.Bell()
+            else:
+                idx += 1
+                self._kb_scale = SCALE_NAMES[idx]
+                self._scale_choice.SetSelection(idx)
+                self._update_kb_notes()
+                self._precompute_async()
+                self._show_status(f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}")
 
         ### Note: Sur GTK+AZERTY, GetKeyCode() renvoie le code US de la position physique
         ### (touche '(' → key=53 comme '5') au lieu du caractère produit (key=40).
