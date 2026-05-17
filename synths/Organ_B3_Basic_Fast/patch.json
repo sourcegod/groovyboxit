@@ -7,128 +7,128 @@
     {
       "file": "B3 Basic Fast C1.wav",
       "root": "C2",
-      "loop_start": 114256,
-      "loop_end": 115632
+      "loop_start": 115153,
+      "loop_end": 121895
     },
     {
       "file": "B3 Basic Fast Eb1.wav",
       "root": "Eb2",
-      "loop_start": 115517,
-      "loop_end": 116673
+      "loop_start": 108713,
+      "loop_end": 115517
     },
     {
       "file": "B3 Basic Fast Gb1.wav",
       "root": "Gb2",
-      "loop_start": 116147,
-      "loop_end": 117123
+      "loop_start": 120958,
+      "loop_end": 126700
     },
     {
       "file": "B3 Basic Fast A1.wav",
       "root": "A2",
-      "loop_start": 111240,
-      "loop_end": 116830
+      "loop_start": 117645,
+      "loop_end": 124873
     },
     {
       "file": "B3 Basic Fast C2.wav",
       "root": "C3",
-      "loop_start": 119605,
-      "loop_end": 124973
+      "loop_start": 118469,
+      "loop_end": 125211
     },
     {
       "file": "B3 Basic Fast Eb2.wav",
       "root": "Eb3",
-      "loop_start": 130750,
-      "loop_end": 131859
+      "loop_start": 122094,
+      "loop_end": 127763
     },
     {
       "file": "B3 Basic Fast Gb2.wav",
       "root": "Gb3",
-      "loop_start": 121566,
-      "loop_end": 122527
+      "loop_start": 114207,
+      "loop_end": 119421
     },
     {
       "file": "B3 Basic Fast A2.wav",
       "root": "A3",
-      "loop_start": 115686,
-      "loop_end": 116494
+      "loop_start": 122102,
+      "loop_end": 127281
     },
     {
       "file": "B3 Basic Fast C3.wav",
       "root": "C4",
-      "loop_start": 117339,
-      "loop_end": 118013
+      "loop_start": 112767,
+      "loop_end": 119849
     },
     {
       "file": "B3 Basic Fast Eb3.wav",
       "root": "Eb4",
-      "loop_start": 118333,
-      "loop_end": 118901
+      "loop_start": 113489,
+      "loop_end": 120577
     },
     {
       "file": "B3 Basic Fast Gb3.wav",
       "root": "Gb4",
-      "loop_start": 119019,
-      "loop_end": 119497
+      "loop_start": 107663,
+      "loop_end": 114350
     },
     {
       "file": "B3 Basic Fast A3.wav",
       "root": "A4",
-      "loop_start": 116379,
-      "loop_end": 116779
+      "loop_start": 122420,
+      "loop_end": 129444
     },
     {
       "file": "B3 Basic Fast C4.wav",
       "root": "C5",
-      "loop_start": 115119,
-      "loop_end": 115452
+      "loop_start": 118289,
+      "loop_end": 125201
     },
     {
       "file": "B3 Basic Fast Eb4.wav",
       "root": "Eb5",
-      "loop_start": 129430,
-      "loop_end": 129713
+      "loop_start": 115774,
+      "loop_end": 122582
     },
     {
       "file": "B3 Basic Fast Gb4.wav",
       "root": "Gb5",
-      "loop_start": 116264,
-      "loop_end": 116502
+      "loop_start": 113270,
+      "loop_end": 117935
     },
     {
       "file": "B3 Basic Fast A4.wav",
       "root": "A5",
-      "loop_start": 116572,
-      "loop_end": 116773
+      "loop_start": 112410,
+      "loop_end": 118082
     },
     {
       "file": "B3 Basic Fast C5.wav",
       "root": "C6",
-      "loop_start": 116705,
-      "loop_end": 116874
+      "loop_start": 127767,
+      "loop_end": 132804
     },
     {
       "file": "B3 Basic Fast Eb5.wav",
       "root": "Eb6",
-      "loop_start": 119567,
-      "loop_end": 119707
+      "loop_start": 109981,
+      "loop_end": 115522
     },
     {
       "file": "B3 Basic Fast Gb5.wav",
       "root": "Gb6",
-      "loop_start": 129997,
-      "loop_end": 130115
+      "loop_start": 128270,
+      "loop_end": 133540
     },
     {
       "file": "B3 Basic Fast A5.wav",
       "root": "A6",
-      "loop_start": 119978,
-      "loop_end": 120177
+      "loop_start": 114766,
+      "loop_end": 120027
     },
     {
       "file": "B3 Basic Fast C6.wav",
       "root": "C7",
-      "loop_start": 123492,
-      "loop_end": 123617
+      "loop_start": 128374,
+      "loop_end": 133540
     }
   ]
 }

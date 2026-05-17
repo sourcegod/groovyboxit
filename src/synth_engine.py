@@ -12,6 +12,7 @@ import numpy as np
 import soundfile as sf
 import pyrubberband as rb
 import pygame
+from audio_tools import AudioTools
 
 
 # ======================================================================
@@ -76,11 +77,13 @@ class SynthEngine:
     cache comme pygame.Sound pour une lecture sans latence.
     """
 
+    SUSTAIN_SECONDS = 8    # durée max du buffer de sustain pré-rendu
+
     def __init__(self, synths_dir):
         self._synths_dir  = synths_dir
         self._patch_name  = None
         self._patch_meta  = {}
-        self._samples     = []    # [{"root_midi", "data", "sr", "path"}]
+        self._samples     = []    # [{"root_midi","data","sr","path","loop_start","loop_end"}]
         self._cache       = {}    # {midi_note: pygame.Sound}
         self._loop        = False
         self._mixer_freq  = None  # fréquence du mixer pygame (vérifiée au 1er usage)
@@ -107,7 +110,14 @@ class SynthEngine:
             wav_path = os.path.join(patch_dir, s["file"])
             data, sr = sf.read(wav_path, dtype="float64", always_2d=False)
             root_midi = note_name_to_midi(s["root"])
-            self._samples.append({"root_midi": root_midi, "data": data, "sr": sr, "path": wav_path})
+            self._samples.append({
+                "root_midi":  root_midi,
+                "data":       data,
+                "sr":         sr,
+                "path":       wav_path,
+                "loop_start": s.get("loop_start"),
+                "loop_end":   s.get("loop_end"),
+            })
 
         # Tri par note racine pour accès plus lisible
         self._samples.sort(key=lambda s: s["root_midi"])
@@ -163,6 +173,42 @@ class SynthEngine:
 
         return pygame.sndarray.make_sound(np.ascontiguousarray(arr))
 
+    def _build_looped_data(self, data, sr, loop_start, loop_end):
+        """
+        Construit un buffer sustain : [0 → loop_end] + [loop_start → loop_end] × N.
+
+        On inclut l'échantillon loop_end lui-même (passage à zéro montant) dans
+        la région de boucle, de sorte que loop_region[-1] ≈ 0 comme loop_region[0].
+        La jonction est ainsi zero→zero : pas de discontinuité, pas de clic.
+        """
+        n   = len(data)
+        ls  = min(loop_start, n - 1)
+        le  = min(loop_end + 1, n)    # +1 : inclure l'échantillon au passage à zéro
+        if le <= ls:
+            return data
+        attack      = data[:le]
+        loop_region = data[ls:le]
+        loop_len    = len(loop_region)
+        if loop_len == 0:
+            return attack
+        target    = int(self.SUSTAIN_SECONDS * sr)
+        remaining = target - len(attack)
+        if remaining <= 0:
+            return attack
+
+        n_rep     = max(1, (remaining + loop_len - 1) // loop_len)
+        sustained = np.concatenate([attack] + [loop_region] * n_rep)[:target].copy()
+
+        # Fadeout sur les 300 ms finaux pour éviter la coupure abrupte
+        fade_samples = min(int(0.3 * sr), len(sustained) // 8)
+        if fade_samples > 1:
+            fade = np.linspace(1.0, 0.0, fade_samples)
+            if data.ndim > 1:
+                fade = fade[:, np.newaxis]
+            sustained[-fade_samples:] *= fade
+
+        return sustained
+
     def _build_sound(self, midi_note):
         """Crée et met en cache le pygame.Sound pour midi_note."""
         sample = self._find_nearest_sample(midi_note)
@@ -171,6 +217,15 @@ class SynthEngine:
         n_steps = midi_note - sample["root_midi"]
         data    = rb.pitch_shift(sample["data"], sample["sr"], n_steps=n_steps) \
                   if n_steps != 0 else sample["data"]
+        # Sustain loop : re-caler les points sur le signal pitché (AudioTools),
+        # puis construire le buffer
+        if self._loop \
+                and sample["loop_start"] is not None \
+                and sample["loop_end"]   is not None:
+            ls, le = AudioTools.snap_loop_to_zero_crossings(
+                data, sample["loop_start"], sample["loop_end"]
+            )
+            data = self._build_looped_data(data, sample["sr"], ls, le)
         sound = self._to_pygame_sound(data, sample["sr"])
         self._cache[midi_note] = sound
         return sound
@@ -197,8 +252,8 @@ class SynthEngine:
         sound = self.get_sound(midi_note)
         if sound is None:
             return None
-        loops   = -1 if self._loop else 0
-        channel = sound.play(loops)
+        # Sustain pré-rendu → on joue une seule fois (loops=0)
+        channel = sound.play(0)
         if channel is not None and (volume_factor != 1.0 or pan != 0):
             pan_norm = pan / 100.0
             left  = volume_factor * (1.0 - max(0.0, pan_norm))
