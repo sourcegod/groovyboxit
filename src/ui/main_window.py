@@ -47,6 +47,7 @@ class MainWindow(wx.Frame):
         self._rack.set_slot(2, InstrumentType.SYNTH, "Piano 1",           {"patch": "piano_1"})
         self._rack.set_slot(3, InstrumentType.SYNTH, "Organ B3 Basic Fast", {"patch": "Organ_B3_Basic_Fast"})
         self._cur_slot     = 0
+        self._track_slots  = [0] * 8  # slot assigné à chaque piste (défaut : slot_01)
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._kb_last_midi = None     # dernière note MIDI jouée par le synth
         self._pattern_list = [Pattern() for _ in range(99)]
@@ -152,7 +153,7 @@ class MainWindow(wx.Frame):
         track_label = wx.StaticText(panel, label="Piste:")
         self._track_list = wx.ListBox(
             panel,
-            choices=[f"Piste {i + 1}" for i in range(8)],
+            choices=[self._track_label(i) for i in range(8)],
             style=wx.LB_SINGLE,
         )
         self._track_list.SetSelection(0)
@@ -489,14 +490,30 @@ class MainWindow(wx.Frame):
             f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
         )
 
+    def _track_label(self, idx):
+        slot_idx = self._track_slots[idx]
+        return f"Piste {idx + 1} - Slot_{slot_idx + 1:02d}"
+
+    def _refresh_track_list(self):
+        sel = self._track_list.GetSelection()
+        self._track_list.Set([self._track_label(i) for i in range(8)])
+        self._track_list.SetSelection(sel if sel != wx.NOT_FOUND else 0)
+
     def _on_track_select(self, event):
         idx = self._track_list.GetSelection()
         self._player._cur_track = idx
+        # Restaurer le slot assigné à cette piste
+        self._cur_slot = self._track_slots[idx]
+        self._slot_choice.SetSelection(self._cur_slot)
         self._refresh_grid()
-        self._show_status(f"Piste {idx + 1}")
+        slot_name = self._rack.get_slot(self._cur_slot).name
+        self._show_status(f"Piste {idx + 1} — {slot_name}")
 
     def _on_slot_choice(self, event):
         self._cur_slot = self._slot_choice.GetSelection()
+        # Sauvegarder l'assignation slot pour la piste courante et rafraîchir
+        self._track_slots[self._player._cur_track] = self._cur_slot
+        self._refresh_track_list()
         slot = self._rack.get_slot(self._cur_slot)
         if slot.is_empty:
             self._show_status(f"Slot {self._cur_slot + 1:02d}: vide — Alt+X pour charger")
