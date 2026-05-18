@@ -81,5 +81,8 @@ NumPad 0         Stop All
 NumPad +         ShiftPad vers pads 9-16
 NumPad -         ShiftPad vers pads 1-8
 
+--- Pistes ---
+Ctrl+T           Assigner le slot courant à la piste courante (confirmer l'assignation)
+
 --- Aide ---
 F1               Afficher cette aide
