@@ -21,8 +21,12 @@ class DrumPlayer:
         self.bpm = 100
         self.volume = 80
         self._pattern      = Pattern()
-        self._cur_track    = 0
-        self.float_offsets = [[] for _ in range(self._pattern._num_pads)]
+        self._cur_track       = 0
+        self._all_offsets     = [
+            [[] for _ in range(self._pattern._num_pads)]
+            for _ in range(self._pattern._num_tracks)
+        ]
+        self._on_track_play_cb = None  # callback(track_idx, pad_idx, vol, pan)
         self.last_played_pad = None
         self.voice_manager = VoiceManager(self._pattern._num_pads)
         self.step_duration = 60.0 / self.bpm / 4
@@ -44,6 +48,17 @@ class DrumPlayer:
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
+
+    #--------------------------------------------------------------------------
+
+    @property
+    def float_offsets(self):
+        """Offsets du track courant — alias lecture/écriture dans _all_offsets."""
+        return self._all_offsets[self._cur_track]
+
+    @float_offsets.setter
+    def float_offsets(self, value):
+        self._all_offsets[self._cur_track] = value
 
     #--------------------------------------------------------------------------
 
@@ -146,18 +161,19 @@ class DrumPlayer:
             # (on exclut ceux déjà passés avec une petite tolérance)
             events = []
             if self.playing:
-                for pad in range(self._pattern._num_pads):
-                    for offset in self.float_offsets[pad]:
-                        t_sec = offset * self.step_duration
-                        if t_sec > elapsed - 0.002:
-                            events.append((t_sec, pad))
+                for track_idx, track_offsets in enumerate(self._all_offsets):
+                    for pad_idx, pad_off in enumerate(track_offsets):
+                        for offset in pad_off:
+                            t_sec = offset * self.step_duration
+                            if t_sec > elapsed - 0.002:
+                                events.append((t_sec, track_idx, pad_idx))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
                 for bar_idx in range(loop_bars):
                     for beat in range(self._pattern._num_beats):
                         t_sec = (bar_idx * self._pattern._num_steps + beat * steps_per_beat) * self.step_duration
                         if t_sec > elapsed - 0.002:
-                            events.append((t_sec, -(beat + 1)))
+                            events.append((t_sec, -1, beat))
             if self._note_repeat_active:
                 denom    = self.QUANT_STEPS[self._nr_quant_idx]
                 nr_step  = 0.0
@@ -165,11 +181,11 @@ class DrumPlayer:
                 while nr_step < total_steps:
                     t_sec = nr_step * self.step_duration
                     if t_sec > elapsed - 0.002:
-                        events.append((t_sec, self.NR_EVENT))
+                        events.append((t_sec, self.NR_EVENT, 0))
                     nr_step += interval
             events.sort()
 
-            for t_sec, row in events:
+            for t_sec, track_or_type, evt_data in events:
                 if self.stop_event.is_set():
                     return
                 if self._wakeup.is_set():
@@ -184,16 +200,19 @@ class DrumPlayer:
                     return
                 if self._wakeup.is_set():
                     break
-                if row >= 0:
-                    if self.voice_manager.is_audible(row):
-                        self.sound_man.play_sound(
-                            row,
-                            self.voice_manager.get_volume_factor(row),
-                            self.voice_manager.get_pan(row),
-                        )
-                    if self.replace_recording:
-                        self._clear_offset(row, t_sec / self.step_duration)
-                elif row == self.NR_EVENT:
+                if track_or_type >= 0:
+                    track_idx = track_or_type
+                    pad_idx   = evt_data
+                    if self.voice_manager.is_audible(pad_idx):
+                        vol = self.voice_manager.get_volume_factor(pad_idx)
+                        pan = self.voice_manager.get_pan(pad_idx)
+                        if self._on_track_play_cb:
+                            self._on_track_play_cb(track_idx, pad_idx, vol, pan)
+                        else:
+                            self.sound_man.play_sound(pad_idx, vol, pan)
+                    if track_idx == self._cur_track and self.replace_recording:
+                        self._clear_offset(pad_idx, t_sec / self.step_duration)
+                elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
                         self.sound_man.play_sound(
@@ -204,7 +223,7 @@ class DrumPlayer:
                         if self.recording:
                             self._record_nr_hit(pad, t_sec / self.step_duration)
                 else:
-                    self.sound_man.play_metronome(-row - 1)
+                    self.sound_man.play_metronome(evt_data)
             else:
                 # Tous les événements joués → attendre la fin de mesure
                 while not self.stop_event.is_set() and not self._wakeup.is_set():
@@ -241,9 +260,11 @@ class DrumPlayer:
         half_steps = self._pattern._num_bars * self._pattern._num_steps
         if not self._pattern.double_bars():
             return False
-        for pad_idx in range(self._pattern._num_pads):
-            shifted = [f + half_steps for f in self.float_offsets[pad_idx]]
-            self.float_offsets[pad_idx] = sorted(self.float_offsets[pad_idx] + shifted)
+        for track_offsets in self._all_offsets:
+            for pad_idx in range(len(track_offsets)):
+                orig    = track_offsets[pad_idx]
+                shifted = [f + half_steps for f in orig]
+                track_offsets[pad_idx] = sorted(orig + shifted)
         self._wakeup.set()
         return True
 
@@ -255,10 +276,11 @@ class DrumPlayer:
             return False
         half_steps = (self._pattern._num_bars // 2) * self._pattern._num_steps
         self._pattern.halve_bars()
-        for pad_idx in range(self._pattern._num_pads):
-            self.float_offsets[pad_idx] = [
-                f for f in self.float_offsets[pad_idx] if f < half_steps
-            ]
+        for track_offsets in self._all_offsets:
+            for pad_idx in range(len(track_offsets)):
+                track_offsets[pad_idx] = [
+                    f for f in track_offsets[pad_idx] if f < half_steps
+                ]
         self._wakeup.set()
         return True
 
@@ -302,16 +324,20 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def _compute_offsets(self):
-        self.float_offsets = []
-        for pad in self._pattern._curpattern[self._cur_track]:
-            offsets = []
-            base = 0
-            for bar in pad:
-                for step_idx, active in enumerate(bar):
-                    if active:
-                        offsets.append(float(base + step_idx))
-                base += len(bar)
-            self.float_offsets.append(offsets)
+        num_tracks = self._pattern._num_tracks
+        self._all_offsets = []
+        for track_idx in range(num_tracks):
+            track_offsets = []
+            for pad in self._pattern._curpattern[track_idx]:
+                offsets = []
+                base = 0
+                for bar in pad:
+                    for step_idx, active in enumerate(bar):
+                        if active:
+                            offsets.append(float(base + step_idx))
+                    base += len(bar)
+                track_offsets.append(offsets)
+            self._all_offsets.append(track_offsets)
 
     #--------------------------------------------------------------------------
 

@@ -80,6 +80,16 @@ class MainWindow(wx.Frame):
             self._on_note_replaced, pad, bar, step
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
+        self._player._on_track_play_cb = self._on_track_sound_play
+
+    def _on_track_sound_play(self, track_idx, pad_idx, vol_factor, pan):
+        """Dispatch sonore par piste lors de la lecture multi-piste.
+        Chaque piste joue via le SoundManager commun selon son slot assigné.
+        Les pistes SYNTH sont ignorées pendant la lecture automatique (lecture manuelle uniquement)."""
+        slot_idx = self._track_slots[track_idx]
+        slot = self._rack.get_slot(slot_idx)
+        if slot.type != InstrumentType.SYNTH:
+            self._snd.play_sound(pad_idx, vol_factor, pan)
 
     def _build_ui(self):
         panel = wx.Panel(self)
