@@ -81,6 +81,26 @@ NumPad 0         Stop All
 NumPad +         ShiftPad vers pads 9-16
 NumPad -         ShiftPad vers pads 1-8
 
+--- Mode Keyboard (Ctrl+2 pour activer, Ctrl+1 pour revenir en Pad) ---
+Ctrl+1           Passer en mode Pad
+Ctrl+2           Passer en mode Keyboard
+Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
+
+  -- Slot SYNTH (instrument mélodique) --
+  NumPad 1-8     Jouer les 8 premières notes de la gamme courante
+  NumPad 9       Rejouer la dernière note MIDI jouée
+  NumPad +       Octave suivante (bloquant à C7)
+  NumPad -       Octave précédente (bloquant à C0)
+  NumPad /       Gamme précédente (bloquant en début de liste)
+  NumPad *       Gamme suivante (bloquant en fin de liste)
+
+  -- Slot KIT (batterie pitchée, style Maschine+) --
+  NumPad 1-8     Pitcher le dernier pad joué (ou pad courant) sur les 8 notes
+                 de la gamme ; root C4 = pitch original du son
+  NumPad 9       Rejouer la dernière note MIDI pitchée
+  NumPad +/-     Décaler l'octave (et donc la plage de pitch)
+  NumPad / *     Changer de gamme
+
 --- Pistes ---
 Ctrl+T           Assigner le slot courant à la piste courante (confirmer l'assignation)
 
