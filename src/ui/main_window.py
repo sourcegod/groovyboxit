@@ -765,8 +765,9 @@ class MainWindow(wx.Frame):
         # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.
         # Ordre : BPM → Volume → Quant → Grille → BPM (et inverse pour Shift+Tab).
         elif key == wx.WXK_TAB:
-            order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list, self._pattern_listbox,
-                     self._mode_choice, self._scale_choice, self._slot_choice, self._track_list]
+            order = [self._status_ctrl, self._bpm_ctrl, self._volume_ctrl, self._quant_list,
+                     self._pattern_listbox, self._mode_choice, self._scale_choice,
+                     self._slot_choice, self._track_list]
             if focused in order:
                 idx = order.index(focused)
                 if shift:
@@ -774,7 +775,7 @@ class MainWindow(wx.Frame):
                 else:
                     target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 else order[idx + 1]
             else:
-                target = self._bpm_ctrl if not shift else self._track_list
+                target = self._status_ctrl if not shift else self._track_list
             target.SetFocus()
 
         # --- Flèches : navigation grille ou liste selon le focus ---
