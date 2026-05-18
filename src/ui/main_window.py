@@ -48,8 +48,11 @@ class MainWindow(wx.Frame):
         self._rack.set_slot(3, InstrumentType.SYNTH, "Organ B3 Basic Fast", {"patch": "Organ_B3_Basic_Fast"})
         self._cur_slot     = 0
         self._track_slots  = [0] * 8  # slot assigné à chaque piste (défaut : slot_01)
-        self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
-        self._kb_last_midi = None     # dernière note MIDI jouée par le synth
+        self._synth          = None   # SynthEngine courant (preview ou slot commis)
+        self._synth_slot_idx = None   # slot_idx actuellement chargé dans _synth
+        self._slot_synths    = {}     # {slot_idx: SynthEngine} — un moteur par slot assigné à une piste
+        self._kit_synth      = None   # SynthEngine dédié au mode Keyboard/KIT pitché
+        self._kb_last_midi   = None   # dernière note MIDI jouée
         self._kb_kit_pad   = None     # pad Kit actuellement pitché en mode Keyboard
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
@@ -84,11 +87,14 @@ class MainWindow(wx.Frame):
 
     def _on_track_sound_play(self, track_idx, pad_idx, vol_factor, pan):
         """Dispatch sonore par piste lors de la lecture multi-piste.
-        Chaque piste joue via le SoundManager commun selon son slot assigné.
-        Les pistes SYNTH sont ignorées pendant la lecture automatique (lecture manuelle uniquement)."""
+        Chaque slot SYNTH assigné possède son propre SynthEngine dans _slot_synths."""
         slot_idx = self._track_slots[track_idx]
         slot = self._rack.get_slot(slot_idx)
-        if slot.type != InstrumentType.SYNTH:
+        if slot.type == InstrumentType.SYNTH:
+            engine = self._slot_synths.get(slot_idx)
+            if engine and engine.is_loaded() and pad_idx < len(self._kb_notes):
+                engine.play(self._kb_notes[pad_idx], vol_factor, pan)
+        else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 
     def _build_ui(self):
@@ -456,7 +462,10 @@ class MainWindow(wx.Frame):
             self._cells[pad_idx][step_idx].SetValue(False)
 
     def _on_count_in_done(self):
-        self._show_status("Rec: On")
+        self._refresh_track_list()
+        track_idx = self._player._cur_track
+        slot_name = self._rack.get_slot(self._track_slots[track_idx]).name
+        self._show_status(f"Rec: Piste {track_idx + 1} — {slot_name}")
 
     # ------------------------------------------------------------------
     # Mode Keyboard
@@ -505,17 +514,29 @@ class MainWindow(wx.Frame):
     def _assign_track_slot(self):
         """Ctrl+T : assigne le slot courant à la piste courante."""
         track_idx = self._player._cur_track
-        self._track_slots[track_idx] = self._cur_slot
+        slot_idx  = self._cur_slot
+        self._track_slots[track_idx] = slot_idx
         self._refresh_track_list()
-        slot_name = self._rack.get_slot(self._cur_slot).name
+        slot = self._rack.get_slot(slot_idx)
+        # Ancrer un SynthEngine dédié pour la lecture de cette piste
+        if slot.type == InstrumentType.SYNTH and slot_idx not in self._slot_synths:
+            if (self._synth and self._synth_slot_idx == slot_idx
+                    and self._synth.is_loaded()
+                    and self._synth is not self._kit_synth):
+                self._slot_synths[slot_idx] = self._synth
+            else:
+                self._ensure_slot_synth(slot_idx)
         self._show_status(
-            f"Piste {track_idx + 1} → Slot_{self._cur_slot + 1:02d} ({slot_name})"
+            f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name})"
         )
 
     def _track_label(self, idx):
         slot_idx  = self._track_slots[idx]
         slot_name = self._rack.get_slot(slot_idx).name
-        return f"Piste {idx + 1} - Slot_{slot_idx + 1:02d} - {slot_name}"
+        label = f"Piste {idx + 1} - Slot_{slot_idx + 1:02d} - {slot_name}"
+        if self._player._cur_track == idx and self._player.recording:
+            label += " [REC]"
+        return label
 
     def _refresh_track_list(self):
         sel = self._track_list.GetSelection()
@@ -524,6 +545,13 @@ class MainWindow(wx.Frame):
 
     def _on_track_select(self, event):
         idx = self._track_list.GetSelection()
+        if idx < 0:   # EVT_LISTBOX peut se déclencher avec NO_SELECTION sur GTK
+            return
+        # Interdit de changer de piste pendant l'enregistrement
+        if self._player.recording or self._player._count_in > 0:
+            self._track_list.SetSelection(self._player._cur_track)
+            self._show_status("Changement de piste interdit pendant l'enregistrement")
+            return
         self._player._cur_track = idx
         # Restaurer le slot assigné à cette piste
         self._cur_slot = self._track_slots[idx]
@@ -552,23 +580,64 @@ class MainWindow(wx.Frame):
         self._slot_choice.Set(self._rack.labels())
         self._slot_choice.SetSelection(self._cur_slot)
 
+    def _ensure_slot_synth(self, slot_idx):
+        """Charge un SynthEngine dédié pour slot_idx en arrière-plan (lecture multi-piste)."""
+        if slot_idx in self._slot_synths:
+            return
+        slot = self._rack.get_slot(slot_idx)
+        patch_name = slot.config.get("patch", "")
+        if not patch_name:
+            return
+        engine = SynthEngine(self._synths_dir)
+        self._slot_synths[slot_idx] = engine   # réserver la place immédiatement
+        notes = self._kb_notes[:]
+        def run():
+            try:
+                engine.load_patch(patch_name)
+                engine.precompute(notes)
+                wx.CallAfter(self._show_status,
+                    f"Slot {slot_idx + 1:02d} ({patch_name}) prêt pour lecture")
+            except Exception as e:
+                self._slot_synths.pop(slot_idx, None)
+                wx.CallAfter(self._show_status,
+                    f"Erreur slot {slot_idx + 1:02d}: {e}")
+        threading.Thread(target=run, daemon=True).start()
+
     def _load_synth_from_slot(self, slot_idx):
+        """Charge le slot_idx dans _synth pour la preview interactive.
+        Si le slot est déjà commis dans _slot_synths, réutilise son moteur."""
         slot = self._rack.get_slot(slot_idx)
         if slot.type != InstrumentType.SYNTH:
+            return
+        # Slot déjà commis → réutiliser son moteur pour la preview
+        if slot_idx in self._slot_synths:
+            self._synth = self._slot_synths[slot_idx]
+            self._synth_slot_idx = slot_idx
+            self._update_kb_notes()
             return
         patch_name = slot.config.get("patch", "")
         if not patch_name:
             return
-        if self._synth is None:
+        # Créer un moteur de preview (ne pas écraser un moteur commis)
+        if (self._synth is None
+                or self._synth in self._slot_synths.values()
+                or self._synth is self._kit_synth):
             self._synth = SynthEngine(self._synths_dir)
+        self._synth_slot_idx = slot_idx
         self._show_status(f"Chargement du patch '{patch_name}'…")
+        engine = self._synth
+        target_slot = slot_idx
         def run():
             try:
-                self._synth.load_patch(patch_name)
+                engine.load_patch(patch_name)
                 self._update_kb_notes()
-                self._synth.precompute(self._kb_notes)
+                engine.precompute(self._kb_notes)
                 wx.CallAfter(self._show_status,
-                    f"Patch chargé: {patch_name} — {len(self._synth._cache)} notes")
+                    f"Patch chargé: {patch_name} — {len(engine._cache)} notes")
+                # Si entre-temps Ctrl+T a commis ce slot, s'assurer que c'est bien cet engine
+                if self._synth_slot_idx == target_slot \
+                        and target_slot not in self._slot_synths:
+                    pass   # sera ancré par _assign_track_slot au prochain Ctrl+T
             except Exception as e:
                 wx.CallAfter(self._show_status, f"Erreur chargement patch: {e}")
         threading.Thread(target=run, daemon=True).start()
@@ -650,38 +719,35 @@ class MainWindow(wx.Frame):
 
     def _play_kit_pitched(self, note_idx):
         """
-        Mode Keyboard + slot KIT : joue le dernier pad joué (ou le pad courant
-        si aucun pad n'a encore été joué) pitché sur la note note_idx de la gamme.
-        root MIDI fixé à C4 (60) → NumPad1 à l'octave C4 = pitch original.
-        Si le pad source change, recharge le sample en arrière-plan.
+        Mode Keyboard + slot KIT : joue le dernier pad joué pitché sur la gamme.
+        Utilise _kit_synth (dédié) pour ne pas clobber les SynthEngines de _slot_synths.
         """
         last    = self._player.last_played_pad
         pad_idx = last if last is not None else (self._cur_row + self._shift_pad)
         wav_path = self._media_lst[pad_idx] if pad_idx < len(self._media_lst) else None
         if not wav_path:
             return
-        if self._synth is None:
-            self._synth = SynthEngine(self._synths_dir)
+        if self._kit_synth is None:
+            self._kit_synth = SynthEngine(self._synths_dir)
 
         if self._kb_kit_pad != pad_idx:
-            # Nouveau pad source : charger le WAV et pré-calculer les notes
             self._kb_kit_pad = pad_idx
             notes = self._kb_notes[:]
+            kit_engine = self._kit_synth
             def run():
-                self._synth.load_single_sample(wav_path, root_midi=60)
-                self._synth.precompute(notes)
+                kit_engine.load_single_sample(wav_path, root_midi=60)
+                kit_engine.precompute(notes)
                 wx.CallAfter(
                     self._show_status,
                     f"Kit pitché: Pad {pad_idx + 1} — {midi_to_note_name(self._kb_root_midi)}",
                 )
             threading.Thread(target=run, daemon=True).start()
-            # Jouer le son original sans pitch en attendant le chargement
             self._player.play_sound(pad_idx)
             return
 
-        if self._synth.is_loaded():
+        if self._kit_synth.is_loaded():
             midi = self._kb_notes[note_idx]
-            self._synth.play(midi)
+            self._kit_synth.play(midi)
             self._kb_last_midi = midi
         else:
             self._player.play_sound(pad_idx)
@@ -932,6 +998,10 @@ class MainWindow(wx.Frame):
                         v  = vm.get_voice(note_idx)
                         self._synth.play(midi, v.volume / 100.0, v.pan)
                         self._kb_last_midi = midi
+                        if self._player.recording:
+                            bar_idx, step_idx = self._player.record_hit(note_idx)
+                            if bar_idx == 0 and step_idx < self.COLS:
+                                self._cells[note_idx][step_idx].SetValue(True)
                     else:
                         self._show_status("Keyboard: patch en cours de chargement…")
                 elif note_idx < len(self._kb_notes):
@@ -975,18 +1045,18 @@ class MainWindow(wx.Frame):
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(False)
             else:
-                pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
+                pad_idx  = (key - wx.WXK_NUMPAD1) + self._shift_pad
+                note_idx = key - wx.WXK_NUMPAD1   # 0-7, sans shift pour SYNTH
                 slot = self._rack.get_slot(self._cur_slot)
                 if slot.type == InstrumentType.SYNTH and self._synth and self._synth.is_loaded():
-                    if key == wx.WXK_NUMPAD1:
-                        midi = self._synth._samples[0]["root_midi"] if self._synth._samples else 60
+                    if note_idx < len(self._kb_notes):
+                        midi = self._kb_notes[note_idx]
                         self._synth.play(midi)
                         self._kb_last_midi = midi
                         if self._player.recording:
-                            bar_idx, step_idx = self._player.record_hit(0)
+                            bar_idx, step_idx = self._player.record_hit(note_idx)
                             if bar_idx == 0 and step_idx < self.COLS:
-                                self._cells[0][step_idx].SetValue(True)
-                    # NumPad2-8 silencieux en mode Pad + Synth
+                                self._cells[note_idx][step_idx].SetValue(True)
                 else:
                     self._play(pad_idx)
                     if self._player.recording:
@@ -995,10 +1065,14 @@ class MainWindow(wx.Frame):
                             self._cells[pad_idx][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD9:
             if self._input_mode == "keyboard":
-                # Mode Keyboard (KIT ou SYNTH) : rejouer la dernière note MIDI
-                if self._kb_last_midi is not None and self._synth \
-                        and self._synth.is_loaded():
-                    self._synth.play(self._kb_last_midi)
+                # Mode Keyboard : rejouer la dernière note MIDI sur le bon moteur
+                if self._kb_last_midi is not None:
+                    cur_slot = self._rack.get_slot(self._cur_slot)
+                    if cur_slot.type == InstrumentType.KIT:
+                        if self._kit_synth and self._kit_synth.is_loaded():
+                            self._kit_synth.play(self._kb_last_midi)
+                    elif self._synth and self._synth.is_loaded():
+                        self._synth.play(self._kb_last_midi)
             else:
                 last = self._player.last_played_pad
                 if last is not None:
@@ -1078,21 +1152,31 @@ class MainWindow(wx.Frame):
         elif ctrl and not shift and not alt and key == ord('R'):
             self._player.record_pattern_with_count_in()
             n = self._player.count_in_bars
+            self._refresh_track_list()
             self._show_status(f"Count-In: {n} mesure{'s' if n > 1 else ''}..." if n else "Rec: On")
         elif not ctrl and shift and not alt and (ukey == ord('r') or key == ord('R')):
             if self._player.replace_recording:
                 self._player.stop_record()
+                self._refresh_track_list()
                 self._show_status("Replace Rec: Off")
             else:
                 self._player.start_replace_recording()
-                self._show_status("Replace Rec: On")
+                self._refresh_track_list()
+                track_idx = self._player._cur_track
+                slot_name = self._rack.get_slot(self._track_slots[track_idx]).name
+                self._show_status(f"Replace Rec: Piste {track_idx + 1} — {slot_name}")
         elif ukey == ord('r') or (not ctrl and not shift and not alt and key == ord('R')):
             if self._player.recording or self._player._count_in > 0:
                 self._player.stop_record()
+                self._refresh_grid()
+                self._refresh_track_list()
                 self._show_status("Rec: Off")
             else:
                 self._player.record_pattern()
-                self._show_status("Rec: On")
+                self._refresh_track_list()
+                track_idx = self._player._cur_track
+                slot_name = self._rack.get_slot(self._track_slots[track_idx]).name
+                self._show_status(f"Rec: Piste {track_idx + 1} — {slot_name}")
         # --- Touches 1-9 clavier standard en mode Note Repeat ---
         # GetKeyCode() renvoie le code de position US → fonctionne sur AZERTY sans Shift.
         elif self._note_repeat and not ctrl and not shift and not alt \

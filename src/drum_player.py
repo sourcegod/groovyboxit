@@ -325,7 +325,7 @@ class DrumPlayer:
 
     def _compute_offsets(self):
         num_tracks = self._pattern._num_tracks
-        self._all_offsets = []
+        all_offsets = []
         for track_idx in range(num_tracks):
             track_offsets = []
             for pad in self._pattern._curpattern[track_idx]:
@@ -337,7 +337,10 @@ class DrumPlayer:
                             offsets.append(float(base + step_idx))
                     base += len(bar)
                 track_offsets.append(offsets)
-            self._all_offsets.append(track_offsets)
+            all_offsets.append(track_offsets)
+        self._all_offsets = all_offsets   # assignation atomique
+        if self.playing or self.clicking or self._note_repeat_active:
+            self._wakeup.set()
 
     #--------------------------------------------------------------------------
 
