@@ -44,6 +44,9 @@ class Pattern:
         # [track][pad][bar][step]
         self._curpattern = self._make_empty()
 
+        # slot d'instrument assigné à chaque piste (indice dans le Rack)
+        self._track_slots = [0] * self._num_tracks
+
         # état des voix par pad : volume, pan, mute, solo
         self._voices = [
             {"volume": 100, "pan": 0, "mute": False, "solo": False}

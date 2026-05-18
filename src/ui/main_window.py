@@ -278,19 +278,24 @@ class MainWindow(wx.Frame):
         self._pattern_listbox.SetSelection(sel if sel != wx.NOT_FOUND else 0)
 
     def _switch_pattern(self, idx):
-        # Sauvegarder l'état des voix dans le pattern courant avant de changer
-        self._pattern_list[self._cur_pattern_idx]._voices = \
-            self._player.voice_manager.to_list()
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices      = self._player.voice_manager.to_list()
+        cur._track_slots = self._router._track_slots[:]
         self._cur_pattern_idx = idx
-        self._player._pattern.load_pattern(self._pattern_list[idx]._curpattern)
-        self._player.voice_manager.from_list(self._pattern_list[idx]._voices)
+        new = self._pattern_list[idx]
+        self._player._pattern.load_pattern(new._curpattern)
+        self._player.voice_manager.from_list(new._voices)
+        self._router._track_slots[:] = new._track_slots
         self._player._compute_offsets()
         self._refresh_grid()
         self._refresh_all_voice_display()
+        self._refresh_track_list()
         self._show_status(f"Pattern {idx + 1:02d}")
 
     def _save_pattern(self):
-        self._pattern_list[self._cur_pattern_idx].load_pattern(self._player._pattern._curpattern)
+        pat = self._pattern_list[self._cur_pattern_idx]
+        pat.load_pattern(self._player._pattern._curpattern)
+        pat._track_slots = self._router._track_slots[:]
         self._refresh_pattern_listbox()
         self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
 
@@ -300,25 +305,29 @@ class MainWindow(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             idx  = dlg.get_selection()
             name = dlg.get_name()
-            self._pattern_list[idx].load_pattern(self._player._pattern._curpattern)
-            self._pattern_list[idx]._name = name
+            pat  = self._pattern_list[idx]
+            pat.load_pattern(self._player._pattern._curpattern)
+            pat._name        = name
+            pat._track_slots = self._router._track_slots[:]
             self._refresh_pattern_listbox()
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
         dlg.Destroy()
 
     def _save_preset(self):
-        # Synchroniser l'état courant des voix avant sauvegarde
-        self._pattern_list[self._cur_pattern_idx]._voices = \
-            self._player.voice_manager.to_list()
+        # Synchroniser l'état courant avant sauvegarde
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices      = self._player.voice_manager.to_list()
+        cur._track_slots = self._router._track_slots[:]
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
         data = {
             "version": 1,
             "patterns": [
                 {
-                    "name":       pat._name,
-                    "bpm":        pat._bpm,
-                    "num_bars":   pat._num_bars,
-                    "num_steps":  pat._num_steps,
+                    "name":        pat._name,
+                    "bpm":         pat._bpm,
+                    "num_bars":    pat._num_bars,
+                    "num_steps":   pat._num_steps,
+                    "track_slots": pat._track_slots,
                     "curpattern": pat._curpattern,
                     "voices":     pat._voices,
                 }
@@ -359,6 +368,8 @@ class MainWindow(wx.Frame):
             pat._num_bars  = p.get("num_bars", 1)
             pat._num_steps = p.get("num_steps", 16)
             pat.load_pattern(p["curpattern"])
+            if "track_slots" in p:
+                pat._track_slots = p["track_slots"]
             if "voices" in p:
                 pat._voices = p["voices"]
         self._refresh_pattern_listbox()
