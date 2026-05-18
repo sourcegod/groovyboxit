@@ -148,6 +148,20 @@ class MainWindow(wx.Frame):
         hbox2.Add(slot_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox2.Add(self._slot_choice,  0, wx.EXPAND)
 
+        # --- Barre 3 : Pistes ---
+        track_label = wx.StaticText(panel, label="Piste:")
+        self._track_list = wx.ListBox(
+            panel,
+            choices=[f"Piste {i + 1}" for i in range(8)],
+            style=wx.LB_SINGLE,
+        )
+        self._track_list.SetSelection(0)
+        self._track_list.Bind(wx.EVT_LISTBOX, self._on_track_select)
+
+        hbox3 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox3.Add(track_label,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._track_list,   0, wx.EXPAND)
+
         # Panneau voix : M / S / SpinVol / SpinPan par ligne
         self._mute_btns = []
         self._solo_btns = []
@@ -190,6 +204,7 @@ class MainWindow(wx.Frame):
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(hbox,         0, wx.EXPAND | wx.ALL, 4)
         vbox.Add(hbox2,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4)
+        vbox.Add(hbox3,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4)
         vbox.Add(content_hbox, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
@@ -460,6 +475,12 @@ class MainWindow(wx.Frame):
             f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
         )
 
+    def _on_track_select(self, event):
+        idx = self._track_list.GetSelection()
+        self._player._cur_track = idx
+        self._refresh_grid()
+        self._show_status(f"Piste {idx + 1}")
+
     def _on_slot_choice(self, event):
         self._cur_slot = self._slot_choice.GetSelection()
         slot = self._rack.get_slot(self._cur_slot)
@@ -599,6 +620,7 @@ class MainWindow(wx.Frame):
         on_mode_choice  = (focused == self._mode_choice)
         on_scale_choice = (focused == self._scale_choice)
         on_slot_choice  = (focused == self._slot_choice)
+        on_track_list   = (focused == self._track_list)
 
         # --- F1 : Aide clavier ---
         if key == wx.WXK_F1:
@@ -744,7 +766,7 @@ class MainWindow(wx.Frame):
         # Ordre : BPM → Volume → Quant → Grille → BPM (et inverse pour Shift+Tab).
         elif key == wx.WXK_TAB:
             order = [self._bpm_ctrl, self._volume_ctrl, self._quant_list, self._pattern_listbox,
-                     self._mode_choice, self._scale_choice, self._slot_choice]
+                     self._mode_choice, self._scale_choice, self._slot_choice, self._track_list]
             if focused in order:
                 idx = order.index(focused)
                 if shift:
@@ -752,12 +774,13 @@ class MainWindow(wx.Frame):
                 else:
                     target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 else order[idx + 1]
             else:
-                target = self._bpm_ctrl if not shift else self._slot_choice
+                target = self._bpm_ctrl if not shift else self._track_list
             target.SetFocus()
 
         # --- Flèches : navigation grille ou liste selon le focus ---
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
-            if on_quant_list or on_pattern_list or on_mode_choice or on_scale_choice or on_slot_choice:
+            if on_quant_list or on_pattern_list or on_mode_choice or on_scale_choice \
+                    or on_slot_choice or on_track_list:
                 event.Skip()   # laisser le widget gérer sa propre navigation
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()   # SpinCtrl gère nativement → EVT_SPINCTRL suit
