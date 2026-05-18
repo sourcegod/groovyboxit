@@ -208,6 +208,20 @@ class MainWindow(wx.Frame):
         vbox.Add(content_hbox, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
+        # Ordre de navigation Tab/Shift+Tab entre les widgets principaux.
+        # La grille (cells) est le point de départ/arrivée implicite aux extrémités.
+        self._tab_order = [
+            self._status_ctrl,
+            self._bpm_ctrl,
+            self._volume_ctrl,
+            self._quant_list,
+            self._pattern_listbox,
+            self._mode_choice,
+            self._scale_choice,
+            self._slot_choice,
+            self._track_list,
+        ]
+
         self.Fit()
         self._cells[0][0].SetFocus()
 
@@ -605,6 +619,30 @@ class MainWindow(wx.Frame):
             self._nr_release_timer.cancel()
             self._nr_release_timer = None
 
+    def _on_tab_order(self, shift):
+        """
+        Navigue vers le widget suivant ou précédent de self._tab_order.
+        Quand le focus est sur la grille (ou un widget hors liste) :
+          Tab       → premier widget de la liste
+          Shift+Tab → dernier widget de la liste
+        Aux extrémités de la liste :
+          Tab depuis le dernier  → grille
+          Shift+Tab depuis le premier → grille
+        """
+        focused = wx.Window.FindFocus()
+        order   = self._tab_order
+        if focused in order:
+            idx = order.index(focused)
+            if shift:
+                target = self._cells[self._cur_row][self._cur_col] if idx == 0 \
+                         else order[idx - 1]
+            else:
+                target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 \
+                         else order[idx + 1]
+        else:
+            target = order[0] if not shift else order[-1]
+        target.SetFocus()
+
     def _on_char_hook(self, event):
         key  = event.GetKeyCode()
         ukey = event.GetUnicodeKey()   # caractère traduit (layout-aware)
@@ -765,18 +803,7 @@ class MainWindow(wx.Frame):
         # cellule par cellule. On l'intercepte pour sauter entre les widgets clés.
         # Ordre : BPM → Volume → Quant → Grille → BPM (et inverse pour Shift+Tab).
         elif key == wx.WXK_TAB:
-            order = [self._status_ctrl, self._bpm_ctrl, self._volume_ctrl, self._quant_list,
-                     self._pattern_listbox, self._mode_choice, self._scale_choice,
-                     self._slot_choice, self._track_list]
-            if focused in order:
-                idx = order.index(focused)
-                if shift:
-                    target = self._cells[self._cur_row][self._cur_col] if idx == 0 else order[idx - 1]
-                else:
-                    target = self._cells[self._cur_row][self._cur_col] if idx == len(order) - 1 else order[idx + 1]
-            else:
-                target = self._status_ctrl if not shift else self._track_list
-            target.SetFocus()
+            self._on_tab_order(shift)
 
         # --- Flèches : navigation grille ou liste selon le focus ---
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
