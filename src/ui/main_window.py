@@ -519,6 +519,7 @@ class MainWindow(wx.Frame):
         self._refresh_grid()
         slot = self._rack.get_slot(self._cur_slot)
         self._show_status(f"Piste {idx + 1} — {slot.name}")
+        # Recharger le synth si la piste est assignée à un slot SYNTH
         if slot.type == InstrumentType.SYNTH:
             self._load_synth_from_slot(self._cur_slot)
 
@@ -870,8 +871,10 @@ class MainWindow(wx.Frame):
         # --- NumPad ---
         elif wx.WXK_NUMPAD1 <= key <= wx.WXK_NUMPAD8:
             if self._input_mode == "keyboard":
-                note_idx = key - wx.WXK_NUMPAD1
-                if note_idx < len(self._kb_notes):
+                note_idx  = key - wx.WXK_NUMPAD1
+                cur_slot  = self._rack.get_slot(self._cur_slot)
+                if note_idx < len(self._kb_notes) \
+                        and cur_slot.type == InstrumentType.SYNTH:
                     midi = self._kb_notes[note_idx]
                     if self._synth and self._synth.is_loaded():
                         vm = self._player.voice_manager
@@ -879,7 +882,10 @@ class MainWindow(wx.Frame):
                         self._synth.play(midi, v.volume / 100.0, v.pan)
                         self._kb_last_midi = midi
                     else:
-                        self._show_status("Keyboard: aucun patch chargé (Alt+X)")
+                        self._show_status("Keyboard: patch en cours de chargement…")
+                elif note_idx < len(self._kb_notes):
+                    # Slot KIT en mode Keyboard → jouer le son du kit
+                    self._player.play_sound(note_idx + self._shift_pad)
             elif self._note_repeat:
                 pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
                 if key == self._nr_active_key:
