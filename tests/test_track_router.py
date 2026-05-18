@@ -106,8 +106,8 @@ def test_update_kb_notes_major():
 
 def test_update_kb_notes_minor():
     router, _, _ = _make_router()
-    router.update_kb_notes("minor", 48)
-    assert router.kb_notes == scale_midi_notes("minor", 48, 16)
+    router.update_kb_notes("minor_nat", 48)
+    assert router.kb_notes == scale_midi_notes("minor_nat", 48, 16)
     print("  update_kb_notes (minor, C3) : OK")
 
 
