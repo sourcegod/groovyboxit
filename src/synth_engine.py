@@ -122,6 +122,23 @@ class SynthEngine:
         # Tri par note racine pour accès plus lisible
         self._samples.sort(key=lambda s: s["root_midi"])
 
+    def load_single_sample(self, wav_path, root_midi=60):
+        """Charge un WAV unique comme patch mono-sample (sans patch.json).
+        Utilisé pour le mode Keyboard/Kit : pitcher un pad de batterie."""
+        data, sr = sf.read(wav_path, dtype="float64", always_2d=False)
+        self._patch_name = os.path.basename(wav_path)
+        self._patch_meta = {}
+        self._loop       = False
+        self._cache      = {}
+        self._samples    = [{
+            "root_midi":  root_midi,
+            "data":       data,
+            "sr":         sr,
+            "path":       wav_path,
+            "loop_start": None,
+            "loop_end":   None,
+        }]
+
     # ------------------------------------------------------------------
     # Génération et cache
     # ------------------------------------------------------------------

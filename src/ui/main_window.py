@@ -50,6 +50,7 @@ class MainWindow(wx.Frame):
         self._track_slots  = [0] * 8  # slot assigné à chaque piste (défaut : slot_01)
         self._synth        = None     # SynthEngine, initialisé au chargement d'un patch
         self._kb_last_midi = None     # dernière note MIDI jouée par le synth
+        self._kb_kit_pad   = None     # pad Kit actuellement pitché en mode Keyboard
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
@@ -68,6 +69,7 @@ class MainWindow(wx.Frame):
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
         click1 = os.path.join(media_dir, "hi_wood_block_mono.wav")
         click2 = os.path.join(media_dir, "low_wood_block_mono.wav")
+        self._media_lst = media_lst
         self._snd = SoundManager(media_lst, click1, click2)
         self._snd.load_sounds()
         self._player = DrumPlayer(self._snd)
@@ -516,6 +518,7 @@ class MainWindow(wx.Frame):
         # Restaurer le slot assigné à cette piste
         self._cur_slot = self._track_slots[idx]
         self._slot_choice.SetSelection(self._cur_slot)
+        self._kb_kit_pad = None   # forcer le rechargement du sample Kit pitché
         self._refresh_grid()
         slot = self._rack.get_slot(self._cur_slot)
         self._show_status(f"Piste {idx + 1} — {slot.name}")
@@ -634,6 +637,44 @@ class MainWindow(wx.Frame):
             self._kb_last_midi = midi
         else:
             self._player.play_sound(idx)
+
+    def _play_kit_pitched(self, note_idx):
+        """
+        Mode Keyboard + slot KIT : joue le dernier pad joué (ou le pad courant
+        si aucun pad n'a encore été joué) pitché sur la note note_idx de la gamme.
+        root MIDI fixé à C4 (60) → NumPad1 à l'octave C4 = pitch original.
+        Si le pad source change, recharge le sample en arrière-plan.
+        """
+        last    = self._player.last_played_pad
+        pad_idx = last if last is not None else (self._cur_row + self._shift_pad)
+        wav_path = self._media_lst[pad_idx] if pad_idx < len(self._media_lst) else None
+        if not wav_path:
+            return
+        if self._synth is None:
+            self._synth = SynthEngine(self._synths_dir)
+
+        if self._kb_kit_pad != pad_idx:
+            # Nouveau pad source : charger le WAV et pré-calculer les notes
+            self._kb_kit_pad = pad_idx
+            notes = self._kb_notes[:]
+            def run():
+                self._synth.load_single_sample(wav_path, root_midi=60)
+                self._synth.precompute(notes)
+                wx.CallAfter(
+                    self._show_status,
+                    f"Kit pitché: Pad {pad_idx + 1} — {midi_to_note_name(self._kb_root_midi)}",
+                )
+            threading.Thread(target=run, daemon=True).start()
+            # Jouer le son original sans pitch en attendant le chargement
+            self._player.play_sound(pad_idx)
+            return
+
+        if self._synth.is_loaded():
+            midi = self._kb_notes[note_idx]
+            self._synth.play(midi)
+            self._kb_last_midi = midi
+        else:
+            self._player.play_sound(pad_idx)
 
     def _nr_arm_release(self):
         if self._nr_release_timer:
@@ -884,8 +925,8 @@ class MainWindow(wx.Frame):
                     else:
                         self._show_status("Keyboard: patch en cours de chargement…")
                 elif note_idx < len(self._kb_notes):
-                    # Slot KIT en mode Keyboard → jouer le son du kit
-                    self._player.play_sound(note_idx + self._shift_pad)
+                    # Slot KIT en mode Keyboard → pad courant pitché selon la gamme
+                    self._play_kit_pitched(note_idx)
             elif self._note_repeat:
                 pad_idx = (key - wx.WXK_NUMPAD1) + self._shift_pad
                 if key == self._nr_active_key:
@@ -943,9 +984,10 @@ class MainWindow(wx.Frame):
                         if bar_idx == 0 and step_idx < self.COLS:
                             self._cells[pad_idx][step_idx].SetValue(True)
         elif key == wx.WXK_NUMPAD9:
-            slot = self._rack.get_slot(self._cur_slot)
-            if slot.type == InstrumentType.SYNTH and self._synth and self._synth.is_loaded():
-                if self._kb_last_midi is not None:
+            if self._input_mode == "keyboard":
+                # Mode Keyboard (KIT ou SYNTH) : rejouer la dernière note MIDI
+                if self._kb_last_midi is not None and self._synth \
+                        and self._synth.is_loaded():
                     self._synth.play(self._kb_last_midi)
             else:
                 last = self._player.last_played_pad
