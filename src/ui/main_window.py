@@ -490,9 +490,20 @@ class MainWindow(wx.Frame):
             f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
         )
 
+    def _assign_track_slot(self):
+        """Ctrl+T : assigne le slot courant à la piste courante."""
+        track_idx = self._player._cur_track
+        self._track_slots[track_idx] = self._cur_slot
+        self._refresh_track_list()
+        slot_name = self._rack.get_slot(self._cur_slot).name
+        self._show_status(
+            f"Piste {track_idx + 1} → Slot_{self._cur_slot + 1:02d} ({slot_name})"
+        )
+
     def _track_label(self, idx):
-        slot_idx = self._track_slots[idx]
-        return f"Piste {idx + 1} - Slot_{slot_idx + 1:02d}"
+        slot_idx  = self._track_slots[idx]
+        slot_name = self._rack.get_slot(slot_idx).name
+        return f"Piste {idx + 1} - Slot_{slot_idx + 1:02d} - {slot_name}"
 
     def _refresh_track_list(self):
         sel = self._track_list.GetSelection()
@@ -506,19 +517,20 @@ class MainWindow(wx.Frame):
         self._cur_slot = self._track_slots[idx]
         self._slot_choice.SetSelection(self._cur_slot)
         self._refresh_grid()
-        slot_name = self._rack.get_slot(self._cur_slot).name
-        self._show_status(f"Piste {idx + 1} — {slot_name}")
+        slot = self._rack.get_slot(self._cur_slot)
+        self._show_status(f"Piste {idx + 1} — {slot.name}")
+        if slot.type == InstrumentType.SYNTH:
+            self._load_synth_from_slot(self._cur_slot)
 
     def _on_slot_choice(self, event):
+        """Changement de slot : preview uniquement, sans modifier l'assignation de la piste.
+        Appuyer Ctrl+T pour confirmer l'assignation."""
         self._cur_slot = self._slot_choice.GetSelection()
-        # Sauvegarder l'assignation slot pour la piste courante et rafraîchir
-        self._track_slots[self._player._cur_track] = self._cur_slot
-        self._refresh_track_list()
         slot = self._rack.get_slot(self._cur_slot)
         if slot.is_empty:
             self._show_status(f"Slot {self._cur_slot + 1:02d}: vide — Alt+X pour charger")
         else:
-            self._show_status(f"Slot {self._cur_slot + 1:02d}: {slot.name}")
+            self._show_status(f"Slot {self._cur_slot + 1:02d}: {slot.name} (Ctrl+T pour assigner)")
             if slot.type == InstrumentType.SYNTH:
                 self._load_synth_from_slot(self._cur_slot)
 
@@ -722,6 +734,8 @@ class MainWindow(wx.Frame):
         # --- Raccourcis Ctrl ---
         elif ctrl and shift and key == ord('W'):
             self._save_pattern_as()
+        elif ctrl and not shift and not alt and key == ord('T'):
+            self._assign_track_slot()
         elif ctrl and key == ord('W'):
             self._save_pattern()
         elif ctrl and key == ord('D'):
