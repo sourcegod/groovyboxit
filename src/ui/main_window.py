@@ -703,33 +703,62 @@ class MainWindow(wx.Frame):
         elif alt and not ctrl and not shift and key == ord('W'):
             self._save_preset()
 
-        # --- Alt+↑/↓ : volume pad courant ±5 ---
+        # --- Alt+↑/↓ : volume piste ±5 (liste pistes) ou pad ±5 ---
         elif alt and not ctrl and not shift and key == wx.WXK_UP:
-            vm = self._player.voice_manager
-            vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume + 5)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
+            if on_track_list:
+                tidx    = self._player._cur_track
+                new_vol = self._router.get_track_volume(tidx) + 5
+                self._router.set_track_volume(tidx, new_vol)
+                self._show_status(f"Piste {tidx + 1}: Volume {self._router.get_track_volume(tidx)}")
+            else:
+                vm = self._player.voice_manager
+                vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume + 5)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
         elif alt and not ctrl and not shift and key == wx.WXK_DOWN:
-            vm = self._player.voice_manager
-            vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume - 5)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
+            if on_track_list:
+                tidx    = self._player._cur_track
+                new_vol = self._router.get_track_volume(tidx) - 5
+                self._router.set_track_volume(tidx, new_vol)
+                self._show_status(f"Piste {tidx + 1}: Volume {self._router.get_track_volume(tidx)}")
+            else:
+                vm = self._player.voice_manager
+                vm.set_volume(self._cur_row, vm.get_voice(self._cur_row).volume - 5)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Volume {vm.get_voice(self._cur_row).volume}")
 
-        # --- Alt+←/→ : pan pad courant ±10 ; Alt+0 : reset centre ---
+        # --- Alt+←/→ : pan piste ±10 (liste pistes) ou pad ±10 ; Alt+0 : reset ---
         elif alt and not ctrl and not shift and key == wx.WXK_LEFT:
-            vm = self._player.voice_manager
-            vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) - 10)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
+            if on_track_list:
+                tidx    = self._player._cur_track
+                new_pan = self._router.get_track_pan(tidx) - 10
+                self._router.set_track_pan(tidx, new_pan)
+                self._show_status(f"Piste {tidx + 1}: Pan {self._router.get_track_pan(tidx)}")
+            else:
+                vm = self._player.voice_manager
+                vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) - 10)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
         elif alt and not ctrl and not shift and key == wx.WXK_RIGHT:
-            vm = self._player.voice_manager
-            vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) + 10)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
+            if on_track_list:
+                tidx    = self._player._cur_track
+                new_pan = self._router.get_track_pan(tidx) + 10
+                self._router.set_track_pan(tidx, new_pan)
+                self._show_status(f"Piste {tidx + 1}: Pan {self._router.get_track_pan(tidx)}")
+            else:
+                vm = self._player.voice_manager
+                vm.set_pan(self._cur_row, vm.get_pan(self._cur_row) + 10)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Pan {vm.get_pan(self._cur_row)}")
         elif alt and not ctrl and not shift and (ukey == ord('0') or key == ord('0')):
-            self._player.voice_manager.set_pan(self._cur_row, 0)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Pan 0 (centre)")
+            if on_track_list:
+                tidx = self._player._cur_track
+                self._router.set_track_pan(tidx, 0)
+                self._show_status(f"Piste {tidx + 1}: Pan 0 (centre)")
+            else:
+                self._player.voice_manager.set_pan(self._cur_row, 0)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Pan 0 (centre)")
         elif alt and not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             self._open_explorer()
 

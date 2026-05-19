@@ -586,6 +586,200 @@ def test_on_play_synth_muted_silent():
 
 
 # ---------------------------------------------------------------------------
+# Volume / Pan par piste
+# ---------------------------------------------------------------------------
+
+def test_initial_volume_pan_state():
+    router, _, _ = _make_router()
+    assert router._track_volumes == [100] * 8
+    assert router._track_pans    == [0]   * 8
+    print("  volume/pan état initial : OK")
+
+
+# --- get / set track volume ---
+
+def test_set_get_track_volume():
+    router, _, _ = _make_router()
+    router.set_track_volume(3, 75)
+    assert router.get_track_volume(3) == 75
+    assert all(router.get_track_volume(i) == 100 for i in range(8) if i != 3)
+    print("  set/get_track_volume : OK")
+
+
+def test_set_track_volume_clamp_min():
+    router, _, _ = _make_router()
+    router.set_track_volume(0, -10)
+    assert router.get_track_volume(0) == 0
+    print("  set_track_volume clamp min (0) : OK")
+
+
+def test_set_track_volume_clamp_max():
+    router, _, _ = _make_router()
+    router.set_track_volume(0, 150)
+    assert router.get_track_volume(0) == 100
+    print("  set_track_volume clamp max (100) : OK")
+
+
+def test_set_track_volume_boundary_zero():
+    router, _, _ = _make_router()
+    router.set_track_volume(1, 0)
+    assert router.get_track_volume(1) == 0
+    print("  set_track_volume limite basse (0) : OK")
+
+
+def test_set_track_volume_boundary_max():
+    router, _, _ = _make_router()
+    router.set_track_volume(1, 100)
+    assert router.get_track_volume(1) == 100
+    print("  set_track_volume limite haute (100) : OK")
+
+
+# --- get / set track pan ---
+
+def test_set_get_track_pan():
+    router, _, _ = _make_router()
+    router.set_track_pan(5, -40)
+    assert router.get_track_pan(5) == -40
+    assert all(router.get_track_pan(i) == 0 for i in range(8) if i != 5)
+    print("  set/get_track_pan : OK")
+
+
+def test_set_track_pan_clamp_left():
+    router, _, _ = _make_router()
+    router.set_track_pan(0, -200)
+    assert router.get_track_pan(0) == -100
+    print("  set_track_pan clamp gauche (-100) : OK")
+
+
+def test_set_track_pan_clamp_right():
+    router, _, _ = _make_router()
+    router.set_track_pan(0, 200)
+    assert router.get_track_pan(0) == 100
+    print("  set_track_pan clamp droite (+100) : OK")
+
+
+def test_set_track_pan_boundary_left():
+    router, _, _ = _make_router()
+    router.set_track_pan(2, -100)
+    assert router.get_track_pan(2) == -100
+    print("  set_track_pan limite gauche (-100) : OK")
+
+
+def test_set_track_pan_boundary_right():
+    router, _, _ = _make_router()
+    router.set_track_pan(2, 100)
+    assert router.get_track_pan(2) == 100
+    print("  set_track_pan limite droite (+100) : OK")
+
+
+# --- on_play : application volume piste ---
+
+def test_on_play_track_volume_scales_vol_factor():
+    """Volume piste 50 % → vol_factor divisé par 2."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0        # KIT
+    router.set_track_volume(0, 50)
+    router.on_play(0, 1, 1.0, 0)
+    assert len(snd.played) == 1
+    _, vol, _ = snd.played[0]
+    assert abs(vol - 0.5) < 1e-9
+    print("  on_play volume piste 50 % → vol×0.5 : OK")
+
+
+def test_on_play_track_volume_zero_silent():
+    """Volume piste 0 → silence (vol_factor == 0 mais son quand même dispatché)."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.set_track_volume(0, 0)
+    router.on_play(0, 2, 1.0, 0)
+    assert len(snd.played) == 1
+    _, vol, _ = snd.played[0]
+    assert vol == 0.0
+    print("  on_play volume piste 0 → vol_factor=0 : OK")
+
+
+def test_on_play_track_volume_combines_with_pad_vol():
+    """Volume piste × volume pad → produit des deux facteurs."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.set_track_volume(0, 50)    # piste 50 %
+    router.on_play(0, 0, 0.8, 0)     # pad vol_factor 0.8
+    _, vol, _ = snd.played[0]
+    assert abs(vol - 0.4) < 1e-9     # 0.8 × 0.5
+    print("  on_play volume piste × volume pad : OK")
+
+
+def test_on_play_track_volume_100_unchanged():
+    """Volume piste 100 (défaut) ne modifie pas vol_factor."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.on_play(0, 0, 0.7, 0)
+    _, vol, _ = snd.played[0]
+    assert abs(vol - 0.7) < 1e-9
+    print("  on_play volume piste 100 (défaut) → vol inchangé : OK")
+
+
+# --- on_play : application pan piste ---
+
+def test_on_play_track_pan_offsets_pad_pan():
+    """Pan piste s'additionne au pan pad."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.set_track_pan(0, 20)
+    router.on_play(0, 0, 1.0, 10)    # pan pad = 10
+    _, _, pan = snd.played[0]
+    assert pan == 30                  # 10 + 20
+    print("  on_play pan piste + pad : OK")
+
+
+def test_on_play_track_pan_clamps_positive():
+    """Pan combiné > 100 est ramené à 100."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.set_track_pan(0, 80)
+    router.on_play(0, 0, 1.0, 60)    # 60 + 80 = 140 → 100
+    _, _, pan = snd.played[0]
+    assert pan == 100
+    print("  on_play pan combiné clamp +100 : OK")
+
+
+def test_on_play_track_pan_clamps_negative():
+    """Pan combiné < -100 est ramené à -100."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.set_track_pan(0, -70)
+    router.on_play(0, 0, 1.0, -60)   # -60 + (-70) = -130 → -100
+    _, _, pan = snd.played[0]
+    assert pan == -100
+    print("  on_play pan combiné clamp -100 : OK")
+
+
+def test_on_play_track_pan_zero_unchanged():
+    """Pan piste 0 (défaut) ne modifie pas le pan pad."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router.on_play(0, 0, 1.0, 30)
+    _, _, pan = snd.played[0]
+    assert pan == 30
+    print("  on_play pan piste 0 (défaut) → pan inchangé : OK")
+
+
+def test_on_play_synth_track_volume_applied():
+    """Volume piste s'applique aussi aux pistes SYNTH."""
+    router, snd, _ = _make_router()
+    fake = FakeSynthEngine()
+    fake._loaded = True
+    router._slot_synths[1] = fake
+    router._track_slots[0] = 1       # SYNTH
+    router.set_track_volume(0, 50)
+    router.on_play(0, 0, 1.0, 0)
+    assert len(fake._played) == 1
+    _, vol, _ = fake._played[0]
+    assert abs(vol - 0.5) < 1e-9
+    print("  on_play SYNTH volume piste appliqué : OK")
+
+
+# ---------------------------------------------------------------------------
 # play_kit_pitched
 # ---------------------------------------------------------------------------
 
@@ -710,6 +904,26 @@ if __name__ == "__main__":
     test_on_play_after_unmute_all_plays()
     test_on_play_after_unsolo_all_plays()
     test_on_play_synth_muted_silent()
+    test_initial_volume_pan_state()
+    test_set_get_track_volume()
+    test_set_track_volume_clamp_min()
+    test_set_track_volume_clamp_max()
+    test_set_track_volume_boundary_zero()
+    test_set_track_volume_boundary_max()
+    test_set_get_track_pan()
+    test_set_track_pan_clamp_left()
+    test_set_track_pan_clamp_right()
+    test_set_track_pan_boundary_left()
+    test_set_track_pan_boundary_right()
+    test_on_play_track_volume_scales_vol_factor()
+    test_on_play_track_volume_zero_silent()
+    test_on_play_track_volume_combines_with_pad_vol()
+    test_on_play_track_volume_100_unchanged()
+    test_on_play_track_pan_offsets_pad_pan()
+    test_on_play_track_pan_clamps_positive()
+    test_on_play_track_pan_clamps_negative()
+    test_on_play_track_pan_zero_unchanged()
+    test_on_play_synth_track_volume_applied()
     test_play_kit_pitched_no_wav_path_noop()
     test_play_kit_pitched_new_pad_calls_fallback()
     test_play_kit_pitched_same_pad_loaded_plays_midi()

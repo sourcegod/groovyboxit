@@ -43,6 +43,8 @@ class TrackRouter:
         self._track_slots    = [0] * self.NUM_TRACKS
         self._track_mutes    = [False] * self.NUM_TRACKS
         self._track_solos    = [False] * self.NUM_TRACKS
+        self._track_volumes  = [100]   * self.NUM_TRACKS  # 0..100
+        self._track_pans     = [0]     * self.NUM_TRACKS  # -100..+100
         self._slot_synths    = {}       # {slot_idx: SynthEngine}
         self._synth          = None     # moteur de preview
         self._synth_slot_idx = None     # slot_idx actuellement chargé dans _synth
@@ -204,6 +206,22 @@ class TrackRouter:
         return True
 
     # ------------------------------------------------------------------
+    # Volume / Pan par piste
+    # ------------------------------------------------------------------
+
+    def get_track_volume(self, track_idx):
+        return self._track_volumes[track_idx]
+
+    def set_track_volume(self, track_idx, vol):
+        self._track_volumes[track_idx] = max(0, min(100, vol))
+
+    def get_track_pan(self, track_idx):
+        return self._track_pans[track_idx]
+
+    def set_track_pan(self, track_idx, pan):
+        self._track_pans[track_idx] = max(-100, min(100, pan))
+
+    # ------------------------------------------------------------------
     # Lecture
     # ------------------------------------------------------------------
 
@@ -215,6 +233,8 @@ class TrackRouter:
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):
             return
+        vol_factor = vol_factor * (self._track_volumes[track_idx] / 100.0)
+        pan = max(-100, min(100, pan + self._track_pans[track_idx]))
         slot_idx = self._track_slots[track_idx]
         slot     = self._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.SYNTH:

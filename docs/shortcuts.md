@@ -107,10 +107,13 @@ Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
   NumPad +/-     Décaler l'octave (et donc la plage de pitch)
   NumPad / *     Changer de gamme
 
---- Pistes ---
-Ctrl+T           Assigner le slot courant à la piste courante (confirmer l'assignation)
-X / Shift+X      Mute piste / Démuter toutes (focus liste pistes)
-S / Shift+S      Solo piste / Désolo toutes  (focus liste pistes)
+--- Pistes (focus liste des pistes) ---
+Ctrl+T           Assigner le slot courant à la piste courante
+X / Shift+X      Mute piste / Démuter toutes
+S / Shift+S      Solo piste / Désolo toutes
+Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
+Alt+← / Alt+→   Pan piste ±10 (-100..+100)
+Alt+0            Recentrer le pan de la piste (Pan 0)
 
 --- Aide ---
 F1               Afficher cette aide
