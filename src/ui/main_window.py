@@ -279,13 +279,21 @@ class MainWindow(wx.Frame):
 
     def _switch_pattern(self, idx):
         cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices      = self._player.voice_manager.to_list()
-        cur._track_slots = self._router._track_slots[:]
+        cur._voices        = self._player.voice_manager.to_list()
+        cur._track_slots   = self._router._track_slots[:]
+        cur._track_mutes   = self._router._track_mutes[:]
+        cur._track_solos   = self._router._track_solos[:]
+        cur._track_volumes = self._router._track_volumes[:]
+        cur._track_pans    = self._router._track_pans[:]
         self._cur_pattern_idx = idx
         new = self._pattern_list[idx]
         self._player._pattern.load_pattern(new._curpattern)
         self._player.voice_manager.from_list(new._voices)
-        self._router._track_slots[:] = new._track_slots
+        self._router._track_slots[:]   = new._track_slots
+        self._router._track_mutes[:]   = new._track_mutes
+        self._router._track_solos[:]   = new._track_solos
+        self._router._track_volumes[:] = new._track_volumes
+        self._router._track_pans[:]    = new._track_pans
         self._player._compute_offsets()
         self._refresh_grid()
         self._refresh_all_voice_display()
@@ -295,7 +303,11 @@ class MainWindow(wx.Frame):
     def _save_pattern(self):
         pat = self._pattern_list[self._cur_pattern_idx]
         pat.load_pattern(self._player._pattern._curpattern)
-        pat._track_slots = self._router._track_slots[:]
+        pat._track_slots   = self._router._track_slots[:]
+        pat._track_mutes   = self._router._track_mutes[:]
+        pat._track_solos   = self._router._track_solos[:]
+        pat._track_volumes = self._router._track_volumes[:]
+        pat._track_pans    = self._router._track_pans[:]
         self._refresh_pattern_listbox()
         self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
 
@@ -307,8 +319,12 @@ class MainWindow(wx.Frame):
             name = dlg.get_name()
             pat  = self._pattern_list[idx]
             pat.load_pattern(self._player._pattern._curpattern)
-            pat._name        = name
-            pat._track_slots = self._router._track_slots[:]
+            pat._name          = name
+            pat._track_slots   = self._router._track_slots[:]
+            pat._track_mutes   = self._router._track_mutes[:]
+            pat._track_solos   = self._router._track_solos[:]
+            pat._track_volumes = self._router._track_volumes[:]
+            pat._track_pans    = self._router._track_pans[:]
             self._refresh_pattern_listbox()
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
         dlg.Destroy()
@@ -316,20 +332,28 @@ class MainWindow(wx.Frame):
     def _save_preset(self):
         # Synchroniser l'état courant avant sauvegarde
         cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices      = self._player.voice_manager.to_list()
-        cur._track_slots = self._router._track_slots[:]
+        cur._voices        = self._player.voice_manager.to_list()
+        cur._track_slots   = self._router._track_slots[:]
+        cur._track_mutes   = self._router._track_mutes[:]
+        cur._track_solos   = self._router._track_solos[:]
+        cur._track_volumes = self._router._track_volumes[:]
+        cur._track_pans    = self._router._track_pans[:]
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
         data = {
             "version": 1,
             "patterns": [
                 {
-                    "name":        pat._name,
-                    "bpm":         pat._bpm,
-                    "num_bars":    pat._num_bars,
-                    "num_steps":   pat._num_steps,
-                    "track_slots": pat._track_slots,
-                    "curpattern": pat._curpattern,
-                    "voices":     pat._voices,
+                    "name":          pat._name,
+                    "bpm":           pat._bpm,
+                    "num_bars":      pat._num_bars,
+                    "num_steps":     pat._num_steps,
+                    "track_slots":   pat._track_slots,
+                    "track_mutes":   pat._track_mutes,
+                    "track_solos":   pat._track_solos,
+                    "track_volumes": pat._track_volumes,
+                    "track_pans":    pat._track_pans,
+                    "curpattern":    pat._curpattern,
+                    "voices":        pat._voices,
                 }
                 for pat in self._pattern_list
             ],
@@ -369,7 +393,15 @@ class MainWindow(wx.Frame):
             pat._num_steps = p.get("num_steps", 16)
             pat.load_pattern(p["curpattern"])
             if "track_slots" in p:
-                pat._track_slots = p["track_slots"]
+                pat._track_slots   = p["track_slots"]
+            if "track_mutes" in p:
+                pat._track_mutes   = p["track_mutes"]
+            if "track_solos" in p:
+                pat._track_solos   = p["track_solos"]
+            if "track_volumes" in p:
+                pat._track_volumes = p["track_volumes"]
+            if "track_pans" in p:
+                pat._track_pans    = p["track_pans"]
             if "voices" in p:
                 pat._voices = p["voices"]
         self._refresh_pattern_listbox()

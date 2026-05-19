@@ -27,7 +27,7 @@ NUM_STEPS  = 16
 
 def _make_multitrack_pattern():
     """
-    Retourne un Pattern avec des notes sur plusieurs pistes et track_slots variés.
+    Retourne un Pattern avec des notes sur plusieurs pistes et états mixage variés.
 
       Piste 0 — pad 0  : steps 0, 4, 8, 12   (kick)
       Piste 0 — pad 4  : steps 2, 10          (snare)
@@ -44,6 +44,11 @@ def _make_multitrack_pattern():
     cp[3][2][0][3]  = True
     # Assignations de slots variées
     p._track_slots = [0, 1, 2, 1, 0, 0, 0, 0]
+    # Mixage par piste
+    p._track_mutes[2]   = True
+    p._track_solos[0]   = True
+    p._track_volumes[1] = 75
+    p._track_pans[3]    = -40
     # Voix personnalisées sur quelques pads
     p._voices[0]["volume"] = 80
     p._voices[1]["pan"]    = -30
@@ -54,13 +59,17 @@ def _make_multitrack_pattern():
 def _serialize(pat):
     """Reproduit exactement le format de _save_preset pour un pattern."""
     return {
-        "name":        pat._name,
-        "bpm":         pat._bpm,
-        "num_bars":    pat._num_bars,
-        "num_steps":   pat._num_steps,
-        "track_slots": pat._track_slots[:],
-        "curpattern":  pat._curpattern,
-        "voices":      pat._voices,
+        "name":          pat._name,
+        "bpm":           pat._bpm,
+        "num_bars":      pat._num_bars,
+        "num_steps":     pat._num_steps,
+        "track_slots":   pat._track_slots[:],
+        "track_mutes":   pat._track_mutes[:],
+        "track_solos":   pat._track_solos[:],
+        "track_volumes": pat._track_volumes[:],
+        "track_pans":    pat._track_pans[:],
+        "curpattern":    pat._curpattern,
+        "voices":        pat._voices,
     }
 
 
@@ -72,10 +81,12 @@ def _deserialize(data):
     pat._num_bars  = data.get("num_bars", 1)
     pat._num_steps = data.get("num_steps", 16)
     pat.load_pattern(data["curpattern"])
-    if "track_slots" in data:
-        pat._track_slots = data["track_slots"]
-    if "voices" in data:
-        pat._voices = data["voices"]
+    if "track_slots"   in data: pat._track_slots   = data["track_slots"]
+    if "track_mutes"   in data: pat._track_mutes   = data["track_mutes"]
+    if "track_solos"   in data: pat._track_solos   = data["track_solos"]
+    if "track_volumes" in data: pat._track_volumes = data["track_volumes"]
+    if "track_pans"    in data: pat._track_pans    = data["track_pans"]
+    if "voices"        in data: pat._voices        = data["voices"]
     return pat
 
 
@@ -94,6 +105,15 @@ def test_pattern_track_slots_length():
     p = Pattern()
     assert len(p._track_slots) == NUM_TRACKS
     print("  Pattern._track_slots longueur : OK")
+
+
+def test_pattern_has_track_mix_fields():
+    p = Pattern()
+    assert hasattr(p, "_track_mutes")   and p._track_mutes   == [False] * NUM_TRACKS
+    assert hasattr(p, "_track_solos")   and p._track_solos   == [False] * NUM_TRACKS
+    assert hasattr(p, "_track_volumes") and p._track_volumes == [100]   * NUM_TRACKS
+    assert hasattr(p, "_track_pans")    and p._track_pans    == [0]     * NUM_TRACKS
+    print("  Pattern._track_mutes/solos/volumes/pans (défaut) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +193,42 @@ def test_roundtrip_track_slots():
     dst = _deserialize(data)
     assert dst._track_slots == [0, 1, 2, 1, 0, 0, 0, 0]
     print("  round-trip track_slots : OK")
+
+
+def test_roundtrip_track_mutes():
+    src = _make_multitrack_pattern()
+    data = _serialize(src)
+    dst = _deserialize(data)
+    assert dst._track_mutes[2] is True,  "Piste 2 doit être mutée"
+    assert all(not dst._track_mutes[i] for i in range(NUM_TRACKS) if i != 2)
+    print("  round-trip track_mutes : OK")
+
+
+def test_roundtrip_track_solos():
+    src = _make_multitrack_pattern()
+    data = _serialize(src)
+    dst = _deserialize(data)
+    assert dst._track_solos[0] is True, "Piste 0 doit être en solo"
+    assert all(not dst._track_solos[i] for i in range(NUM_TRACKS) if i != 0)
+    print("  round-trip track_solos : OK")
+
+
+def test_roundtrip_track_volumes():
+    src = _make_multitrack_pattern()
+    data = _serialize(src)
+    dst = _deserialize(data)
+    assert dst._track_volumes[1] == 75,  "Piste 1 volume 75"
+    assert all(dst._track_volumes[i] == 100 for i in range(NUM_TRACKS) if i != 1)
+    print("  round-trip track_volumes : OK")
+
+
+def test_roundtrip_track_pans():
+    src = _make_multitrack_pattern()
+    data = _serialize(src)
+    dst = _deserialize(data)
+    assert dst._track_pans[3] == -40, "Piste 3 pan -40"
+    assert all(dst._track_pans[i] == 0 for i in range(NUM_TRACKS) if i != 3)
+    print("  round-trip track_pans : OK")
 
 
 def test_roundtrip_voices():
@@ -275,8 +331,8 @@ def test_json_roundtrip_99_patterns():
     print("  JSON round-trip (99 patterns) : OK")
 
 
-def test_json_backwards_compatible_no_track_slots():
-    """Un ancien preset sans track_slots doit se charger avec des valeurs par défaut."""
+def test_json_backwards_compatible_no_track_fields():
+    """Un ancien preset sans les champs de mixage piste doit se charger avec les défauts."""
     old_data = {
         "version": 1,
         "patterns": [
@@ -286,63 +342,120 @@ def test_json_backwards_compatible_no_track_slots():
                 "num_bars": 1,
                 "num_steps": 16,
                 "curpattern": Pattern()._curpattern,
-                # pas de track_slots
+                # pas de track_slots, track_mutes, track_solos, track_volumes, track_pans
                 "voices": Pattern()._voices,
             }
         ],
     }
     loaded = _load_preset_dict(old_data)
-    assert loaded[0]._track_slots == [0] * NUM_TRACKS, \
-        "Défaut [0]*8 si track_slots absent"
-    print("  backward-compat (pas de track_slots) : OK")
+    p = loaded[0]
+    assert p._track_slots   == [0]     * NUM_TRACKS, "Défaut [0]*8"
+    assert p._track_mutes   == [False] * NUM_TRACKS, "Défaut [False]*8"
+    assert p._track_solos   == [False] * NUM_TRACKS, "Défaut [False]*8"
+    assert p._track_volumes == [100]   * NUM_TRACKS, "Défaut [100]*8"
+    assert p._track_pans    == [0]     * NUM_TRACKS, "Défaut [0]*8"
+    print("  backward-compat (champs mixage piste absents) : OK")
 
 
 # ---------------------------------------------------------------------------
 # Tests switch_pattern (logique pure, sans wx)
 # ---------------------------------------------------------------------------
 
-def _simulate_switch_pattern(pattern_list, cur_idx, router_track_slots,
-                             new_idx, new_router_slots):
+class FakeRouter:
+    """Simule l'état du TrackRouter pour les tests switch_pattern."""
+    def __init__(self, slots, mutes, solos, volumes, pans):
+        self._track_slots   = slots[:]
+        self._track_mutes   = mutes[:]
+        self._track_solos   = solos[:]
+        self._track_volumes = volumes[:]
+        self._track_pans    = pans[:]
+
+
+def _simulate_switch_pattern(pattern_list, cur_idx, router, new_idx):
     """
     Reproduit la logique de _switch_pattern sans wx :
-      1. Sauvegarder les track_slots courants dans le pattern courant
-      2. Charger les track_slots du nouveau pattern dans le router
-    Retourne (router_track_slots_after, pattern_list[cur_idx]._track_slots).
+      1. Sauvegarder l'état du router dans le pattern courant
+      2. Charger l'état du nouveau pattern dans le router
     """
-    pattern_list[cur_idx]._track_slots = router_track_slots[:]
-    router_track_slots[:] = pattern_list[new_idx]._track_slots
-    return router_track_slots[:], pattern_list[cur_idx]._track_slots
+    cur = pattern_list[cur_idx]
+    cur._track_slots   = router._track_slots[:]
+    cur._track_mutes   = router._track_mutes[:]
+    cur._track_solos   = router._track_solos[:]
+    cur._track_volumes = router._track_volumes[:]
+    cur._track_pans    = router._track_pans[:]
+    new = pattern_list[new_idx]
+    router._track_slots[:]   = new._track_slots
+    router._track_mutes[:]   = new._track_mutes
+    router._track_solos[:]   = new._track_solos
+    router._track_volumes[:] = new._track_volumes
+    router._track_pans[:]    = new._track_pans
 
 
-def test_switch_pattern_saves_current_track_slots():
+def test_switch_pattern_saves_all_track_state():
+    """switch_pattern sauvegarde les 5 champs piste du router dans le pattern courant."""
     p0 = Pattern()
-    p1 = Pattern()
-    p0._track_slots = [0, 1, 2, 0, 0, 0, 0, 0]
-    p1._track_slots = [3, 0, 0, 0, 0, 0, 0, 0]
-    router_slots = [0, 1, 2, 0, 0, 0, 0, 0]
+    p0._track_slots   = [0, 1, 2, 0, 0, 0, 0, 0]
+    p0._track_mutes   = [False, True, False, False, False, False, False, False]
+    p0._track_solos   = [True,  False, False, False, False, False, False, False]
+    p0._track_volumes = [80, 100, 60, 100, 100, 100, 100, 100]
+    p0._track_pans    = [-20, 0, 30, 0, 0, 0, 0, 0]
 
-    new_router, saved_p0 = _simulate_switch_pattern(
-        [p0, p1], 0, router_slots, 1, [3, 0, 0, 0, 0, 0, 0, 0]
+    p1 = Pattern()   # état par défaut
+
+    router = FakeRouter(
+        slots   = p0._track_slots,
+        mutes   = p0._track_mutes,
+        solos   = p0._track_solos,
+        volumes = p0._track_volumes,
+        pans    = p0._track_pans,
     )
-    assert saved_p0   == [0, 1, 2, 0, 0, 0, 0, 0], "Slots de p0 doivent être sauvegardés"
-    assert new_router == [3, 0, 0, 0, 0, 0, 0, 0], "Router doit prendre les slots de p1"
-    print("  switch_pattern sauvegarde + restaure track_slots : OK")
+    _simulate_switch_pattern([p0, p1], 0, router, 1)
+
+    assert p0._track_slots   == [0, 1, 2, 0, 0, 0, 0, 0]
+    assert p0._track_mutes   == [False, True, False, False, False, False, False, False]
+    assert p0._track_solos   == [True,  False, False, False, False, False, False, False]
+    assert p0._track_volumes == [80, 100, 60, 100, 100, 100, 100, 100]
+    assert p0._track_pans    == [-20, 0, 30, 0, 0, 0, 0, 0]
+    # Router doit avoir chargé les défauts de p1
+    assert router._track_slots   == [0] * NUM_TRACKS
+    assert router._track_mutes   == [False] * NUM_TRACKS
+    assert router._track_solos   == [False] * NUM_TRACKS
+    assert router._track_volumes == [100]   * NUM_TRACKS
+    assert router._track_pans    == [0]     * NUM_TRACKS
+    print("  switch_pattern sauvegarde + restaure tous les champs piste : OK")
 
 
 def test_switch_pattern_preserves_both_patterns():
-    """Aller-retour entre deux patterns doit préserver les deux jeux de slots."""
-    p0 = Pattern(); p0._track_slots = [0, 1, 2, 3, 0, 0, 0, 0]
-    p1 = Pattern(); p1._track_slots = [2, 2, 0, 0, 0, 0, 0, 0]
-    router_slots = p0._track_slots[:]
+    """Aller-retour entre deux patterns doit préserver les deux jeux d'état."""
+    p0 = Pattern()
+    p0._track_slots   = [0, 1, 2, 3, 0, 0, 0, 0]
+    p0._track_mutes   = [True, False, False, False, False, False, False, False]
+    p0._track_volumes = [90, 100, 100, 100, 100, 100, 100, 100]
+    p0._track_pans    = [10, 0, 0, 0, 0, 0, 0, 0]
 
-    # Aller : 0 → 1
-    _, _ = _simulate_switch_pattern([p0, p1], 0, router_slots, 1, p1._track_slots)
-    # Retour : 1 → 0
-    _, _ = _simulate_switch_pattern([p0, p1], 1, router_slots, 0, p0._track_slots)
+    p1 = Pattern()
+    p1._track_slots   = [2, 2, 0, 0, 0, 0, 0, 0]
+    p1._track_solos   = [False, True, False, False, False, False, False, False]
+    p1._track_volumes = [100, 50, 100, 100, 100, 100, 100, 100]
+    p1._track_pans    = [0, -30, 0, 0, 0, 0, 0, 0]
 
-    assert p0._track_slots == [0, 1, 2, 3, 0, 0, 0, 0]
-    assert p1._track_slots == [2, 2, 0, 0, 0, 0, 0, 0]
-    print("  switch_pattern aller-retour : OK")
+    router = FakeRouter(
+        slots=p0._track_slots, mutes=p0._track_mutes, solos=p0._track_solos,
+        volumes=p0._track_volumes, pans=p0._track_pans,
+    )
+
+    _simulate_switch_pattern([p0, p1], 0, router, 1)  # 0 → 1
+    _simulate_switch_pattern([p0, p1], 1, router, 0)  # 1 → 0
+
+    assert p0._track_slots   == [0, 1, 2, 3, 0, 0, 0, 0]
+    assert p0._track_mutes   == [True, False, False, False, False, False, False, False]
+    assert p0._track_volumes == [90, 100, 100, 100, 100, 100, 100, 100]
+    assert p0._track_pans    == [10, 0, 0, 0, 0, 0, 0, 0]
+    assert p1._track_slots   == [2, 2, 0, 0, 0, 0, 0, 0]
+    assert p1._track_solos   == [False, True, False, False, False, False, False, False]
+    assert p1._track_volumes == [100, 50, 100, 100, 100, 100, 100, 100]
+    assert p1._track_pans    == [0, -30, 0, 0, 0, 0, 0, 0]
+    print("  switch_pattern aller-retour (5 champs) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -353,17 +466,22 @@ if __name__ == "__main__":
     print("=== test_pattern_serialization ===")
     test_pattern_has_track_slots()
     test_pattern_track_slots_length()
+    test_pattern_has_track_mix_fields()
     test_curpattern_dimensions()
     test_curpattern_initially_empty()
     test_load_pattern_preserves_dimensions()
     test_roundtrip_curpattern_notes()
     test_roundtrip_curpattern_empty_tracks()
     test_roundtrip_track_slots()
+    test_roundtrip_track_mutes()
+    test_roundtrip_track_solos()
+    test_roundtrip_track_volumes()
+    test_roundtrip_track_pans()
     test_roundtrip_voices()
     test_roundtrip_metadata()
     test_json_roundtrip_single_pattern()
     test_json_roundtrip_99_patterns()
-    test_json_backwards_compatible_no_track_slots()
-    test_switch_pattern_saves_current_track_slots()
+    test_json_backwards_compatible_no_track_fields()
+    test_switch_pattern_saves_all_track_state()
     test_switch_pattern_preserves_both_patterns()
     print("Tous les tests : OK")

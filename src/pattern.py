@@ -45,7 +45,13 @@ class Pattern:
         self._curpattern = self._make_empty()
 
         # slot d'instrument assigné à chaque piste (indice dans le Rack)
-        self._track_slots = [0] * self._num_tracks
+        self._track_slots   = [0]     * self._num_tracks
+
+        # état mixage par piste : mute, solo, volume (0..100), pan (-100..+100)
+        self._track_mutes   = [False] * self._num_tracks
+        self._track_solos   = [False] * self._num_tracks
+        self._track_volumes = [100]   * self._num_tracks
+        self._track_pans    = [0]     * self._num_tracks
 
         # état des voix par pad : volume, pan, mute, solo
         self._voices = [
