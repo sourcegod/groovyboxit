@@ -94,16 +94,20 @@ class GenRowDialog(wx.Dialog):
 
 
 class QuantizeDialog(wx.Dialog):
-    def __init__(self, parent, cur_idx):
+    def __init__(self, parent, cur_idx, quant_in_rec=True):
         super().__init__(parent, title="Quantisation du pattern")
 
         list_label = wx.StaticText(self, label="Valeur de quantisation :")
         self._list = wx.ListBox(
             self,
-            choices=DrumPlayer.QUANT_LIST,
+            choices=["None"] + DrumPlayer.QUANT_LIST,
             style=wx.LB_SINGLE,
         )
-        self._list.SetSelection(cur_idx)
+        # cur_idx 0..13 → indice dialogue 1..14 ; -1 (None) → 0
+        self._list.SetSelection(cur_idx + 1 if cur_idx >= 0 else 0)
+
+        self._quant_in_rec_cb = wx.CheckBox(self, label="Auto in Recording")
+        self._quant_in_rec_cb.SetValue(quant_in_rec)
 
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
@@ -118,15 +122,20 @@ class QuantizeDialog(wx.Dialog):
         btn_sizer.Realize()
 
         vbox = wx.BoxSizer(wx.VERTICAL)
-        vbox.Add(list_label,  0, wx.ALL, 6)
-        vbox.Add(self._list,  1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-        vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(list_label,            0, wx.ALL, 6)
+        vbox.Add(self._list,            1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._quant_in_rec_cb, 0, wx.ALL, 6)
+        vbox.Add(btn_sizer,             0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
         self._list.SetFocus()
 
     def get_selection(self):
-        return self._list.GetSelection()
+        """Retourne -1 (None) ou 0..13 (indice dans QUANT_LIST)."""
+        return self._list.GetSelection() - 1
+
+    def get_quant_in_recording(self):
+        return self._quant_in_rec_cb.GetValue()
 
 
 class SavePatternDialog(wx.Dialog):

@@ -294,6 +294,8 @@ class DrumPlayer:
     def apply_quant_to_pattern(self, quant_idx=None):
         if quant_idx is None:
             quant_idx = self.quant_idx
+        if quant_idx < 0:
+            return
         denom     = self.QUANT_STEPS[quant_idx]
         num_steps = self._pattern._num_steps
         # grille de quantisation par mesure (positions flottantes)
@@ -529,7 +531,7 @@ class DrumPlayer:
         ref = self._measure_start if self._measure_start is not None else now
         float_offset = ((now - ref) % measure_secs) / self.step_duration
 
-        if self._quant_in_recording:
+        if self._quant_in_recording and self.quant_idx >= 0:
             quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
             float_offset = round(float_offset / quant_size) * quant_size % total_steps
 

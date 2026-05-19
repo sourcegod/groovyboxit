@@ -454,18 +454,24 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _quantize_pattern_dialog(self):
-        dlg    = QuantizeDialog(self, self._player.quant_idx)
+        dlg    = QuantizeDialog(self, self._player.quant_idx, self._player._quant_in_recording)
         result = dlg.ShowModal()
         if result in (wx.ID_OK, wx.ID_APPLY):
-            idx = dlg.get_selection()
-            self._player.quant_idx = idx
-            self._quant_list.SetSelection(idx)
-            if result == wx.ID_APPLY:
+            idx = dlg.get_selection()   # -1 = None, 0..13 = résolution
+            self._player._quant_in_recording = dlg.get_quant_in_recording()
+            self._player.quant_idx = idx   # -1 (None) ou 0..13
+            if idx >= 0:
+                self._quant_list.SetSelection(idx)
+            else:
+                self._quant_list.SetSelection(wx.NOT_FOUND)
+            if result == wx.ID_APPLY and idx >= 0:
                 self._player.apply_quant_to_pattern()
                 self._refresh_grid()
                 self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[idx]}")
-            else:
+            elif idx >= 0:
                 self._show_status(f"Quant par défaut: {DrumPlayer.QUANT_LIST[idx]}")
+            else:
+                self._show_status("Quant: désactivée")
         dlg.Destroy()
 
     def _on_bpm_spin(self, event):
