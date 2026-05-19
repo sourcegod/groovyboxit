@@ -365,6 +365,227 @@ def test_on_play_two_synth_tracks_independent():
 
 
 # ---------------------------------------------------------------------------
+# Mute / Solo par piste
+# ---------------------------------------------------------------------------
+
+def test_initial_mute_solo_state():
+    router, _, _ = _make_router()
+    assert router._track_mutes == [False] * 8
+    assert router._track_solos == [False] * 8
+    print("  mute/solo état initial : OK")
+
+
+# --- toggle_track_mute ---
+
+def test_toggle_track_mute_on():
+    router, _, _ = _make_router()
+    result = router.toggle_track_mute(2)
+    assert result is True
+    assert router._track_mutes[2] is True
+    assert all(not router._track_mutes[i] for i in range(8) if i != 2)
+    print("  toggle_track_mute (activer) : OK")
+
+
+def test_toggle_track_mute_off():
+    router, _, _ = _make_router()
+    router._track_mutes[2] = True
+    result = router.toggle_track_mute(2)
+    assert result is False
+    assert router._track_mutes[2] is False
+    print("  toggle_track_mute (désactiver) : OK")
+
+
+def test_toggle_track_mute_twice_restores():
+    router, _, _ = _make_router()
+    router.toggle_track_mute(5)
+    router.toggle_track_mute(5)
+    assert router._track_mutes[5] is False
+    print("  toggle_track_mute aller-retour : OK")
+
+
+# --- unmute_all_tracks ---
+
+def test_unmute_all_tracks():
+    router, _, _ = _make_router()
+    router._track_mutes = [True] * 8
+    router.unmute_all_tracks()
+    assert router._track_mutes == [False] * 8
+    print("  unmute_all_tracks : OK")
+
+
+def test_unmute_all_tracks_noop_when_clear():
+    router, _, _ = _make_router()
+    router.unmute_all_tracks()   # ne doit pas lever
+    assert router._track_mutes == [False] * 8
+    print("  unmute_all_tracks (déjà vide) : OK")
+
+
+# --- toggle_track_solo ---
+
+def test_toggle_track_solo_on():
+    router, _, _ = _make_router()
+    result = router.toggle_track_solo(1)
+    assert result is True
+    assert router._track_solos[1] is True
+    assert all(not router._track_solos[i] for i in range(8) if i != 1)
+    print("  toggle_track_solo (activer) : OK")
+
+
+def test_toggle_track_solo_off():
+    router, _, _ = _make_router()
+    router._track_solos[1] = True
+    result = router.toggle_track_solo(1)
+    assert result is False
+    assert router._track_solos[1] is False
+    print("  toggle_track_solo (désactiver) : OK")
+
+
+def test_toggle_track_solo_twice_restores():
+    router, _, _ = _make_router()
+    router.toggle_track_solo(3)
+    router.toggle_track_solo(3)
+    assert router._track_solos[3] is False
+    print("  toggle_track_solo aller-retour : OK")
+
+
+def test_multiple_solos_independent():
+    """Plusieurs pistes peuvent être en solo simultanément."""
+    router, _, _ = _make_router()
+    router.toggle_track_solo(0)
+    router.toggle_track_solo(3)
+    assert router._track_solos[0] is True
+    assert router._track_solos[3] is True
+    assert all(not router._track_solos[i] for i in range(8) if i not in (0, 3))
+    print("  toggle_track_solo solos multiples : OK")
+
+
+# --- unsolo_all_tracks ---
+
+def test_unsolo_all_tracks():
+    router, _, _ = _make_router()
+    router._track_solos = [True] * 8
+    router.unsolo_all_tracks()
+    assert router._track_solos == [False] * 8
+    print("  unsolo_all_tracks : OK")
+
+
+# --- _track_is_audible ---
+
+def test_audible_by_default():
+    router, _, _ = _make_router()
+    for t in range(8):
+        assert router._track_is_audible(t) is True
+    print("  _track_is_audible (défaut) : OK")
+
+
+def test_muted_track_not_audible():
+    router, _, _ = _make_router()
+    router._track_mutes[4] = True
+    assert router._track_is_audible(4) is False
+    print("  _track_is_audible (muté) : OK")
+
+
+def test_non_muted_tracks_still_audible():
+    router, _, _ = _make_router()
+    router._track_mutes[4] = True
+    for t in range(8):
+        if t != 4:
+            assert router._track_is_audible(t) is True
+    print("  _track_is_audible (autres non-mutés) : OK")
+
+
+def test_solo_makes_other_tracks_inaudible():
+    router, _, _ = _make_router()
+    router._track_solos[2] = True
+    assert router._track_is_audible(2) is True
+    for t in range(8):
+        if t != 2:
+            assert router._track_is_audible(t) is False
+    print("  _track_is_audible solo → autres silencieux : OK")
+
+
+def test_mute_overrides_solo():
+    """Une piste mutée en solo reste silencieuse (mute gagne)."""
+    router, _, _ = _make_router()
+    router._track_mutes[1] = True
+    router._track_solos[1] = True
+    assert router._track_is_audible(1) is False
+    print("  _track_is_audible mute > solo : OK")
+
+
+def test_multiple_solos_all_audible():
+    """Avec plusieurs solos actifs, toutes les pistes en solo sont audibles."""
+    router, _, _ = _make_router()
+    router._track_solos[0] = True
+    router._track_solos[5] = True
+    assert router._track_is_audible(0) is True
+    assert router._track_is_audible(5) is True
+    assert router._track_is_audible(3) is False
+    print("  _track_is_audible solos multiples : OK")
+
+
+# --- on_play avec mute/solo ---
+
+def test_on_play_muted_track_silent():
+    """on_play ne dispatche pas pour une piste mutée."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0   # KIT
+    router._track_mutes[0] = True
+    router.on_play(0, 3, 0.8, 0)
+    assert snd.played == [], "Piste mutée doit être silencieuse"
+    print("  on_play piste mutée → silence : OK")
+
+
+def test_on_play_solo_silences_other_tracks():
+    """Seule la piste en solo joue ; les autres restent silencieuses."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0   # KIT
+    router._track_slots[1] = 0   # KIT
+    router._track_solos[1] = True   # piste 1 en solo
+    router.on_play(0, 0, 1.0, 0)   # piste 0 → silence
+    router.on_play(1, 1, 1.0, 0)   # piste 1 → joue
+    assert snd.played == [(1, 1.0, 0)], "Seule la piste en solo doit jouer"
+    print("  on_play solo → seule piste active joue : OK")
+
+
+def test_on_play_after_unmute_all_plays():
+    """Après unmute_all, toutes les pistes jouent à nouveau."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router._track_mutes[0] = True
+    router.unmute_all_tracks()
+    router.on_play(0, 3, 1.0, 0)
+    assert snd.played == [(3, 1.0, 0)]
+    print("  on_play après unmute_all : OK")
+
+
+def test_on_play_after_unsolo_all_plays():
+    """Après unsolo_all, toutes les pistes jouent à nouveau."""
+    router, snd, _ = _make_router()
+    router._track_slots[0] = 0
+    router._track_slots[1] = 0
+    router._track_solos[1] = True
+    router.unsolo_all_tracks()
+    router.on_play(0, 0, 1.0, 0)
+    router.on_play(1, 1, 1.0, 0)
+    assert len(snd.played) == 2
+    print("  on_play après unsolo_all : OK")
+
+
+def test_on_play_synth_muted_silent():
+    """Piste SYNTH mutée → le SynthEngine n'est pas appelé."""
+    router, snd, _ = _make_router()
+    fake = FakeSynthEngine()
+    fake._loaded = True
+    router._slot_synths[1] = fake
+    router._track_slots[0] = 1   # SYNTH
+    router._track_mutes[0] = True
+    router.on_play(0, 0, 1.0, 0)
+    assert fake._played == [], "SynthEngine ne doit pas jouer si piste mutée"
+    print("  on_play SYNTH muté → silence : OK")
+
+
+# ---------------------------------------------------------------------------
 # play_kit_pitched
 # ---------------------------------------------------------------------------
 
@@ -467,6 +688,28 @@ if __name__ == "__main__":
     test_on_play_synth_silent_when_not_committed()
     test_on_play_synth_silent_when_not_loaded()
     test_on_play_two_synth_tracks_independent()
+    test_initial_mute_solo_state()
+    test_toggle_track_mute_on()
+    test_toggle_track_mute_off()
+    test_toggle_track_mute_twice_restores()
+    test_unmute_all_tracks()
+    test_unmute_all_tracks_noop_when_clear()
+    test_toggle_track_solo_on()
+    test_toggle_track_solo_off()
+    test_toggle_track_solo_twice_restores()
+    test_multiple_solos_independent()
+    test_unsolo_all_tracks()
+    test_audible_by_default()
+    test_muted_track_not_audible()
+    test_non_muted_tracks_still_audible()
+    test_solo_makes_other_tracks_inaudible()
+    test_mute_overrides_solo()
+    test_multiple_solos_all_audible()
+    test_on_play_muted_track_silent()
+    test_on_play_solo_silences_other_tracks()
+    test_on_play_after_unmute_all_plays()
+    test_on_play_after_unsolo_all_plays()
+    test_on_play_synth_muted_silent()
     test_play_kit_pitched_no_wav_path_noop()
     test_play_kit_pitched_new_pad_calls_fallback()
     test_play_kit_pitched_same_pad_loaded_plays_midi()
