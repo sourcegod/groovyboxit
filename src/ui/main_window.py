@@ -1119,7 +1119,11 @@ class MainWindow(wx.Frame):
             self._show_status("Pattern aléatoire généré")
         elif ukey in (ord(' '), ord('p')) or (not ctrl and key in (wx.WXK_SPACE, ord('P'))):
             if self._player.playing:
+                was_recording = self._player.recording
                 self._player.stop_pattern()
+                if was_recording:
+                    self._refresh_grid()
+                    self._refresh_track_list()
                 self._show_status("Pattern: Stop")
             else:
                 self._player.play_pattern()

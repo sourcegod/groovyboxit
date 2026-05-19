@@ -95,9 +95,11 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def stop_pattern(self):
-        self.playing   = False
-        self.clicking  = False
-        self._count_in = 0
+        self.playing           = False
+        self.clicking          = False
+        self._count_in         = 0
+        self.recording         = False
+        self.replace_recording = False
         if not self._note_repeat_active:
             self.stop_thread()
         else:
