@@ -236,6 +236,10 @@ class DrumPlayer:
                     if self._count_in == 0:
                         self.playing   = True
                         self.recording = True
+                        # Repartir de zéro pour que le premier cycle réel commence
+                        # à la mesure 1 et non à la mesure 2 (décalage dû au fait que
+                        # measure_start pointait sur une tranche d'1 bar de count-in).
+                        measure_start  = time.perf_counter()
                         if self._on_count_in_done_cb:
                             self._on_count_in_done_cb()
 
