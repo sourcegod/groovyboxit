@@ -48,6 +48,7 @@ class DrumPlayer:
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
+        self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
 
     #--------------------------------------------------------------------------
 
@@ -527,6 +528,10 @@ class DrumPlayer:
         measure_secs = total_steps * self.step_duration
         ref = self._measure_start if self._measure_start is not None else now
         float_offset = ((now - ref) % measure_secs) / self.step_duration
+
+        if self._quant_in_recording:
+            quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
+            float_offset = round(float_offset / quant_size) * quant_size % total_steps
 
         if round(float_offset) >= total_steps:
             float_offset = 0.0
