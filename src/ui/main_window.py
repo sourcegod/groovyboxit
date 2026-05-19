@@ -543,30 +543,45 @@ class MainWindow(wx.Frame):
 
     def _track_properties_dialog(self):
         """Ctrl+Shift+T : propriétés de la piste courante."""
-        tidx     = self._player._cur_track
-        slot_idx = self._router.slot_for_track(tidx)
-        dlg = TrackPropertiesDialog(
-            self,
-            tidx,
-            self._rack,
-            slot_idx,
-            self._router.get_track_volume(tidx),
-            self._router.get_track_pan(tidx),
-            self._router._track_mutes[tidx],
-            self._router._track_solos[tidx],
+        tidx = self._player._cur_track
+        orig = dict(
+            slot   = self._router.slot_for_track(tidx),
+            volume = self._router.get_track_volume(tidx),
+            pan    = self._router.get_track_pan(tidx),
+            mute   = self._router._track_mutes[tidx],
+            solo   = self._router._track_solos[tidx],
         )
-        if dlg.ShowModal() == wx.ID_OK:
-            new_slot = dlg.get_slot_idx()
-            if new_slot != slot_idx:
-                self._router.assign_slot(tidx, new_slot)
-                self._cur_slot = new_slot
-                self._slot_choice.SetSelection(new_slot)
-            self._router.set_track_volume(tidx, dlg.get_volume())
-            self._router.set_track_pan(tidx, dlg.get_pan())
-            self._router._track_mutes[tidx] = dlg.get_mute()
-            self._router._track_solos[tidx] = dlg.get_solo()
+
+        def apply(slot, vol, pan, mute, solo):
+            if slot != self._router.slot_for_track(tidx):
+                self._router.assign_slot(tidx, slot)
+                self._cur_slot = slot
+                self._slot_choice.SetSelection(slot)
+            self._router.set_track_volume(tidx, vol)
+            self._router.set_track_pan(tidx, pan)
+            self._router._track_mutes[tidx] = mute
+            self._router._track_solos[tidx] = solo
             self._refresh_track_list()
+
+        def play_toggle():
+            if self._player.playing:
+                self._player.stop_pattern()
+            else:
+                self._player.play_pattern()
+
+        dlg    = TrackPropertiesDialog(
+            self, tidx, self._rack,
+            orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'],
+            on_change=apply, on_play_toggle=play_toggle,
+        )
+        result = dlg.ShowModal()
+        if result == wx.ID_OK:
+            apply(dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
+                  dlg.get_mute(), dlg.get_solo())
             self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
+        else:
+            apply(orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'])
+            self._show_status(f"Piste {tidx + 1}: modifications annulées")
         dlg.Destroy()
 
     def _track_label(self, idx):

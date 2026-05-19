@@ -178,8 +178,12 @@ class SavePatternDialog(wx.Dialog):
 
 
 class TrackPropertiesDialog(wx.Dialog):
-    def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo):
+    def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
+                 on_change=None, on_play_toggle=None):
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
+
+        self._on_change      = on_change
+        self._on_play_toggle = on_play_toggle
 
         # Ordre Tab : Mute → Solo → Slots → Volume → Pan
         self._mute = wx.CheckBox(self, label="Mute")
@@ -222,7 +226,34 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
+
+        # Aperçu en temps réel
+        self._mute.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
+        self._solo.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
+        self._slots.Bind(wx.EVT_LISTBOX, self._on_widget_change)
+        self._vol.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
+        self._pan.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
         self._mute.SetFocus()
+
+    def _on_widget_change(self, event):
+        if self._on_change:
+            self._on_change(
+                self._slots.GetSelection(),
+                self._vol.GetValue(),
+                self._pan.GetValue(),
+                self._mute.GetValue(),
+                self._solo.GetValue(),
+            )
+        event.Skip()
+
+    def _on_key(self, event):
+        if event.GetKeyCode() == ord('P'):
+            if self._on_play_toggle:
+                self._on_play_toggle()
+        else:
+            event.Skip()
 
     def get_slot_idx(self): return self._slots.GetSelection()
     def get_volume(self):   return self._vol.GetValue()
