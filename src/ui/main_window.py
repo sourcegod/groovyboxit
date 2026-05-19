@@ -12,6 +12,7 @@ from ui.dialogs import (
     GenRowDialog,
     QuantizeDialog,
     SavePatternDialog,
+    TrackPropertiesDialog,
 )
 
 
@@ -540,6 +541,34 @@ class MainWindow(wx.Frame):
             f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name})"
         )
 
+    def _track_properties_dialog(self):
+        """Ctrl+Shift+T : propriétés de la piste courante."""
+        tidx     = self._player._cur_track
+        slot_idx = self._router.slot_for_track(tidx)
+        dlg = TrackPropertiesDialog(
+            self,
+            tidx,
+            self._rack,
+            slot_idx,
+            self._router.get_track_volume(tidx),
+            self._router.get_track_pan(tidx),
+            self._router._track_mutes[tidx],
+            self._router._track_solos[tidx],
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            new_slot = dlg.get_slot_idx()
+            if new_slot != slot_idx:
+                self._router.assign_slot(tidx, new_slot)
+                self._cur_slot = new_slot
+                self._slot_choice.SetSelection(new_slot)
+            self._router.set_track_volume(tidx, dlg.get_volume())
+            self._router.set_track_pan(tidx, dlg.get_pan())
+            self._router._track_mutes[tidx] = dlg.get_mute()
+            self._router._track_solos[tidx] = dlg.get_solo()
+            self._refresh_track_list()
+            self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
+        dlg.Destroy()
+
     def _track_label(self, idx):
         slot_idx  = self._router.slot_for_track(idx)
         slot_name = self._router.slot_name(idx)
@@ -803,6 +832,8 @@ class MainWindow(wx.Frame):
         # --- Raccourcis Ctrl ---
         elif ctrl and shift and key == ord('W'):
             self._save_pattern_as()
+        elif ctrl and shift and not alt and key == ord('T'):
+            self._track_properties_dialog()
         elif ctrl and not shift and not alt and key == ord('T'):
             self._assign_track_slot()
         elif ctrl and key == ord('W'):

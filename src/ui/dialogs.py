@@ -175,3 +175,57 @@ class SavePatternDialog(wx.Dialog):
 
     def get_name(self):
         return self._name_ctrl.GetValue().strip()
+
+
+class TrackPropertiesDialog(wx.Dialog):
+    def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo):
+        super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
+
+        # Ordre Tab : Mute → Solo → Slots → Volume → Pan
+        self._mute = wx.CheckBox(self, label="Mute")
+        self._mute.SetValue(mute)
+        self._solo = wx.CheckBox(self, label="Solo")
+        self._solo.SetValue(solo)
+
+        slot_label  = wx.StaticText(self, label="Slot :")
+        self._slots = wx.ListBox(self, choices=rack.labels(), style=wx.LB_SINGLE)
+        self._slots.SetSelection(cur_slot_idx)
+
+        vol_label  = wx.StaticText(self, label="Volume :")
+        self._vol  = wx.SpinCtrl(self, min=0, max=100, initial=volume)
+
+        pan_label  = wx.StaticText(self, label="Pan :")
+        self._pan  = wx.SpinCtrl(self, min=-100, max=100, initial=pan)
+
+        ok_btn = wx.Button(self, wx.ID_OK, "Ok")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
+        btn_sizer.Realize()
+
+        check_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        check_sizer.Add(self._mute, 0, wx.RIGHT, 16)
+        check_sizer.Add(self._solo, 0)
+
+        grid = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
+        grid.Add(vol_label,  0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._vol,  0, wx.EXPAND)
+        grid.Add(pan_label,  0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._pan,  0, wx.EXPAND)
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(slot_label,  0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
+        vbox.Add(self._slots, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(check_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(grid,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._mute.SetFocus()
+
+    def get_slot_idx(self): return self._slots.GetSelection()
+    def get_volume(self):   return self._vol.GetValue()
+    def get_pan(self):      return self._pan.GetValue()
+    def get_mute(self):     return self._mute.GetValue()
+    def get_solo(self):     return self._solo.GetValue()
