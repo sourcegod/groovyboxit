@@ -41,6 +41,8 @@ class TrackRouter:
         self._status_cb  = status_cb
 
         self._track_slots    = [0] * self.NUM_TRACKS
+        self._track_mutes    = [False] * self.NUM_TRACKS
+        self._track_solos    = [False] * self.NUM_TRACKS
         self._slot_synths    = {}       # {slot_idx: SynthEngine}
         self._synth          = None     # moteur de preview
         self._synth_slot_idx = None     # slot_idx actuellement chargé dans _synth
@@ -172,6 +174,36 @@ class TrackRouter:
         self._kb_kit_pad = None
 
     # ------------------------------------------------------------------
+    # Mute / Solo par piste
+    # ------------------------------------------------------------------
+
+    def toggle_track_mute(self, track_idx):
+        """Bascule le mute de la piste track_idx. Retourne le nouvel état."""
+        self._track_mutes[track_idx] = not self._track_mutes[track_idx]
+        return self._track_mutes[track_idx]
+
+    def unmute_all_tracks(self):
+        """Démute toutes les pistes."""
+        self._track_mutes = [False] * self.NUM_TRACKS
+
+    def toggle_track_solo(self, track_idx):
+        """Bascule le solo de la piste track_idx. Retourne le nouvel état."""
+        self._track_solos[track_idx] = not self._track_solos[track_idx]
+        return self._track_solos[track_idx]
+
+    def unsolo_all_tracks(self):
+        """Désactive le solo sur toutes les pistes."""
+        self._track_solos = [False] * self.NUM_TRACKS
+
+    def _track_is_audible(self, track_idx):
+        """Vrai si la piste doit être entendue (solo / mute pris en compte)."""
+        if self._track_mutes[track_idx]:
+            return False
+        if any(self._track_solos):
+            return self._track_solos[track_idx]
+        return True
+
+    # ------------------------------------------------------------------
     # Lecture
     # ------------------------------------------------------------------
 
@@ -181,6 +213,8 @@ class TrackRouter:
 
     def on_play(self, track_idx, pad_idx, vol_factor, pan):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
+        if not self._track_is_audible(track_idx):
+            return
         slot_idx = self._track_slots[track_idx]
         slot     = self._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.SYNTH:

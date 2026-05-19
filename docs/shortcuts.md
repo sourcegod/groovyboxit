@@ -26,11 +26,17 @@ V                Stop All (sons + pattern + Rec + Erase)
 C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
 
---- Mute / Solo ---
+--- Mute / Solo (Pads — focus grille) ---
 X                Bascule le Mute du Pad courant
 Shift+X          Démuter tous les Pads
 S                Bascule le Solo du Pad courant
 Shift+S          Désolo tous les Pads
+
+--- Mute / Solo (Pistes — focus liste des pistes) ---
+X                Bascule le Mute de la Piste sélectionnée
+Shift+X          Démuter toutes les Pistes
+S                Bascule le Solo de la Piste sélectionnée
+Shift+S          Désolo toutes les Pistes
 
 --- Volume / Pan par Pad ---
 Alt+↑            Volume du Pad courant +5
@@ -103,6 +109,8 @@ Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
 
 --- Pistes ---
 Ctrl+T           Assigner le slot courant à la piste courante (confirmer l'assignation)
+X / Shift+X      Mute piste / Démuter toutes (focus liste pistes)
+S / Shift+S      Solo piste / Désolo toutes  (focus liste pistes)
 
 --- Aide ---
 F1               Afficher cette aide

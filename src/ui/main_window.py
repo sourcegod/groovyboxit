@@ -508,6 +508,10 @@ class MainWindow(wx.Frame):
         label = f"Piste {idx + 1} - Slot_{slot_idx + 1:02d} - {slot_name}"
         if self._player._cur_track == idx and self._player.recording:
             label += " [REC]"
+        if self._router._track_mutes[idx]:
+            label += " [M]"
+        if self._router._track_solos[idx]:
+            label += " [S]"
         return label
 
     def _refresh_track_list(self):
@@ -807,25 +811,47 @@ class MainWindow(wx.Frame):
             else:
                 self._show_status("Erase: Off")
 
-        # --- X / Shift+X : mute pad courant / démuter tous ---
+        # --- X / Shift+X : mute piste (liste pistes) ou pad courant ---
         elif not ctrl and not shift and not alt and (ukey == ord('x') or key == ord('X')):
-            muted = self._player.voice_manager.toggle_mute(self._cur_row)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Mute {'On' if muted else 'Off'}")
+            if on_track_list:
+                tidx  = self._player._cur_track   # GetSelection() non fiable sous GTK
+                muted = self._router.toggle_track_mute(tidx)
+                self._refresh_track_list()
+                self._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}")
+            else:
+                muted = self._player.voice_manager.toggle_mute(self._cur_row)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Mute {'On' if muted else 'Off'}")
         elif not ctrl and shift and not alt and (ukey == ord('x') or key == ord('X')):
-            self._player.voice_manager.set_mute_all(False)
-            self._refresh_all_voice_display()
-            self._show_status("Tous les Pads: Démutés")
+            if on_track_list:
+                self._router.unmute_all_tracks()
+                self._refresh_track_list()
+                self._show_status("Toutes les Pistes: Démutées")
+            else:
+                self._player.voice_manager.set_mute_all(False)
+                self._refresh_all_voice_display()
+                self._show_status("Tous les Pads: Démutés")
 
-        # --- S / Shift+S : solo pad courant / désolo tous ---
+        # --- S / Shift+S : solo piste (liste pistes) ou pad courant ---
         elif not ctrl and not shift and not alt and (ukey == ord('s') or key == ord('S')):
-            soloed = self._player.voice_manager.toggle_solo(self._cur_row)
-            self._refresh_voice_display(self._cur_row)
-            self._show_status(f"Pad {self._cur_row + 1}: Solo {'On' if soloed else 'Off'}")
+            if on_track_list:
+                tidx  = self._player._cur_track   # GetSelection() non fiable sous GTK
+                soloed = self._router.toggle_track_solo(tidx)
+                self._refresh_track_list()
+                self._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}")
+            else:
+                soloed = self._player.voice_manager.toggle_solo(self._cur_row)
+                self._refresh_voice_display(self._cur_row)
+                self._show_status(f"Pad {self._cur_row + 1}: Solo {'On' if soloed else 'Off'}")
         elif not ctrl and shift and not alt and (ukey == ord('s') or key == ord('S')):
-            self._player.voice_manager.set_solo_all(False)
-            self._refresh_all_voice_display()
-            self._show_status("Tous les Pads: Désolés")
+            if on_track_list:
+                self._router.unsolo_all_tracks()
+                self._refresh_track_list()
+                self._show_status("Toutes les Pistes: Désolées")
+            else:
+                self._player.voice_manager.set_solo_all(False)
+                self._refresh_all_voice_display()
+                self._show_status("Tous les Pads: Désolés")
 
         # --- Tab / Shift+Tab : navigation entre widgets principaux ---
         # Les CheckBoxes étant dans l'ordre de tabulation par défaut, Tab navigue
@@ -836,7 +862,19 @@ class MainWindow(wx.Frame):
 
         # --- Flèches : navigation grille ou liste selon le focus ---
         elif key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
-            if on_quant_list or on_pattern_list or on_mode_choice or on_scale_choice \
+            if on_track_list and key in (wx.WXK_UP, wx.WXK_DOWN):
+                # Skip() → le ListBox natif met à jour la sélection (lecteur d'écran OK).
+                # CallAfter → sync _cur_track APRÈS que le widget a traité la touche.
+                cur = self._track_list.GetSelection()
+                n   = self._track_list.GetCount()
+                at_limit = (key == wx.WXK_UP and cur <= 0) or \
+                           (key == wx.WXK_DOWN and cur >= n - 1)
+                if at_limit:
+                    wx.Bell()
+                else:
+                    event.Skip()
+                    wx.CallAfter(self._on_track_select, None)
+            elif on_quant_list or on_pattern_list or on_mode_choice or on_scale_choice \
                     or on_slot_choice or on_track_list:
                 event.Skip()   # laisser le widget gérer sa propre navigation
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
