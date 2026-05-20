@@ -249,7 +249,7 @@ class TrackPropertiesDialog(wx.Dialog):
         event.Skip()
 
     def _on_key(self, event):
-        if event.GetKeyCode() == ord('P'):
+        if event.ControlDown() and event.GetKeyCode() == ord('P'):
             if self._on_play_toggle:
                 self._on_play_toggle()
         else:

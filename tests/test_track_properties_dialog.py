@@ -25,12 +25,14 @@ class FakeRack:
 
 
 class FakeEvent:
-    def __init__(self, key=0):
+    def __init__(self, key=0, ctrl=False):
         self._key    = key
+        self._ctrl   = ctrl
         self.skipped = False
 
-    def GetKeyCode(self): return self._key
-    def Skip(self):       self.skipped = True
+    def GetKeyCode(self):  return self._key
+    def ControlDown(self): return self._ctrl
+    def Skip(self):        self.skipped = True
 
 
 # ---------------------------------------------------------------------------
@@ -175,41 +177,57 @@ def test_no_crash_without_on_change_callback():
 # Callback on_play_toggle (touche P)
 # ---------------------------------------------------------------------------
 
-def test_p_key_calls_play_toggle():
+def test_ctrl_p_calls_play_toggle():
     toggled = []
     app, frame, dlg = make_dlg(on_play_toggle=lambda: toggled.append(1))
-    dlg._on_key(FakeEvent(key=ord('P')))
+    dlg._on_key(FakeEvent(key=ord('P'), ctrl=True))
     assert toggled == [1]
     teardown(app, frame, dlg)
-    print("  touche P appelle on_play_toggle : OK")
+    print("  Ctrl+P appelle on_play_toggle : OK")
+
+def test_p_without_ctrl_does_not_call_toggle():
+    toggled = []
+    app, frame, dlg = make_dlg(on_play_toggle=lambda: toggled.append(1))
+    dlg._on_key(FakeEvent(key=ord('P'), ctrl=False))
+    assert toggled == []
+    teardown(app, frame, dlg)
+    print("  P sans Ctrl n'appelle pas on_play_toggle : OK")
 
 def test_non_p_key_does_not_call_play_toggle():
     toggled = []
     app, frame, dlg = make_dlg(on_play_toggle=lambda: toggled.append(1))
-    dlg._on_key(FakeEvent(key=ord('A')))
+    dlg._on_key(FakeEvent(key=ord('A'), ctrl=True))
     assert toggled == []
     teardown(app, frame, dlg)
-    print("  autre touche n'appelle pas on_play_toggle : OK")
+    print("  Ctrl+A n'appelle pas on_play_toggle : OK")
 
 def test_non_p_key_is_skipped():
     app, frame, dlg = make_dlg()
-    ev = FakeEvent(key=ord('A'))
+    ev = FakeEvent(key=ord('A'), ctrl=False)
     dlg._on_key(ev)
     assert ev.skipped
     teardown(app, frame, dlg)
     print("  autre touche passe à Skip() : OK")
 
-def test_p_key_not_skipped():
+def test_ctrl_p_not_skipped():
     app, frame, dlg = make_dlg()
-    ev = FakeEvent(key=ord('P'))
+    ev = FakeEvent(key=ord('P'), ctrl=True)
     dlg._on_key(ev)
     assert not ev.skipped
     teardown(app, frame, dlg)
-    print("  touche P n'est pas passée à Skip() : OK")
+    print("  Ctrl+P n'est pas passé à Skip() : OK")
+
+def test_p_without_ctrl_is_skipped():
+    app, frame, dlg = make_dlg()
+    ev = FakeEvent(key=ord('P'), ctrl=False)
+    dlg._on_key(ev)
+    assert ev.skipped
+    teardown(app, frame, dlg)
+    print("  P sans Ctrl passe à Skip() : OK")
 
 def test_no_crash_without_play_toggle_callback():
     app, frame, dlg = make_dlg(on_play_toggle=None)
-    dlg._on_key(FakeEvent(key=ord('P')))   # ne doit pas lever d'exception
+    dlg._on_key(FakeEvent(key=ord('P'), ctrl=True))   # ne doit pas lever d'exception
     teardown(app, frame, dlg)
     print("  pas de crash si on_play_toggle=None : OK")
 
@@ -233,10 +251,12 @@ if __name__ == "__main__":
     test_on_change_reflects_new_slot()
     test_on_change_skips_event()
     test_no_crash_without_on_change_callback()
-    # Callback on_play_toggle
-    test_p_key_calls_play_toggle()
+    # Callback on_play_toggle (Ctrl+P)
+    test_ctrl_p_calls_play_toggle()
+    test_p_without_ctrl_does_not_call_toggle()
     test_non_p_key_does_not_call_play_toggle()
     test_non_p_key_is_skipped()
-    test_p_key_not_skipped()
+    test_ctrl_p_not_skipped()
+    test_p_without_ctrl_is_skipped()
     test_no_crash_without_play_toggle_callback()
     print("Tous les tests : OK")

@@ -114,7 +114,6 @@ Ctrl+P           Lecture / Pause (depuis la boite de dialogue des propriétés)
 
 --- Pistes (focus liste des pistes) ---
 Ctrl+T           Assigner le slot courant à la piste courante
-Ctrl+Shift+T     Ouvrir les propriétés de la piste courante
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée (focus liste des pistes)
 Double-clic      Ouvrir les propriétés de la piste (liste des pistes)
 X / Shift+X      Mute piste / Démuter toutes
