@@ -37,7 +37,8 @@ class Pattern:
         self._quant_steps = 16    # 1,2,3,4,6,8,12,16,24,32,48,64,96,128
         self._swing       = 0     # décalage groove 0..100 %
         self._denumerator = 4     # dénominateur de la signature rythmique
-        self._looping     = False
+        self._looping     = True
+        self._start_bar   = 0     # mesure de départ (0-indexed, 0 = mesure 1)
 
         self._tracks = [Track(i) for i in range(self._num_tracks)]
 

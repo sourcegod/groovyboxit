@@ -107,6 +107,11 @@ Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
   NumPad +/-     Décaler l'octave (et donc la plage de pitch)
   NumPad / *     Changer de gamme
 
+--- Patterns (focus liste des patterns) ---
+Alt+Entrée       Ouvrir les propriétés du pattern sélectionné
+Double-clic      Ouvrir les propriétés du pattern (liste des patterns)
+Ctrl+P           Lecture / Pause (depuis la boite de dialogue des propriétés)
+
 --- Pistes (focus liste des pistes) ---
 Ctrl+T           Assigner le slot courant à la piste courante
 Ctrl+Shift+T     Ouvrir les propriétés de la piste courante

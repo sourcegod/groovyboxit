@@ -245,6 +245,9 @@ class DrumPlayer:
                         measure_start  = time.perf_counter()
                         if self._on_count_in_done_cb:
                             self._on_count_in_done_cb()
+                elif not self._wakeup.is_set() and not self.stop_event.is_set():
+                    if not self._pattern._looping and self.playing:
+                        self.playing = False
 
     #--------------------------------------------------------------------------
 

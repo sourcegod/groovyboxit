@@ -13,6 +13,7 @@ from ui.dialogs import (
     QuantizeDialog,
     SavePatternDialog,
     TrackPropertiesDialog,
+    PatternPropertiesDialog,
 )
 
 
@@ -116,7 +117,8 @@ class MainWindow(wx.Frame):
             style=wx.LB_SINGLE,
         )
         self._pattern_listbox.SetSelection(0)
-        self._pattern_listbox.Bind(wx.EVT_LISTBOX, self._on_pattern_select)
+        self._pattern_listbox.Bind(wx.EVT_LISTBOX,        self._on_pattern_select)
+        self._pattern_listbox.Bind(wx.EVT_LISTBOX_DCLICK, self._on_pattern_list_activate)
 
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self._status_ctrl, 1, wx.EXPAND | wx.RIGHT, 4)
@@ -290,6 +292,7 @@ class MainWindow(wx.Frame):
         self._cur_pattern_idx = idx
         new = self._pattern_list[idx]
         self._player._pattern.load_pattern(new._curpattern)
+        self._player._pattern._looping = new._looping
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes
@@ -349,6 +352,8 @@ class MainWindow(wx.Frame):
                     "bpm":           pat._bpm,
                     "num_bars":      pat._num_bars,
                     "num_steps":     pat._num_steps,
+                    "start_bar":     pat._start_bar,
+                    "looping":       pat._looping,
                     "track_slots":   pat._track_slots,
                     "track_mutes":   pat._track_mutes,
                     "track_solos":   pat._track_solos,
@@ -393,6 +398,8 @@ class MainWindow(wx.Frame):
             pat._bpm       = p.get("bpm", 100)
             pat._num_bars  = p.get("num_bars", 1)
             pat._num_steps = p.get("num_steps", 16)
+            pat._start_bar = p.get("start_bar", 0)
+            pat._looping   = p.get("looping", True)
             pat.load_pattern(p["curpattern"])
             if "track_slots" in p:
                 pat._track_slots   = p["track_slots"]
@@ -608,6 +615,115 @@ class MainWindow(wx.Frame):
             self._track_properties_dialog()
         else:
             event.Skip()
+
+    def _on_pattern_list_activate(self, event):
+        """Alt+Entrée ou double-clic sur la liste des patterns → propriétés."""
+        if wx.GetKeyState(wx.WXK_ALT):
+            self._pattern_properties_dialog()
+        else:
+            event.Skip()
+
+    def _pattern_properties_dialog(self):
+        """Alt+Entrée depuis la liste des patterns : propriétés du pattern courant."""
+        pat  = self._pattern_list[self._cur_pattern_idx]
+        live = self._player._pattern
+
+        def play_toggle():
+            if self._player.playing:
+                self._player.stop_pattern()
+            else:
+                self._player.play_pattern()
+
+        dlg = PatternPropertiesDialog(
+            self,
+            self._cur_pattern_idx,
+            pat._name,
+            pat._start_bar,
+            live._num_bars,
+            live._num_steps,
+            pat._looping,
+            Pattern.MAX_BARS,
+            Pattern.VALID_NUM_STEPS,
+            on_play_toggle=play_toggle,
+        )
+        result = dlg.ShowModal()
+
+        if result == wx.ID_OK:
+            name      = dlg.get_name()
+            start_bar = dlg.get_start_bar()
+            num_bars  = dlg.get_num_bars()
+            num_steps = dlg.get_num_steps()
+            looping   = dlg.get_looping()
+            action    = dlg.get_action()
+
+            pat._name      = name
+            pat._start_bar = start_bar
+            pat._looping   = looping
+            live._looping  = looping
+
+            if action == "Nouveau":
+                pat.new_pattern(num_bars, num_steps)
+                live.new_pattern(num_bars, num_steps)
+                self._player._compute_offsets()
+                self._refresh_grid()
+                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: nouveau")
+            elif action == "Doubler":
+                if self._player.double_pattern():
+                    pat.load_pattern(live._curpattern)
+                    self._refresh_grid()
+                    self._show_status(
+                        f"Pattern {self._cur_pattern_idx + 1:02d}: doublé — {live._num_bars} mesures"
+                    )
+                else:
+                    self._show_status("Impossible de doubler (limite atteinte)")
+            elif action == "Diviser par 2":
+                if self._player.halve_pattern():
+                    pat.load_pattern(live._curpattern)
+                    self._refresh_grid()
+                    self._show_status(
+                        f"Pattern {self._cur_pattern_idx + 1:02d}: divisé — {live._num_bars} mesures"
+                    )
+                else:
+                    self._show_status("Impossible de diviser (1 mesure minimum)")
+            else:  # "Courant"
+                self._resize_live_pattern(num_bars, num_steps)
+                self._refresh_grid()
+                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour")
+
+            self._refresh_pattern_listbox()
+
+        dlg.Destroy()
+
+    def _resize_live_pattern(self, num_bars, num_steps):
+        """Étend ou tronque le pattern courant sans effacer les données."""
+        live      = self._player._pattern
+        old_bars  = live._num_bars
+        old_steps = live._num_steps
+
+        if num_steps != old_steps:
+            for track in live._curpattern:
+                for pad in track:
+                    for bar in pad:
+                        if num_steps > old_steps:
+                            bar.extend([False] * (num_steps - old_steps))
+                        else:
+                            del bar[num_steps:]
+            live._num_steps = num_steps
+
+        if num_bars != old_bars:
+            for track in live._curpattern:
+                for pad in track:
+                    if num_bars > old_bars:
+                        pad.extend(
+                            [[False] * num_steps for _ in range(num_bars - old_bars)]
+                        )
+                    else:
+                        del pad[num_bars:]
+            live._num_bars = num_bars
+
+        pat = self._pattern_list[self._cur_pattern_idx]
+        pat.load_pattern(live._curpattern)
+        self._player._compute_offsets()
 
     def _on_track_select(self, event):
         idx = self._track_list.GetSelection()

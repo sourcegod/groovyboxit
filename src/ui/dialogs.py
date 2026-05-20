@@ -260,3 +260,112 @@ class TrackPropertiesDialog(wx.Dialog):
     def get_pan(self):      return self._pan.GetValue()
     def get_mute(self):     return self._mute.GetValue()
     def get_solo(self):     return self._solo.GetValue()
+
+
+class PatternPropertiesDialog(wx.Dialog):
+    _LIST_H  = 90   # hauteur fixe des ListBox à contenu long
+    _ACTIONS = ["Courant", "Nouveau", "Doubler", "Diviser par 2"]
+
+    def __init__(self, parent, pat_idx, name, start_bar, num_bars, num_steps,
+                 looping, max_bars, valid_steps, on_play_toggle=None):
+        super().__init__(parent, title=f"Propriétés — Pattern {pat_idx + 1:02d}")
+
+        self._on_play_toggle = on_play_toggle
+        self._max_bars       = max_bars
+
+        # Ordre Tab : Nom → Début → Longueur → Pas → Boucler → Actions
+
+        name_label  = wx.StaticText(self, label="Nom :")
+        self._name  = wx.TextCtrl(self, value=name)
+
+        start_label  = wx.StaticText(self, label="Début :")
+        self._start  = wx.ListBox(
+            self,
+            choices=[f"Mesure {i + 1}" for i in range(num_bars)],
+            style=wx.LB_SINGLE,
+            size=(-1, self._LIST_H),
+        )
+        self._start.SetSelection(min(start_bar, num_bars - 1))
+
+        length_label  = wx.StaticText(self, label="Longueur :")
+        self._length  = wx.ListBox(
+            self,
+            choices=[str(i) for i in range(1, max_bars + 1)],
+            style=wx.LB_SINGLE,
+            size=(-1, self._LIST_H),
+        )
+        self._length.SetSelection(num_bars - 1)
+        self._length.Bind(wx.EVT_LISTBOX, self._on_length_change)
+
+        steps_label  = wx.StaticText(self, label="Pas :")
+        self._steps  = wx.ListBox(
+            self,
+            choices=[str(n) for n in valid_steps],
+            style=wx.LB_SINGLE,
+        )
+        self._steps.SetSelection(list(valid_steps).index(num_steps))
+
+        self._loop = wx.CheckBox(self, label="Boucler")
+        self._loop.SetValue(looping)
+
+        action_label   = wx.StaticText(self, label="Action :")
+        self._actions  = wx.ListBox(
+            self,
+            choices=self._ACTIONS,
+            style=wx.LB_SINGLE,
+            size=(-1, self._LIST_H),
+        )
+        self._actions.SetSelection(0)   # "Courant" par défaut
+
+        ok_btn = wx.Button(self, wx.ID_OK, "Ok")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
+        btn_sizer.Realize()
+
+        grid = wx.FlexGridSizer(rows=6, cols=2, vgap=6, hgap=8)
+        grid.AddGrowableCol(1)
+        grid.Add(name_label,   0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._name,   0, wx.EXPAND)
+        grid.Add(start_label,  0, wx.ALIGN_TOP | wx.TOP, 2)
+        grid.Add(self._start,  0, wx.EXPAND)
+        grid.Add(length_label, 0, wx.ALIGN_TOP | wx.TOP, 2)
+        grid.Add(self._length, 0, wx.EXPAND)
+        grid.Add(steps_label,  0, wx.ALIGN_TOP | wx.TOP, 2)
+        grid.Add(self._steps,  0, wx.EXPAND)
+        grid.Add(wx.StaticText(self, label=""), 0)
+        grid.Add(self._loop,   0)
+        grid.Add(action_label, 0, wx.ALIGN_TOP | wx.TOP, 2)
+        grid.Add(self._actions, 0, wx.EXPAND)
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(grid,      0, wx.EXPAND | wx.ALL, 8)
+        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        self._name.SetFocus()
+
+    def _on_length_change(self, event):
+        new_bars  = event.GetSelection() + 1
+        old_start = self._start.GetSelection()
+        self._start.Set([f"Mesure {i + 1}" for i in range(new_bars)])
+        self._start.SetSelection(min(old_start, new_bars - 1))
+
+    def _on_key(self, event):
+        if event.ControlDown() and event.GetKeyCode() == ord('P'):
+            if self._on_play_toggle:
+                self._on_play_toggle()
+        else:
+            event.Skip()
+
+    def get_name(self):      return self._name.GetValue().strip()
+    def get_start_bar(self): return self._start.GetSelection()          # 0-indexed
+    def get_num_bars(self):  return self._length.GetSelection() + 1
+    def get_num_steps(self): return int(self._steps.GetStringSelection())
+    def get_looping(self):   return self._loop.GetValue()
+    def get_action(self):
+        sel = self._actions.GetSelection()
+        return self._ACTIONS[sel] if sel != wx.NOT_FOUND else "Courant"
