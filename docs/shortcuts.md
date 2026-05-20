@@ -110,6 +110,8 @@ Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
 --- Pistes (focus liste des pistes) ---
 Ctrl+T           Assigner le slot courant à la piste courante
 Ctrl+Shift+T     Ouvrir les propriétés de la piste courante
+Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée (focus liste des pistes)
+Double-clic      Ouvrir les propriétés de la piste (liste des pistes)
 X / Shift+X      Mute piste / Démuter toutes
 S / Shift+S      Solo piste / Désolo toutes
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)

@@ -161,7 +161,8 @@ class MainWindow(wx.Frame):
             style=wx.LB_SINGLE,
         )
         self._track_list.SetSelection(0)
-        self._track_list.Bind(wx.EVT_LISTBOX, self._on_track_select)
+        self._track_list.Bind(wx.EVT_LISTBOX,       self._on_track_select)
+        self._track_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_track_list_activate)
 
         hbox3 = wx.BoxSizer(wx.HORIZONTAL)
         hbox3.Add(track_label,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -600,6 +601,13 @@ class MainWindow(wx.Frame):
         sel = self._track_list.GetSelection()
         self._track_list.Set([self._track_label(i) for i in range(8)])
         self._track_list.SetSelection(sel if sel != wx.NOT_FOUND else 0)
+
+    def _on_track_list_activate(self, event):
+        """Alt+Entrée ou double-clic sur la liste des pistes → propriétés."""
+        if wx.GetKeyState(wx.WXK_ALT):
+            self._track_properties_dialog()
+        else:
+            event.Skip()
 
     def _on_track_select(self, event):
         idx = self._track_list.GetSelection()
