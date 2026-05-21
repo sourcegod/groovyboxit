@@ -261,20 +261,11 @@ class MainWindow(wx.Frame):
     def _on_pattern_select(self, event):
         self._switch_pattern(self._pattern_listbox.GetSelection())
 
-    def _is_pattern_empty(self, pat):
-        return not any(
-            step
-            for track in pat._curpattern
-            for pad in track
-            for bar in pad
-            for step in bar
-        )
-
     def _pattern_label(self, idx):
         pat = self._pattern_list[idx]
         if pat._name:
             return f"{idx + 1:02d} - {pat._name}"
-        if self._is_pattern_empty(pat):
+        if pat.is_empty():
             return f"{idx + 1:02d} (Unused)"
         return f"{idx + 1:02d}"
 
@@ -337,7 +328,6 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _save_preset(self):
-        # Synchroniser l'état courant avant sauvegarde
         cur = self._pattern_list[self._cur_pattern_idx]
         cur._voices        = self._player.voice_manager.to_list()
         cur._track_slots   = self._router._track_slots[:]
@@ -346,27 +336,7 @@ class MainWindow(wx.Frame):
         cur._track_volumes = self._router._track_volumes[:]
         cur._track_pans    = self._router._track_pans[:]
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
-        data = {
-            "version": 1,
-            "patterns": [
-                {
-                    "name":          pat._name,
-                    "bpm":           pat._bpm,
-                    "num_bars":      pat._num_bars,
-                    "num_steps":     pat._num_steps,
-                    "start_bar":     pat._start_bar,
-                    "looping":       pat._looping,
-                    "track_slots":   pat._track_slots,
-                    "track_mutes":   pat._track_mutes,
-                    "track_solos":   pat._track_solos,
-                    "track_volumes": pat._track_volumes,
-                    "track_pans":    pat._track_pans,
-                    "curpattern":    pat._curpattern,
-                    "voices":        pat._voices,
-                }
-                for pat in self._pattern_list
-            ],
-        }
+        data = {"version": 1, "patterns": [pat.to_dict() for pat in self._pattern_list]}
         with open(self._preset_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
@@ -395,26 +365,7 @@ class MainWindow(wx.Frame):
         for i, p in enumerate(data.get("patterns", [])):
             if i >= len(self._pattern_list):
                 break
-            pat = self._pattern_list[i]
-            pat._name      = p.get("name", "")
-            pat._bpm       = p.get("bpm", 100)
-            pat._num_bars  = p.get("num_bars", 1)
-            pat._num_steps = p.get("num_steps", 16)
-            pat._start_bar = p.get("start_bar", 0)
-            pat._looping   = p.get("looping", True)
-            pat.load_pattern(p["curpattern"])
-            if "track_slots" in p:
-                pat._track_slots   = p["track_slots"]
-            if "track_mutes" in p:
-                pat._track_mutes   = p["track_mutes"]
-            if "track_solos" in p:
-                pat._track_solos   = p["track_solos"]
-            if "track_volumes" in p:
-                pat._track_volumes = p["track_volumes"]
-            if "track_pans" in p:
-                pat._track_pans    = p["track_pans"]
-            if "voices" in p:
-                pat._voices = p["voices"]
+            self._pattern_list[i].from_dict(p)
         self._refresh_pattern_listbox()
         self._switch_pattern(0)
 
@@ -697,34 +648,9 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _resize_live_pattern(self, num_bars, num_steps):
-        """Étend ou tronque le pattern courant sans effacer les données."""
-        live      = self._player._pattern
-        old_bars  = live._num_bars
-        old_steps = live._num_steps
-
-        if num_steps != old_steps:
-            for track in live._curpattern:
-                for pad in track:
-                    for bar in pad:
-                        if num_steps > old_steps:
-                            bar.extend([False] * (num_steps - old_steps))
-                        else:
-                            del bar[num_steps:]
-            live._num_steps = num_steps
-
-        if num_bars != old_bars:
-            for track in live._curpattern:
-                for pad in track:
-                    if num_bars > old_bars:
-                        pad.extend(
-                            [[False] * num_steps for _ in range(num_bars - old_bars)]
-                        )
-                    else:
-                        del pad[num_bars:]
-            live._num_bars = num_bars
-
-        pat = self._pattern_list[self._cur_pattern_idx]
-        pat.load_pattern(live._curpattern)
+        live = self._player._pattern
+        live.resize(num_bars, num_steps)
+        self._pattern_list[self._cur_pattern_idx].load_pattern(live._curpattern)
         self._player._compute_offsets()
 
     def _on_track_select(self, event):

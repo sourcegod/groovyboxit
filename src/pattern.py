@@ -148,3 +148,80 @@ class Pattern:
         p[0][8][0][14] = True
         p[0][9][0][13] = True
         p[0][10][0][0] = True
+
+    #--------------------------------------------------------------------------
+
+    def is_empty(self):
+        return not any(
+            step
+            for track in self._curpattern
+            for pad in track
+            for bar in pad
+            for step in bar
+        )
+
+    #--------------------------------------------------------------------------
+
+    def resize(self, num_bars, num_steps):
+        """Étend ou tronque _curpattern sans effacer les données existantes."""
+        old_steps = self._num_steps
+        old_bars  = self._num_bars
+
+        if num_steps != old_steps:
+            for track in self._curpattern:
+                for pad in track:
+                    for bar in pad:
+                        if num_steps > old_steps:
+                            bar.extend([False] * (num_steps - old_steps))
+                        else:
+                            del bar[num_steps:]
+            self._num_steps = num_steps
+
+        if num_bars != old_bars:
+            for track in self._curpattern:
+                for pad in track:
+                    if num_bars > old_bars:
+                        pad.extend(
+                            [[False] * num_steps for _ in range(num_bars - old_bars)]
+                        )
+                    else:
+                        del pad[num_bars:]
+            self._num_bars = num_bars
+
+    #--------------------------------------------------------------------------
+
+    def to_dict(self):
+        """Sérialise le pattern en dict JSON-compatible."""
+        return {
+            "name":          self._name,
+            "bpm":           self._bpm,
+            "num_bars":      self._num_bars,
+            "num_steps":     self._num_steps,
+            "start_bar":     self._start_bar,
+            "looping":       self._looping,
+            "track_slots":   self._track_slots,
+            "track_mutes":   self._track_mutes,
+            "track_solos":   self._track_solos,
+            "track_volumes": self._track_volumes,
+            "track_pans":    self._track_pans,
+            "curpattern":    self._curpattern,
+            "voices":        self._voices,
+        }
+
+    #--------------------------------------------------------------------------
+
+    def from_dict(self, d):
+        """Restaure le pattern depuis un dict (issu de to_dict / JSON)."""
+        self._name      = d.get("name", "")
+        self._bpm       = d.get("bpm", 100)
+        self._num_bars  = d.get("num_bars", 1)
+        self._num_steps = d.get("num_steps", 16)
+        self._start_bar = d.get("start_bar", 0)
+        self._looping   = d.get("looping", True)
+        self.load_pattern(d["curpattern"])
+        if "track_slots"   in d: self._track_slots   = d["track_slots"]
+        if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]
+        if "track_solos"   in d: self._track_solos   = d["track_solos"]
+        if "track_volumes" in d: self._track_volumes = d["track_volumes"]
+        if "track_pans"    in d: self._track_pans    = d["track_pans"]
+        if "voices"        in d: self._voices        = d["voices"]
