@@ -209,8 +209,9 @@ class DrumPlayer:
                     if self.voice_manager.is_audible(pad_idx):
                         vol = self.voice_manager.get_volume_factor(pad_idx)
                         pan = self.voice_manager.get_pan(pad_idx)
+                        dur = self.voice_manager.get_duration_ms(pad_idx)
                         if self._on_track_play_cb:
-                            self._on_track_play_cb(track_idx, pad_idx, vol, pan)
+                            self._on_track_play_cb(track_idx, pad_idx, vol, pan, dur)
                         else:
                             self.sound_man.play_sound(pad_idx, vol, pan)
                     if track_idx == self._cur_track and self.replace_recording:

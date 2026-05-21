@@ -290,7 +290,7 @@ class KeyManager:
                     if win._router.synth_ready():
                         vm = win._player.voice_manager
                         v  = vm.get_voice(note_idx)
-                        win._router.synth.play(midi, v.volume / 100.0, v.pan)
+                        win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
                         win._router.kb_last_midi = midi
                         if win._player.recording:
                             bar_idx, step_idx = win._player.record_hit(note_idx)
@@ -341,7 +341,9 @@ class KeyManager:
                 if slot.type == InstrumentType.SYNTH and win._router.synth_ready():
                     if note_idx < len(win._router.kb_notes):
                         midi = win._router.kb_notes[note_idx]
-                        win._router.synth.play(midi)
+                        vm   = win._player.voice_manager
+                        v    = vm.get_voice(note_idx)
+                        win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
                         win._router.kb_last_midi = midi
                         if win._player.recording:
                             bar_idx, step_idx = win._player.record_hit(note_idx)

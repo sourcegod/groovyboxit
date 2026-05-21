@@ -265,13 +265,12 @@ class SynthEngine:
     # Lecture
     # ------------------------------------------------------------------
 
-    def play(self, midi_note, volume_factor=1.0, pan=0):
-        """Joue midi_note. Retourne le channel pygame ou None."""
+    def play(self, midi_note, volume_factor=1.0, pan=0, maxtime_ms=100):
+        """Joue midi_note pendant maxtime_ms ms (0 = fin du WAV). Retourne le channel pygame ou None."""
         sound = self.get_sound(midi_note)
         if sound is None:
             return None
-        # Sustain pré-rendu → on joue une seule fois (loops=0)
-        channel = sound.play(0)
+        channel = sound.play(0, maxtime=maxtime_ms)
         if channel is not None and (volume_factor != 1.0 or pan != 0):
             pan_norm = pan / 100.0
             left  = volume_factor * (1.0 - max(0.0, pan_norm))

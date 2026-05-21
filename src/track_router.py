@@ -229,7 +229,7 @@ class TrackRouter:
         """Vrai si _synth est chargé et prêt à jouer."""
         return self._synth is not None and self._synth.is_loaded()
 
-    def on_play(self, track_idx, pad_idx, vol_factor, pan):
+    def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=100):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):
             return
@@ -240,7 +240,7 @@ class TrackRouter:
         if slot.type == InstrumentType.SYNTH:
             engine = self._slot_synths.get(slot_idx)
             if engine and engine.is_loaded() and pad_idx < len(self.kb_notes):
-                engine.play(self.kb_notes[pad_idx], vol_factor, pan)
+                engine.play(self.kb_notes[pad_idx], vol_factor, pan, duration_ms)
         else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 
