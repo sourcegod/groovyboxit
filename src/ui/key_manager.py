@@ -43,6 +43,7 @@ class KeyManager:
             on_scale_choice = focused == win._scale_choice,
             on_slot_choice  = focused == win._slot_choice,
             on_track_list   = focused == win._track_list,
+            on_pad_list     = focused == win._pad_list,
         )
 
         if key == wx.WXK_F1:
@@ -74,6 +75,7 @@ class KeyManager:
         ctrl  = ctx.ctrl
         shift = ctx.shift
         on_track_list = ctx.on_track_list
+        on_pad_list   = ctx.on_pad_list
 
         if not ctrl and shift and key == ord('W'):
             win._save_preset_as()
@@ -91,6 +93,8 @@ class KeyManager:
                 vm.set_volume(win._cur_row, vm.get_voice(win._cur_row).volume + 5)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Volume {vm.get_voice(win._cur_row).volume}")
+                if on_pad_list:
+                    win._play(win._cur_row)
             return True
         if not ctrl and not shift and key == wx.WXK_DOWN:
             tidx = win._player._cur_track
@@ -102,6 +106,8 @@ class KeyManager:
                 vm.set_volume(win._cur_row, vm.get_voice(win._cur_row).volume - 5)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Volume {vm.get_voice(win._cur_row).volume}")
+                if on_pad_list:
+                    win._play(win._cur_row)
             return True
         if not ctrl and not shift and key == wx.WXK_LEFT:
             tidx = win._player._cur_track
@@ -113,6 +119,8 @@ class KeyManager:
                 vm.set_pan(win._cur_row, vm.get_pan(win._cur_row) - 10)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Pan {vm.get_pan(win._cur_row)}")
+                if on_pad_list:
+                    win._play(win._cur_row)
             return True
         if not ctrl and not shift and key == wx.WXK_RIGHT:
             tidx = win._player._cur_track
@@ -124,6 +132,8 @@ class KeyManager:
                 vm.set_pan(win._cur_row, vm.get_pan(win._cur_row) + 10)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Pan {vm.get_pan(win._cur_row)}")
+                if on_pad_list:
+                    win._play(win._cur_row)
             return True
         if not ctrl and not shift and (ukey == ord('0') or key == ord('0')):
             tidx = win._player._cur_track
@@ -134,6 +144,8 @@ class KeyManager:
                 win._player.voice_manager.set_pan(win._cur_row, 0)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Pan 0 (centre)")
+                if on_pad_list:
+                    win._play(win._cur_row)
             return True
         if not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             win._open_explorer()
@@ -221,6 +233,7 @@ class KeyManager:
         on_scale_choice = ctx.on_scale_choice
         on_slot_choice  = ctx.on_slot_choice
         on_track_list   = ctx.on_track_list
+        on_pad_list     = ctx.on_pad_list
 
         if key == wx.WXK_TAB:
             win._on_tab_order(shift)
@@ -237,8 +250,19 @@ class KeyManager:
                 else:
                     event.Skip()
                     wx.CallAfter(win._on_track_select, None)
+            elif on_pad_list and key in (wx.WXK_UP, wx.WXK_DOWN):
+                cur = win._pad_list.GetSelection()
+                n   = win._pad_list.GetCount()
+                at_limit = (key == wx.WXK_UP  and cur <= 0) or \
+                           (key == wx.WXK_DOWN and cur >= n - 1)
+                if at_limit:
+                    wx.Bell()
+                else:
+                    event.Skip()
+                    wx.CallAfter(win._on_pad_list_key_nav, None)
             elif on_quant_list or on_pattern_list or on_mode_choice \
-                    or on_scale_choice or on_slot_choice or on_track_list:
+                    or on_scale_choice or on_slot_choice or on_track_list \
+                    or on_pad_list:
                 event.Skip()
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()
@@ -261,6 +285,8 @@ class KeyManager:
                 win._apply_quant()
             elif on_pattern_list:
                 pass
+            elif on_pad_list:
+                win._cells[win._cur_row][win._cur_col].SetFocus()
             else:
                 r, c = win._cur_row, win._cur_col
                 new_val = False if shift else not win._cells[r][c].GetValue()

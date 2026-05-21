@@ -157,7 +157,7 @@ class MainWindow(wx.Frame):
         hbox2.Add(slot_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox2.Add(self._slot_choice,  0, wx.EXPAND)
 
-        # --- Barre 3 : Pistes ---
+        # --- Barre 3 : Pistes + Pads ---
         track_label = wx.StaticText(panel, label="Piste:")
         self._track_list = wx.ListBox(
             panel,
@@ -165,12 +165,24 @@ class MainWindow(wx.Frame):
             style=wx.LB_SINGLE,
         )
         self._track_list.SetSelection(0)
-        self._track_list.Bind(wx.EVT_LISTBOX,       self._on_track_select)
+        self._track_list.Bind(wx.EVT_LISTBOX,        self._on_track_select)
         self._track_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_track_list_activate)
 
+        pad_label = wx.StaticText(panel, label="Pad:")
+        self._pad_list = wx.ListBox(
+            panel,
+            choices=[f"Pad{i + 1}" for i in range(self.ROWS)],
+            style=wx.LB_SINGLE,
+        )
+        self._pad_list.SetSelection(0)
+        self._pad_list.Bind(wx.EVT_LISTBOX,        self._on_pad_select)
+        self._pad_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_pad_list_activate)
+
         hbox3 = wx.BoxSizer(wx.HORIZONTAL)
-        hbox3.Add(track_label,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        hbox3.Add(self._track_list,   0, wx.EXPAND)
+        hbox3.Add(track_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._track_list, 0, wx.EXPAND | wx.RIGHT, 8)
+        hbox3.Add(pad_label,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._pad_list,   0, wx.EXPAND)
 
         # Panneau voix : M / S / SpinVol / SpinPan par ligne
         self._mute_btns = []
@@ -230,6 +242,7 @@ class MainWindow(wx.Frame):
             self._scale_choice,
             self._slot_choice,
             self._track_list,
+            self._pad_list,   # juste avant la grille
         ]
 
         self.Fit()
@@ -238,6 +251,7 @@ class MainWindow(wx.Frame):
     def _set_cursor(self, row, col):
         self._cur_row = row
         self._cur_col = col
+        self._pad_list.SetSelection(row)
 
     def _set_cell(self, row, col, value):
         self._cells[row][col].SetValue(value)
@@ -575,6 +589,31 @@ class MainWindow(wx.Frame):
             self._pattern_properties_dialog()
         else:
             event.Skip()
+
+    def _on_pad_select(self, event):
+        idx = self._pad_list.GetSelection()
+        if idx < 0:
+            return
+        self._cur_row = idx
+
+    def _on_pad_list_key_nav(self, event):
+        """Appelé après navigation clavier dans la liste des Pads (autoplay)."""
+        idx = self._pad_list.GetSelection()
+        if idx < 0:
+            return
+        self._cur_row = idx
+        if self._autoplay:
+            self._play(idx)
+
+    def _on_pad_list_activate(self, event):
+        """Alt+Entrée ou double-clic sur la liste des pads → PadPropertiesDialog (à venir)."""
+        if wx.GetKeyState(wx.WXK_ALT):
+            self._pad_properties_dialog()
+        else:
+            event.Skip()
+
+    def _pad_properties_dialog(self):
+        self._show_status(f"Pad {self._cur_row + 1}: propriétés (à implémenter)")
 
     def _pattern_properties_dialog(self):
         """Alt+Entrée depuis la liste des patterns : propriétés du pattern courant."""
