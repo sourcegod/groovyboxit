@@ -85,7 +85,8 @@ class SynthEngine:
         self._patch_name  = None
         self._patch_meta  = {}
         self._samples     = []    # [{"root_midi","data","sr","path","loop_start","loop_end"}]
-        self._cache       = {}    # {midi_note: pygame.Sound}
+        self._raw_cache   = {}    # {midi_note: (data, sr)} — pitch-shifté, pleine durée
+        self._cache       = {}    # {(midi_note, duration_ms): pygame.Sound}
         self._loop        = False
         self._mixer_freq  = None  # fréquence du mixer pygame (vérifiée au 1er usage)
 
@@ -105,6 +106,7 @@ class SynthEngine:
         self._patch_meta = meta
         self._loop       = meta.get("loop", False)
         self._samples    = []
+        self._raw_cache  = {}
         self._cache      = {}
 
         for s in meta.get("samples", []):
@@ -130,6 +132,7 @@ class SynthEngine:
         self._patch_name = os.path.basename(wav_path)
         self._patch_meta = {}
         self._loop       = False
+        self._raw_cache  = {}
         self._cache      = {}
         self._samples    = [{
             "root_midi":  root_midi,
@@ -227,16 +230,18 @@ class SynthEngine:
 
         return sustained
 
-    def _build_sound(self, midi_note):
-        """Crée et met en cache le pygame.Sound pour midi_note."""
+    FADEOUT_MS = 50   # durée du fondu final appliqué aux données (ms)
+
+    def _get_raw(self, midi_note):
+        """Retourne (data, sr) pitch-shifté pour midi_note, avec cache."""
+        if midi_note in self._raw_cache:
+            return self._raw_cache[midi_note]
         sample = self._find_nearest_sample(midi_note)
         if sample is None:
-            return None
+            return None, None
         n_steps = midi_note - sample["root_midi"]
         data    = rb.pitch_shift(sample["data"], sample["sr"], n_steps=n_steps) \
                   if n_steps != 0 else sample["data"]
-        # Sustain loop : re-caler les points sur le signal pitché (AudioTools),
-        # puis construire le buffer
         if self._loop \
                 and sample["loop_start"] is not None \
                 and sample["loop_end"]   is not None:
@@ -244,33 +249,57 @@ class SynthEngine:
                 data, sample["loop_start"], sample["loop_end"]
             )
             data = self._build_looped_data(data, sample["sr"], ls, le)
-        sound = self._to_pygame_sound(data, sample["sr"])
-        self._cache[midi_note] = sound
+        self._raw_cache[midi_note] = (data, sample["sr"])
+        return data, sample["sr"]
+
+    def _apply_duration(self, data, sr, duration_ms):
+        """Tronque data à duration_ms ms et applique un fadeout final."""
+        n_total   = int(duration_ms / 1000.0 * sr)
+        n_fadeout = min(int(self.FADEOUT_MS / 1000.0 * sr), max(1, n_total // 4))
+        out = data[:n_total].copy() if len(data) > n_total else data.copy()
+        if n_fadeout > 1:
+            fade = np.linspace(1.0, 0.0, n_fadeout)
+            if out.ndim > 1:
+                fade = fade[:, np.newaxis]
+            out[-n_fadeout:] *= fade
+        return out
+
+    def _build_sound(self, midi_note, duration_ms):
+        """Crée et met en cache le pygame.Sound pour (midi_note, duration_ms)."""
+        data, sr = self._get_raw(midi_note)
+        if data is None:
+            return None
+        trimmed = self._apply_duration(data, sr, duration_ms) \
+                  if duration_ms > 0 else data
+        sound = self._to_pygame_sound(trimmed, sr)
+        self._cache[(midi_note, duration_ms)] = sound
         return sound
 
-    def get_sound(self, midi_note):
-        """Retourne le pygame.Sound pour midi_note (cache ou calcul à la volée)."""
-        return self._cache.get(midi_note) or self._build_sound(midi_note)
+    def get_sound(self, midi_note, duration_ms=500):
+        """Retourne le pygame.Sound pour (midi_note, duration_ms), avec cache."""
+        key = (midi_note, duration_ms)
+        return self._cache.get(key) or self._build_sound(midi_note, duration_ms)
 
-    def precompute(self, midi_notes):
+    def precompute(self, midi_notes, duration_ms=500):
         """Pré-calcule et met en cache une liste de notes MIDI."""
         for note in midi_notes:
-            if note not in self._cache:
-                self._build_sound(note)
+            if (note, duration_ms) not in self._cache:
+                self._build_sound(note, duration_ms)
 
     def clear_cache(self):
-        self._cache = {}
+        self._raw_cache = {}
+        self._cache     = {}
 
     # ------------------------------------------------------------------
     # Lecture
     # ------------------------------------------------------------------
 
-    def play(self, midi_note, volume_factor=1.0, pan=0, maxtime_ms=100):
-        """Joue midi_note pendant maxtime_ms ms (0 = fin du WAV). Retourne le channel pygame ou None."""
-        sound = self.get_sound(midi_note)
+    def play(self, midi_note, volume_factor=1.0, pan=0, maxtime_ms=500):
+        """Joue midi_note. maxtime_ms=0 → durée complète du WAV."""
+        sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
             return None
-        channel = sound.play(0, maxtime=maxtime_ms)
+        channel = sound.play(0)
         if channel is not None and (volume_factor != 1.0 or pan != 0):
             pan_norm = pan / 100.0
             left  = volume_factor * (1.0 - max(0.0, pan_norm))
@@ -279,8 +308,8 @@ class SynthEngine:
         return channel
 
     def stop(self, midi_note):
-        """Arrête la note (utile pour les instruments en loop/sustain)."""
-        sound = self._cache.get(midi_note)
+        """Arrête la note sustain (utile pour les instruments en loop)."""
+        sound = self._cache.get((midi_note, 0))
         if sound:
             sound.stop()
 
@@ -292,8 +321,8 @@ class SynthEngine:
         return bool(self._samples)
 
     def __repr__(self):
-        cached = len(self._cache)
-        return f"SynthEngine(patch={self._patch_name!r}, samples={len(self._samples)}, cached={cached})"
+        return (f"SynthEngine(patch={self._patch_name!r}, "
+                f"samples={len(self._samples)}, cached={len(self._cache)})")
 
 
 #=========================================
