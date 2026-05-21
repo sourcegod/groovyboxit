@@ -167,6 +167,7 @@ class FakeWindow:
         self._scale_choice    = FakeWidget()
         self._slot_choice     = FakeWidget()
         self._track_list      = FakeWidget()
+        self._pad_list        = FakeWidget()
         self._vol_ctrls       = [FakeWidget() for _ in range(16)]
         self._pan_ctrls       = [FakeWidget() for _ in range(16)]
         self._cells           = [[FakeCell() for _ in range(self.COLS)]

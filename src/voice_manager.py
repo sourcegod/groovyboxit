@@ -5,7 +5,7 @@ class Voice:
         self.pan         = 0     # -100 (gauche) … 0 (centre) … +100 (droite)
         self.mute        = False
         self.solo        = False
-        self.duration_ms = 100   # durée de note en ms (0 = fin du WAV)
+        self.duration_ms = 500   # durée de note en ms (0 = fin du WAV)
 
 
 class VoiceManager:
@@ -80,7 +80,7 @@ class VoiceManager:
             v.pan         = 0
             v.mute        = False
             v.solo        = False
-            v.duration_ms = 100
+            v.duration_ms = 500
 
     def reset_pad(self, pad_idx):
         v = self._voices[pad_idx]
@@ -89,7 +89,7 @@ class VoiceManager:
         v.pan         = 0
         v.mute        = False
         v.solo        = False
-        v.duration_ms = 100
+        v.duration_ms = 500
 
     def set_mute_all(self, value):
         for v in self._voices:
@@ -113,8 +113,8 @@ class VoiceManager:
 
     def to_list(self):
         return [
-            {"volume": v.volume, "pan": v.pan, "mute": v.mute, "solo": v.solo,
-             "duration_ms": v.duration_ms}
+            {"volume": v.volume, "pan": v.pan,
+             "mute": v.mute, "solo": v.solo, "duration_ms": v.duration_ms}
             for v in self._voices
         ]
 
@@ -127,4 +127,4 @@ class VoiceManager:
             v.pan         = max(-100, min(100, int(d.get("pan",    0))))
             v.mute        = bool(d.get("mute",  False))
             v.solo        = bool(d.get("solo",  False))
-            v.duration_ms = max(0, int(d.get("duration_ms", 100)))
+            v.duration_ms = max(0, int(d.get("duration_ms", 500)))

@@ -56,7 +56,7 @@ class Pattern:
 
         # état des voix par pad : volume, pan, mute, solo, duration_ms
         self._voices = [
-            {"volume": 100, "pan": 0, "mute": False, "solo": False, "duration_ms": 100}
+            {"volume": 100, "pan": 0, "mute": False, "solo": False, "duration_ms": 500}
             for _ in range(self._num_pads)
         ]
 

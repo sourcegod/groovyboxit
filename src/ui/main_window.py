@@ -14,6 +14,7 @@ from ui.dialogs import (
     SavePatternDialog,
     TrackPropertiesDialog,
     PatternPropertiesDialog,
+    PadPropertiesDialog,
 )
 from ui.key_manager import KeyManager
 
@@ -171,7 +172,7 @@ class MainWindow(wx.Frame):
         pad_label = wx.StaticText(panel, label="Pad:")
         self._pad_list = wx.ListBox(
             panel,
-            choices=[f"Pad{i + 1}" for i in range(self.ROWS)],
+            choices=[self._pad_label(i) for i in range(self.ROWS)],
             style=wx.LB_SINGLE,
         )
         self._pad_list.SetSelection(0)
@@ -310,6 +311,7 @@ class MainWindow(wx.Frame):
         self._refresh_grid()
         self._refresh_all_voice_display()
         self._refresh_track_list()
+        self._refresh_pad_list()
         self._show_status(f"Pattern {idx + 1:02d}")
 
     def _save_pattern(self):
@@ -612,8 +614,59 @@ class MainWindow(wx.Frame):
         else:
             event.Skip()
 
+    def _pad_label(self, pad_idx):
+        return f"Pad{pad_idx + 1}"
+
+    def _refresh_pad_list(self):
+        sel = self._pad_list.GetSelection()
+        self._pad_list.Set([self._pad_label(i) for i in range(self.ROWS)])
+        self._pad_list.SetSelection(sel if sel != wx.NOT_FOUND else 0)
+
     def _pad_properties_dialog(self):
-        self._show_status(f"Pad {self._cur_row + 1}: propriétés (à implémenter)")
+        pad_idx = self._cur_row
+        vm      = self._player.voice_manager
+        v       = vm.get_voice(pad_idx)
+        orig    = dict(
+            volume      = v.volume,
+            pan         = v.pan,
+            mute        = v.mute,
+            solo        = v.solo,
+            duration_ms = v.duration_ms,
+        )
+
+        def apply(vol, pan, mute, solo, dur):
+            vm.set_volume(pad_idx, vol)
+            vm.set_pan(pad_idx, pan)
+            vm.set_mute(pad_idx, mute)
+            vm.set_solo(pad_idx, solo)
+            vm.set_duration_ms(pad_idx, dur)
+            self._refresh_voice_display(pad_idx)
+
+        def play_pad():
+            self._play(pad_idx)
+
+        def play_toggle():
+            if self._player.playing:
+                self._player.stop_pattern()
+            else:
+                self._player.play_pattern()
+
+        dlg = PadPropertiesDialog(
+            self, pad_idx,
+            orig['volume'], orig['pan'],
+            orig['mute'], orig['solo'], orig['duration_ms'],
+            on_change=apply, on_play=play_pad, on_play_toggle=play_toggle,
+        )
+        result = dlg.ShowModal()
+        if result == wx.ID_OK:
+            apply(dlg.get_volume(), dlg.get_pan(),
+                  dlg.get_mute(), dlg.get_solo(), dlg.get_duration_ms())
+            self._show_status(f"Pad {pad_idx + 1}: propriétés mises à jour")
+        else:
+            apply(orig['volume'], orig['pan'],
+                  orig['mute'], orig['solo'], orig['duration_ms'])
+            self._show_status(f"Pad {pad_idx + 1}: modifications annulées")
+        dlg.Destroy()
 
     def _pattern_properties_dialog(self):
         """Alt+Entrée depuis la liste des patterns : propriétés du pattern courant."""
