@@ -229,7 +229,7 @@ class TrackRouter:
         """Vrai si _synth est chargé et prêt à jouer."""
         return self._synth is not None and self._synth.is_loaded()
 
-    def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=100):
+    def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):
             return
