@@ -214,6 +214,18 @@ class KeyManager:
                 f"Count-In: {n} mesure{'s' if n > 1 else ''}..." if n else "Rec: On"
             )
             return True
+        if not shift and not alt and key == wx.WXK_UP:
+            vol = min(100, win._player.volume + 1)
+            win._player.set_volume(vol)
+            win._volume_ctrl.SetValue(vol)
+            win._show_status(f"Volume Global: {vol}")
+            return True
+        if not shift and not alt and key == wx.WXK_DOWN:
+            vol = max(0, win._player.volume - 1)
+            win._player.set_volume(vol)
+            win._volume_ctrl.SetValue(vol)
+            win._show_status(f"Volume Global: {vol}")
+            return True
         return False
 
     # ------------------------------------------------------------------
