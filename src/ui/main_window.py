@@ -615,7 +615,10 @@ class MainWindow(wx.Frame):
             event.Skip()
 
     def _pad_label(self, pad_idx):
-        return f"Pad{pad_idx + 1}"
+        name = self._player.voice_manager.get_name(pad_idx)
+        if name:
+            return f"Pad_{pad_idx + 1:02d} - {name}"
+        return f"Pad_{pad_idx + 1:02d}"
 
     def _refresh_pad_list(self):
         sel = self._pad_list.GetSelection()
