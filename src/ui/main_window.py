@@ -115,7 +115,8 @@ class MainWindow(wx.Frame):
             style=wx.LB_SINGLE,
         )
         self._quant_list.SetSelection(self._player.quant_idx)
-        self._quant_list.Bind(wx.EVT_LISTBOX, self._on_quant_select)
+        self._quant_list.Bind(wx.EVT_LISTBOX,        self._on_quant_select)
+        self._quant_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
 
         pattern_label = wx.StaticText(panel, label="Pat:")
         self._pattern_listbox = wx.ListBox(
@@ -144,17 +145,20 @@ class MainWindow(wx.Frame):
         mode_label = wx.StaticText(panel, label="Mode:")
         self._mode_choice = wx.ListBox(panel, choices=["Mode: Pad", "Mode: Keyboard"], style=wx.LB_SINGLE)
         self._mode_choice.SetSelection(0)
-        self._mode_choice.Bind(wx.EVT_LISTBOX, self._on_mode_choice)
+        self._mode_choice.Bind(wx.EVT_LISTBOX,        self._on_mode_choice)
+        self._mode_choice.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
 
         scale_label = wx.StaticText(panel, label="Gamme:")
         self._scale_choice = wx.ListBox(panel, choices=SCALE_LABELS, style=wx.LB_SINGLE)
         self._scale_choice.SetSelection(SCALE_NAMES.index(self._kb_scale))
-        self._scale_choice.Bind(wx.EVT_LISTBOX, self._on_scale_choice)
+        self._scale_choice.Bind(wx.EVT_LISTBOX,        self._on_scale_choice)
+        self._scale_choice.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
 
         slot_label = wx.StaticText(panel, label="Slot:")
         self._slot_choice = wx.ListBox(panel, choices=self._rack.labels(), style=wx.LB_SINGLE)
         self._slot_choice.SetSelection(0)
-        self._slot_choice.Bind(wx.EVT_LISTBOX, self._on_slot_choice)
+        self._slot_choice.Bind(wx.EVT_LISTBOX,        self._on_slot_choice)
+        self._slot_choice.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
 
         hbox2 = wx.BoxSizer(wx.HORIZONTAL)
         hbox2.Add(mode_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -595,14 +599,18 @@ class MainWindow(wx.Frame):
         if wx.GetKeyState(wx.WXK_ALT):
             self._track_properties_dialog()
         else:
-            event.Skip()
+            self._play(self._cur_row)
 
     def _on_pattern_list_activate(self, event):
         """Alt+Entrée ou double-clic sur la liste des patterns → propriétés."""
         if wx.GetKeyState(wx.WXK_ALT):
             self._pattern_properties_dialog()
         else:
-            event.Skip()
+            self._play(self._cur_row)
+
+    def _on_listbox_play_activate(self, event):
+        """Enter/double-clic sur une listbox sans handler spécifique → joue le pad courant."""
+        self._play(self._cur_row)
 
     def _on_pad_select(self, event):
         idx = self._pad_list.GetSelection()
@@ -620,11 +628,11 @@ class MainWindow(wx.Frame):
             self._play(idx)
 
     def _on_pad_list_activate(self, event):
-        """Alt+Entrée ou double-clic sur la liste des pads → PadPropertiesDialog (à venir)."""
+        """Enter/double-clic → joue le pad; Alt+Entrée → PadPropertiesDialog."""
         if wx.GetKeyState(wx.WXK_ALT):
             self._pad_properties_dialog()
         else:
-            event.Skip()
+            self._play(self._cur_row)
 
     def _pad_label(self, pad_idx):
         name = self._player.voice_manager.get_name(pad_idx)

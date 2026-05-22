@@ -319,7 +319,11 @@ class KeyManager:
                 win._move(0, 1)
             return True
 
-        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+        if key == wx.WXK_NUMPAD_ENTER:
+            win._play(win._cur_row)
+            return True
+
+        if key == wx.WXK_RETURN:
             if on_quant_list:
                 win._apply_quant()
             elif on_pattern_list:
