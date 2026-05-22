@@ -279,10 +279,10 @@ class MainWindow(wx.Frame):
     def _pattern_label(self, idx):
         pat = self._pattern_list[idx]
         if pat._name:
-            return f"{idx + 1:02d} - {pat._name}"
+            return f"Pat_{idx + 1:02d} - {pat._name}"
         if pat.is_empty():
-            return f"{idx + 1:02d} (Unused)"
-        return f"{idx + 1:02d}"
+            return f"Pat_{idx + 1:02d} (Unused)"
+        return f"Pat_{idx + 1:02d}"
 
     def _refresh_pattern_listbox(self):
         sel = self._pattern_listbox.GetSelection()
