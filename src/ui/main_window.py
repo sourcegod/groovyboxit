@@ -5,7 +5,7 @@ from sound_manager import SoundManager
 from drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
-from synth_engine import midi_to_note_name, SCALE_NAMES
+from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
 from ui.dialogs import (
     KeyboardHelpDialog,
@@ -141,7 +141,7 @@ class MainWindow(wx.Frame):
         self._mode_choice.Bind(wx.EVT_LISTBOX, self._on_mode_choice)
 
         scale_label = wx.StaticText(panel, label="Gamme:")
-        self._scale_choice = wx.ListBox(panel, choices=SCALE_NAMES, style=wx.LB_SINGLE)
+        self._scale_choice = wx.ListBox(panel, choices=SCALE_LABELS, style=wx.LB_SINGLE)
         self._scale_choice.SetSelection(SCALE_NAMES.index(self._kb_scale))
         self._scale_choice.Bind(wx.EVT_LISTBOX, self._on_scale_choice)
 

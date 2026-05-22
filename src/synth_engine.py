@@ -30,6 +30,16 @@ SCALES = {
 
 SCALE_NAMES = list(SCALES.keys())   # ordre canonique pour / et *
 
+# Étiquettes d'affichage pour la listbox (même ordre que SCALE_NAMES)
+SCALE_LABELS = [
+    "Scale_01 - Chromatic",
+    "Scale_02 - Major",
+    "Scale_03 - Minor Nat",
+    "Scale_04 - Minor Harm 1",
+    "Scale_05 - Pentatonic Major",
+    "Scale_06 - Pentatonic Minor",
+]
+
 # Noms de notes (dièses uniquement, bémols normalisés à l'entrée)
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 _FLAT_MAP   = {"Db": "C#", "Eb": "D#", "Fb": "E", "Gb": "F#",
