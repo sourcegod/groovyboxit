@@ -1,5 +1,6 @@
 class Voice:
     def __init__(self):
+        self.name        = ""
         self.volume      = 100   # 0-100
         self.velocity    = 100   # 0-127 (réservé MIDI / sounddevice)
         self.pan         = 0     # -100 (gauche) … 0 (centre) … +100 (droite)
@@ -29,6 +30,9 @@ class VoiceManager:
         """Facteur de volume 0.0–1.0."""
         return self._voices[pad_idx].volume / 100.0
 
+    def get_name(self, pad_idx):
+        return self._voices[pad_idx].name
+
     def get_pan(self, pad_idx):
         return self._voices[pad_idx].pan
 
@@ -43,6 +47,9 @@ class VoiceManager:
 
     # ------------------------------------------------------------------
     # Setters avec validation
+
+    def set_name(self, pad_idx, value):
+        self._voices[pad_idx].name = str(value)
 
     def set_volume(self, pad_idx, value):
         self._voices[pad_idx].volume = max(0, min(100, int(value)))
@@ -75,6 +82,7 @@ class VoiceManager:
 
     def reset(self):
         for v in self._voices:
+            v.name        = ""
             v.volume      = 100
             v.velocity    = 100
             v.pan         = 0
@@ -84,6 +92,7 @@ class VoiceManager:
 
     def reset_pad(self, pad_idx):
         v = self._voices[pad_idx]
+        v.name        = ""
         v.volume      = 100
         v.velocity    = 100
         v.pan         = 0
@@ -113,7 +122,7 @@ class VoiceManager:
 
     def to_list(self):
         return [
-            {"volume": v.volume, "pan": v.pan,
+            {"name": v.name, "volume": v.volume, "pan": v.pan,
              "mute": v.mute, "solo": v.solo, "duration_ms": v.duration_ms}
             for v in self._voices
         ]
@@ -123,6 +132,7 @@ class VoiceManager:
             if i >= self._num_pads:
                 break
             v = self._voices[i]
+            v.name        = str(d.get("name", ""))
             v.volume      = max(0,    min(100, int(d.get("volume", 100))))
             v.pan         = max(-100, min(100, int(d.get("pan",    0))))
             v.mute        = bool(d.get("mute",  False))

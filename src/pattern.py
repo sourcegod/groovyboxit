@@ -54,9 +54,9 @@ class Pattern:
         self._track_volumes = [100]   * self._num_tracks
         self._track_pans    = [0]     * self._num_tracks
 
-        # état des voix par pad : volume, pan, mute, solo, duration_ms
+        # état des voix par pad : name, volume, pan, mute, solo, duration_ms
         self._voices = [
-            {"volume": 100, "pan": 0, "mute": False, "solo": False, "duration_ms": 500}
+            {"name": "", "volume": 100, "pan": 0, "mute": False, "solo": False, "duration_ms": 500}
             for _ in range(self._num_pads)
         ]
 
