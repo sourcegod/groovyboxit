@@ -163,6 +163,7 @@ class FakeWindow:
         self._pattern_listbox = FakeWidget()
         self._bpm_ctrl        = FakeWidget()
         self._volume_ctrl     = FakeWidget()
+        self._pan_ctrl        = FakeWidget()
         self._mode_choice     = FakeWidget()
         self._scale_choice    = FakeWidget()
         self._slot_choice     = FakeWidget()

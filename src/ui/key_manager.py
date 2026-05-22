@@ -38,6 +38,7 @@ class KeyManager:
             on_pattern_list = focused == win._pattern_listbox,
             on_bpm          = focused == win._bpm_ctrl,
             on_volume       = focused == win._volume_ctrl,
+            on_pan          = focused == win._pan_ctrl,
             on_voice_spin   = focused in win._vol_ctrls or focused in win._pan_ctrls,
             on_mode_choice  = focused == win._mode_choice,
             on_scale_choice = focused == win._scale_choice,
@@ -226,6 +227,23 @@ class KeyManager:
             win._volume_ctrl.SetValue(vol)
             win._show_status(f"Volume Global: {vol}")
             return True
+        if not shift and not alt and key == wx.WXK_RIGHT:
+            pan = min(100, win._player.pan + 1)
+            win._player.set_pan(pan)
+            win._pan_ctrl.SetValue(pan)
+            win._show_status(f"Pan Global: {pan}")
+            return True
+        if not shift and not alt and key == wx.WXK_LEFT:
+            pan = max(-100, win._player.pan - 1)
+            win._player.set_pan(pan)
+            win._pan_ctrl.SetValue(pan)
+            win._show_status(f"Pan Global: {pan}")
+            return True
+        if not shift and not alt and key == ord('0'):
+            win._player.set_pan(0)
+            win._pan_ctrl.SetValue(0)
+            win._show_status("Pan Global: 0 (centré)")
+            return True
         return False
 
     # ------------------------------------------------------------------
@@ -240,6 +258,7 @@ class KeyManager:
         on_pattern_list = ctx.on_pattern_list
         on_bpm          = ctx.on_bpm
         on_volume       = ctx.on_volume
+        on_pan          = ctx.on_pan
         on_voice_spin   = ctx.on_voice_spin
         on_mode_choice  = ctx.on_mode_choice
         on_scale_choice = ctx.on_scale_choice
@@ -277,6 +296,8 @@ class KeyManager:
                     or on_pad_list:
                 event.Skip()
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
+                event.Skip()
+            elif on_pan and key in (wx.WXK_LEFT, wx.WXK_RIGHT):
                 event.Skip()
             elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()
@@ -498,6 +519,7 @@ class KeyManager:
         alt   = ctx.alt
         on_bpm          = ctx.on_bpm
         on_volume       = ctx.on_volume
+        on_pan          = ctx.on_pan
         on_voice_spin   = ctx.on_voice_spin
         on_quant_list   = ctx.on_quant_list
         on_pattern_list = ctx.on_pattern_list
@@ -678,7 +700,7 @@ class KeyManager:
 
         # Touches 1-9 en mode Note Repeat
         if win._note_repeat and not ctrl and not shift and not alt \
-                and not on_bpm and not on_volume and not on_voice_spin \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and not on_quant_list and not on_pattern_list \
                 and ord('1') <= key <= ord('9'):
             digit = key - ord('0')

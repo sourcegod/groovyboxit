@@ -104,6 +104,10 @@ class MainWindow(wx.Frame):
         self._volume_ctrl = wx.SpinCtrl(panel, min=0, max=100, initial=self._player.volume, size=(70, -1))
         self._volume_ctrl.Bind(wx.EVT_SPINCTRL, self._on_volume_spin)
 
+        pan_label = wx.StaticText(panel, label="Pan:")
+        self._pan_ctrl = wx.SpinCtrl(panel, min=-100, max=100, initial=self._player.pan, size=(70, -1))
+        self._pan_ctrl.Bind(wx.EVT_SPINCTRL, self._on_pan_spin)
+
         quant_label = wx.StaticText(panel, label="Quant:")
         self._quant_list = wx.ListBox(
             panel,
@@ -129,6 +133,8 @@ class MainWindow(wx.Frame):
         hbox.Add(self._bpm_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
         hbox.Add(vol_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._volume_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
+        hbox.Add(pan_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox.Add(self._pan_ctrl, 0, wx.EXPAND | wx.RIGHT, 8)
         hbox.Add(quant_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._quant_list, 0, wx.EXPAND | wx.RIGHT, 8)
         hbox.Add(pattern_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -237,6 +243,7 @@ class MainWindow(wx.Frame):
             self._status_ctrl,
             self._bpm_ctrl,
             self._volume_ctrl,
+            self._pan_ctrl,
             self._quant_list,
             self._pattern_listbox,
             self._mode_choice,
@@ -461,6 +468,11 @@ class MainWindow(wx.Frame):
         vol = self._volume_ctrl.GetValue()
         self._player.set_volume(vol)
         self._show_status(f"Volume: {vol}")
+
+    def _on_pan_spin(self, event):
+        pan = self._pan_ctrl.GetValue()
+        self._player.set_pan(pan)
+        self._show_status(f"Pan Global: {pan}")
 
     def _update_bpm_display(self):
         self._bpm_ctrl.SetValue(self._player.bpm)

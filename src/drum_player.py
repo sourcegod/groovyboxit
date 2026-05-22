@@ -22,6 +22,7 @@ class DrumPlayer:
         self.clicking = False
         self.bpm = 100
         self.volume = 80
+        self.pan = 0
         self._pattern      = Pattern()
         self._cur_track       = 0
         self._all_offsets     = [
@@ -210,7 +211,7 @@ class DrumPlayer:
                     pad_idx   = evt_data
                     if self.voice_manager.is_audible(pad_idx):
                         vol = self.voice_manager.get_volume_factor(pad_idx)
-                        pan = self.voice_manager.get_pan(pad_idx)
+                        pan = self._mix_pan(self.voice_manager.get_pan(pad_idx))
                         dur = self.voice_manager.get_duration_ms(pad_idx)
                         if self._on_track_play_cb:
                             self._on_track_play_cb(track_idx, pad_idx, vol, pan, dur)
@@ -224,7 +225,7 @@ class DrumPlayer:
                         self.sound_man.play_sound(
                             pad,
                             self.voice_manager.get_volume_factor(pad),
-                            self.voice_manager.get_pan(pad),
+                            self._mix_pan(self.voice_manager.get_pan(pad)),
                         )
                         if self.recording:
                             self._record_nr_hit(pad, t_sec / self.step_duration)
@@ -371,7 +372,7 @@ class DrumPlayer:
             self.sound_man.play_sound(
                 index,
                 self.voice_manager.get_volume_factor(index),
-                self.voice_manager.get_pan(index),
+                self._mix_pan(self.voice_manager.get_pan(index)),
             )
 
     #--------------------------------------------------------------------------
@@ -570,5 +571,11 @@ class DrumPlayer:
         if 0 <= volume <= 100:
             self.volume = volume
             self.sound_man.set_volume(volume)
+
+    def set_pan(self, pan):
+        self.pan = max(-100, min(100, int(pan)))
+
+    def _mix_pan(self, pad_pan):
+        return max(-100, min(100, self.pan + pad_pan))
 
     #--------------------------------------------------------------------------
