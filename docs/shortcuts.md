@@ -68,11 +68,16 @@ NumPad 1-8       Jouer le pad + lancer le repeat (re-presser pour stopper)
 9 (clavier)      Basculer binaire ↔ ternaire
 1-6 (ternaire)   Choisir le taux ternaire : 1/3, 1/6, 1/12, 1/24, 1/48, 1/96
 
---- BPM / Volume ---
+--- BPM / Volume Global / Pan Global ---
 ( ou 5           BPM +5
 )                BPM -5
 +                Volume +1
 - ou 6           Volume -1
+Ctrl+↑           Volume Global +1 (0..100)
+Ctrl+↓           Volume Global -1 (0..100)
+Ctrl+→           Pan Global +1 (-100..+100)
+Ctrl+←           Pan Global -1 (-100..+100)
+Ctrl+0           Centrer le Pan Global (→ 0)
 
 --- Grille (navigation) ---
 Flèches          Déplacer le curseur
@@ -83,6 +88,7 @@ Tab / Shift+Tab  Passer au widget suivant / précédent
 --- NumPad ---
 NumPad 1-8       Jouer pad 1-8 (ou 9-16 selon ShiftPad)
 NumPad 9         Rejouer le dernier pad
+NumPad Entrée    Jouer le pad courant (depuis n'importe quel widget)
 NumPad 0         Stop All
 NumPad +         ShiftPad vers pads 9-16
 NumPad -         ShiftPad vers pads 1-8
