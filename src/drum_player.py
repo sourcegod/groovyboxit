@@ -9,6 +9,8 @@ class DrumPlayer:
     QUANT_LIST  = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16",
                    "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
     QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
+    # Étiquettes d'affichage pour la listbox (même ordre que QUANT_LIST)
+    QUANT_LABELS = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
     NR_EVENT    = -100   # marqueur interne pour les événements Note Repeat dans la liste
 
     def __init__(self, sound_manager=None):

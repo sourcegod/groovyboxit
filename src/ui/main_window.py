@@ -107,7 +107,7 @@ class MainWindow(wx.Frame):
         quant_label = wx.StaticText(panel, label="Quant:")
         self._quant_list = wx.ListBox(
             panel,
-            choices=DrumPlayer.QUANT_LIST,
+            choices=DrumPlayer.QUANT_LABELS,
             style=wx.LB_SINGLE,
         )
         self._quant_list.SetSelection(self._player.quant_idx)
