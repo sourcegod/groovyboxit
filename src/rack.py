@@ -39,11 +39,11 @@ class InstrumentSlot:
     # ------------------------------------------------------------------
 
     def label(self):
-        """Étiquette pour la liste déroulante : '01 - Piano' ou '01 - Empty'."""
+        """Étiquette pour la liste déroulante : 'Slot_01 - Piano' ou 'Slot_01 - Empty'."""
         num = self.index + 1
         if self.is_empty:
-            return f"{num:02d} - Empty"
-        return f"{num:02d} - {self.name}"
+            return f"Slot_{num:02d} - Empty"
+        return f"Slot_{num:02d} - {self.name}"
 
     # ------------------------------------------------------------------
 
