@@ -136,7 +136,7 @@ class MainWindow(wx.Frame):
 
         # --- Barre 2 : Mode / Gamme / Slot ---
         mode_label = wx.StaticText(panel, label="Mode:")
-        self._mode_choice = wx.ListBox(panel, choices=["Pad", "Keyboard"], style=wx.LB_SINGLE)
+        self._mode_choice = wx.ListBox(panel, choices=["Mode: Pad", "Mode: Keyboard"], style=wx.LB_SINGLE)
         self._mode_choice.SetSelection(0)
         self._mode_choice.Bind(wx.EVT_LISTBOX, self._on_mode_choice)
 
