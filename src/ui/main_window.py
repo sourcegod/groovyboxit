@@ -52,8 +52,9 @@ class MainWindow(wx.Frame):
         self._nr_ternary       = False  # False=binaire, True=ternaire
         self._kb_scale     = "major"
         self._kb_root_midi = 48         # C3
-        self._input_mode   = "pad"      # "pad" | "keyboard"
-        self._vel_level    = 4          # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
+        self._input_mode       = "pad"   # "pad" | "keyboard"
+        self._vel_level        = 4      # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
+        self._midi_erase_held  = set()  # notes MIDI tenues en mode Erase
         self._init_sound()
         self._synths_dir = os.path.join(self._base_dir, "synths")
         self._rack = Rack()
@@ -556,6 +557,19 @@ class MainWindow(wx.Frame):
             self._midi_port_list.SetSelection(min(sel, len(ports) - 1)
                                               if sel != wx.NOT_FOUND else 0)
 
+    def _toggle_erase(self):
+        """Bascule le mode Erase et vide les notes MIDI tenues."""
+        self._midi_erase_held.clear()
+        return self._player.toggle_erase()
+
+    def _update_erase_range(self):
+        """Recalcule _erase_active_pads selon les notes MIDI tenues (plage min→max)."""
+        if not self._midi_erase_held:
+            self._player._erase_active_pads.clear()
+            return
+        pads  = [n % self.ROWS for n in self._midi_erase_held]
+        self._player._erase_active_pads = set(range(min(pads), max(pads) + 1))
+
     def _on_vel_level_select(self, event):
         self._vel_level = self._vel_list.GetSelection()
         self._show_status(f"MIDI Vel: {self.VEL_LEVEL_LABELS[self._vel_level]}")
@@ -589,12 +603,15 @@ class MainWindow(wx.Frame):
         else:
             pad_idx = note % self.ROWS
             if self._player.erasing:
-                result = self._player.erase_hit(pad_idx)
-                if result:
-                    bar_idx, step_idx = result
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[pad_idx][step_idx].SetValue(False)
-                self._player._erase_active_pads.add(pad_idx)
+                prev_range = set(self._player._erase_active_pads)
+                self._midi_erase_held.add(note)
+                self._update_erase_range()
+                for p in sorted(self._player._erase_active_pads - prev_range):
+                    result = self._player.erase_hit(p)
+                    if result:
+                        bar_idx, step_idx = result
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[p][step_idx].SetValue(False)
             else:
                 self._player.play_sound(pad_idx, velocity)
                 if self._player.recording:
@@ -608,8 +625,8 @@ class MainWindow(wx.Frame):
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and self._router.synth_ready():
             self._router.synth.stop(note)
-        pad_idx = note % self.ROWS
-        self._player._erase_active_pads.discard(pad_idx)
+        self._midi_erase_held.discard(note)
+        self._update_erase_range()
 
     def _on_close(self, event):
         self._midi.close()

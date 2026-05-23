@@ -223,6 +223,9 @@ class FakeWindow:
 
     def _midi_toggle(self):          self.calls.append('_midi_toggle')
     def _refresh_midi_ports(self):   self.calls.append('_refresh_midi_ports')
+    def _toggle_erase(self):
+        self.calls.append('_toggle_erase')
+        return self._player.toggle_erase()
 
     def _set_input_mode(self, mode):
         self.calls.append(('_set_input_mode', mode))

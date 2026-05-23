@@ -585,7 +585,7 @@ class KeyManager:
 
         # E : bascule mode Erase
         if not ctrl and not shift and not alt and (ukey == ord('e') or key == ord('E')):
-            now_erasing = win._player.toggle_erase()
+            now_erasing = win._toggle_erase()
             if now_erasing:
                 win._show_status("Erase: On")
             elif win._player.replace_recording:
