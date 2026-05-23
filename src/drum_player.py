@@ -217,7 +217,10 @@ class DrumPlayer:
                 if track_or_type >= 0:
                     track_idx = track_or_type
                     pad_idx   = evt_data
-                    if self.voice_manager.is_audible(pad_idx):
+                    if track_idx == self._cur_track \
+                            and pad_idx in self._erase_active_pads:
+                        self._clear_offset(pad_idx, t_sec / self.step_duration)
+                    elif self.voice_manager.is_audible(pad_idx):
                         vol = min(1.0, self.voice_manager.get_volume_factor(pad_idx)
                                   * velocity / 100.0)
                         pan = self._mix_pan(self.voice_manager.get_pan(pad_idx))
@@ -226,11 +229,8 @@ class DrumPlayer:
                             self._on_track_play_cb(track_idx, pad_idx, vol, pan, dur)
                         else:
                             self.sound_man.play_sound(pad_idx, vol, pan)
-                    if track_idx == self._cur_track and self.replace_recording:
-                        self._clear_offset(pad_idx, t_sec / self.step_duration)
-                    elif track_idx == self._cur_track \
-                            and pad_idx in self._erase_active_pads:
-                        self._clear_offset(pad_idx, t_sec / self.step_duration)
+                        if track_idx == self._cur_track and self.replace_recording:
+                            self._clear_offset(pad_idx, t_sec / self.step_duration)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
