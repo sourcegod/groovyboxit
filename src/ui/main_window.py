@@ -594,6 +594,7 @@ class MainWindow(wx.Frame):
                     bar_idx, step_idx = result
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(False)
+                self._player._erase_active_pads.add(pad_idx)
             else:
                 self._player.play_sound(pad_idx, velocity)
                 if self._player.recording:
@@ -602,11 +603,13 @@ class MainWindow(wx.Frame):
                         self._cells[pad_idx][step_idx].SetValue(True)
 
     def _on_midi_note_off(self, note, channel):
-        """Note Off MIDI — coupe la note tenue en mode Keyboard/Synth."""
+        """Note Off MIDI — coupe la note tenue (Synth) ou arrête l'effacement (Erase)."""
         slot = self._rack.get_slot(self._cur_slot)
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and self._router.synth_ready():
             self._router.synth.stop(note)
+        pad_idx = note % self.ROWS
+        self._player._erase_active_pads.discard(pad_idx)
 
     def _on_close(self, event):
         self._midi.close()

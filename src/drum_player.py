@@ -40,6 +40,7 @@ class DrumPlayer:
         self._note_repeat_active = False
         self.recording            = False
         self.replace_recording    = False
+        self._erase_active_pads   = set()   # pads MIDI tenus en mode Erase
         self.erasing              = False
         self._erase_was_recording = False
         self._erase_was_replace   = False
@@ -135,6 +136,7 @@ class DrumPlayer:
         self.recording           = False
         self.replace_recording   = False
         self.erasing             = False
+        self._erase_active_pads.clear()
         self._count_in           = 0
         self.stop_thread()
         self.sound_man.stop_all()
@@ -225,6 +227,9 @@ class DrumPlayer:
                         else:
                             self.sound_man.play_sound(pad_idx, vol, pan)
                     if track_idx == self._cur_track and self.replace_recording:
+                        self._clear_offset(pad_idx, t_sec / self.step_duration)
+                    elif track_idx == self._cur_track \
+                            and pad_idx in self._erase_active_pads:
                         self._clear_offset(pad_idx, t_sec / self.step_duration)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
@@ -462,6 +467,7 @@ class DrumPlayer:
         """Bascule le mode Erase. Retourne True si Erase vient d'être activé."""
         if self.erasing:
             self.erasing = False
+            self._erase_active_pads.clear()
             if self._erase_was_recording:
                 self.recording         = True
                 self.replace_recording = self._erase_was_replace
