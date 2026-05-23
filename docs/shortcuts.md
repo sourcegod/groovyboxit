@@ -128,5 +128,9 @@ Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
 Alt+← / Alt+→   Pan piste ±10 (-100..+100)
 Alt+0            Recentrer le pan de la piste (Pan 0)
 
+--- MIDI ---
+Alt+M            Connecter / déconnecter le port MIDI sélectionné
+Alt+Shift+M      Actualiser la liste des ports MIDI
+
 --- Aide ---
 F1               Afficher cette aide
