@@ -531,7 +531,7 @@ class MainWindow(wx.Frame):
                                               if sel != wx.NOT_FOUND else 0)
 
     def _on_midi_note_on(self, note, velocity, channel):
-        """Note On MIDI reçue — routée vers le moteur audio selon le mode courant."""
+        """Note On MIDI reçue — jouée et enregistrée/effacée si mode Rec/Erase actif."""
         slot = self._rack.get_slot(self._cur_slot)
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and self._router.synth_ready():
@@ -540,9 +540,26 @@ class MainWindow(wx.Frame):
             pan = self._player._mix_pan(v.pan)
             self._router.synth.play(note, vol_factor, pan, v.duration_ms)
             self._router.kb_last_midi = note
+            if self._player.recording and note in self._router.kb_notes:
+                note_idx = self._router.kb_notes.index(note)
+                if note_idx < self.ROWS:
+                    bar_idx, step_idx = self._player.record_hit(note_idx)
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[note_idx][step_idx].SetValue(True)
         else:
-            pad_idx = note % 16
-            self._player.play_sound(pad_idx)
+            pad_idx = note % self.ROWS
+            if self._player.erasing:
+                result = self._player.erase_hit(pad_idx)
+                if result:
+                    bar_idx, step_idx = result
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[pad_idx][step_idx].SetValue(False)
+            else:
+                self._player.play_sound(pad_idx)
+                if self._player.recording:
+                    bar_idx, step_idx = self._player.record_hit(pad_idx)
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[pad_idx][step_idx].SetValue(True)
 
     def _on_close(self, event):
         self._midi.close()
