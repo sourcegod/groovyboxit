@@ -62,6 +62,7 @@ class MainWindow(wx.Frame):
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
         self._midi = MidiManager(
             on_note_on  = lambda n, v, c: wx.CallAfter(self._on_midi_note_on, n, v, c),
+            on_note_off = lambda n, c:    wx.CallAfter(self._on_midi_note_off, n, c),
             on_status   = lambda msg:     wx.CallAfter(self._show_status, msg),
         )
         self._build_ui()
@@ -538,7 +539,7 @@ class MainWindow(wx.Frame):
             vol_factor = velocity / 127.0
             v   = self._player.voice_manager.get_voice(self._cur_row)
             pan = self._player._mix_pan(v.pan)
-            self._router.synth.play(note, vol_factor, pan, v.duration_ms)
+            self._router.synth.play(note, vol_factor, pan, 0)  # durée pilotée par Note Off
             self._router.kb_last_midi = note
             if self._player.recording and note in self._router.kb_notes:
                 note_idx = self._router.kb_notes.index(note)
@@ -560,6 +561,13 @@ class MainWindow(wx.Frame):
                     bar_idx, step_idx = self._player.record_hit(pad_idx)
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(True)
+
+    def _on_midi_note_off(self, note, channel):
+        """Note Off MIDI — coupe la note tenue en mode Keyboard/Synth."""
+        slot = self._rack.get_slot(self._cur_slot)
+        if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
+                and self._router.synth_ready():
+            self._router.synth.stop(note)
 
     def _on_close(self, event):
         self._midi.close()
