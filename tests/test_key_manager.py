@@ -169,6 +169,7 @@ class FakeWindow:
         self._slot_choice     = FakeWidget()
         self._track_list      = FakeWidget()
         self._pad_list        = FakeWidget()
+        self._midi_port_list  = FakeWidget()
         self._vol_ctrls       = [FakeWidget() for _ in range(16)]
         self._pan_ctrls       = [FakeWidget() for _ in range(16)]
         self._cells           = [[FakeCell() for _ in range(self.COLS)]
@@ -218,6 +219,9 @@ class FakeWindow:
     def _nr_arm_release(self):            self.calls.append('_nr_arm_release')
     def _nr_cancel_release(self):         self.calls.append('_nr_cancel_release')
     def _update_bpm_display(self):        self.calls.append('_update_bpm_display')
+
+    def _midi_toggle(self):          self.calls.append('_midi_toggle')
+    def _refresh_midi_ports(self):   self.calls.append('_refresh_midi_ports')
 
     def _set_input_mode(self, mode):
         self.calls.append(('_set_input_mode', mode))

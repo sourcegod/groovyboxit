@@ -44,7 +44,8 @@ class KeyManager:
             on_scale_choice = focused == win._scale_choice,
             on_slot_choice  = focused == win._slot_choice,
             on_track_list   = focused == win._track_list,
-            on_pad_list     = focused == win._pad_list,
+            on_pad_list          = focused == win._pad_list,
+            on_midi_port_list    = focused == win._midi_port_list,
         )
 
         if key == wx.WXK_F1:
@@ -150,6 +151,13 @@ class KeyManager:
             return True
         if not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             win._open_explorer()
+            return True
+        if not ctrl and shift and (ukey in (ord('m'), ord('M')) or key == ord('M')):
+            win._refresh_midi_ports()
+            win._show_status("MIDI: liste des ports actualisée")
+            return True
+        if not ctrl and not shift and (ukey in (ord('m'), ord('M')) or key == ord('M')):
+            win._midi_toggle()
             return True
         return False
 
@@ -263,8 +271,9 @@ class KeyManager:
         on_mode_choice  = ctx.on_mode_choice
         on_scale_choice = ctx.on_scale_choice
         on_slot_choice  = ctx.on_slot_choice
-        on_track_list   = ctx.on_track_list
-        on_pad_list     = ctx.on_pad_list
+        on_track_list        = ctx.on_track_list
+        on_pad_list          = ctx.on_pad_list
+        on_midi_port_list    = ctx.on_midi_port_list
 
         if key == wx.WXK_TAB:
             win._on_tab_order(shift)
@@ -293,7 +302,7 @@ class KeyManager:
                     wx.CallAfter(win._on_pad_list_key_nav, None)
             elif on_quant_list or on_pattern_list or on_mode_choice \
                     or on_scale_choice or on_slot_choice or on_track_list \
-                    or on_pad_list:
+                    or on_pad_list or on_midi_port_list:
                 event.Skip()
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()

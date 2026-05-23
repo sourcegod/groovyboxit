@@ -17,6 +17,7 @@ from ui.dialogs import (
     PadPropertiesDialog,
 )
 from ui.key_manager import KeyManager
+from midi_manager import MidiManager
 
 
 class MainWindow(wx.Frame):
@@ -59,11 +60,16 @@ class MainWindow(wx.Frame):
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
+        self._midi = MidiManager(
+            on_note_on  = lambda n, v, c: wx.CallAfter(self._on_midi_note_on, n, v, c),
+            on_status   = lambda msg:     wx.CallAfter(self._show_status, msg),
+        )
         self._build_ui()
         self._load_preset()
         self._router.load_slot_preview(1)   # pré-chargement A440 en arrière-plan
         self._key_manager = KeyManager(self)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Centre()
 
     def _init_sound(self):
@@ -189,11 +195,23 @@ class MainWindow(wx.Frame):
         self._pad_list.Bind(wx.EVT_LISTBOX,        self._on_pad_select)
         self._pad_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_pad_list_activate)
 
+        midi_label = wx.StaticText(panel, label="MIDI:")
+        self._midi_port_list = wx.ListBox(
+            panel,
+            choices=self._midi.list_ports() or ["(aucun port)"],
+            style=wx.LB_SINGLE,
+        )
+        if self._midi.list_ports():
+            self._midi_port_list.SetSelection(0)
+        self._midi_port_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
+
         hbox3 = wx.BoxSizer(wx.HORIZONTAL)
-        hbox3.Add(track_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        hbox3.Add(self._track_list, 0, wx.EXPAND | wx.RIGHT, 8)
-        hbox3.Add(pad_label,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        hbox3.Add(self._pad_list,   0, wx.EXPAND)
+        hbox3.Add(track_label,           0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._track_list,      0, wx.EXPAND | wx.RIGHT, 8)
+        hbox3.Add(pad_label,             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._pad_list,        0, wx.EXPAND | wx.RIGHT, 8)
+        hbox3.Add(midi_label,            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._midi_port_list,  0, wx.EXPAND)
 
         # Panneau voix : M / S / SpinVol / SpinPan par ligne
         self._mute_btns = []
@@ -254,7 +272,8 @@ class MainWindow(wx.Frame):
             self._scale_choice,
             self._slot_choice,
             self._track_list,
-            self._pad_list,   # juste avant la grille
+            self._pad_list,
+            self._midi_port_list,   # juste avant la grille
         ]
 
         self.Fit()
@@ -477,6 +496,59 @@ class MainWindow(wx.Frame):
         pan = self._pan_ctrl.GetValue()
         self._player.set_pan(pan)
         self._show_status(f"Pan Global: {pan}")
+
+    # ------------------------------------------------------------------
+    # MIDI
+
+    def _midi_connect(self):
+        """Connecte le port MIDI sélectionné dans la liste."""
+        ports = self._midi.list_ports()
+        if not ports:
+            self._show_status("MIDI: aucun port disponible")
+            return
+        idx = self._midi_port_list.GetSelection()
+        if idx == wx.NOT_FOUND:
+            idx = 0
+        self._midi.open(idx)
+
+    def _midi_disconnect(self):
+        self._midi.close()
+
+    def _midi_toggle(self):
+        """Connecte si déconnecté, déconnecte sinon."""
+        if self._midi.is_open():
+            self._midi_disconnect()
+        else:
+            self._midi_connect()
+
+    def _refresh_midi_ports(self):
+        """Recharge la liste des ports MIDI disponibles."""
+        ports = self._midi.list_ports()
+        sel   = self._midi_port_list.GetSelection()
+        self._midi_port_list.Set(ports if ports else ["(aucun port)"])
+        if ports:
+            self._midi_port_list.SetSelection(min(sel, len(ports) - 1)
+                                              if sel != wx.NOT_FOUND else 0)
+
+    def _on_midi_note_on(self, note, velocity, channel):
+        """Note On MIDI reçue — routée vers le moteur audio selon le mode courant."""
+        slot = self._rack.get_slot(self._cur_slot)
+        if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
+                and self._router.synth_ready():
+            vol_factor = velocity / 127.0
+            v   = self._player.voice_manager.get_voice(self._cur_row)
+            pan = self._player._mix_pan(v.pan)
+            self._router.synth.play(note, vol_factor, pan, v.duration_ms)
+            self._router.kb_last_midi = note
+        else:
+            pad_idx = note % 16
+            self._player.play_sound(pad_idx)
+
+    def _on_close(self, event):
+        self._midi.close()
+        event.Skip()
+
+    # ------------------------------------------------------------------
 
     def _update_bpm_display(self):
         self._bpm_ctrl.SetValue(self._player.bpm)
