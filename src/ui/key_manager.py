@@ -45,6 +45,7 @@ class KeyManager:
             on_slot_choice  = focused == win._slot_choice,
             on_track_list   = focused == win._track_list,
             on_pad_list          = focused == win._pad_list,
+            on_vel_list          = focused == win._vel_list,
             on_midi_port_list    = focused == win._midi_port_list,
         )
 
@@ -273,6 +274,7 @@ class KeyManager:
         on_slot_choice  = ctx.on_slot_choice
         on_track_list        = ctx.on_track_list
         on_pad_list          = ctx.on_pad_list
+        on_vel_list          = ctx.on_vel_list
         on_midi_port_list    = ctx.on_midi_port_list
 
         if key == wx.WXK_TAB:
@@ -302,7 +304,7 @@ class KeyManager:
                     wx.CallAfter(win._on_pad_list_key_nav, None)
             elif on_quant_list or on_pattern_list or on_mode_choice \
                     or on_scale_choice or on_slot_choice or on_track_list \
-                    or on_pad_list or on_midi_port_list:
+                    or on_pad_list or on_vel_list or on_midi_port_list:
                 event.Skip()
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()

@@ -169,6 +169,7 @@ class FakeWindow:
         self._slot_choice     = FakeWidget()
         self._track_list      = FakeWidget()
         self._pad_list        = FakeWidget()
+        self._vel_list        = FakeWidget()
         self._midi_port_list  = FakeWidget()
         self._vol_ctrls       = [FakeWidget() for _ in range(16)]
         self._pan_ctrls       = [FakeWidget() for _ in range(16)]

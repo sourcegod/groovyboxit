@@ -27,6 +27,16 @@ class MainWindow(wx.Frame):
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]   # 1/1,1/2,1/4,1/8,1/16,1/32,1/64,1/128
     NR_TERNARY = [2, 4, 6,  8, 10, 12]          # 1/3,1/6,1/12,1/24,1/48,1/96
 
+    # Niveaux de quantification de vélocité MIDI en entrée
+    VEL_LEVEL_LABELS = [
+        "Level_01 - Full Level",   # → 127 fixe
+        "Level_02 - 4 Levels",     # paliers de 32
+        "Level_03 - 8 Levels",     # paliers de 16
+        "Level_04 - 16 Levels",    # paliers de 8
+        "Level_05 - No Level",     # vélocité brute
+    ]
+    _VEL_STEPS = [None, 32, 16, 8, None]  # None = cas spéciaux (Full / No Level)
+
     def __init__(self):
         super().__init__(None, title="GroovyboxIt")
         self._cur_row = 0
@@ -43,6 +53,7 @@ class MainWindow(wx.Frame):
         self._kb_scale     = "major"
         self._kb_root_midi = 48         # C3
         self._input_mode   = "pad"      # "pad" | "keyboard"
+        self._vel_level    = 4          # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
         self._init_sound()
         self._synths_dir = os.path.join(self._base_dir, "synths")
         self._rack = Rack()
@@ -196,6 +207,15 @@ class MainWindow(wx.Frame):
         self._pad_list.Bind(wx.EVT_LISTBOX,        self._on_pad_select)
         self._pad_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_pad_list_activate)
 
+        vel_label = wx.StaticText(panel, label="Vel:")
+        self._vel_list = wx.ListBox(
+            panel,
+            choices=self.VEL_LEVEL_LABELS,
+            style=wx.LB_SINGLE,
+        )
+        self._vel_list.SetSelection(self._vel_level)
+        self._vel_list.Bind(wx.EVT_LISTBOX, self._on_vel_level_select)
+
         midi_label = wx.StaticText(panel, label="MIDI:")
         self._midi_port_list = wx.ListBox(
             panel,
@@ -211,6 +231,8 @@ class MainWindow(wx.Frame):
         hbox3.Add(self._track_list,      0, wx.EXPAND | wx.RIGHT, 8)
         hbox3.Add(pad_label,             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox3.Add(self._pad_list,        0, wx.EXPAND | wx.RIGHT, 8)
+        hbox3.Add(vel_label,             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        hbox3.Add(self._vel_list,        0, wx.EXPAND | wx.RIGHT, 8)
         hbox3.Add(midi_label,            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox3.Add(self._midi_port_list,  0, wx.EXPAND)
 
@@ -274,6 +296,7 @@ class MainWindow(wx.Frame):
             self._slot_choice,
             self._track_list,
             self._pad_list,
+            self._vel_list,
             self._midi_port_list,   # juste avant la grille
         ]
 
@@ -533,8 +556,22 @@ class MainWindow(wx.Frame):
             self._midi_port_list.SetSelection(min(sel, len(ports) - 1)
                                               if sel != wx.NOT_FOUND else 0)
 
+    def _on_vel_level_select(self, event):
+        self._vel_level = self._vel_list.GetSelection()
+        self._show_status(f"MIDI Vel: {self.VEL_LEVEL_LABELS[self._vel_level]}")
+
+    def _apply_vel_level(self, velocity):
+        """Quantifie velocity selon le niveau courant (0-127 → 1-127)."""
+        if self._vel_level == 0:                      # Full Level → 127 fixe
+            return 127
+        step = self._VEL_STEPS[self._vel_level]
+        if step is None:                              # No Level → brut
+            return velocity
+        return min(127, ((velocity - 1) // step + 1) * step)
+
     def _on_midi_note_on(self, note, velocity, channel):
         """Note On MIDI reçue — jouée et enregistrée/effacée si mode Rec/Erase actif."""
+        velocity = self._apply_vel_level(velocity)
         slot = self._rack.get_slot(self._cur_slot)
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and self._router.synth_ready():
