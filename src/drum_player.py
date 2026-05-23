@@ -167,19 +167,25 @@ class DrumPlayer:
             # (on exclut ceux déjà passés avec une petite tolérance)
             events = []
             if self.playing:
+                num_steps = self._pattern._num_steps
                 for track_idx, track_offsets in enumerate(self._all_offsets):
                     for pad_idx, pad_off in enumerate(track_offsets):
                         for offset in pad_off:
                             t_sec = offset * self.step_duration
                             if t_sec > elapsed - 0.002:
-                                events.append((t_sec, track_idx, pad_idx))
+                                step     = int(round(offset)) % total_steps
+                                bar_idx  = step // num_steps
+                                step_idx = step % num_steps
+                                raw      = self._pattern._curpattern[track_idx][pad_idx][bar_idx][step_idx]
+                                velocity = 100 if isinstance(raw, bool) and raw else int(raw)
+                                events.append((t_sec, track_idx, pad_idx, velocity))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
                 for bar_idx in range(loop_bars):
                     for beat in range(self._pattern._num_beats):
                         t_sec = (bar_idx * self._pattern._num_steps + beat * steps_per_beat) * self.step_duration
                         if t_sec > elapsed - 0.002:
-                            events.append((t_sec, -1, beat))
+                            events.append((t_sec, -1, beat, 0))
             if self._note_repeat_active:
                 denom    = self.QUANT_STEPS[self._nr_quant_idx]
                 nr_step  = 0.0
@@ -187,11 +193,11 @@ class DrumPlayer:
                 while nr_step < total_steps:
                     t_sec = nr_step * self.step_duration
                     if t_sec > elapsed - 0.002:
-                        events.append((t_sec, self.NR_EVENT, 0))
+                        events.append((t_sec, self.NR_EVENT, 0, 100))
                     nr_step += interval
             events.sort()
 
-            for t_sec, track_or_type, evt_data in events:
+            for t_sec, track_or_type, evt_data, velocity in events:
                 if self.stop_event.is_set():
                     return
                 if self._wakeup.is_set():
@@ -210,7 +216,8 @@ class DrumPlayer:
                     track_idx = track_or_type
                     pad_idx   = evt_data
                     if self.voice_manager.is_audible(pad_idx):
-                        vol = self.voice_manager.get_volume_factor(pad_idx)
+                        vol = min(1.0, self.voice_manager.get_volume_factor(pad_idx)
+                                  * velocity / 100.0)
                         pan = self._mix_pan(self.voice_manager.get_pan(pad_idx))
                         dur = self.voice_manager.get_duration_ms(pad_idx)
                         if self._on_track_play_cb:
@@ -366,12 +373,13 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def play_sound(self, index):
+    def play_sound(self, index, velocity=100):
         self.last_played_pad = index
         if self.voice_manager.is_audible(index):
+            vol = min(1.0, self.voice_manager.get_volume_factor(index) * velocity / 100.0)
             self.sound_man.play_sound(
                 index,
-                self.voice_manager.get_volume_factor(index),
+                vol,
                 self._mix_pan(self.voice_manager.get_pan(index)),
             )
 
@@ -504,7 +512,7 @@ class DrumPlayer:
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
-        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = True
+        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = 100
 
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
@@ -527,13 +535,13 @@ class DrumPlayer:
         bar_idx  = step // num_steps
         step_idx = step % num_steps
         if not any(round(f) % total_steps == step for f in self.float_offsets[pad_idx]):
-            self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
+            self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = 0
         if self._on_replaced_cb:
             self._on_replaced_cb(pad_idx, bar_idx, step_idx)
 
     #--------------------------------------------------------------------------
 
-    def record_hit(self, pad_idx):
+    def record_hit(self, pad_idx, velocity=100):
         now = time.perf_counter()
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
         measure_secs = total_steps * self.step_duration
@@ -549,7 +557,8 @@ class DrumPlayer:
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
-        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = True
+        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = \
+            max(1, min(127, int(velocity)))
 
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)

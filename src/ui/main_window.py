@@ -286,14 +286,16 @@ class MainWindow(wx.Frame):
         self._pad_list.SetSelection(row)
 
     def _set_cell(self, row, col, value):
-        self._cells[row][col].SetValue(value)
-        self._player._pattern._curpattern[self._player._cur_track][row][0][col] = value
+        self._cells[row][col].SetValue(bool(value))
+        self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
+            100 if value else 0
         self._player.float_offsets[row] = [
             float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
         ]
 
     def _on_checkbox(self, row, col):
-        self._player._pattern._curpattern[self._player._cur_track][row][0][col] = self._cells[row][col].GetValue()
+        self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
+            100 if self._cells[row][col].GetValue() else 0
         self._player.float_offsets[row] = [
             float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
         ]
@@ -544,7 +546,7 @@ class MainWindow(wx.Frame):
             if self._player.recording and note in self._router.kb_notes:
                 note_idx = self._router.kb_notes.index(note)
                 if note_idx < self.ROWS:
-                    bar_idx, step_idx = self._player.record_hit(note_idx)
+                    bar_idx, step_idx = self._player.record_hit(note_idx, velocity)
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[note_idx][step_idx].SetValue(True)
         else:
@@ -556,9 +558,9 @@ class MainWindow(wx.Frame):
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(False)
             else:
-                self._player.play_sound(pad_idx)
+                self._player.play_sound(pad_idx, velocity)
                 if self._player.recording:
-                    bar_idx, step_idx = self._player.record_hit(pad_idx)
+                    bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(True)
 

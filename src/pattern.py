@@ -62,10 +62,17 @@ class Pattern:
 
     #--------------------------------------------------------------------------
 
+    @staticmethod
+    def _norm_vel(v):
+        """Normalise une cellule : bool→int, clamp 0-127."""
+        if isinstance(v, bool):
+            return 100 if v else 0
+        return max(0, min(127, int(v)))
+
     def _make_empty(self):
         return [
             [
-                [[False] * self._num_steps for _ in range(self._num_bars)]
+                [[0] * self._num_steps for _ in range(self._num_bars)]
                 for _ in range(self._num_pads)
             ]
             for _ in range(self._num_tracks)
@@ -85,7 +92,11 @@ class Pattern:
         self._num_pads   = len(pattern[0])       if pattern                        else Pattern.NUM_PADS
         self._num_bars   = len(pattern[0][0])    if pattern and pattern[0]         else 1
         self._num_steps  = len(pattern[0][0][0]) if pattern and pattern[0] and pattern[0][0] else 16
-        self._curpattern = [[[bar[:] for bar in pad] for pad in track] for track in pattern]
+        nv = Pattern._norm_vel
+        self._curpattern = [
+            [[[ nv(v) for v in bar] for bar in pad] for pad in track]
+            for track in pattern
+        ]
 
     #--------------------------------------------------------------------------
 
@@ -93,7 +104,7 @@ class Pattern:
         for track in self._curpattern:
             for pad in track:
                 for bar in pad:
-                    bar[:] = [False] * len(bar)
+                    bar[:] = [0] * len(bar)
 
     #--------------------------------------------------------------------------
 
@@ -105,7 +116,7 @@ class Pattern:
             num_steps = random.randint(1, 8)
             steps     = random.sample(range(self._num_steps), num_steps)
             for step in steps:
-                self._curpattern[track][pad][0][step] = True
+                self._curpattern[track][pad][0][step] = 100
 
     #--------------------------------------------------------------------------
 
@@ -138,16 +149,16 @@ class Pattern:
         self.reset_pattern()
         p = self._curpattern
         # Piste 0 — pad = son du kit (0..15)
-        p[0][0][0][0]  = p[0][0][0][4]  = p[0][0][0][8]  = p[0][0][0][12] = True
-        p[0][4][0][2]  = p[0][4][0][6]  = p[0][4][0][10] = True
-        p[0][5][0][1:4]  = [True] * 3
-        p[0][5][0][5:8]  = [True] * 3
-        p[0][5][0][9:12] = [True] * 3
-        p[0][5][0][13:16] = [True] * 3
-        p[0][7][0][15] = True
-        p[0][8][0][14] = True
-        p[0][9][0][13] = True
-        p[0][10][0][0] = True
+        p[0][0][0][0]  = p[0][0][0][4]  = p[0][0][0][8]  = p[0][0][0][12] = 100
+        p[0][4][0][2]  = p[0][4][0][6]  = p[0][4][0][10] = 100
+        p[0][5][0][1:4]  = [100] * 3
+        p[0][5][0][5:8]  = [100] * 3
+        p[0][5][0][9:12] = [100] * 3
+        p[0][5][0][13:16] = [100] * 3
+        p[0][7][0][15] = 100
+        p[0][8][0][14] = 100
+        p[0][9][0][13] = 100
+        p[0][10][0][0] = 100
 
     #--------------------------------------------------------------------------
 
@@ -172,7 +183,7 @@ class Pattern:
                 for pad in track:
                     for bar in pad:
                         if num_steps > old_steps:
-                            bar.extend([False] * (num_steps - old_steps))
+                            bar.extend([0] * (num_steps - old_steps))
                         else:
                             del bar[num_steps:]
             self._num_steps = num_steps
@@ -182,7 +193,7 @@ class Pattern:
                 for pad in track:
                     if num_bars > old_bars:
                         pad.extend(
-                            [[False] * num_steps for _ in range(num_bars - old_bars)]
+                            [[0] * num_steps for _ in range(num_bars - old_bars)]
                         )
                     else:
                         del pad[num_bars:]
