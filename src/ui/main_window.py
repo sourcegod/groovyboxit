@@ -586,6 +586,18 @@ class MainWindow(wx.Frame):
         """Mappe note MIDI → index pad (0-ROWS-1) chromatiquement depuis la note racine."""
         return (note - self._kb_root_midi) % self.ROWS
 
+    def _kb_play_idx(self, transposed_note):
+        """Indice lecture (dans kb_notes) pour un pitch transposé.
+        Si hors gamme, cherche l'équivalent octave le plus proche."""
+        kb = self._router.kb_notes
+        if transposed_note in kb:
+            return kb.index(transposed_note)
+        for step in (-12, 12, -24, 24, -36, 36):
+            equiv = transposed_note + step
+            if 0 <= equiv <= 127 and equiv in kb:
+                return kb.index(equiv)
+        return -1
+
     def _update_erase_range(self):
         """Recalcule _erase_active_pads selon les notes MIDI tenues (plage min→max)."""
         if not self._midi_erase_held:
@@ -613,9 +625,11 @@ class MainWindow(wx.Frame):
         slot = self._rack.get_slot(self._cur_slot)
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and self._router.synth_ready():
+            offset     = self._kb_root_midi - self._kb_play_root
+            transposed = max(0, min(127, note + offset))
+            play_idx = self._kb_play_idx(transposed)
             if self._player.erasing:
-                if note in self._router.kb_notes:
-                    play_idx = self._router.kb_notes.index(note)
+                if play_idx >= 0:
                     result = self._player.erase_hit(play_idx)
                     if result:
                         bar_idx, step_idx = result
@@ -625,14 +639,12 @@ class MainWindow(wx.Frame):
                 vol_factor = velocity / 127.0
                 v   = self._player.voice_manager.get_voice(self._cur_row)
                 pan = self._player._mix_pan(v.pan)
-                self._router.synth.play(note, vol_factor, pan, 0)
-                self._router.kb_last_midi = note
-                if self._player.recording and note in self._router.kb_notes:
-                    play_idx = self._router.kb_notes.index(note)
-                    if play_idx < self.ROWS:
-                        bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[play_idx][step_idx].SetValue(True)
+                self._router.synth.play(transposed, vol_factor, pan, 0)
+                self._router.kb_last_midi = transposed
+                if self._player.recording and 0 <= play_idx < self.ROWS:
+                    bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[play_idx][step_idx].SetValue(True)
         else:
             # Mode Pad : mapping chromatique depuis la note racine
             pad_idx = self._midi_to_pad(note)
@@ -672,7 +684,8 @@ class MainWindow(wx.Frame):
         slot = self._rack.get_slot(self._cur_slot)
         if self._router.synth_ready() and slot.type == InstrumentType.SYNTH:
             if self._input_mode == "keyboard":
-                self._router.synth.stop(note)
+                offset = self._kb_root_midi - self._kb_play_root
+                self._router.synth.stop(max(0, min(127, note + offset)))
             else:
                 pad_idx = self._midi_to_pad(note)
                 if pad_idx < len(self._router.kb_notes_input):

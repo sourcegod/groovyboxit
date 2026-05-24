@@ -32,7 +32,9 @@ class TrackRouter:
     status_cb     : callable(str) — DOIT être thread-safe (envelopper wx.CallAfter)
     """
 
-    NUM_TRACKS = 8
+    NUM_TRACKS      = 8
+    KB_NUMPAD_NOTES = 16   # notes de gamme pour les Numpads (8 touches × 2 banques)
+    KB_MIDI_NOTES   = 25   # notes de gamme pour le clavier MIDI (à étendre plus tard)
 
     def __init__(self, rack, synths_dir, sound_manager, status_cb):
         self._rack       = rack
@@ -74,16 +76,16 @@ class TrackRouter:
     # ------------------------------------------------------------------
 
     def update_kb_notes(self, scale, root_midi):
-        """Recalcule kb_notes (lecture) et kb_notes_input, relance le précalcul."""
-        self._kb_scale       = scale
-        self._kb_root_midi   = root_midi
-        self.kb_notes        = scale_midi_notes(scale, root_midi, 16)
-        self.kb_notes_input  = self.kb_notes[:]
+        """Recalcule kb_notes (25 notes, lecture MIDI) et kb_notes_input (16, Numpad)."""
+        self._kb_scale      = scale
+        self._kb_root_midi  = root_midi
+        self.kb_notes       = scale_midi_notes(scale, root_midi, self.KB_MIDI_NOTES)
+        self.kb_notes_input = scale_midi_notes(scale, root_midi, self.KB_NUMPAD_NOTES)
         self.precompute_async()
 
     def update_input_kb(self, root_midi):
-        """Transpose le clavier d'entrée sans affecter kb_notes (lecture)."""
-        self.kb_notes_input = scale_midi_notes(self._kb_scale, root_midi, 16)
+        """Transpose le clavier Numpad d'entrée sans affecter kb_notes (lecture)."""
+        self.kb_notes_input = scale_midi_notes(self._kb_scale, root_midi, self.KB_NUMPAD_NOTES)
 
     def precompute_async(self):
         """Précalcule les notes pour _synth en arrière-plan."""
