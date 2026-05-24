@@ -390,6 +390,14 @@ class KeyManager:
                         win._show_status("Keyboard: patch en cours de chargement…")
                 elif note_idx < len(win._router.kb_notes_input):
                     win._play_kit_pitched(note_idx)
+            elif win._player.erasing:
+                pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
+                win._player._erase_active_pads.add(pad_idx)
+                result = win._player.erase_hit(pad_idx)
+                if result:
+                    bar_idx, step_idx = result
+                    if bar_idx == 0 and step_idx < win.COLS:
+                        win._cells[pad_idx][step_idx].SetValue(False)
             elif win._note_repeat:
                 pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
                 if key == win._nr_active_key:
@@ -417,14 +425,6 @@ class KeyManager:
                     win._show_status(
                         f"NR: Pad {pad_idx + 1} @ {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
                     )
-            elif win._player.erasing:
-                pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
-                win._player._erase_active_pads.add(pad_idx)
-                result = win._player.erase_hit(pad_idx)
-                if result:
-                    bar_idx, step_idx = result
-                    if bar_idx == 0 and step_idx < win.COLS:
-                        win._cells[pad_idx][step_idx].SetValue(False)
             else:
                 pad_idx  = (key - wx.WXK_NUMPAD1) + win._shift_pad
                 note_idx = key - wx.WXK_NUMPAD1
@@ -478,6 +478,7 @@ class KeyManager:
             win._note_repeat   = False
             win._nr_active_key = None
             win._nr_prev_key   = None
+            win._nr_midi_note  = None
             win._nr_cancel_release()
             win._player.stop_all()
             return True
@@ -585,6 +586,7 @@ class KeyManager:
                 win._nr_cancel_release()
                 win._nr_active_key = None
                 win._nr_prev_key   = None
+                win._nr_midi_note  = None
                 win._player.stop_note_repeat()
                 win._show_status("Note Repeat: OFF")
             return True
@@ -696,6 +698,7 @@ class KeyManager:
             win._note_repeat   = False
             win._nr_active_key = None
             win._nr_prev_key   = None
+            win._nr_midi_note  = None
             win._nr_cancel_release()
             win._player.stop_all()
             win._show_status("Stop All")

@@ -37,6 +37,7 @@ class DrumPlayer:
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
+        self._nr_play_cb         = None   # callback(pad_idx) optionnel pour le NR (ex. Synth)
         self._note_repeat_active = False
         self.recording            = False
         self.replace_recording    = False
@@ -234,11 +235,14 @@ class DrumPlayer:
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
-                        self.sound_man.play_sound(
-                            pad,
-                            self.voice_manager.get_volume_factor(pad),
-                            self._mix_pan(self.voice_manager.get_pan(pad)),
-                        )
+                        if self._nr_play_cb:
+                            self._nr_play_cb(pad)
+                        else:
+                            self.sound_man.play_sound(
+                                pad,
+                                self.voice_manager.get_volume_factor(pad),
+                                self._mix_pan(self.voice_manager.get_pan(pad)),
+                            )
                         if self.recording:
                             self._record_nr_hit(pad, t_sec / self.step_duration)
                 else:
@@ -390,9 +394,10 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def start_note_repeat(self, quant_idx, get_pad_func=None):
+    def start_note_repeat(self, quant_idx, get_pad_func=None, play_cb=None):
         self._nr_quant_idx       = quant_idx
         self._nr_get_pad         = get_pad_func or (lambda: self.last_played_pad)
+        self._nr_play_cb         = play_cb
         self._note_repeat_active = True
         if not (self._play_thread and self._play_thread.is_alive()):
             self.start_thread()
@@ -403,6 +408,7 @@ class DrumPlayer:
 
     def stop_note_repeat(self):
         self._note_repeat_active = False
+        self._nr_play_cb         = None
         if not (self.playing or self.clicking):
             self.stop_thread()
         else:

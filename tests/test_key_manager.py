@@ -185,6 +185,7 @@ class FakeWindow:
         self._note_repeat   = False
         self._nr_active_key = None
         self._nr_prev_key   = None
+        self._nr_midi_note  = None
         self._nr_rate_idx   = 7
         self._nr_ternary    = False
         self._kb_root_midi  = 48

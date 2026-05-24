@@ -50,6 +50,7 @@ class MainWindow(wx.Frame):
         self._nr_release_timer = None
         self._nr_rate_idx      = 7      # indice QUANT_LIST courant (défaut 1/16)
         self._nr_ternary       = False  # False=binaire, True=ternaire
+        self._nr_midi_note     = None   # note MIDI tenue en mode Note Repeat
         self._kb_scale     = "major"
         self._kb_play_root = 48   # C3 — root de lecture, stable (non affectée par Numpad+/-)
         self._kb_root_midi = 48   # C3 — root d'entrée, transposable avec Numpad+/-
@@ -635,6 +636,31 @@ class MainWindow(wx.Frame):
                         bar_idx, step_idx = result
                         if bar_idx == 0 and step_idx < self.COLS:
                             self._cells[play_idx][step_idx].SetValue(False)
+            elif self._note_repeat:
+                vol_factor = velocity / 127.0
+                v   = self._player.voice_manager.get_voice(self._cur_row)
+                pan = self._player._mix_pan(v.pan)
+                self._router.synth.play(transposed, vol_factor, pan, 0)
+                self._router.kb_last_midi = transposed
+                if self._player.recording and 0 <= play_idx < self.ROWS:
+                    bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[play_idx][step_idx].SetValue(True)
+                self._nr_cancel_release()
+                self._nr_active_key = None
+                self._nr_midi_note  = note
+                safe_idx = max(0, play_idx)
+                _t, _vf, _p = transposed, vol_factor, pan
+                router = self._router
+                def _nr_kb_play(_pad, t=_t, vf=_vf, p=_p):
+                    router.synth.play(t, vf, p, 0)
+                self._player.start_note_repeat(
+                    self._nr_rate_idx, lambda s=safe_idx: s, play_cb=_nr_kb_play
+                )
+                self._show_status(
+                    f"NR Keyboard: {midi_to_note_name(transposed)}"
+                    f" @ {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
+                )
             else:
                 vol_factor = velocity / 127.0
                 v   = self._player.voice_manager.get_voice(self._cur_row)
@@ -658,6 +684,46 @@ class MainWindow(wx.Frame):
                         bar_idx, step_idx = result
                         if bar_idx == 0 and step_idx < self.COLS:
                             self._cells[p][step_idx].SetValue(False)
+            elif self._note_repeat:
+                # Note Repeat mode Pad MIDI
+                if slot.type == InstrumentType.SYNTH and self._router.synth_ready() \
+                        and pad_idx < len(self._router.kb_notes_input):
+                    vm  = self._player.voice_manager
+                    v   = vm.get_voice(pad_idx)
+                    vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
+                    pan = self._player._mix_pan(v.pan)
+                    midi_n = self._router.kb_notes_input[pad_idx]
+                    self._router.synth.play(midi_n, vol, pan, 0)
+                    self._router.kb_last_midi = midi_n
+                    self._player.last_played_pad = pad_idx
+                    if self._player.recording:
+                        bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[pad_idx][step_idx].SetValue(True)
+                    self._nr_cancel_release()
+                    self._nr_active_key = None
+                    self._nr_midi_note  = note
+                    _mn, _vol, _pan = midi_n, vol, pan
+                    router = self._router
+                    def _nr_pad_play(_pad, m=_mn, vv=_vol, p=_pan):
+                        router.synth.play(m, vv, p, 0)
+                    self._player.start_note_repeat(
+                        self._nr_rate_idx, lambda pi=pad_idx: pi, play_cb=_nr_pad_play
+                    )
+                else:
+                    self._player.play_sound(pad_idx, velocity)
+                    self._player.last_played_pad = pad_idx
+                    if self._player.recording:
+                        bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[pad_idx][step_idx].SetValue(True)
+                    self._nr_cancel_release()
+                    self._nr_active_key = None
+                    self._nr_midi_note  = note
+                    self._player.start_note_repeat(self._nr_rate_idx, lambda pi=pad_idx: pi)
+                self._show_status(
+                    f"NR: Pad {pad_idx + 1} @ {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
+                )
             elif slot.type == InstrumentType.SYNTH and self._router.synth_ready() \
                     and pad_idx < len(self._router.kb_notes_input):
                 vm  = self._player.voice_manager
@@ -681,6 +747,13 @@ class MainWindow(wx.Frame):
 
     def _on_midi_note_off(self, note, channel):
         """Note Off MIDI — coupe la note tenue (Synth) ou arrête l'effacement (Erase)."""
+        if self._note_repeat and self._nr_midi_note == note:
+            self._player.stop_note_repeat()
+            self._nr_midi_note = None
+            mode = "Ternaire" if self._nr_ternary else "Binaire"
+            self._show_status(
+                f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
+            )
         slot = self._rack.get_slot(self._cur_slot)
         if self._router.synth_ready() and slot.type == InstrumentType.SYNTH:
             if self._input_mode == "keyboard":
