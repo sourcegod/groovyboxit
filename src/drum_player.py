@@ -248,23 +248,37 @@ class DrumPlayer:
                 else:
                     self.sound_man.play_metronome(evt_data)
             else:
+                # Pré-armer l'enregistrement sur le DERNIER bar de count-in
+                # (avant l'attente) pour capturer les frappes anticipées sur
+                # le premier temps : l'utilisateur réagit au dernier click
+                # (~150-300 ms avant la fin de mesure) donc recording doit
+                # être True AVANT que la mesure se termine.
+                was_last_count_in  = (self._count_in == 1)
+                next_measure_start = measure_start + measure_secs
+                if was_last_count_in:
+                    self.playing        = True
+                    self.recording      = True
+                    self._measure_start = next_measure_start
+                    if self._on_count_in_done_cb:
+                        self._on_count_in_done_cb()
+
                 # Tous les événements joués → attendre la fin de mesure
                 while not self.stop_event.is_set() and not self._wakeup.is_set():
-                    remaining = measure_start + measure_secs - time.perf_counter()
+                    remaining = next_measure_start - time.perf_counter()
                     if remaining <= 0:
                         break
                     time.sleep(min(remaining, 0.010))
                 if self._count_in > 0 and not self._wakeup.is_set() and not self.stop_event.is_set():
                     self._count_in -= 1
                     if self._count_in == 0:
-                        self.playing   = True
-                        self.recording = True
-                        # Repartir de zéro pour que le premier cycle réel commence
-                        # à la mesure 1 et non à la mesure 2 (décalage dû au fait que
-                        # measure_start pointait sur une tranche d'1 bar de count-in).
-                        measure_start  = time.perf_counter()
-                        if self._on_count_in_done_cb:
-                            self._on_count_in_done_cb()
+                        if was_last_count_in:
+                            measure_start = next_measure_start
+                        else:
+                            self.playing   = True
+                            self.recording = True
+                            measure_start  = time.perf_counter()
+                            if self._on_count_in_done_cb:
+                                self._on_count_in_done_cb()
                 elif not self._wakeup.is_set() and not self.stop_event.is_set():
                     if not self._pattern._looping and self.playing:
                         self.playing = False
@@ -558,7 +572,11 @@ class DrumPlayer:
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
         measure_secs = total_steps * self.step_duration
         ref = self._measure_start if self._measure_start is not None else now
-        float_offset = ((now - ref) % measure_secs) / self.step_duration
+        if now < ref:
+            # Frappe anticipée durant le pré-armement du count-in : snap step 0.
+            float_offset = 0.0
+        else:
+            float_offset = ((now - ref) % measure_secs) / self.step_duration
 
         if self._quant_in_recording and self.quant_idx >= 0:
             quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
