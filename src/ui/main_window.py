@@ -440,7 +440,26 @@ class MainWindow(wx.Frame):
                 break
             self._pattern_list[i].from_dict(p)
         self._refresh_pattern_listbox()
-        self._switch_pattern(0)
+        # Restaure le pattern 0 directement sans écraser ses _track_slots chargés
+        self._cur_pattern_idx = 0
+        new = self._pattern_list[0]
+        self._player._pattern.load_pattern(new._curpattern)
+        self._player._pattern._looping = new._looping
+        self._player.voice_manager.from_list(new._voices)
+        self._router._track_slots[:]   = new._track_slots
+        self._router._track_mutes[:]   = new._track_mutes
+        self._router._track_solos[:]   = new._track_solos
+        self._router._track_volumes[:] = new._track_volumes
+        self._router._track_pans[:]    = new._track_pans
+        for track_idx, slot_idx in enumerate(new._track_slots):
+            slot = self._rack.get_slot(slot_idx)
+            if slot.type == InstrumentType.SYNTH:
+                self._router.assign_slot(track_idx, slot_idx)
+        self._player._compute_offsets()
+        self._refresh_grid()
+        self._refresh_all_voice_display()
+        self._refresh_track_list()
+        self._refresh_pad_list()
 
     def _on_quant_select(self, event):
         self._player.quant_idx = self._quant_list.GetSelection()
