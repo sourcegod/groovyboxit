@@ -613,17 +613,26 @@ class MainWindow(wx.Frame):
         slot = self._rack.get_slot(self._cur_slot)
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and self._router.synth_ready():
-            vol_factor = velocity / 127.0
-            v   = self._player.voice_manager.get_voice(self._cur_row)
-            pan = self._player._mix_pan(v.pan)
-            self._router.synth.play(note, vol_factor, pan, 0)  # durée pilotée par Note Off
-            self._router.kb_last_midi = note
-            if self._player.recording and note in self._router.kb_notes:
-                play_idx = self._router.kb_notes.index(note)
-                if play_idx < self.ROWS:
-                    bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[play_idx][step_idx].SetValue(True)
+            if self._player.erasing:
+                if note in self._router.kb_notes:
+                    play_idx = self._router.kb_notes.index(note)
+                    result = self._player.erase_hit(play_idx)
+                    if result:
+                        bar_idx, step_idx = result
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[play_idx][step_idx].SetValue(False)
+            else:
+                vol_factor = velocity / 127.0
+                v   = self._player.voice_manager.get_voice(self._cur_row)
+                pan = self._player._mix_pan(v.pan)
+                self._router.synth.play(note, vol_factor, pan, 0)
+                self._router.kb_last_midi = note
+                if self._player.recording and note in self._router.kb_notes:
+                    play_idx = self._router.kb_notes.index(note)
+                    if play_idx < self.ROWS:
+                        bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
+                        if bar_idx == 0 and step_idx < self.COLS:
+                            self._cells[play_idx][step_idx].SetValue(True)
         else:
             # Mode Pad : mapping chromatique depuis la note racine
             pad_idx = self._midi_to_pad(note)

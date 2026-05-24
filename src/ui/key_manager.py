@@ -367,7 +367,16 @@ class KeyManager:
                 if note_idx < len(win._router.kb_notes_input) \
                         and cur_slot.type == InstrumentType.SYNTH:
                     midi = win._router.kb_notes_input[note_idx]
-                    if win._router.synth_ready():
+                    if win._player.erasing:
+                        if midi in win._router.kb_notes:
+                            play_idx = win._router.kb_notes.index(midi)
+                            win._player._erase_active_pads.add(play_idx)
+                            result = win._player.erase_hit(play_idx)
+                            if result:
+                                bar_idx, step_idx = result
+                                if bar_idx == 0 and step_idx < win.COLS:
+                                    win._cells[play_idx][step_idx].SetValue(False)
+                    elif win._router.synth_ready():
                         vm = win._player.voice_manager
                         v  = vm.get_voice(note_idx)
                         win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
@@ -410,6 +419,7 @@ class KeyManager:
                     )
             elif win._player.erasing:
                 pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
+                win._player._erase_active_pads.add(pad_idx)
                 result = win._player.erase_hit(pad_idx)
                 if result:
                     bar_idx, step_idx = result
