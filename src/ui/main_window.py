@@ -562,12 +562,16 @@ class MainWindow(wx.Frame):
         self._midi_erase_held.clear()
         return self._player.toggle_erase()
 
+    def _midi_to_pad(self, note):
+        """Mappe note MIDI → index pad (0-ROWS-1) chromatiquement depuis la note racine."""
+        return (note - self._kb_root_midi) % self.ROWS
+
     def _update_erase_range(self):
         """Recalcule _erase_active_pads selon les notes MIDI tenues (plage min→max)."""
         if not self._midi_erase_held:
             self._player._erase_active_pads.clear()
             return
-        pads  = [n % self.ROWS for n in self._midi_erase_held]
+        pads = [self._midi_to_pad(n) for n in self._midi_erase_held]
         self._player._erase_active_pads = set(range(min(pads), max(pads) + 1))
 
     def _on_vel_level_select(self, event):
@@ -601,7 +605,8 @@ class MainWindow(wx.Frame):
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[note_idx][step_idx].SetValue(True)
         else:
-            pad_idx = note % self.ROWS
+            # Mode Pad : mapping chromatique depuis la note racine
+            pad_idx = self._midi_to_pad(note)
             if self._player.erasing:
                 prev_range = set(self._player._erase_active_pads)
                 self._midi_erase_held.add(note)
@@ -612,7 +617,22 @@ class MainWindow(wx.Frame):
                         bar_idx, step_idx = result
                         if bar_idx == 0 and step_idx < self.COLS:
                             self._cells[p][step_idx].SetValue(False)
+            elif slot.type == InstrumentType.SYNTH and self._router.synth_ready() \
+                    and pad_idx < len(self._router.kb_notes):
+                # Slot SYNTH : joue la note de gamme correspondante avec durée fixe
+                vm  = self._player.voice_manager
+                v   = vm.get_voice(pad_idx)
+                vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
+                pan = self._player._mix_pan(v.pan)
+                self._router.synth.play(self._router.kb_notes[pad_idx], vol, pan, 0)
+                self._router.kb_last_midi = self._router.kb_notes[pad_idx]
+                self._player.last_played_pad = pad_idx
+                if self._player.recording:
+                    bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[pad_idx][step_idx].SetValue(True)
             else:
+                # Slot KIT ou synth non prêt : échantillon drum
                 self._player.play_sound(pad_idx, velocity)
                 if self._player.recording:
                     bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
@@ -622,9 +642,13 @@ class MainWindow(wx.Frame):
     def _on_midi_note_off(self, note, channel):
         """Note Off MIDI — coupe la note tenue (Synth) ou arrête l'effacement (Erase)."""
         slot = self._rack.get_slot(self._cur_slot)
-        if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
-                and self._router.synth_ready():
-            self._router.synth.stop(note)
+        if self._router.synth_ready() and slot.type == InstrumentType.SYNTH:
+            if self._input_mode == "keyboard":
+                self._router.synth.stop(note)
+            else:
+                pad_idx = self._midi_to_pad(note)
+                if pad_idx < len(self._router.kb_notes):
+                    self._router.synth.stop(self._router.kb_notes[pad_idx])
         self._midi_erase_held.discard(note)
         self._update_erase_range()
 
