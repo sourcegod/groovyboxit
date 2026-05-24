@@ -149,6 +149,8 @@ class FakeRouter:
     def unmute_all_tracks(self): self.calls.append('unmute_all_tracks')
     def unsolo_all_tracks(self): self.calls.append('unsolo_all_tracks')
     def slot_name(self, i):      return f"Slot_{i + 1}"
+    def update_kb_notes(self, scale, root): self.calls.append(('update_kb_notes', scale, root))
+    def update_input_kb(self, root):        self.calls.append(('update_input_kb', root))
 
 
 class FakeWindow:
@@ -186,6 +188,7 @@ class FakeWindow:
         self._nr_rate_idx   = 7
         self._nr_ternary    = False
         self._kb_root_midi  = 48
+        self._kb_play_root  = 48
         self._kb_scale      = "major"
         self._cur_slot      = 0
         # Données

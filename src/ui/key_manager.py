@@ -364,21 +364,22 @@ class KeyManager:
             if win._input_mode == "keyboard":
                 note_idx = key - wx.WXK_NUMPAD1
                 cur_slot = win._rack.get_slot(win._cur_slot)
-                if note_idx < len(win._router.kb_notes) \
+                if note_idx < len(win._router.kb_notes_input) \
                         and cur_slot.type == InstrumentType.SYNTH:
-                    midi = win._router.kb_notes[note_idx]
+                    midi = win._router.kb_notes_input[note_idx]
                     if win._router.synth_ready():
                         vm = win._player.voice_manager
                         v  = vm.get_voice(note_idx)
                         win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
                         win._router.kb_last_midi = midi
-                        if win._player.recording:
-                            bar_idx, step_idx = win._player.record_hit(note_idx)
+                        if win._player.recording and midi in win._router.kb_notes:
+                            play_idx = win._router.kb_notes.index(midi)
+                            bar_idx, step_idx = win._player.record_hit(play_idx)
                             if bar_idx == 0 and step_idx < win.COLS:
-                                win._cells[note_idx][step_idx].SetValue(True)
+                                win._cells[play_idx][step_idx].SetValue(True)
                     else:
                         win._show_status("Keyboard: patch en cours de chargement…")
-                elif note_idx < len(win._router.kb_notes):
+                elif note_idx < len(win._router.kb_notes_input):
                     win._play_kit_pitched(note_idx)
             elif win._note_repeat:
                 pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
@@ -419,8 +420,8 @@ class KeyManager:
                 note_idx = key - wx.WXK_NUMPAD1
                 slot = win._rack.get_slot(win._cur_slot)
                 if slot.type == InstrumentType.SYNTH and win._router.synth_ready():
-                    if note_idx < len(win._router.kb_notes):
-                        midi = win._router.kb_notes[note_idx]
+                    if note_idx < len(win._router.kb_notes_input):
+                        midi = win._router.kb_notes_input[note_idx]
                         vm   = win._player.voice_manager
                         v    = vm.get_voice(note_idx)
                         win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
@@ -477,8 +478,8 @@ class KeyManager:
                     wx.Bell()
                 else:
                     win._kb_root_midi += 12
-                    win._router.update_kb_notes(win._kb_scale, win._kb_root_midi)
-                    win._show_status(f"Keyboard: octave → {midi_to_note_name(win._kb_root_midi)}")
+                    win._router.update_input_kb(win._kb_root_midi)
+                    win._show_status(f"Keyboard: octave entrée → {midi_to_note_name(win._kb_root_midi)}")
             else:
                 win._shift_pad = min(8, win._shift_pad + 8)
                 win._show_status(f"ShiftPad: {win._shift_pad + 1}/{win._shift_pad + 8}")
@@ -490,8 +491,8 @@ class KeyManager:
                     wx.Bell()
                 else:
                     win._kb_root_midi -= 12
-                    win._router.update_kb_notes(win._kb_scale, win._kb_root_midi)
-                    win._show_status(f"Keyboard: octave → {midi_to_note_name(win._kb_root_midi)}")
+                    win._router.update_input_kb(win._kb_root_midi)
+                    win._show_status(f"Keyboard: octave entrée → {midi_to_note_name(win._kb_root_midi)}")
             else:
                 win._shift_pad = max(0, win._shift_pad - 8)
                 win._show_status(f"ShiftPad: {win._shift_pad + 1}/{win._shift_pad + 8}")
@@ -506,7 +507,8 @@ class KeyManager:
                     idx -= 1
                     win._kb_scale = SCALE_NAMES[idx]
                     win._scale_choice.SetSelection(idx)
-                    win._router.update_kb_notes(win._kb_scale, win._kb_root_midi)
+                    win._router.update_kb_notes(win._kb_scale, win._kb_play_root)
+                    win._router.update_input_kb(win._kb_root_midi)
                     win._show_status(
                         f"Gamme: {win._kb_scale} @ {midi_to_note_name(win._kb_root_midi)}"
                     )
@@ -519,7 +521,8 @@ class KeyManager:
                     idx += 1
                     win._kb_scale = SCALE_NAMES[idx]
                     win._scale_choice.SetSelection(idx)
-                    win._router.update_kb_notes(win._kb_scale, win._kb_root_midi)
+                    win._router.update_kb_notes(win._kb_scale, win._kb_play_root)
+                    win._router.update_input_kb(win._kb_root_midi)
                     win._show_status(
                         f"Gamme: {win._kb_scale} @ {midi_to_note_name(win._kb_root_midi)}"
                     )

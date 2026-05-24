@@ -51,7 +51,8 @@ class MainWindow(wx.Frame):
         self._nr_rate_idx      = 7      # indice QUANT_LIST courant (défaut 1/16)
         self._nr_ternary       = False  # False=binaire, True=ternaire
         self._kb_scale     = "major"
-        self._kb_root_midi = 48         # C3
+        self._kb_play_root = 48   # C3 — root de lecture, stable (non affectée par Numpad+/-)
+        self._kb_root_midi = 48   # C3 — root d'entrée, transposable avec Numpad+/-
         self._input_mode       = "pad"   # "pad" | "keyboard"
         self._vel_level        = 4      # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
         self._midi_erase_held  = set()  # notes MIDI tenues en mode Erase
@@ -68,7 +69,7 @@ class MainWindow(wx.Frame):
             lambda msg: wx.CallAfter(self._show_status, msg),
         )
         self._player._on_track_play_cb = self._router.on_play
-        self._router.update_kb_notes(self._kb_scale, self._kb_root_midi)
+        self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
@@ -618,11 +619,11 @@ class MainWindow(wx.Frame):
             self._router.synth.play(note, vol_factor, pan, 0)  # durée pilotée par Note Off
             self._router.kb_last_midi = note
             if self._player.recording and note in self._router.kb_notes:
-                note_idx = self._router.kb_notes.index(note)
-                if note_idx < self.ROWS:
-                    bar_idx, step_idx = self._player.record_hit(note_idx, velocity)
+                play_idx = self._router.kb_notes.index(note)
+                if play_idx < self.ROWS:
+                    bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
                     if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[note_idx][step_idx].SetValue(True)
+                        self._cells[play_idx][step_idx].SetValue(True)
         else:
             # Mode Pad : mapping chromatique depuis la note racine
             pad_idx = self._midi_to_pad(note)
@@ -637,14 +638,13 @@ class MainWindow(wx.Frame):
                         if bar_idx == 0 and step_idx < self.COLS:
                             self._cells[p][step_idx].SetValue(False)
             elif slot.type == InstrumentType.SYNTH and self._router.synth_ready() \
-                    and pad_idx < len(self._router.kb_notes):
-                # Slot SYNTH : joue la note de gamme correspondante avec durée fixe
+                    and pad_idx < len(self._router.kb_notes_input):
                 vm  = self._player.voice_manager
                 v   = vm.get_voice(pad_idx)
                 vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
                 pan = self._player._mix_pan(v.pan)
-                self._router.synth.play(self._router.kb_notes[pad_idx], vol, pan, 0)
-                self._router.kb_last_midi = self._router.kb_notes[pad_idx]
+                self._router.synth.play(self._router.kb_notes_input[pad_idx], vol, pan, 0)
+                self._router.kb_last_midi = self._router.kb_notes_input[pad_idx]
                 self._player.last_played_pad = pad_idx
                 if self._player.recording:
                     bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
@@ -666,8 +666,8 @@ class MainWindow(wx.Frame):
                 self._router.synth.stop(note)
             else:
                 pad_idx = self._midi_to_pad(note)
-                if pad_idx < len(self._router.kb_notes):
-                    self._router.synth.stop(self._router.kb_notes[pad_idx])
+                if pad_idx < len(self._router.kb_notes_input):
+                    self._router.synth.stop(self._router.kb_notes_input[pad_idx])
         self._midi_erase_held.discard(note)
         self._update_erase_range()
 
@@ -704,7 +704,8 @@ class MainWindow(wx.Frame):
         self._input_mode = mode
         self._mode_choice.SetSelection(modes.index(mode))
         if mode == "keyboard":
-            self._router.update_kb_notes(self._kb_scale, self._kb_root_midi)
+            self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
+            self._router.update_input_kb(self._kb_root_midi)
             self._show_status(
                 f"Mode: Keyboard — {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
             )
@@ -717,7 +718,8 @@ class MainWindow(wx.Frame):
 
     def _on_scale_choice(self, event):
         self._kb_scale = SCALE_NAMES[self._scale_choice.GetSelection()]
-        self._router.update_kb_notes(self._kb_scale, self._kb_root_midi)
+        self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
+        self._router.update_input_kb(self._kb_root_midi)
         self._show_status(
             f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
         )
@@ -1069,8 +1071,8 @@ class MainWindow(wx.Frame):
     def _play(self, idx):
         slot = self._rack.get_slot(self._cur_slot)
         if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
-                and self._router.synth_ready() and idx < len(self._router.kb_notes):
-            midi = self._router.kb_notes[idx]
+                and self._router.synth_ready() and idx < len(self._router.kb_notes_input):
+            midi = self._router.kb_notes_input[idx]
             self._router.synth.play(midi)
             self._router.kb_last_midi = midi
         else:

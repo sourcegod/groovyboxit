@@ -53,8 +53,9 @@ class TrackRouter:
         self._kb_scale       = "major"  # pour le message de status
         self._kb_root_midi   = 48       # pour play_kit_pitched / status
 
-        self.kb_notes     = []
-        self.kb_last_midi = None
+        self.kb_notes       = []   # notes de lecture (stables)
+        self.kb_notes_input = []   # notes d'entrée (transposables par Numpad+/-)
+        self.kb_last_midi   = None
 
     # ------------------------------------------------------------------
     # Propriétés (accès lecture seule aux moteurs)
@@ -73,11 +74,16 @@ class TrackRouter:
     # ------------------------------------------------------------------
 
     def update_kb_notes(self, scale, root_midi):
-        """Recalcule kb_notes puis relance le précalcul pour _synth."""
-        self._kb_scale     = scale
-        self._kb_root_midi = root_midi
-        self.kb_notes = scale_midi_notes(scale, root_midi, 16)
+        """Recalcule kb_notes (lecture) et kb_notes_input, relance le précalcul."""
+        self._kb_scale       = scale
+        self._kb_root_midi   = root_midi
+        self.kb_notes        = scale_midi_notes(scale, root_midi, 16)
+        self.kb_notes_input  = self.kb_notes[:]
         self.precompute_async()
+
+    def update_input_kb(self, root_midi):
+        """Transpose le clavier d'entrée sans affecter kb_notes (lecture)."""
+        self.kb_notes_input = scale_midi_notes(self._kb_scale, root_midi, 16)
 
     def precompute_async(self):
         """Précalcule les notes pour _synth en arrière-plan."""
@@ -253,7 +259,7 @@ class TrackRouter:
 
         if self._kb_kit_pad != pad_idx:
             self._kb_kit_pad = pad_idx
-            notes      = self.kb_notes[:]
+            notes      = self.kb_notes_input[:]
             kit_engine = self._kit_synth
             root_midi  = self._kb_root_midi
             def run():
@@ -267,7 +273,7 @@ class TrackRouter:
             return
 
         if self._kit_synth.is_loaded():
-            midi = self.kb_notes[note_idx]
+            midi = self.kb_notes_input[note_idx]
             self._kit_synth.play(midi)
             self.kb_last_midi = midi
         else:
