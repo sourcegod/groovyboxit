@@ -1,0 +1,21 @@
+{
+  "name": "TR-707",
+  "pads": [
+    {"pad":  1, "filename": "../SAMPLES/DRUMS/tr_707/35_BassDrum2.wav", "label": "Kick 2"},
+    {"pad":  2, "filename": "../SAMPLES/DRUMS/tr_707/36_BassDrum1.wav", "label": "Kick 1"},
+    {"pad":  3, "filename": "../SAMPLES/DRUMS/tr_707/37_RimShot.wav",   "label": "Rimshot"},
+    {"pad":  4, "filename": "../SAMPLES/DRUMS/tr_707/38_Snare1.wav",    "label": "Snare 1"},
+    {"pad":  5, "filename": "../SAMPLES/DRUMS/tr_707/39_HandClap.wav",  "label": "Hand Clap"},
+    {"pad":  6, "filename": "../SAMPLES/DRUMS/tr_707/40_Snare2.wav",    "label": "Snare 2"},
+    {"pad":  7, "filename": "../SAMPLES/DRUMS/tr_707/41_LowTom.wav",    "label": "Tom Low"},
+    {"pad":  8, "filename": "../SAMPLES/DRUMS/tr_707/42_HhC.wav",       "label": "HH Closed"},
+    {"pad":  9, "filename": "../SAMPLES/DRUMS/tr_707/43_MedTom.wav",    "label": "Tom Mid"},
+    {"pad": 10, "filename": "../SAMPLES/DRUMS/tr_707/44_HhO.wav",       "label": "HH Open"},
+    {"pad": 11, "filename": "../SAMPLES/DRUMS/tr_707/45_HiTom.wav",     "label": "Tom Hi"},
+    {"pad": 12, "filename": "../SAMPLES/DRUMS/tr_707/46_Crash.wav",     "label": "Crash"},
+    {"pad": 13, "filename": "../SAMPLES/DRUMS/tr_707/47_Ride.wav",      "label": "Ride"},
+    {"pad": 14, "filename": "../SAMPLES/DRUMS/tr_707/48_Tamb.wav",      "label": "Tambourine"},
+    {"pad": 15, "filename": "../SAMPLES/DRUMS/tr_707/49_CowBell.wav",   "label": "Cowbell"},
+    {"pad": 16, "filename": "",                                          "label": "---"}
+  ]
+}
