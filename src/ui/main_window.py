@@ -63,8 +63,10 @@ class MainWindow(wx.Frame):
         cfg = AppConfig(self._base_dir)
         self._patches_dir = cfg.patches_dir
         self._samples_dir = cfg.samples_dir
+        self._kits_dir    = cfg.kits_dir
         self._rack = Rack()
-        self._rack.set_slot(0, InstrumentType.KIT,   "Default Kit", {})
+        self._rack.set_slot(0, InstrumentType.KIT, "TR-707",
+                            {"kit": os.path.join(self._kits_dir, "tr_707.json")})
         self._rack.set_slot(1, InstrumentType.SYNTH, "Acoustic Guitar 1",
                             {"patch": os.path.join(self._patches_dir, "accoustic_guitar_1.json")})
         self._rack.set_slot(2, InstrumentType.SYNTH, "Piano 1",
@@ -87,6 +89,7 @@ class MainWindow(wx.Frame):
             on_status   = lambda msg:     wx.CallAfter(self._show_status, msg),
         )
         self._build_ui()
+        self._load_kit_slot(0)
         self._load_preset()
         self._router.load_slot_preview(1)   # pré-chargement A440 en arrière-plan
         self._key_manager = KeyManager(self)
@@ -99,12 +102,13 @@ class MainWindow(wx.Frame):
         self._base_dir = os.path.dirname(os.path.dirname(ui_dir))
         base_dir = self._base_dir
         media_dir = os.path.join(base_dir, "media")
+        self._media_dir = media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
         click1 = os.path.join(media_dir, "hi_wood_block_mono.wav")
         click2 = os.path.join(media_dir, "low_wood_block_mono.wav")
         self._media_lst = media_lst
         self._snd = SoundManager(media_lst, click1, click2)
-        self._snd.load_sounds()
+        # Les sons du kit sont chargés plus tard par _load_kit_slot()
         self._player = DrumPlayer(self._snd)
         self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
             self._on_nr_recorded, pad, bar, step
@@ -1104,6 +1108,28 @@ class MainWindow(wx.Frame):
     def _update_slot_list(self):
         self._slot_choice.Set(self._rack.labels())
         self._slot_choice.SetSelection(self._cur_slot)
+
+    def _load_kit_slot(self, slot_idx):
+        """Charge le kit JSON du slot KIT donné et met à jour les sons et les noms de pads.
+        Fallback sur les sons media/ si le JSON est absent ou invalide."""
+        slot = self._rack.get_slot(slot_idx)
+        if slot.type != InstrumentType.KIT:
+            return
+        kit_path = slot.config.get("kit", "")
+        if kit_path and os.path.isfile(kit_path):
+            try:
+                labels, wav_paths = self._snd.load_kit(kit_path)
+                self._media_lst = wav_paths
+                for i, label in enumerate(labels):
+                    self._player.voice_manager.set_name(i, label)
+                self._refresh_pad_list()
+                self._show_status(f"Kit chargé: {slot.name}")
+                return
+            except Exception as e:
+                self._show_status(f"Erreur kit JSON: {e}")
+        # Fallback : sons media/ numérotés
+        self._snd.load_sounds()
+        self._show_status("Kit: sons media par défaut")
 
     def _open_explorer(self):
         start = self._patches_dir if os.path.isdir(self._patches_dir) \

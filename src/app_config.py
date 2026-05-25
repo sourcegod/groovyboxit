@@ -38,3 +38,7 @@ class AppConfig:
     @property
     def samples_dir(self):
         return self._get_dir("samples_dir", "samples")
+
+    @property
+    def kits_dir(self):
+        return self._get_dir("kits_dir", "kits")

@@ -5,6 +5,9 @@
     Date: Sat, 05/04/2025
     Author: Coolbrother
 """
+import os
+import json
+import numpy as np
 import pygame
 
 class SoundManager(object):
@@ -23,9 +26,53 @@ class SoundManager(object):
 
     def load_sounds(self):
         self.drum_sounds = [
-                pygame.mixer.Sound(item) 
+                pygame.mixer.Sound(item)
                 for item in self.media_lst
         ]
+
+    #----------------------------------------
+
+    def _silent_sound(self):
+        """Son silencieux (1 échantillon stéréo) pour pad sans fichier."""
+        arr = np.zeros((2, 2), dtype=np.int16)
+        return pygame.sndarray.make_sound(arr)
+
+    def load_kit(self, json_path):
+        """Charge un kit depuis un fichier JSON.
+
+        Retourne (labels, wav_paths) — deux listes de 16 éléments.
+        Les pads sans fichier ou avec fichier manquant reçoivent un son silencieux.
+        """
+        json_path = os.path.abspath(json_path)
+        json_dir  = os.path.dirname(json_path)
+        with open(json_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+
+        pad_map = {p["pad"]: p for p in meta.get("pads", [])}
+
+        labels    = []
+        wav_paths = []
+        new_sounds = []
+
+        for i in range(1, 17):
+            entry    = pad_map.get(i, {})
+            label    = entry.get("label", f"Pad {i:02d}")
+            filename = entry.get("filename", "")
+            if filename:
+                wav_path = os.path.normpath(os.path.join(json_dir, filename))
+            else:
+                wav_path = ""
+            labels.append(label)
+            wav_paths.append(wav_path)
+            if wav_path and os.path.exists(wav_path):
+                new_sounds.append(pygame.mixer.Sound(wav_path))
+            else:
+                new_sounds.append(self._silent_sound())
+
+        self.drum_sounds = new_sounds
+        self.media_lst   = wav_paths
+        self._kit_name   = meta.get("name", "")
+        return labels, wav_paths
 
     #----------------------------------------
 
