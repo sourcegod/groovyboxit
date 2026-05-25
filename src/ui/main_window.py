@@ -73,6 +73,8 @@ class MainWindow(wx.Frame):
                             {"patch": os.path.join(self._patches_dir, "piano_01.json")})
         self._rack.set_slot(3, InstrumentType.SYNTH, "Organ B3 Basic Fast",
                             {"patch": os.path.join(self._patches_dir, "organ_b3_basic_fast.json")})
+        self._rack.set_slot(4, InstrumentType.KIT, "GM (FluidR3)",
+                            {"kit": os.path.join(self._kits_dir, "gm.json")})
         self._cur_slot = 0
         self._router = TrackRouter(
             self._rack, self._synths_dir, self._snd,
