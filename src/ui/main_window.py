@@ -7,6 +7,7 @@ from pattern import Pattern
 from rack import Rack, InstrumentType
 from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
+from app_config import AppConfig
 from ui.dialogs import (
     KeyboardHelpDialog,
     GenRowDialog,
@@ -58,12 +59,18 @@ class MainWindow(wx.Frame):
         self._vel_level        = 4      # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
         self._midi_erase_held  = set()  # notes MIDI tenues en mode Erase
         self._init_sound()
-        self._synths_dir = os.path.join(self._base_dir, "synths")
+        self._synths_dir  = os.path.join(self._base_dir, "synths")
+        cfg = AppConfig(self._base_dir)
+        self._patches_dir = cfg.patches_dir
+        self._samples_dir = cfg.samples_dir
         self._rack = Rack()
         self._rack.set_slot(0, InstrumentType.KIT,   "Default Kit", {})
-        self._rack.set_slot(1, InstrumentType.SYNTH, "Acoustic Guitar 1", {"patch": "accoustic_guitar_1"})
-        self._rack.set_slot(2, InstrumentType.SYNTH, "Piano 1",           {"patch": "piano_1"})
-        self._rack.set_slot(3, InstrumentType.SYNTH, "Organ B3 Basic Fast", {"patch": "Organ_B3_Basic_Fast"})
+        self._rack.set_slot(1, InstrumentType.SYNTH, "Acoustic Guitar 1",
+                            {"patch": os.path.join(self._patches_dir, "accoustic_guitar_1.json")})
+        self._rack.set_slot(2, InstrumentType.SYNTH, "Piano 1",
+                            {"patch": os.path.join(self._patches_dir, "piano_01.json")})
+        self._rack.set_slot(3, InstrumentType.SYNTH, "Organ B3 Basic Fast",
+                            {"patch": os.path.join(self._patches_dir, "organ_b3_basic_fast.json")})
         self._cur_slot = 0
         self._router = TrackRouter(
             self._rack, self._synths_dir, self._snd,
@@ -1099,20 +1106,19 @@ class MainWindow(wx.Frame):
         self._slot_choice.SetSelection(self._cur_slot)
 
     def _open_explorer(self):
-        start = self._synths_dir if os.path.isdir(self._synths_dir) else os.path.expanduser("~")
-        dlg = wx.DirDialog(self, "Choisir un dossier de patch (synth)",
-                           defaultPath=start,
-                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        start = self._patches_dir if os.path.isdir(self._patches_dir) \
+                else (self._synths_dir if os.path.isdir(self._synths_dir) else os.path.expanduser("~"))
+        dlg = wx.FileDialog(self, "Choisir un fichier patch (*.json)",
+                            defaultDir=start,
+                            wildcard="Patch JSON (*.json)|*.json",
+                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         if dlg.ShowModal() == wx.ID_OK:
-            patch_dir  = dlg.GetPath()
-            patch_name = os.path.basename(patch_dir)
-            if not os.path.exists(os.path.join(patch_dir, "patch.json")):
-                self._show_status("Dossier invalide : patch.json introuvable")
-            else:
-                self._rack.set_slot(self._cur_slot, InstrumentType.SYNTH,
-                                    patch_name, {"patch": patch_name})
-                self._update_slot_list()
-                self._router.load_slot_preview(self._cur_slot)
+            json_path  = dlg.GetPath()
+            patch_name = os.path.splitext(os.path.basename(json_path))[0]
+            self._rack.set_slot(self._cur_slot, InstrumentType.SYNTH,
+                                patch_name, {"patch": json_path})
+            self._update_slot_list()
+            self._router.load_slot_preview(self._cur_slot)
         dlg.Destroy()
 
     def _refresh_voice_display(self, pad_idx):

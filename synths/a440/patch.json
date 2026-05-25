@@ -1,9 +1,0 @@
-{
-  "name": "A440",
-  "loop": false,
-  "loop_start": null,
-  "loop_end": null,
-  "samples": [
-    {"file": "A4.wav", "root": "A4"}
-  ]
-}

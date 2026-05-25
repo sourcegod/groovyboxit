@@ -104,35 +104,55 @@ class SynthEngine:
     # Chargement de patch
     # ------------------------------------------------------------------
 
-    def load_patch(self, patch_name):
-        """Charge synths/<patch_name>/patch.json et les WAVs associés."""
-        patch_dir = os.path.join(self._synths_dir, patch_name)
-        json_path = os.path.join(patch_dir, "patch.json")
+    def load_patch(self, patch_ref):
+        """Charge un patch depuis un nom de dossier ou un chemin JSON complet.
+
+        Formats supportés (avec fallback rétrocompatible) :
+          Nouveau : "sounds" / "filename" / "rootnote", loop_start/loop_end top-level
+          Ancien  : "samples" / "file" / "root", loop_start/loop_end par sample
+
+        Les chemins WAV sont résolus relativement au fichier JSON.
+        """
+        if os.path.isabs(patch_ref) or patch_ref.endswith(".json"):
+            json_path = patch_ref
+        else:
+            patch_dir = os.path.join(self._synths_dir, patch_ref)
+            json_path = os.path.join(patch_dir, "patch.json")
+
+        json_path = os.path.abspath(json_path)
+        json_dir  = os.path.dirname(json_path)
 
         with open(json_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
 
-        self._patch_name = patch_name
+        self._patch_name = meta.get("name", os.path.splitext(os.path.basename(json_path))[0])
         self._patch_meta = meta
         self._loop       = meta.get("loop", False)
         self._samples    = []
         self._raw_cache  = {}
         self._cache      = {}
 
-        for s in meta.get("samples", []):
-            wav_path = os.path.join(patch_dir, s["file"])
-            data, sr = sf.read(wav_path, dtype="float64", always_2d=False)
-            root_midi = note_name_to_midi(s["root"])
+        sounds         = meta.get("sounds", meta.get("samples", []))
+        top_loop_start = meta.get("loop_start")
+        top_loop_end   = meta.get("loop_end")
+
+        for s in sounds:
+            filename   = s.get("filename", s.get("file", ""))
+            rootnote   = s.get("rootnote", s.get("root", "C4"))
+            wav_path   = os.path.normpath(os.path.join(json_dir, filename))
+            data, sr   = sf.read(wav_path, dtype="float64", always_2d=False)
+            root_midi  = note_name_to_midi(rootnote)
+            loop_start = s.get("loop_start", top_loop_start)
+            loop_end   = s.get("loop_end",   top_loop_end)
             self._samples.append({
                 "root_midi":  root_midi,
                 "data":       data,
                 "sr":         sr,
                 "path":       wav_path,
-                "loop_start": s.get("loop_start"),
-                "loop_end":   s.get("loop_end"),
+                "loop_start": loop_start,
+                "loop_end":   loop_end,
             })
 
-        # Tri par note racine pour accès plus lisible
         self._samples.sort(key=lambda s: s["root_midi"])
 
     def load_single_sample(self, wav_path, root_midi=60):
