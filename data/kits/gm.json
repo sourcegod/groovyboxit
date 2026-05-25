@@ -1,0 +1,21 @@
+{
+  "name": "GM (FluidR3)",
+  "pads": [
+    {"pad":  1, "filename": "../SAMPLES/DRUMS/gm/35_Bass_Drum_2.wav",    "label": "Bass Drum 2"},
+    {"pad":  2, "filename": "../SAMPLES/DRUMS/gm/36_Bass_Drum_1.wav",    "label": "Bass Drum 1"},
+    {"pad":  3, "filename": "../SAMPLES/DRUMS/gm/37_Side_Stick.wav",     "label": "Side Stick"},
+    {"pad":  4, "filename": "../SAMPLES/DRUMS/gm/38_Snare_1.wav",        "label": "Snare 1"},
+    {"pad":  5, "filename": "../SAMPLES/DRUMS/gm/39_Hand_Clap.wav",      "label": "Hand Clap"},
+    {"pad":  6, "filename": "../SAMPLES/DRUMS/gm/40_Snare_2.wav",        "label": "Snare 2"},
+    {"pad":  7, "filename": "../SAMPLES/DRUMS/gm/41_Low_Floor_Tom.wav",  "label": "Low Floor Tom"},
+    {"pad":  8, "filename": "../SAMPLES/DRUMS/gm/42_HH_Closed.wav",      "label": "HH Closed"},
+    {"pad":  9, "filename": "../SAMPLES/DRUMS/gm/43_High_Floor_Tom.wav", "label": "High Floor Tom"},
+    {"pad": 10, "filename": "../SAMPLES/DRUMS/gm/44_HH_Pedal.wav",       "label": "HH Pedal"},
+    {"pad": 11, "filename": "../SAMPLES/DRUMS/gm/45_Low_Tom.wav",        "label": "Low Tom"},
+    {"pad": 12, "filename": "../SAMPLES/DRUMS/gm/46_HH_Open.wav",        "label": "HH Open"},
+    {"pad": 13, "filename": "../SAMPLES/DRUMS/gm/47_Low_Mid_Tom.wav",    "label": "Low Mid Tom"},
+    {"pad": 14, "filename": "../SAMPLES/DRUMS/gm/48_Hi_Mid_Tom.wav",     "label": "Hi Mid Tom"},
+    {"pad": 15, "filename": "../SAMPLES/DRUMS/gm/49_Crash_1.wav",        "label": "Crash 1"},
+    {"pad": 16, "filename": "../SAMPLES/DRUMS/gm/50_High_Tom.wav",       "label": "High Tom"}
+  ]
+}
