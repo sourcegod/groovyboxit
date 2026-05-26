@@ -139,7 +139,7 @@ def test_load_pattern_copies_data_independently():
     dst.load_pattern(src._curpattern)
     # Modifier la source ne doit pas affecter la destination
     src._curpattern[0][0][0][5] = False
-    assert dst._curpattern[0][0][0][5] is True
+    assert dst._curpattern[0][0][0][5]
     print("  load_pattern fait une copie indépendante : OK")
 
 def test_load_pattern_preserves_true_steps():
@@ -147,7 +147,7 @@ def test_load_pattern_preserves_true_steps():
     src._curpattern[0][3][0][7] = True
     dst = Pattern()
     dst.load_pattern(src._curpattern)
-    assert dst._curpattern[0][3][0][7] is True
+    assert dst._curpattern[0][3][0][7]
     print("  load_pattern conserve les pas True : OK")
 
 
@@ -302,10 +302,10 @@ def test_build_pattern_01_not_empty():
 def test_build_pattern_01_kick_on_downbeat():
     p = Pattern()
     p.build_pattern_01()
-    assert p._curpattern[0][0][0][0]  is True   # temps 1
-    assert p._curpattern[0][0][0][4]  is True   # temps 2
-    assert p._curpattern[0][0][0][8]  is True   # temps 3
-    assert p._curpattern[0][0][0][12] is True   # temps 4
+    assert p._curpattern[0][0][0][0]    # temps 1
+    assert p._curpattern[0][0][0][4]    # temps 2
+    assert p._curpattern[0][0][0][8]    # temps 3
+    assert p._curpattern[0][0][0][12]   # temps 4
     print("  build_pattern_01: kick sur les 4 temps : OK")
 
 def test_build_pattern_01_resets_prior_data():
@@ -313,7 +313,7 @@ def test_build_pattern_01_resets_prior_data():
     p._curpattern[0][0][0][15] = True
     p.build_pattern_01()
     # Après build, le pas 15 sur pad 0 doit être False (reset en premier)
-    assert p._curpattern[0][0][0][15] is False
+    assert not p._curpattern[0][0][0][15]
     print("  build_pattern_01 efface les données précédentes : OK")
 
 
@@ -383,8 +383,8 @@ def test_resize_extend_steps_new_steps_are_false():
     p = Pattern()
     p.new_pattern(1, 16)
     p.resize(1, 32)
-    assert p._curpattern[0][0][0][16] is False
-    assert p._curpattern[0][0][0][31] is False
+    assert not p._curpattern[0][0][0][16]
+    assert not p._curpattern[0][0][0][31]
     print("  resize: nouveaux pas initialisés à False : OK")
 
 def test_resize_extend_bars_updates_num_bars():
@@ -573,7 +573,7 @@ def test_roundtrip_preserves_curpattern():
     d = src.to_dict()
     dst = Pattern()
     dst.from_dict(d)
-    assert dst._curpattern[0][5][0][11] is True
+    assert dst._curpattern[0][5][0][11]
     print("  to_dict → from_dict conserve les données de _curpattern : OK")
 
 def test_roundtrip_is_independent_copy():
@@ -584,7 +584,7 @@ def test_roundtrip_is_independent_copy():
     dst.from_dict(d)
     # from_dict fait load_pattern qui copie → modifier src ne doit pas affecter dst
     src._curpattern[0][0][0][0] = False
-    assert dst._curpattern[0][0][0][0] is True
+    assert dst._curpattern[0][0][0][0]
     print("  from_dict produit une copie indépendante de _curpattern : OK")
 
 

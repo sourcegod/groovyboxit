@@ -162,16 +162,16 @@ def test_roundtrip_curpattern_notes():
     dst = _deserialize(data)
 
     cp = dst._curpattern
-    assert cp[0][0][0][0]  == True,  "Piste 0 pad 0 step 0"
-    assert cp[0][0][0][4]  == True,  "Piste 0 pad 0 step 4"
-    assert cp[0][0][0][8]  == True,  "Piste 0 pad 0 step 8"
-    assert cp[0][0][0][12] == True,  "Piste 0 pad 0 step 12"
-    assert cp[0][4][0][2]  == True,  "Piste 0 pad 4 step 2"
-    assert cp[0][4][0][10] == True,  "Piste 0 pad 4 step 10"
-    assert cp[1][1][0][0]  == True,  "Piste 1 pad 1 step 0"
-    assert cp[1][1][0][8]  == True,  "Piste 1 pad 1 step 8"
-    assert cp[2][7][0][15] == True,  "Piste 2 pad 7 step 15"
-    assert cp[3][2][0][3]  == True,  "Piste 3 pad 2 step 3"
+    assert cp[0][0][0][0],   "Piste 0 pad 0 step 0"
+    assert cp[0][0][0][4],   "Piste 0 pad 0 step 4"
+    assert cp[0][0][0][8],   "Piste 0 pad 0 step 8"
+    assert cp[0][0][0][12],  "Piste 0 pad 0 step 12"
+    assert cp[0][4][0][2],   "Piste 0 pad 4 step 2"
+    assert cp[0][4][0][10],  "Piste 0 pad 4 step 10"
+    assert cp[1][1][0][0],   "Piste 1 pad 1 step 0"
+    assert cp[1][1][0][8],   "Piste 1 pad 1 step 8"
+    assert cp[2][7][0][15],  "Piste 2 pad 7 step 15"
+    assert cp[3][2][0][3],   "Piste 3 pad 2 step 3"
     print("  round-trip curpattern (notes multi-pistes) : OK")
 
 
@@ -287,8 +287,8 @@ def test_json_roundtrip_single_pattern():
 
         assert dst._name == "JSON Test"
         assert dst._track_slots == [0, 1, 2, 1, 0, 0, 0, 0]
-        assert dst._curpattern[2][7][0][15] == True
-        assert dst._curpattern[3][2][0][3]  == True
+        assert dst._curpattern[2][7][0][15]
+        assert dst._curpattern[3][2][0][3]
         assert dst._voices[0]["volume"]     == 80
     finally:
         os.unlink(path)
@@ -315,9 +315,9 @@ def test_json_roundtrip_99_patterns():
         loaded = _load_preset_dict(data)
 
         assert len(loaded) == 99
-        assert loaded[0]._curpattern[0][0][0][0]  == True
+        assert loaded[0]._curpattern[0][0][0][0]
         assert loaded[0]._track_slots             == [0, 1, 2, 3, 0, 0, 0, 0]
-        assert loaded[5]._curpattern[1][3][0][7]  == True
+        assert loaded[5]._curpattern[1][3][0][7]
         assert loaded[5]._track_slots             == [1, 2, 0, 0, 0, 0, 0, 0]
         assert loaded[5]._name                    == "Pattern 6"
         # Patterns vides

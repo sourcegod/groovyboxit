@@ -146,7 +146,7 @@ def test_on_track_play_cb_called_per_track():
 
     received = []
 
-    def fake_cb(track_idx, pad_idx, vol, pan):
+    def fake_cb(track_idx, pad_idx, vol, pan, dur=0):
         received.append((track_idx, pad_idx))
 
     p._on_track_play_cb = fake_cb

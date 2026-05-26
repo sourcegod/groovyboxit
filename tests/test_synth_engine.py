@@ -55,7 +55,7 @@ def test_load_patch(engine, patch_dir):
     synths_dir = os.path.dirname(patch_dir)
     engine.load_patch(patch_name)
     assert engine.is_loaded()
-    assert engine._patch_name == patch_name
+    assert engine._patch_name == "TestPatch"
     assert len(engine._samples) == 1
     assert engine._samples[0]["root_midi"] == note_name_to_midi(ROOT_NOTE)
     print(f"  load_patch : OK  ({engine})")
@@ -67,7 +67,7 @@ def test_precompute_scale(engine):
     engine.precompute(notes)
     assert len(engine._cache) == 16
     for n in notes:
-        assert n in engine._cache, f"Note {midi_to_note_name(n)} absente du cache"
+        assert (n, 500) in engine._cache, f"Note {midi_to_note_name(n)} absente du cache"
     print("  precompute (16 notes) : OK")
 
 

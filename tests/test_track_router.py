@@ -43,7 +43,7 @@ class FakeSynthEngine:
     def precompute(self, notes):
         self._precomputed = notes[:]
 
-    def play(self, midi, vol=1.0, pan=0):
+    def play(self, midi, vol=1.0, pan=0, duration_ms=0):
         self._played.append((midi, vol, pan))
 
 
@@ -98,7 +98,7 @@ def test_initial_state():
 def test_update_kb_notes_major():
     router, _, _ = _make_router()
     router.update_kb_notes("major", 60)
-    assert router.kb_notes == scale_midi_notes("major", 60, 16)
+    assert router.kb_notes == scale_midi_notes("major", 60, router.KB_MIDI_NOTES)
     assert router._kb_scale     == "major"
     assert router._kb_root_midi == 60
     print("  update_kb_notes (major, C4) : OK")
@@ -107,7 +107,7 @@ def test_update_kb_notes_major():
 def test_update_kb_notes_minor():
     router, _, _ = _make_router()
     router.update_kb_notes("minor_nat", 48)
-    assert router.kb_notes == scale_midi_notes("minor_nat", 48, 16)
+    assert router.kb_notes == scale_midi_notes("minor_nat", 48, router.KB_MIDI_NOTES)
     print("  update_kb_notes (minor, C3) : OK")
 
 

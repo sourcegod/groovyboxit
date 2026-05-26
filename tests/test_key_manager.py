@@ -153,6 +153,16 @@ class FakeRouter:
     def update_input_kb(self, root):        self.calls.append(('update_input_kb', root))
 
 
+class _FakeSlot:
+    type = None   # ni KIT ni SYNTH → branche else dans numpad+/-
+
+class FakeRack:
+    def get_slot(self, idx): return _FakeSlot()
+
+class FakeSnd:
+    note_map = {}   # vide → branche KIT ignorée dans numpad+/-
+
+
 class FakeWindow:
     ROWS       = 16
     COLS       = 16
@@ -195,6 +205,8 @@ class FakeWindow:
         # Données
         self._player = FakePlayer()
         self._router = FakeRouter()
+        self._rack   = FakeRack()
+        self._snd    = FakeSnd()
         # Journal des appels sur FakeWindow elle-même
         self.calls = []
 
