@@ -252,7 +252,7 @@ class TrackRouter:
         else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 
-    def on_kit_tape(self, track_idx, midi_note, velocity):
+    def on_kit_tape(self, track_idx, midi_note, velocity, duration_ms=0):
         """Lecture d'un événement kit_tape : note MIDI brute, indépendante du kit_offset."""
         if not self._track_is_audible(track_idx):
             return

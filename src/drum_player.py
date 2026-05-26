@@ -53,7 +53,7 @@ class DrumPlayer:
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
-        self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity) lecture kit_tape
+        self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture kit_tape
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
         self._pending_patch       = {}    # {midi_note: (key, entry_idx, t_start)} — note_on en attente de note_off
         self._count_in            = 0     # mesures de count-in restantes avant Rec
@@ -193,8 +193,8 @@ class DrumPlayer:
                     float_off = bar_idx * num_steps + step_idx
                     t_sec = float_off * self.step_duration
                     if t_sec > elapsed - 0.002:
-                        for midi_note, vel in note_list:
-                            events.append((t_sec, self.KIT_TAPE_EVENT, (t_idx, midi_note), vel))
+                        for midi_note, vel, dur in note_list:
+                            events.append((t_sec, self.KIT_TAPE_EVENT, (t_idx, midi_note, dur), vel))
                 for (t_idx, bar_idx, step_idx), note_list in self._pattern._patch_tape.items():
                     float_off = bar_idx * num_steps + step_idx
                     t_sec = float_off * self.step_duration
@@ -252,9 +252,9 @@ class DrumPlayer:
                         if track_idx == self._cur_track and self.replace_recording:
                             self._clear_offset(pad_idx, t_sec / self.step_duration)
                 elif track_or_type == self.KIT_TAPE_EVENT:
-                    t_idx, midi_note = evt_data
+                    t_idx, midi_note, dur = evt_data
                     if self._on_kit_tape_cb:
-                        self._on_kit_tape_cb(t_idx, midi_note, velocity)
+                        self._on_kit_tape_cb(t_idx, midi_note, velocity, dur)
                     else:
                         self.sound_man.play_note(midi_note, velocity / 127.0)
                 elif track_or_type == self.PATCH_TAPE_EVENT:
@@ -700,8 +700,8 @@ class DrumPlayer:
         vel = max(1, min(127, int(velocity)))
         key = (self._cur_track, bar_idx, step_idx)
         events = self._pattern._kit_tape.setdefault(key, [])
-        if (midi_note, vel) not in events:
-            events.append((midi_note, vel))
+        if not any(e[0] == midi_note for e in events):
+            events.append((midi_note, vel, 0))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------

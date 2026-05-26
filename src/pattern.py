@@ -257,9 +257,9 @@ class Pattern:
             "curpattern":    self._curpattern,
             "voices":        self._voices,
             "kit_tape":   [
-                [t, b, s, note, vel]
+                [t, b, s, note, vel, dur]
                 for (t, b, s), events in self._kit_tape.items()
-                for note, vel in events
+                for note, vel, dur in events
             ],
             "patch_tape": [
                 [t, b, s, note, vel, dur]
@@ -287,8 +287,9 @@ class Pattern:
         if "voices"        in d: self._voices        = d["voices"]
         self._kit_tape = {}
         for rec in d.get("kit_tape", []):
-            t, b, s, note, vel = rec
-            self._kit_tape.setdefault((t, b, s), []).append((note, vel))
+            t, b, s, note, vel = rec[:5]
+            dur = rec[5] if len(rec) > 5 else 0
+            self._kit_tape.setdefault((t, b, s), []).append((note, vel, dur))
         self._patch_tape = {}
         for rec in d.get("patch_tape", []):
             t, b, s, note, vel = rec[:5]
