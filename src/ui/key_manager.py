@@ -381,11 +381,8 @@ class KeyManager:
                         v  = vm.get_voice(note_idx)
                         win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
                         win._router.kb_last_midi = midi
-                        if win._player.recording and midi in win._router.kb_notes:
-                            play_idx = win._router.kb_notes.index(midi)
-                            bar_idx, step_idx = win._player.record_hit(play_idx)
-                            if bar_idx == 0 and step_idx < win.COLS:
-                                win._cells[play_idx][step_idx].SetValue(True)
+                        if win._player.recording:
+                            win._player.record_patch_note(midi, 100, v.duration_ms)
                     else:
                         win._show_status("Keyboard: patch en cours de chargement…")
                 elif note_idx < len(win._router.kb_notes_input):
@@ -438,9 +435,7 @@ class KeyManager:
                         win._router.kb_last_midi = midi
                         win._debug_pad_status(pad_idx, midi)
                         if win._player.recording:
-                            bar_idx, step_idx = win._player.record_hit(note_idx)
-                            if bar_idx == 0 and step_idx < win.COLS:
-                                win._cells[note_idx][step_idx].SetValue(True)
+                            win._player.record_patch_note(midi, 100, v.duration_ms)
                 else:
                     win._play(pad_idx)
                     win._debug_pad_status(pad_idx)

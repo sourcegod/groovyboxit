@@ -81,7 +81,8 @@ class MainWindow(wx.Frame):
             lambda msg: wx.CallAfter(self._show_status, msg),
         )
         self._player._on_track_play_cb = self._router.on_play
-        self._player._on_kit_tape_cb   = self._router.on_kit_tape
+        self._player._on_kit_tape_cb    = self._router.on_kit_tape
+        self._player._on_patch_tape_cb  = self._router.on_patch_tape
         self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
@@ -370,10 +371,14 @@ class MainWindow(wx.Frame):
         cur._track_solos   = self._router._track_solos[:]
         cur._track_volumes = self._router._track_volumes[:]
         cur._track_pans    = self._router._track_pans[:]
+        cur._kit_tape      = dict(self._player._pattern._kit_tape)
+        cur._patch_tape    = dict(self._player._pattern._patch_tape)
         self._cur_pattern_idx = idx
         new = self._pattern_list[idx]
         self._player._pattern.load_pattern(new._curpattern)
-        self._player._pattern._looping = new._looping
+        self._player._pattern._looping   = new._looping
+        self._player._pattern._kit_tape   = dict(new._kit_tape)
+        self._player._pattern._patch_tape = dict(new._patch_tape)
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes
@@ -395,6 +400,8 @@ class MainWindow(wx.Frame):
         pat._track_solos   = self._router._track_solos[:]
         pat._track_volumes = self._router._track_volumes[:]
         pat._track_pans    = self._router._track_pans[:]
+        pat._kit_tape      = dict(self._player._pattern._kit_tape)
+        pat._patch_tape    = dict(self._player._pattern._patch_tape)
         self._refresh_pattern_listbox()
         self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
 
@@ -412,6 +419,8 @@ class MainWindow(wx.Frame):
             pat._track_solos   = self._router._track_solos[:]
             pat._track_volumes = self._router._track_volumes[:]
             pat._track_pans    = self._router._track_pans[:]
+            pat._kit_tape      = dict(self._player._pattern._kit_tape)
+            pat._patch_tape    = dict(self._player._pattern._patch_tape)
             self._refresh_pattern_listbox()
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
         dlg.Destroy()
@@ -424,6 +433,8 @@ class MainWindow(wx.Frame):
         cur._track_solos   = self._router._track_solos[:]
         cur._track_volumes = self._router._track_volumes[:]
         cur._track_pans    = self._router._track_pans[:]
+        cur._kit_tape      = dict(self._player._pattern._kit_tape)
+        cur._patch_tape    = dict(self._player._pattern._patch_tape)
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
         data = {"version": 1, "patterns": [pat.to_dict() for pat in self._pattern_list]}
         with open(self._preset_path, "w", encoding="utf-8") as f:
@@ -460,7 +471,9 @@ class MainWindow(wx.Frame):
         self._cur_pattern_idx = 0
         new = self._pattern_list[0]
         self._player._pattern.load_pattern(new._curpattern)
-        self._player._pattern._looping = new._looping
+        self._player._pattern._looping    = new._looping
+        self._player._pattern._kit_tape   = dict(new._kit_tape)
+        self._player._pattern._patch_tape = dict(new._patch_tape)
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes
@@ -681,10 +694,8 @@ class MainWindow(wx.Frame):
                 pan = self._player._mix_pan(v.pan)
                 self._router.synth.play(transposed, vol_factor, pan, 0)
                 self._router.kb_last_midi = transposed
-                if self._player.recording and 0 <= play_idx < self.ROWS:
-                    bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[play_idx][step_idx].SetValue(True)
+                if self._player.recording:
+                    self._player.record_patch_note(transposed, velocity)
         else:
             # Mode Pad : mapping chromatique depuis la note racine
             pad_idx = self._midi_to_pad(note)
@@ -781,8 +792,11 @@ class MainWindow(wx.Frame):
         slot = self._rack.get_slot(self._cur_slot)
         if self._router.synth_ready() and slot.type == InstrumentType.SYNTH:
             if self._input_mode == "keyboard":
-                offset = self._kb_root_midi - self._kb_play_root
-                self._router.synth.stop(max(0, min(127, note + offset)))
+                offset     = self._kb_root_midi - self._kb_play_root
+                transposed = max(0, min(127, note + offset))
+                self._router.synth.stop(transposed)
+                if self._player.recording:
+                    self._player.record_patch_note_off(transposed)
             else:
                 pad_idx = self._midi_to_pad(note)
                 if pad_idx < len(self._router.kb_notes_input):
@@ -828,6 +842,12 @@ class MainWindow(wx.Frame):
             self._show_status(
                 f"Mode: Keyboard — {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
             )
+            if self._router.synth_ready():
+                import threading
+                engine = self._router.synth
+                def _precache():
+                    engine.precompute(list(range(36, 97)), duration_ms=0)
+                threading.Thread(target=_precache, daemon=True).start()
         else:
             self._show_status("Mode: Pad")
 

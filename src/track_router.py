@@ -259,6 +259,20 @@ class TrackRouter:
         vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
         self._snd.play_note(midi_note, vol)
 
+    def on_patch_tape(self, track_idx, midi_note, velocity, duration_ms=0):
+        """Lecture d'un événement patch_tape : note MIDI brute pour un synth."""
+        if not self._track_is_audible(track_idx):
+            return
+        slot_idx = self._track_slots[track_idx]
+        slot     = self._rack.get_slot(slot_idx)
+        if slot.type != InstrumentType.SYNTH:
+            return
+        engine = self._slot_synths.get(slot_idx)
+        if engine and engine.is_loaded():
+            vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
+            pan = self._track_pans[track_idx]
+            engine.play(midi_note, vol, pan, duration_ms)
+
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):
         """Mode Keyboard/KIT : joue pad_idx pitché sur la gamme courante."""
         if not wav_path:

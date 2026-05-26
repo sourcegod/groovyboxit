@@ -12,7 +12,8 @@ class DrumPlayer:
     # Étiquettes d'affichage pour la listbox (même ordre que QUANT_LIST)
     QUANT_LABELS = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
     NR_EVENT       = -100   # marqueur interne pour les événements Note Repeat dans la liste
-    KIT_TAPE_EVENT = -2    # marqueur interne pour les événements kit_tape (MIDI brut)
+    KIT_TAPE_EVENT   = -2    # marqueur interne pour les événements kit_tape (MIDI brut)
+    PATCH_TAPE_EVENT = -3    # marqueur interne pour les événements patch_tape (MIDI brut)
 
     def __init__(self, sound_manager=None):
         self._play_thread = None
@@ -53,6 +54,8 @@ class DrumPlayer:
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
         self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity) lecture kit_tape
+        self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
+        self._pending_patch       = {}    # {midi_note: (key, entry_idx, t_start)} — note_on en attente de note_off
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
@@ -185,12 +188,19 @@ class DrumPlayer:
                                 velocity = 100 if isinstance(raw, bool) and raw else int(raw)
                                 events.append((t_sec, track_idx, pad_idx, velocity))
             if self.playing:
+                num_steps = self._pattern._num_steps
                 for (t_idx, bar_idx, step_idx), note_list in self._pattern._kit_tape.items():
-                    float_off = bar_idx * self._pattern._num_steps + step_idx
+                    float_off = bar_idx * num_steps + step_idx
                     t_sec = float_off * self.step_duration
                     if t_sec > elapsed - 0.002:
                         for midi_note, vel in note_list:
                             events.append((t_sec, self.KIT_TAPE_EVENT, (t_idx, midi_note), vel))
+                for (t_idx, bar_idx, step_idx), note_list in self._pattern._patch_tape.items():
+                    float_off = bar_idx * num_steps + step_idx
+                    t_sec = float_off * self.step_duration
+                    if t_sec > elapsed - 0.002:
+                        for midi_note, vel, dur in note_list:
+                            events.append((t_sec, self.PATCH_TAPE_EVENT, (t_idx, midi_note, dur), vel))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
                 for bar_idx in range(loop_bars):
@@ -247,6 +257,10 @@ class DrumPlayer:
                         self._on_kit_tape_cb(t_idx, midi_note, velocity)
                     else:
                         self.sound_man.play_note(midi_note, velocity / 127.0)
+                elif track_or_type == self.PATCH_TAPE_EVENT:
+                    t_idx, midi_note, dur = evt_data
+                    if self._on_patch_tape_cb:
+                        self._on_patch_tape_cb(t_idx, midi_note, velocity, dur)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
@@ -610,6 +624,60 @@ class DrumPlayer:
             self.float_offsets[pad_idx].sort()
 
         return bar_idx, step_idx
+
+    #--------------------------------------------------------------------------
+
+    def record_patch_note(self, midi_note, velocity=100, duration_ms=None):
+        """Enregistre une note MIDI brute dans patch_tape.
+
+        duration_ms=None → durée mesurée jusqu'au note_off via record_patch_note_off().
+        duration_ms>=0   → durée fixe (numpad).
+        """
+        now = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref = self._measure_start if self._measure_start is not None else now
+        float_offset = 0.0 if now < ref else \
+                       ((now - ref) % measure_secs) / self.step_duration
+        if self._quant_in_recording and self.quant_idx >= 0:
+            quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
+            float_offset = round(float_offset / quant_size) * quant_size % total_steps
+        if round(float_offset) >= total_steps:
+            float_offset = 0.0
+        step     = round(float_offset) % total_steps
+        bar_idx  = step // self._pattern._num_steps
+        step_idx = step % self._pattern._num_steps
+        vel = max(1, min(127, int(velocity)))
+        dur = 0 if duration_ms is None else max(0, int(duration_ms))
+        key    = (self._cur_track, bar_idx, step_idx)
+        events = self._pattern._patch_tape.setdefault(key, [])
+        # remplace une entrée existante pour ce midi_note, sinon ajoute
+        for i, entry in enumerate(events):
+            if entry[0] == midi_note:
+                events[i]   = (midi_note, vel, dur)
+                entry_idx   = i
+                break
+        else:
+            events.append((midi_note, vel, dur))
+            entry_idx = len(events) - 1
+        if duration_ms is None:
+            self._pending_patch[midi_note] = (key, entry_idx, now)
+        else:
+            self._pending_patch.pop(midi_note, None)
+        return bar_idx, step_idx
+
+    def record_patch_note_off(self, midi_note):
+        """Finalise la durée d'une note patch_tape après le note_off MIDI."""
+        pending = self._pending_patch.pop(midi_note, None)
+        if pending is None:
+            return
+        key, entry_idx, t_start = pending
+        events = self._pattern._patch_tape.get(key)
+        if events is None or entry_idx >= len(events):
+            return
+        duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
+        note, vel, _ = events[entry_idx]
+        events[entry_idx] = (note, vel, duration_ms)
 
     #--------------------------------------------------------------------------
 

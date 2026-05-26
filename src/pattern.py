@@ -61,7 +61,9 @@ class Pattern:
         ]
 
         # Capture MIDI brute pour les kits : {(track, bar, step): [(note, vel), ...]}
-        self._kit_tape = {}
+        self._kit_tape   = {}
+        # Capture MIDI brute pour les patchs synth : même structure
+        self._patch_tape = {}
 
     #--------------------------------------------------------------------------
 
@@ -87,6 +89,8 @@ class Pattern:
         self._num_bars  = num_bars
         self._num_steps = num_steps
         self._curpattern = self._make_empty()
+        self._kit_tape   = {}
+        self._patch_tape = {}
 
     #--------------------------------------------------------------------------
 
@@ -108,7 +112,8 @@ class Pattern:
             for pad in track:
                 for bar in pad:
                     bar[:] = [0] * len(bar)
-        self._kit_tape = {}
+        self._kit_tape   = {}
+        self._patch_tape = {}
 
     #--------------------------------------------------------------------------
 
@@ -136,6 +141,10 @@ class Pattern:
         for (t, b, s), events in self._kit_tape.items():
             new_tape[(t, b + half, s)] = events[:]
         self._kit_tape = new_tape
+        new_ptape = dict(self._patch_tape)
+        for (t, b, s), events in self._patch_tape.items():
+            new_ptape[(t, b + half, s)] = events[:]
+        self._patch_tape = new_ptape
         self._num_bars *= 2
         return True
 
@@ -152,6 +161,11 @@ class Pattern:
         self._kit_tape = {
             (t, b, s): events
             for (t, b, s), events in self._kit_tape.items()
+            if b < half
+        }
+        self._patch_tape = {
+            (t, b, s): events
+            for (t, b, s), events in self._patch_tape.items()
             if b < half
         }
         self._num_bars = half
@@ -218,6 +232,11 @@ class Pattern:
             for (t, b, s), events in self._kit_tape.items()
             if b < self._num_bars and s < self._num_steps
         }
+        self._patch_tape = {
+            (t, b, s): events
+            for (t, b, s), events in self._patch_tape.items()
+            if b < self._num_bars and s < self._num_steps
+        }
 
     #--------------------------------------------------------------------------
 
@@ -237,10 +256,15 @@ class Pattern:
             "track_pans":    self._track_pans,
             "curpattern":    self._curpattern,
             "voices":        self._voices,
-            "kit_tape":      [
+            "kit_tape":   [
                 [t, b, s, note, vel]
                 for (t, b, s), events in self._kit_tape.items()
                 for note, vel in events
+            ],
+            "patch_tape": [
+                [t, b, s, note, vel, dur]
+                for (t, b, s), events in self._patch_tape.items()
+                for note, vel, dur in events
             ],
         }
 
@@ -265,3 +289,8 @@ class Pattern:
         for rec in d.get("kit_tape", []):
             t, b, s, note, vel = rec
             self._kit_tape.setdefault((t, b, s), []).append((note, vel))
+        self._patch_tape = {}
+        for rec in d.get("patch_tape", []):
+            t, b, s, note, vel = rec[:5]
+            dur = rec[5] if len(rec) > 5 else 0
+            self._patch_tape.setdefault((t, b, s), []).append((note, vel, dur))
