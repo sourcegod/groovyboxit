@@ -252,6 +252,13 @@ class TrackRouter:
         else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 
+    def on_kit_tape(self, track_idx, midi_note, velocity):
+        """Lecture d'un événement kit_tape : note MIDI brute, indépendante du kit_offset."""
+        if not self._track_is_audible(track_idx):
+            return
+        vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
+        self._snd.play_note(midi_note, vol)
+
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):
         """Mode Keyboard/KIT : joue pad_idx pitché sur la gamme courante."""
         if not wav_path:

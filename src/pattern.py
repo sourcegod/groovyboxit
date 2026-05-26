@@ -60,6 +60,9 @@ class Pattern:
             for _ in range(self._num_pads)
         ]
 
+        # Capture MIDI brute pour les kits : {(track, bar, step): [(note, vel), ...]}
+        self._kit_tape = {}
+
     #--------------------------------------------------------------------------
 
     @staticmethod
@@ -105,6 +108,7 @@ class Pattern:
             for pad in track:
                 for bar in pad:
                     bar[:] = [0] * len(bar)
+        self._kit_tape = {}
 
     #--------------------------------------------------------------------------
 
@@ -124,9 +128,14 @@ class Pattern:
         """Duplique les mesures existantes (pattern deux fois plus long)."""
         if self._num_bars * 2 > self.MAX_BARS:
             return False
+        half = self._num_bars
         for track in self._curpattern:
             for pad in track:
                 pad.extend([bar[:] for bar in pad])
+        new_tape = dict(self._kit_tape)
+        for (t, b, s), events in self._kit_tape.items():
+            new_tape[(t, b + half, s)] = events[:]
+        self._kit_tape = new_tape
         self._num_bars *= 2
         return True
 
@@ -140,6 +149,11 @@ class Pattern:
         for track in self._curpattern:
             for pad in track:
                 del pad[half:]
+        self._kit_tape = {
+            (t, b, s): events
+            for (t, b, s), events in self._kit_tape.items()
+            if b < half
+        }
         self._num_bars = half
         return True
 
@@ -199,6 +213,12 @@ class Pattern:
                         del pad[num_bars:]
             self._num_bars = num_bars
 
+        self._kit_tape = {
+            (t, b, s): events
+            for (t, b, s), events in self._kit_tape.items()
+            if b < self._num_bars and s < self._num_steps
+        }
+
     #--------------------------------------------------------------------------
 
     def to_dict(self):
@@ -217,6 +237,11 @@ class Pattern:
             "track_pans":    self._track_pans,
             "curpattern":    self._curpattern,
             "voices":        self._voices,
+            "kit_tape":      [
+                [t, b, s, note, vel]
+                for (t, b, s), events in self._kit_tape.items()
+                for note, vel in events
+            ],
         }
 
     #--------------------------------------------------------------------------
@@ -236,3 +261,7 @@ class Pattern:
         if "track_volumes" in d: self._track_volumes = d["track_volumes"]
         if "track_pans"    in d: self._track_pans    = d["track_pans"]
         if "voices"        in d: self._voices        = d["voices"]
+        self._kit_tape = {}
+        for rec in d.get("kit_tape", []):
+            t, b, s, note, vel = rec
+            self._kit_tape.setdefault((t, b, s), []).append((note, vel))

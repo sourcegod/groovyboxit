@@ -81,6 +81,7 @@ class MainWindow(wx.Frame):
             lambda msg: wx.CallAfter(self._show_status, msg),
         )
         self._player._on_track_play_cb = self._router.on_play
+        self._player._on_kit_tape_cb   = self._router.on_kit_tape
         self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
@@ -752,15 +753,13 @@ class MainWindow(wx.Frame):
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(True)
             elif slot.type == InstrumentType.KIT and self._snd.note_map:
-                # KIT avec note_map : mapping direct note MIDI → son du kit
+                # KIT : lecture directe via note_map ; enregistrement dans kit_tape
                 self._snd.play_note(note, velocity / 127.0)
                 kit_pad = note - (self._snd.kit_base + self._snd.kit_offset)
                 pad_idx = max(0, min(self.ROWS - 1, kit_pad))
                 self._debug_pad_status(pad_idx, note)
-                if self._player.recording and 0 <= kit_pad < self.ROWS:
-                    bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[pad_idx][step_idx].SetValue(True)
+                if self._player.recording:
+                    self._player.record_kit_note(note, velocity)
             else:
                 # Fallback : son drum sans note_map
                 self._player.play_sound(pad_idx, velocity)

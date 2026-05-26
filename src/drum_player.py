@@ -11,7 +11,8 @@ class DrumPlayer:
     QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
     # Étiquettes d'affichage pour la listbox (même ordre que QUANT_LIST)
     QUANT_LABELS = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
-    NR_EVENT    = -100   # marqueur interne pour les événements Note Repeat dans la liste
+    NR_EVENT       = -100   # marqueur interne pour les événements Note Repeat dans la liste
+    KIT_TAPE_EVENT = -2    # marqueur interne pour les événements kit_tape (MIDI brut)
 
     def __init__(self, sound_manager=None):
         self._play_thread = None
@@ -51,6 +52,7 @@ class DrumPlayer:
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
+        self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity) lecture kit_tape
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
@@ -182,6 +184,13 @@ class DrumPlayer:
                                 raw      = self._pattern._curpattern[track_idx][pad_idx][bar_idx][step_idx]
                                 velocity = 100 if isinstance(raw, bool) and raw else int(raw)
                                 events.append((t_sec, track_idx, pad_idx, velocity))
+            if self.playing:
+                for (t_idx, bar_idx, step_idx), note_list in self._pattern._kit_tape.items():
+                    float_off = bar_idx * self._pattern._num_steps + step_idx
+                    t_sec = float_off * self.step_duration
+                    if t_sec > elapsed - 0.002:
+                        for midi_note, vel in note_list:
+                            events.append((t_sec, self.KIT_TAPE_EVENT, (t_idx, midi_note), vel))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
                 for bar_idx in range(loop_bars):
@@ -232,6 +241,12 @@ class DrumPlayer:
                             self.sound_man.play_sound(pad_idx, vol, pan)
                         if track_idx == self._cur_track and self.replace_recording:
                             self._clear_offset(pad_idx, t_sec / self.step_duration)
+                elif track_or_type == self.KIT_TAPE_EVENT:
+                    t_idx, midi_note = evt_data
+                    if self._on_kit_tape_cb:
+                        self._on_kit_tape_cb(t_idx, midi_note, velocity)
+                    else:
+                        self.sound_man.play_note(midi_note, velocity / 127.0)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
@@ -594,6 +609,31 @@ class DrumPlayer:
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
 
+        return bar_idx, step_idx
+
+    #--------------------------------------------------------------------------
+
+    def record_kit_note(self, midi_note, velocity=100):
+        """Enregistre une note MIDI brute dans kit_tape sans passer par la grille."""
+        now = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref = self._measure_start if self._measure_start is not None else now
+        float_offset = 0.0 if now < ref else \
+                       ((now - ref) % measure_secs) / self.step_duration
+        if self._quant_in_recording and self.quant_idx >= 0:
+            quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
+            float_offset = round(float_offset / quant_size) * quant_size % total_steps
+        if round(float_offset) >= total_steps:
+            float_offset = 0.0
+        step     = round(float_offset) % total_steps
+        bar_idx  = step // self._pattern._num_steps
+        step_idx = step % self._pattern._num_steps
+        vel = max(1, min(127, int(velocity)))
+        key = (self._cur_track, bar_idx, step_idx)
+        events = self._pattern._kit_tape.setdefault(key, [])
+        if (midi_note, vel) not in events:
+            events.append((midi_note, vel))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
