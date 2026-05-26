@@ -436,12 +436,14 @@ class KeyManager:
                         v    = vm.get_voice(note_idx)
                         win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
                         win._router.kb_last_midi = midi
+                        win._debug_pad_status(pad_idx, midi)
                         if win._player.recording:
                             bar_idx, step_idx = win._player.record_hit(note_idx)
                             if bar_idx == 0 and step_idx < win.COLS:
                                 win._cells[note_idx][step_idx].SetValue(True)
                 else:
                     win._play(pad_idx)
+                    win._debug_pad_status(pad_idx)
                     if win._player.recording:
                         bar_idx, step_idx = win._player.record_hit(pad_idx)
                         if bar_idx == 0 and step_idx < win.COLS:
@@ -491,6 +493,9 @@ class KeyManager:
                     win._kb_root_midi += 12
                     win._router.update_input_kb(win._kb_root_midi)
                     win._show_status(f"Keyboard: octave entrée → {midi_to_note_name(win._kb_root_midi)}")
+            elif win._rack.get_slot(win._cur_slot).type == InstrumentType.KIT \
+                    and win._snd.note_map:
+                win._shift_kit(8)
             else:
                 win._shift_pad = min(8, win._shift_pad + 8)
                 win._show_status(f"ShiftPad: {win._shift_pad + 1}/{win._shift_pad + 8}")
@@ -504,6 +509,9 @@ class KeyManager:
                     win._kb_root_midi -= 12
                     win._router.update_input_kb(win._kb_root_midi)
                     win._show_status(f"Keyboard: octave entrée → {midi_to_note_name(win._kb_root_midi)}")
+            elif win._rack.get_slot(win._cur_slot).type == InstrumentType.KIT \
+                    and win._snd.note_map:
+                win._shift_kit(-8)
             else:
                 win._shift_pad = max(0, win._shift_pad - 8)
                 win._show_status(f"ShiftPad: {win._shift_pad + 1}/{win._shift_pad + 8}")

@@ -746,13 +746,25 @@ class MainWindow(wx.Frame):
                 self._router.synth.play(self._router.kb_notes_input[pad_idx], vol, pan, 0)
                 self._router.kb_last_midi = self._router.kb_notes_input[pad_idx]
                 self._player.last_played_pad = pad_idx
+                self._debug_pad_status(pad_idx, note)
                 if self._player.recording:
                     bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
                     if bar_idx == 0 and step_idx < self.COLS:
                         self._cells[pad_idx][step_idx].SetValue(True)
+            elif slot.type == InstrumentType.KIT and self._snd.note_map:
+                # KIT avec note_map : mapping direct note MIDI → son du kit
+                self._snd.play_note(note, velocity / 127.0)
+                kit_pad = note - (self._snd.kit_base + self._snd.kit_offset)
+                pad_idx = max(0, min(self.ROWS - 1, kit_pad))
+                self._debug_pad_status(pad_idx, note)
+                if self._player.recording and 0 <= kit_pad < self.ROWS:
+                    bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
+                    if bar_idx == 0 and step_idx < self.COLS:
+                        self._cells[pad_idx][step_idx].SetValue(True)
             else:
-                # Slot KIT ou synth non prêt : échantillon drum
+                # Fallback : son drum sans note_map
                 self._player.play_sound(pad_idx, velocity)
+                self._debug_pad_status(pad_idx, note)
                 if self._player.recording:
                     bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
                     if bar_idx == 0 and step_idx < self.COLS:
@@ -1094,6 +1106,8 @@ class MainWindow(wx.Frame):
         self._show_status(f"Piste {idx + 1} — {slot.name}")
         if slot.type == InstrumentType.SYNTH:
             self._router.load_slot_preview(self._cur_slot)
+        elif slot.type == InstrumentType.KIT:
+            self._load_kit_slot(self._cur_slot)
 
     def _on_slot_choice(self, event):
         """Changement de slot : preview uniquement, sans modifier l'assignation de la piste.
@@ -1106,10 +1120,47 @@ class MainWindow(wx.Frame):
             self._show_status(f"Slot {self._cur_slot + 1:02d}: {slot.name} (Ctrl+T pour assigner)")
             if slot.type == InstrumentType.SYNTH:
                 self._router.load_slot_preview(self._cur_slot)
+            elif slot.type == InstrumentType.KIT:
+                self._load_kit_slot(self._cur_slot)
 
     def _update_slot_list(self):
         self._slot_choice.Set(self._rack.labels())
         self._slot_choice.SetSelection(self._cur_slot)
+
+    def _debug_pad_status(self, pad_idx, midi_note_in=None):
+        """Affiche pad, note MIDI et shift dans la barre de status et le terminal."""
+        slot = self._rack.get_slot(self._cur_slot)
+        parts = [f"Pad {pad_idx + 1}"]
+        if midi_note_in is not None:
+            parts.append(f"MIDI in: {midi_note_in}")
+        if slot.type == InstrumentType.KIT and self._snd.note_map:
+            # MIDI in → note kit directe ; numpad → dérivée du pad dans la fenêtre
+            kit_note = midi_note_in if midi_note_in is not None \
+                       else self._snd.kit_base + self._snd.kit_offset + pad_idx
+            parts.append(f"kit_note: {kit_note}")
+        parts.append(f"shift_pad: {self._shift_pad}")
+        msg = " | ".join(parts)
+        print(msg)
+        self._show_status(msg)
+
+    def _kit_status(self):
+        """Retourne la chaîne de status du kit courant."""
+        base   = self._snd.kit_base + self._snd.kit_offset
+        offset = self._snd.kit_offset
+        sign   = f"+{offset}" if offset >= 0 else str(offset)
+        return (f"Kit: {self._snd._kit_name} | "
+                f"Pads 1-16 → notes {base}–{base + 15} | "
+                f"shift: {sign}")
+
+    def _shift_kit(self, delta):
+        """Décale la fenêtre de 16 sons du kit courant de delta demi-tons."""
+        new_labels = self._snd.shift_kit(delta)
+        for i, label in enumerate(new_labels):
+            self._player.voice_manager.set_name(i, label)
+        self._refresh_pad_list()
+        msg = self._kit_status()
+        print(msg)
+        self._show_status(msg)
 
     def _load_kit_slot(self, slot_idx):
         """Charge le kit JSON du slot KIT donné et met à jour les sons et les noms de pads.
@@ -1125,7 +1176,7 @@ class MainWindow(wx.Frame):
                 for i, label in enumerate(labels):
                     self._player.voice_manager.set_name(i, label)
                 self._refresh_pad_list()
-                self._show_status(f"Kit chargé: {slot.name}")
+                self._show_status(self._kit_status())
                 return
             except Exception as e:
                 self._show_status(f"Erreur kit JSON: {e}")
