@@ -118,6 +118,12 @@ class Pattern:
         self._kit_tape   = {}
         self._patch_tape = {}
 
+    def clear_track(self, track_idx):
+        """Efface tous les pas de la piste track_idx (toutes les mesures)."""
+        for pad in self._curpattern[track_idx]:
+            for bar in pad:
+                bar[:] = [0] * len(bar)
+
     #--------------------------------------------------------------------------
 
     def gen_pattern(self, track=0):

@@ -568,6 +568,14 @@ class KeyManager:
         on_pattern_list = ctx.on_pattern_list
         on_track_list   = ctx.on_track_list
 
+        # Shift+D : effacer la piste courante
+        if not ctrl and shift and not alt and key == ord('D'):
+            tidx = win._player._cur_track
+            win._player._pattern.clear_track(tidx)
+            win._refresh_grid()
+            win._show_status(f"Piste {tidx + 1}: effacée")
+            return True
+
         # Shift+F : diviser le pattern
         if not ctrl and shift and not alt and key == ord('F'):
             if win._player.halve_pattern():
