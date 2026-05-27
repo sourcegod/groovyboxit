@@ -1,6 +1,7 @@
 import os
 import wx
 from drum_player import DrumPlayer
+from pattern import Pattern
 
 
 def _load_keyboard_help():
@@ -54,7 +55,7 @@ class GenRowDialog(wx.Dialog):
         quant_label = wx.StaticText(self, label="Valeur de quantisation :")
         self._quant_list = wx.ListBox(
             self,
-            choices=DrumPlayer.QUANT_LIST,
+            choices=Pattern.QUANT_LIST,
             style=wx.LB_SINGLE,
         )
         self._quant_list.SetSelection(cur_quant_idx)
@@ -100,7 +101,7 @@ class QuantizeDialog(wx.Dialog):
         list_label = wx.StaticText(self, label="Valeur de quantisation :")
         self._list = wx.ListBox(
             self,
-            choices=["None"] + DrumPlayer.QUANT_LIST,
+            choices=["None"] + Pattern.QUANT_LIST,
             style=wx.LB_SINGLE,
         )
         # cur_idx 0..13 → indice dialogue 1..14 ; -1 (None) → 0

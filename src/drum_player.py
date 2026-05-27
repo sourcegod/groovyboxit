@@ -6,11 +6,6 @@ from voice_manager import VoiceManager
 
 
 class DrumPlayer:
-    QUANT_LIST  = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16",
-                   "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
-    QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
-    # Étiquettes d'affichage pour la listbox (même ordre que QUANT_LIST)
-    QUANT_LABELS = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
     NR_EVENT       = -100   # marqueur interne pour les événements Note Repeat dans la liste
     KIT_TAPE_EVENT   = -2    # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3    # marqueur interne pour les événements patch_tape (MIDI brut)
@@ -209,7 +204,7 @@ class DrumPlayer:
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, -1, beat, 0))
             if self._note_repeat_active:
-                denom    = self.QUANT_STEPS[self._nr_quant_idx]
+                denom    = Pattern.QUANT_STEPS[self._nr_quant_idx]
                 nr_step  = 0.0
                 interval = 16.0 / denom   # en pas (float)
                 while nr_step < total_steps:
@@ -315,7 +310,7 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def apply_quant_row(self, quant_idx, row):
-        denom     = self.QUANT_STEPS[quant_idx]
+        denom     = Pattern.QUANT_STEPS[quant_idx]
         num_steps = self._pattern._num_steps
         grid      = [i * num_steps / denom for i in range(denom)]
         pad       = self._pattern._curpattern[self._cur_track][row]
@@ -364,7 +359,7 @@ class DrumPlayer:
             quant_idx = self.quant_idx
         if quant_idx < 0:
             return
-        denom     = self.QUANT_STEPS[quant_idx]
+        denom     = Pattern.QUANT_STEPS[quant_idx]
         num_steps = self._pattern._num_steps
         # grille de quantisation par mesure (positions flottantes)
         grid_per_bar = [i * num_steps / denom for i in range(denom)]
@@ -596,33 +591,38 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_hit(self, pad_idx, velocity=100):
-        now = time.perf_counter()
+    def _compute_record_offset(self):
+        """Calcule la position d'enregistrement courante dans le pattern.
+
+        Retourne (float_offset, bar_idx, step_idx) en tenant compte de la
+        quantisation si _quant_in_recording est actif.
+        float_offset = 0.0 pour les frappes anticipées (count-in pré-armé).
+        """
+        now          = time.perf_counter()
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
         measure_secs = total_steps * self.step_duration
-        ref = self._measure_start if self._measure_start is not None else now
-        if now < ref:
-            # Frappe anticipée durant le pré-armement du count-in : snap step 0.
-            float_offset = 0.0
-        else:
-            float_offset = ((now - ref) % measure_secs) / self.step_duration
-
+        ref          = self._measure_start if self._measure_start is not None else now
+        float_offset = 0.0 if now < ref else \
+                       ((now - ref) % measure_secs) / self.step_duration
         if self._quant_in_recording and self.quant_idx >= 0:
-            quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
+            quant_size   = self._pattern._num_steps / Pattern.QUANT_STEPS[self.quant_idx]
             float_offset = round(float_offset / quant_size) * quant_size % total_steps
-
         if round(float_offset) >= total_steps:
             float_offset = 0.0
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
+        return float_offset, bar_idx, step_idx
+
+    #--------------------------------------------------------------------------
+
+    def record_hit(self, pad_idx, velocity=100):
+        float_offset, bar_idx, step_idx = self._compute_record_offset()
         self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = \
             max(1, min(127, int(velocity)))
-
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
-
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
@@ -633,20 +633,8 @@ class DrumPlayer:
         duration_ms=None → durée mesurée jusqu'au note_off via record_patch_note_off().
         duration_ms>=0   → durée fixe (numpad).
         """
-        now = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
-        ref = self._measure_start if self._measure_start is not None else now
-        float_offset = 0.0 if now < ref else \
-                       ((now - ref) % measure_secs) / self.step_duration
-        if self._quant_in_recording and self.quant_idx >= 0:
-            quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
-            float_offset = round(float_offset / quant_size) * quant_size % total_steps
-        if round(float_offset) >= total_steps:
-            float_offset = 0.0
-        step     = round(float_offset) % total_steps
-        bar_idx  = step // self._pattern._num_steps
-        step_idx = step % self._pattern._num_steps
+        float_offset, bar_idx, step_idx = self._compute_record_offset()
+        now = time.perf_counter()   # horodatage pour _pending_patch (note_off différé)
         vel = max(1, min(127, int(velocity)))
         dur = 0 if duration_ms is None else max(0, int(duration_ms))
         key    = (self._cur_track, bar_idx, step_idx)
@@ -683,20 +671,7 @@ class DrumPlayer:
 
     def record_kit_note(self, midi_note, velocity=100):
         """Enregistre une note MIDI brute dans kit_tape sans passer par la grille."""
-        now = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
-        ref = self._measure_start if self._measure_start is not None else now
-        float_offset = 0.0 if now < ref else \
-                       ((now - ref) % measure_secs) / self.step_duration
-        if self._quant_in_recording and self.quant_idx >= 0:
-            quant_size   = self._pattern._num_steps / self.QUANT_STEPS[self.quant_idx]
-            float_offset = round(float_offset / quant_size) * quant_size % total_steps
-        if round(float_offset) >= total_steps:
-            float_offset = 0.0
-        step     = round(float_offset) % total_steps
-        bar_idx  = step // self._pattern._num_steps
-        step_idx = step % self._pattern._num_steps
+        _, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
         key = (self._cur_track, bar_idx, step_idx)
         events = self._pattern._kit_tape.setdefault(key, [])

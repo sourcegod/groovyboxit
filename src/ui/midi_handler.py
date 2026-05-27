@@ -7,6 +7,7 @@
 """
 import wx
 from drum_player import DrumPlayer
+from pattern import Pattern
 from rack import InstrumentType
 from synth_engine import midi_to_note_name
 
@@ -160,7 +161,7 @@ class MidiHandler:
             )
             win._show_status(
                 f"NR Keyboard: {midi_to_note_name(transposed)}"
-                f" @ {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
+                f" @ {Pattern.QUANT_LIST[win._nr_rate_idx]}"
             )
         else:
             vol_factor = velocity / 127.0
@@ -220,7 +221,7 @@ class MidiHandler:
                 win._nr_midi_note  = note
                 win._player.start_note_repeat(win._nr_rate_idx, lambda pi=pad_idx: pi)
             win._show_status(
-                f"NR: Pad {pad_idx + 1} @ {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
+                f"NR: Pad {pad_idx + 1} @ {Pattern.QUANT_LIST[win._nr_rate_idx]}"
             )
         elif slot.type == InstrumentType.SYNTH and win._router.synth_ready() \
                 and pad_idx < len(win._router.kb_notes_input):
@@ -263,7 +264,7 @@ class MidiHandler:
             win._nr_midi_note = None
             mode = "Ternaire" if win._nr_ternary else "Binaire"
             win._show_status(
-                f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
+                f"Note Repeat: ON — {mode} — {Pattern.QUANT_LIST[win._nr_rate_idx]}"
             )
         slot = win._rack.get_slot(win._cur_slot)
         if win._router.synth_ready() and slot.type == InstrumentType.SYNTH:

@@ -8,6 +8,7 @@
 import types
 import wx
 from drum_player import DrumPlayer
+from pattern import Pattern
 from synth_engine import midi_to_note_name, SCALE_NAMES
 from rack import InstrumentType
 
@@ -406,7 +407,7 @@ class KeyManager:
                     win._player.stop_note_repeat()
                     mode = "Ternaire" if win._nr_ternary else "Binaire"
                     win._show_status(
-                        f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
+                        f"Note Repeat: ON — {mode} — {Pattern.QUANT_LIST[win._nr_rate_idx]}"
                     )
                 else:
                     win._nr_cancel_release()
@@ -420,7 +421,7 @@ class KeyManager:
                             win._cells[pad_idx][step_idx].SetValue(True)
                     win._player.start_note_repeat(win._nr_rate_idx, lambda p=pad_idx: p)
                     win._show_status(
-                        f"NR: Pad {pad_idx + 1} @ {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
+                        f"NR: Pad {pad_idx + 1} @ {Pattern.QUANT_LIST[win._nr_rate_idx]}"
                     )
             else:
                 pad_idx  = (key - wx.WXK_NUMPAD1) + win._shift_pad
@@ -583,7 +584,7 @@ class KeyManager:
             if win._note_repeat:
                 mode = "Ternaire" if win._nr_ternary else "Binaire"
                 win._show_status(
-                    f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}"
+                    f"Note Repeat: ON — {mode} — {Pattern.QUANT_LIST[win._nr_rate_idx]}"
                 )
             else:
                 win._nr_cancel_release()
@@ -751,11 +752,11 @@ class KeyManager:
             elif win._nr_ternary and 1 <= digit <= 6:
                 win._nr_rate_idx = win.NR_TERNARY[digit - 1]
                 win._player.update_nr_rate(win._nr_rate_idx)
-                win._show_status(f"NR: {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}")
+                win._show_status(f"NR: {Pattern.QUANT_LIST[win._nr_rate_idx]}")
             elif not win._nr_ternary and 1 <= digit <= 8:
                 win._nr_rate_idx = win.NR_BINARY[digit - 1]
                 win._player.update_nr_rate(win._nr_rate_idx)
-                win._show_status(f"NR: {DrumPlayer.QUANT_LIST[win._nr_rate_idx]}")
+                win._show_status(f"NR: {Pattern.QUANT_LIST[win._nr_rate_idx]}")
             return True
 
         # BPM / Volume

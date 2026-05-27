@@ -149,7 +149,7 @@ class MainWindow(wx.Frame):
         quant_label = wx.StaticText(panel, label="Quant:")
         self._quant_list = wx.ListBox(
             panel,
-            choices=DrumPlayer.QUANT_LABELS,
+            choices=Pattern.QUANT_LABELS,
             style=wx.LB_SINGLE,
         )
         self._quant_list.SetSelection(self._player.quant_idx)
@@ -492,12 +492,12 @@ class MainWindow(wx.Frame):
         pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
         for c in range(self.COLS):
             self._cells[row][c].SetValue(bool(pad[c]))
-        self._show_status(f"Ligne {row + 1}: {DrumPlayer.QUANT_LIST[quant_idx]} coché")
+        self._show_status(f"Ligne {row + 1}: {Pattern.QUANT_LIST[quant_idx]} coché")
 
     def _quantize_pattern(self):
         self._player.apply_quant_to_pattern()
         self._refresh_grid()
-        self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[self._player.quant_idx]}")
+        self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[self._player.quant_idx]}")
 
     def _gen_row_dialog(self):
         dlg    = GenRowDialog(self, self._cur_row, self._player.quant_idx, self.ROWS)
@@ -513,11 +513,11 @@ class MainWindow(wx.Frame):
                 for c in range(self.COLS):
                     self._cells[row][c].SetValue(bool(pad[c]))
                 self._show_status(
-                    f"Ligne {row + 1}: {DrumPlayer.QUANT_LIST[quant_idx]} généré"
+                    f"Ligne {row + 1}: {Pattern.QUANT_LIST[quant_idx]} généré"
                 )
             else:
                 self._show_status(
-                    f"Défaut: ligne {row + 1}, quant {DrumPlayer.QUANT_LIST[quant_idx]}"
+                    f"Défaut: ligne {row + 1}, quant {Pattern.QUANT_LIST[quant_idx]}"
                 )
         dlg.Destroy()
 
@@ -540,9 +540,9 @@ class MainWindow(wx.Frame):
             if result == wx.ID_APPLY and idx >= 0:
                 self._player.apply_quant_to_pattern()
                 self._refresh_grid()
-                self._show_status(f"Pattern quantisé: {DrumPlayer.QUANT_LIST[idx]}")
+                self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[idx]}")
             elif idx >= 0:
-                self._show_status(f"Quant par défaut: {DrumPlayer.QUANT_LIST[idx]}")
+                self._show_status(f"Quant par défaut: {Pattern.QUANT_LIST[idx]}")
             else:
                 self._show_status("Quant: désactivée")
         dlg.Destroy()
