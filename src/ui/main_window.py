@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import wx
 from sound_manager import SoundManager
 from drum_player import DrumPlayer
@@ -364,20 +365,20 @@ class MainWindow(wx.Frame):
         self._pattern_listbox.Set([self._pattern_label(i) for i in range(99)])
         self._pattern_listbox.SetSelection(sel if sel != wx.NOT_FOUND else 0)
 
-    def _switch_pattern(self, idx):
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices        = self._player.voice_manager.to_list()
-        cur._track_slots   = self._router._track_slots[:]
-        cur._track_mutes   = self._router._track_mutes[:]
-        cur._track_solos   = self._router._track_solos[:]
-        cur._track_volumes = self._router._track_volumes[:]
-        cur._track_pans    = self._router._track_pans[:]
-        cur._kit_tape      = dict(self._player._pattern._kit_tape)
-        cur._patch_tape    = dict(self._player._pattern._patch_tape)
-        self._cur_pattern_idx = idx
-        new = self._pattern_list[idx]
+    def _flush_pattern_to_store(self, pat):
+        """Copie l'état courant (router + tapes) dans l'objet Pattern du store."""
+        pat._track_slots   = self._router._track_slots[:]
+        pat._track_mutes   = self._router._track_mutes[:]
+        pat._track_solos   = self._router._track_solos[:]
+        pat._track_volumes = self._router._track_volumes[:]
+        pat._track_pans    = self._router._track_pans[:]
+        pat._kit_tape      = dict(self._player._pattern._kit_tape)
+        pat._patch_tape    = dict(self._player._pattern._patch_tape)
+
+    def _apply_pattern_from_store(self, new):
+        """Charge un Pattern du store dans le player et le router."""
         self._player._pattern.load_pattern(new._curpattern)
-        self._player._pattern._looping   = new._looping
+        self._player._pattern._looping    = new._looping
         self._player._pattern._kit_tape   = dict(new._kit_tape)
         self._player._pattern._patch_tape = dict(new._patch_tape)
         self._player.voice_manager.from_list(new._voices)
@@ -386,6 +387,21 @@ class MainWindow(wx.Frame):
         self._router._track_solos[:]   = new._track_solos
         self._router._track_volumes[:] = new._track_volumes
         self._router._track_pans[:]    = new._track_pans
+
+    def _play_toggle(self):
+        """Bascule lecture / arrêt (utilisé comme callback par les dialogs de propriétés)."""
+        if self._player.playing:
+            self._player.stop_pattern()
+        else:
+            self._player.play_pattern()
+
+    def _switch_pattern(self, idx):
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices = self._player.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
+        self._cur_pattern_idx = idx
+        new = self._pattern_list[idx]
+        self._apply_pattern_from_store(new)
         self._player._compute_offsets()
         self._refresh_grid()
         self._refresh_all_voice_display()
@@ -396,13 +412,7 @@ class MainWindow(wx.Frame):
     def _save_pattern(self):
         pat = self._pattern_list[self._cur_pattern_idx]
         pat.load_pattern(self._player._pattern._curpattern)
-        pat._track_slots   = self._router._track_slots[:]
-        pat._track_mutes   = self._router._track_mutes[:]
-        pat._track_solos   = self._router._track_solos[:]
-        pat._track_volumes = self._router._track_volumes[:]
-        pat._track_pans    = self._router._track_pans[:]
-        pat._kit_tape      = dict(self._player._pattern._kit_tape)
-        pat._patch_tape    = dict(self._player._pattern._patch_tape)
+        self._flush_pattern_to_store(pat)
         self._refresh_pattern_listbox()
         self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
 
@@ -414,28 +424,16 @@ class MainWindow(wx.Frame):
             name = dlg.get_name()
             pat  = self._pattern_list[idx]
             pat.load_pattern(self._player._pattern._curpattern)
-            pat._name          = name
-            pat._track_slots   = self._router._track_slots[:]
-            pat._track_mutes   = self._router._track_mutes[:]
-            pat._track_solos   = self._router._track_solos[:]
-            pat._track_volumes = self._router._track_volumes[:]
-            pat._track_pans    = self._router._track_pans[:]
-            pat._kit_tape      = dict(self._player._pattern._kit_tape)
-            pat._patch_tape    = dict(self._player._pattern._patch_tape)
+            pat._name = name
+            self._flush_pattern_to_store(pat)
             self._refresh_pattern_listbox()
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
         dlg.Destroy()
 
     def _save_preset(self):
         cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices        = self._player.voice_manager.to_list()
-        cur._track_slots   = self._router._track_slots[:]
-        cur._track_mutes   = self._router._track_mutes[:]
-        cur._track_solos   = self._router._track_solos[:]
-        cur._track_volumes = self._router._track_volumes[:]
-        cur._track_pans    = self._router._track_pans[:]
-        cur._kit_tape      = dict(self._player._pattern._kit_tape)
-        cur._patch_tape    = dict(self._player._pattern._patch_tape)
+        cur._voices = self._player.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
         data = {"version": 1, "patterns": [pat.to_dict() for pat in self._pattern_list]}
         with open(self._preset_path, "w", encoding="utf-8") as f:
@@ -471,16 +469,7 @@ class MainWindow(wx.Frame):
         # Restaure le pattern 0 directement sans écraser ses _track_slots chargés
         self._cur_pattern_idx = 0
         new = self._pattern_list[0]
-        self._player._pattern.load_pattern(new._curpattern)
-        self._player._pattern._looping    = new._looping
-        self._player._pattern._kit_tape   = dict(new._kit_tape)
-        self._player._pattern._patch_tape = dict(new._patch_tape)
-        self._player.voice_manager.from_list(new._voices)
-        self._router._track_slots[:]   = new._track_slots
-        self._router._track_mutes[:]   = new._track_mutes
-        self._router._track_solos[:]   = new._track_solos
-        self._router._track_volumes[:] = new._track_volumes
-        self._router._track_pans[:]    = new._track_pans
+        self._apply_pattern_from_store(new)
         for track_idx, slot_idx in enumerate(new._track_slots):
             slot = self._rack.get_slot(slot_idx)
             if slot.type == InstrumentType.SYNTH:
@@ -612,7 +601,6 @@ class MainWindow(wx.Frame):
                 f"Mode: Keyboard — {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
             )
             if self._router.synth_ready():
-                import threading
                 engine = self._router.synth
                 def _precache():
                     engine.precompute(list(range(36, 97)), duration_ms=0)
@@ -665,16 +653,10 @@ class MainWindow(wx.Frame):
             self._router._track_solos[tidx] = solo
             self._refresh_track_list()
 
-        def play_toggle():
-            if self._player.playing:
-                self._player.stop_pattern()
-            else:
-                self._player.play_pattern()
-
         dlg    = TrackPropertiesDialog(
             self, tidx, self._rack,
             orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'],
-            on_change=apply, on_play_toggle=play_toggle,
+            on_change=apply, on_play_toggle=self._play_toggle,
         )
         result = dlg.ShowModal()
         if result == wx.ID_OK:
@@ -777,17 +759,11 @@ class MainWindow(wx.Frame):
         def play_pad():
             self._play(pad_idx)
 
-        def play_toggle():
-            if self._player.playing:
-                self._player.stop_pattern()
-            else:
-                self._player.play_pattern()
-
         dlg = PadPropertiesDialog(
             self, pad_idx,
             orig['volume'], orig['pan'],
             orig['mute'], orig['solo'], orig['duration_ms'],
-            on_change=apply, on_play=play_pad, on_play_toggle=play_toggle,
+            on_change=apply, on_play=play_pad, on_play_toggle=self._play_toggle,
         )
         result = dlg.ShowModal()
         if result == wx.ID_OK:
@@ -805,12 +781,6 @@ class MainWindow(wx.Frame):
         pat  = self._pattern_list[self._cur_pattern_idx]
         live = self._player._pattern
 
-        def play_toggle():
-            if self._player.playing:
-                self._player.stop_pattern()
-            else:
-                self._player.play_pattern()
-
         dlg = PatternPropertiesDialog(
             self,
             self._cur_pattern_idx,
@@ -821,7 +791,7 @@ class MainWindow(wx.Frame):
             pat._looping,
             Pattern.MAX_BARS,
             Pattern.VALID_NUM_STEPS,
-            on_play_toggle=play_toggle,
+            on_play_toggle=self._play_toggle,
         )
         result = dlg.ShowModal()
 
@@ -1057,8 +1027,7 @@ class MainWindow(wx.Frame):
     def _nr_arm_release(self):
         if self._nr_release_timer:
             self._nr_release_timer.cancel()
-        import threading as _t
-        self._nr_release_timer = _t.Timer(
+        self._nr_release_timer = threading.Timer(
             0.050, lambda: wx.CallAfter(setattr, self, '_nr_active_key', None)
         )
         self._nr_release_timer.start()
