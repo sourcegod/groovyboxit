@@ -73,9 +73,10 @@ class FakePattern:
         self._num_steps = 16
         self.calls      = []
 
-    def reset_pattern(self):      self.calls.append('reset_pattern')
-    def build_pattern_01(self):   self.calls.append('build_pattern_01')
-    def gen_pattern(self, t):     self.calls.append(('gen_pattern', t))
+    def reset_pattern(self):            self.calls.append('reset_pattern')
+    def build_pattern_01(self):         self.calls.append('build_pattern_01')
+    def gen_pattern(self, t):           self.calls.append(('gen_pattern', t))
+    def clear_track(self, track_idx):   self.calls.append(('clear_track', track_idx))
 
 
 class FakePlayer:
@@ -778,6 +779,86 @@ def test_ctrl_w_does_not_save_preset():
 
 
 # ---------------------------------------------------------------------------
+# Shift+D — effacer la piste courante
+# ---------------------------------------------------------------------------
+
+def test_shift_d_clears_current_track():
+    app, win, km = make_km()
+    win._player._cur_track = 0
+    km.handle(FakeEvent(key=ord('D'), shift=True))
+    assert ('clear_track', 0) in win._player._pattern.calls
+    assert '_refresh_grid' in win.calls
+    teardown(app)
+    print("  Shift+D → clear_track(0) + _refresh_grid() : OK")
+
+def test_shift_d_clears_correct_track():
+    app, win, km = make_km()
+    win._player._cur_track = 3
+    km.handle(FakeEvent(key=ord('D'), shift=True))
+    assert ('clear_track', 3) in win._player._pattern.calls
+    teardown(app)
+    print("  Shift+D piste 3 → clear_track(3) : OK")
+
+def test_shift_d_does_not_reset_full_pattern():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('D'), shift=True))
+    assert 'reset_pattern' not in win._player._pattern.calls
+    teardown(app)
+    print("  Shift+D n'appelle pas reset_pattern() : OK")
+
+
+# ---------------------------------------------------------------------------
+# Enter sur la grille — joue aussi la ligne
+# ---------------------------------------------------------------------------
+
+def test_enter_on_grid_plays_row():
+    app, win, km = make_km()
+    win._cur_row = 3; win._cur_col = 0
+    km.handle(FakeEvent(key=wx.WXK_RETURN))
+    assert ('_play', 3) in win.calls
+    teardown(app)
+    print("  Entrée sur grille → _play(row) : OK")
+
+def test_shift_enter_on_grid_plays_row():
+    app, win, km = make_km()
+    win._cur_row = 5; win._cur_col = 2
+    km.handle(FakeEvent(key=wx.WXK_RETURN, shift=True))
+    assert ('_play', 5) in win.calls
+    teardown(app)
+    print("  Shift+Entrée sur grille → _play(row) : OK")
+
+
+# ---------------------------------------------------------------------------
+# Enter sur les ListBox — branche pass (GTK gère via DCLICK)
+# ---------------------------------------------------------------------------
+
+def test_enter_on_track_list_no_set_cell():
+    app, win, km = make_km()
+    with patch('wx.Window.FindFocus', return_value=win._track_list):
+        km.handle(FakeEvent(key=wx.WXK_RETURN))
+    assert not any(isinstance(c, tuple) and c[0] == '_set_cell' for c in win.calls)
+    assert not any(isinstance(c, tuple) and c[0] == '_play'     for c in win.calls)
+    teardown(app)
+    print("  Entrée sur track_list → pas de _set_cell ni _play (GTK gère) : OK")
+
+def test_enter_on_slot_choice_no_set_cell():
+    app, win, km = make_km()
+    with patch('wx.Window.FindFocus', return_value=win._slot_choice):
+        km.handle(FakeEvent(key=wx.WXK_RETURN))
+    assert not any(isinstance(c, tuple) and c[0] == '_set_cell' for c in win.calls)
+    teardown(app)
+    print("  Entrée sur slot_choice → pas de _set_cell (GTK gère) : OK")
+
+def test_enter_on_midi_port_list_no_set_cell():
+    app, win, km = make_km()
+    with patch('wx.Window.FindFocus', return_value=win._midi_port_list):
+        km.handle(FakeEvent(key=wx.WXK_RETURN))
+    assert not any(isinstance(c, tuple) and c[0] == '_set_cell' for c in win.calls)
+    teardown(app)
+    print("  Entrée sur midi_port_list → pas de _set_cell (GTK gère) : OK")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=== test_key_manager ===")
@@ -847,4 +928,15 @@ if __name__ == "__main__":
     test_volume_decrease_via_key6()
     test_shift_p_does_not_play()
     test_ctrl_w_does_not_save_preset()
+    # Shift+D — effacer la piste courante
+    test_shift_d_clears_current_track()
+    test_shift_d_clears_correct_track()
+    test_shift_d_does_not_reset_full_pattern()
+    # Enter sur la grille — joue aussi la ligne
+    test_enter_on_grid_plays_row()
+    test_shift_enter_on_grid_plays_row()
+    # Enter sur les ListBox — branche pass
+    test_enter_on_track_list_no_set_cell()
+    test_enter_on_slot_choice_no_set_cell()
+    test_enter_on_midi_port_list_no_set_cell()
     print("Tous les tests : OK")
