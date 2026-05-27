@@ -81,8 +81,8 @@ Ctrl+0           Centrer le Pan Global (→ 0)
 
 --- Grille (navigation) ---
 Flèches          Déplacer le curseur
-Entrée           Cocher / décocher la cellule
-Shift+Entrée     Décocher la cellule
+Entrée           Cocher / décocher la cellule + jouer la ligne courante
+Shift+Entrée     Décocher la cellule + jouer la ligne courante
 Tab / Shift+Tab  Passer au widget suivant / précédent
 
 --- NumPad ---
@@ -118,11 +118,16 @@ Alt+Entrée       Ouvrir les propriétés du pattern sélectionné
 Double-clic      Ouvrir les propriétés du pattern (liste des patterns)
 Ctrl+P           Lecture / Pause (depuis la boite de dialogue des propriétés)
 
+--- Slots (liste des slots) ---
+Double-clic      Assigner le slot sélectionné à la piste courante (≡ Ctrl+T)
+
 --- Pistes (focus liste des pistes) ---
 Ctrl+T           Assigner le slot courant à la piste courante
 Shift+D          Effacer la piste courante
-Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée (focus liste des pistes)
-Double-clic      Ouvrir les propriétés de la piste (liste des pistes)
+Entrée           Ouvrir les propriétés de la piste sélectionnée
+Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée
+Double-clic      Jouer le pad courant
+Double-clic+Alt  Ouvrir les propriétés de la piste
 X / Shift+X      Mute piste / Démuter toutes
 S / Shift+S      Solo piste / Désolo toutes
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
@@ -132,6 +137,7 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
 --- MIDI ---
 Alt+M            Connecter / déconnecter le port MIDI sélectionné
 Alt+Shift+M      Actualiser la liste des ports MIDI
+Double-clic      Connecter le port MIDI sélectionné (liste des ports)
 
 --- Aide ---
 F1               Afficher cette aide
