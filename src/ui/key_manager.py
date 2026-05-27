@@ -154,11 +154,11 @@ class KeyManager:
             win._open_explorer()
             return True
         if not ctrl and shift and (ukey in (ord('m'), ord('M')) or key == ord('M')):
-            win._refresh_midi_ports()
+            win._midi_handler.refresh_ports()
             win._show_status("MIDI: liste des ports actualisée")
             return True
         if not ctrl and not shift and (ukey in (ord('m'), ord('M')) or key == ord('M')):
-            win._midi_toggle()
+            win._midi_handler.toggle()
             return True
         return False
 
@@ -603,7 +603,7 @@ class KeyManager:
 
         # E : bascule mode Erase
         if not ctrl and not shift and not alt and (ukey == ord('e') or key == ord('E')):
-            now_erasing = win._toggle_erase()
+            now_erasing = win._midi_handler.toggle_erase()
             if now_erasing:
                 win._show_status("Erase: On")
             elif win._player.replace_recording:

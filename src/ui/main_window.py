@@ -18,6 +18,7 @@ from ui.dialogs import (
     PadPropertiesDialog,
 )
 from ui.key_manager import KeyManager
+from ui.midi_handler import MidiHandler
 from midi_manager import MidiManager
 
 
@@ -57,7 +58,6 @@ class MainWindow(wx.Frame):
         self._kb_root_midi = 48   # C3 — root d'entrée, transposable avec Numpad+/-
         self._input_mode       = "pad"   # "pad" | "keyboard"
         self._vel_level        = 4      # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
-        self._midi_erase_held  = set()  # notes MIDI tenues en mode Erase
         self._init_sound()
         self._synths_dir  = os.path.join(self._base_dir, "synths")
         cfg = AppConfig(self._base_dir)
@@ -87,9 +87,10 @@ class MainWindow(wx.Frame):
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
+        self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
-            on_note_on  = lambda n, v, c: wx.CallAfter(self._on_midi_note_on, n, v, c),
-            on_note_off = lambda n, c:    wx.CallAfter(self._on_midi_note_off, n, c),
+            on_note_on  = lambda n, v, c: wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
+            on_note_off = lambda n, c:    wx.CallAfter(self._midi_handler.on_note_off, n, c),
             on_status   = lambda msg:     wx.CallAfter(self._show_status, msg),
         )
         self._build_ui()
@@ -232,7 +233,7 @@ class MainWindow(wx.Frame):
             style=wx.LB_SINGLE,
         )
         self._vel_list.SetSelection(self._vel_level)
-        self._vel_list.Bind(wx.EVT_LISTBOX, self._on_vel_level_select)
+        self._vel_list.Bind(wx.EVT_LISTBOX, self._midi_handler.on_vel_level_select)
 
         midi_label = wx.StaticText(panel, label="MIDI:")
         self._midi_port_list = wx.ListBox(
@@ -571,238 +572,6 @@ class MainWindow(wx.Frame):
         pan = self._pan_ctrl.GetValue()
         self._player.set_pan(pan)
         self._show_status(f"Pan Global: {pan}")
-
-    # ------------------------------------------------------------------
-    # MIDI
-
-    def _midi_connect(self):
-        """Connecte le port MIDI sélectionné dans la liste."""
-        ports = self._midi.list_ports()
-        if not ports:
-            self._show_status("MIDI: aucun port disponible")
-            return
-        idx = self._midi_port_list.GetSelection()
-        if idx == wx.NOT_FOUND:
-            idx = 0
-        self._midi.open(idx)
-
-    def _midi_disconnect(self):
-        self._midi.close()
-
-    def _midi_toggle(self):
-        """Connecte si déconnecté, déconnecte sinon."""
-        if self._midi.is_open():
-            self._midi_disconnect()
-        else:
-            self._midi_connect()
-
-    def _refresh_midi_ports(self):
-        """Recharge la liste des ports MIDI disponibles."""
-        ports = self._midi.list_ports()
-        sel   = self._midi_port_list.GetSelection()
-        self._midi_port_list.Set(ports if ports else ["(aucun port)"])
-        if ports:
-            self._midi_port_list.SetSelection(min(sel, len(ports) - 1)
-                                              if sel != wx.NOT_FOUND else 0)
-
-    def _toggle_erase(self):
-        """Bascule le mode Erase et vide les notes MIDI tenues."""
-        self._midi_erase_held.clear()
-        return self._player.toggle_erase()
-
-    def _midi_to_pad(self, note):
-        """Mappe note MIDI → index pad (0-ROWS-1) chromatiquement depuis la note racine."""
-        return (note - self._kb_root_midi) % self.ROWS
-
-    def _kb_play_idx(self, transposed_note):
-        """Indice lecture (dans kb_notes) pour un pitch transposé.
-        Si hors gamme, cherche l'équivalent octave le plus proche."""
-        kb = self._router.kb_notes
-        if transposed_note in kb:
-            return kb.index(transposed_note)
-        for step in (-12, 12, -24, 24, -36, 36):
-            equiv = transposed_note + step
-            if 0 <= equiv <= 127 and equiv in kb:
-                return kb.index(equiv)
-        return -1
-
-    def _update_erase_range(self):
-        """Recalcule _erase_active_pads selon les notes MIDI tenues (plage min→max)."""
-        if not self._midi_erase_held:
-            self._player._erase_active_pads.clear()
-            return
-        pads = [self._midi_to_pad(n) for n in self._midi_erase_held]
-        self._player._erase_active_pads = set(range(min(pads), max(pads) + 1))
-
-    def _on_vel_level_select(self, event):
-        self._vel_level = self._vel_list.GetSelection()
-        self._show_status(f"MIDI Vel: {self.VEL_LEVEL_LABELS[self._vel_level]}")
-
-    def _apply_vel_level(self, velocity):
-        """Quantifie velocity selon le niveau courant (0-127 → 1-127)."""
-        if self._vel_level == 0:                      # Full Level → 127 fixe
-            return 127
-        step = self._VEL_STEPS[self._vel_level]
-        if step is None:                              # No Level → brut
-            return velocity
-        return min(127, ((velocity - 1) // step + 1) * step)
-
-    def _on_midi_note_on(self, note, velocity, channel):
-        """Note On MIDI reçue — jouée et enregistrée/effacée si mode Rec/Erase actif."""
-        velocity = self._apply_vel_level(velocity)
-        slot = self._rack.get_slot(self._cur_slot)
-        if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
-                and self._router.synth_ready():
-            offset     = self._kb_root_midi - self._kb_play_root
-            transposed = max(0, min(127, note + offset))
-            play_idx = self._kb_play_idx(transposed)
-            if self._player.erasing:
-                if play_idx >= 0:
-                    result = self._player.erase_hit(play_idx)
-                    if result:
-                        bar_idx, step_idx = result
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[play_idx][step_idx].SetValue(False)
-            elif self._note_repeat:
-                vol_factor = velocity / 127.0
-                v   = self._player.voice_manager.get_voice(self._cur_row)
-                pan = self._player._mix_pan(v.pan)
-                self._router.synth.play(transposed, vol_factor, pan, 0)
-                self._router.kb_last_midi = transposed
-                if self._player.recording and 0 <= play_idx < self.ROWS:
-                    bar_idx, step_idx = self._player.record_hit(play_idx, velocity)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[play_idx][step_idx].SetValue(True)
-                self._nr_cancel_release()
-                self._nr_active_key = None
-                self._nr_midi_note  = note
-                safe_idx = max(0, play_idx)
-                _t, _vf, _p = transposed, vol_factor, pan
-                router = self._router
-                def _nr_kb_play(_pad, t=_t, vf=_vf, p=_p):
-                    router.synth.play(t, vf, p, 0)
-                self._player.start_note_repeat(
-                    self._nr_rate_idx, lambda s=safe_idx: s, play_cb=_nr_kb_play
-                )
-                self._show_status(
-                    f"NR Keyboard: {midi_to_note_name(transposed)}"
-                    f" @ {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
-                )
-            else:
-                vol_factor = velocity / 127.0
-                v   = self._player.voice_manager.get_voice(self._cur_row)
-                pan = self._player._mix_pan(v.pan)
-                self._router.synth.play(transposed, vol_factor, pan, 0)
-                self._router.kb_last_midi = transposed
-                if self._player.recording:
-                    self._player.record_patch_note(transposed, velocity)
-        else:
-            # Mode Pad : mapping chromatique depuis la note racine
-            pad_idx = self._midi_to_pad(note)
-            if self._player.erasing:
-                prev_range = set(self._player._erase_active_pads)
-                self._midi_erase_held.add(note)
-                self._update_erase_range()
-                for p in sorted(self._player._erase_active_pads - prev_range):
-                    result = self._player.erase_hit(p)
-                    if result:
-                        bar_idx, step_idx = result
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[p][step_idx].SetValue(False)
-            elif self._note_repeat:
-                # Note Repeat mode Pad MIDI
-                if slot.type == InstrumentType.SYNTH and self._router.synth_ready() \
-                        and pad_idx < len(self._router.kb_notes_input):
-                    vm  = self._player.voice_manager
-                    v   = vm.get_voice(pad_idx)
-                    vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
-                    pan = self._player._mix_pan(v.pan)
-                    midi_n = self._router.kb_notes_input[pad_idx]
-                    self._router.synth.play(midi_n, vol, pan, 0)
-                    self._router.kb_last_midi = midi_n
-                    self._player.last_played_pad = pad_idx
-                    if self._player.recording:
-                        bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[pad_idx][step_idx].SetValue(True)
-                    self._nr_cancel_release()
-                    self._nr_active_key = None
-                    self._nr_midi_note  = note
-                    _mn, _vol, _pan = midi_n, vol, pan
-                    router = self._router
-                    def _nr_pad_play(_pad, m=_mn, vv=_vol, p=_pan):
-                        router.synth.play(m, vv, p, 0)
-                    self._player.start_note_repeat(
-                        self._nr_rate_idx, lambda pi=pad_idx: pi, play_cb=_nr_pad_play
-                    )
-                else:
-                    self._player.play_sound(pad_idx, velocity)
-                    self._player.last_played_pad = pad_idx
-                    if self._player.recording:
-                        bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
-                        if bar_idx == 0 and step_idx < self.COLS:
-                            self._cells[pad_idx][step_idx].SetValue(True)
-                    self._nr_cancel_release()
-                    self._nr_active_key = None
-                    self._nr_midi_note  = note
-                    self._player.start_note_repeat(self._nr_rate_idx, lambda pi=pad_idx: pi)
-                self._show_status(
-                    f"NR: Pad {pad_idx + 1} @ {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
-                )
-            elif slot.type == InstrumentType.SYNTH and self._router.synth_ready() \
-                    and pad_idx < len(self._router.kb_notes_input):
-                vm  = self._player.voice_manager
-                v   = vm.get_voice(pad_idx)
-                vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
-                pan = self._player._mix_pan(v.pan)
-                self._router.synth.play(self._router.kb_notes_input[pad_idx], vol, pan, 0)
-                self._router.kb_last_midi = self._router.kb_notes_input[pad_idx]
-                self._player.last_played_pad = pad_idx
-                self._debug_pad_status(pad_idx, note)
-                if self._player.recording:
-                    bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[pad_idx][step_idx].SetValue(True)
-            elif slot.type == InstrumentType.KIT and self._snd.note_map:
-                # KIT : lecture directe via note_map ; enregistrement dans kit_tape
-                self._snd.play_note(note, velocity / 127.0)
-                kit_pad = note - (self._snd.kit_base + self._snd.kit_offset)
-                pad_idx = max(0, min(self.ROWS - 1, kit_pad))
-                self._debug_pad_status(pad_idx, note)
-                if self._player.recording:
-                    self._player.record_kit_note(note, velocity)
-            else:
-                # Fallback : son drum sans note_map
-                self._player.play_sound(pad_idx, velocity)
-                self._debug_pad_status(pad_idx, note)
-                if self._player.recording:
-                    bar_idx, step_idx = self._player.record_hit(pad_idx, velocity)
-                    if bar_idx == 0 and step_idx < self.COLS:
-                        self._cells[pad_idx][step_idx].SetValue(True)
-
-    def _on_midi_note_off(self, note, channel):
-        """Note Off MIDI — coupe la note tenue (Synth) ou arrête l'effacement (Erase)."""
-        if self._note_repeat and self._nr_midi_note == note:
-            self._player.stop_note_repeat()
-            self._nr_midi_note = None
-            mode = "Ternaire" if self._nr_ternary else "Binaire"
-            self._show_status(
-                f"Note Repeat: ON — {mode} — {DrumPlayer.QUANT_LIST[self._nr_rate_idx]}"
-            )
-        slot = self._rack.get_slot(self._cur_slot)
-        if self._router.synth_ready() and slot.type == InstrumentType.SYNTH:
-            if self._input_mode == "keyboard":
-                offset     = self._kb_root_midi - self._kb_play_root
-                transposed = max(0, min(127, note + offset))
-                self._router.synth.stop(transposed)
-                if self._player.recording:
-                    self._player.record_patch_note_off(transposed)
-            else:
-                pad_idx = self._midi_to_pad(note)
-                if pad_idx < len(self._router.kb_notes_input):
-                    self._router.synth.stop(self._router.kb_notes_input[pad_idx])
-        self._midi_erase_held.discard(note)
-        self._update_erase_range()
 
     def _on_close(self, event):
         self._midi.close()

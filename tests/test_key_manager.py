@@ -162,6 +162,15 @@ class FakeRack:
 class FakeSnd:
     note_map = {}   # vide → branche KIT ignorée dans numpad+/-
 
+class FakeMidiHandler:
+    def __init__(self, win):
+        self._win = win
+    def toggle(self):          self._win.calls.append('_midi_toggle')
+    def refresh_ports(self):   self._win.calls.append('_refresh_midi_ports')
+    def toggle_erase(self):
+        self._win.calls.append('_toggle_erase')
+        return self._win._player.toggle_erase()
+
 
 class FakeWindow:
     ROWS       = 16
@@ -203,10 +212,11 @@ class FakeWindow:
         self._kb_scale      = "major"
         self._cur_slot      = 0
         # Données
-        self._player = FakePlayer()
-        self._router = FakeRouter()
-        self._rack   = FakeRack()
-        self._snd    = FakeSnd()
+        self._player       = FakePlayer()
+        self._router       = FakeRouter()
+        self._rack         = FakeRack()
+        self._snd          = FakeSnd()
+        self._midi_handler = FakeMidiHandler(self)
         # Journal des appels sur FakeWindow elle-même
         self.calls = []
 
@@ -236,12 +246,6 @@ class FakeWindow:
     def _nr_arm_release(self):            self.calls.append('_nr_arm_release')
     def _nr_cancel_release(self):         self.calls.append('_nr_cancel_release')
     def _update_bpm_display(self):        self.calls.append('_update_bpm_display')
-
-    def _midi_toggle(self):          self.calls.append('_midi_toggle')
-    def _refresh_midi_ports(self):   self.calls.append('_refresh_midi_ports')
-    def _toggle_erase(self):
-        self.calls.append('_toggle_erase')
-        return self._player.toggle_erase()
 
     def _set_input_mode(self, mode):
         self.calls.append(('_set_input_mode', mode))
