@@ -11,6 +11,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import wx
+from unittest.mock import patch
 from ui.key_manager import KeyManager
 
 
@@ -165,6 +166,7 @@ class FakeSnd:
 class FakeMidiHandler:
     def __init__(self, win):
         self._win = win
+    def connect(self):         self._win.calls.append('_midi_connect')
     def toggle(self):          self._win.calls.append('_midi_toggle')
     def refresh_ports(self):   self._win.calls.append('_refresh_midi_ports')
     def toggle_erase(self):

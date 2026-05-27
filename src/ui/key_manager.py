@@ -342,10 +342,14 @@ class KeyManager:
                 pass
             elif on_pad_list:
                 win._cells[win._cur_row][win._cur_col].SetFocus()
+            elif on_track_list or on_vel_list or on_scale_choice \
+                    or on_mode_choice or on_slot_choice or on_midi_port_list:
+                pass  # GTK transforme Enter en DCLICK sur les ListBox
             else:
                 r, c = win._cur_row, win._cur_col
                 new_val = False if shift else not win._cells[r][c].GetValue()
                 win._set_cell(r, c, new_val)
+                win._play(r)
             return True
 
         return False

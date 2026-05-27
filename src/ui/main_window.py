@@ -196,7 +196,7 @@ class MainWindow(wx.Frame):
         self._slot_choice = wx.ListBox(panel, choices=self._rack.labels(), style=wx.LB_SINGLE)
         self._slot_choice.SetSelection(0)
         self._slot_choice.Bind(wx.EVT_LISTBOX,        self._on_slot_choice)
-        self._slot_choice.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
+        self._slot_choice.Bind(wx.EVT_LISTBOX_DCLICK, self._on_slot_list_activate)
 
         hbox2 = wx.BoxSizer(wx.HORIZONTAL)
         hbox2.Add(mode_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -244,7 +244,7 @@ class MainWindow(wx.Frame):
         )
         if self._midi.list_ports():
             self._midi_port_list.SetSelection(0)
-        self._midi_port_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_listbox_play_activate)
+        self._midi_port_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_midi_port_activate)
 
         hbox3 = wx.BoxSizer(wx.HORIZONTAL)
         hbox3.Add(track_label,           0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -686,8 +686,9 @@ class MainWindow(wx.Frame):
         self._track_list.SetSelection(sel if sel != wx.NOT_FOUND else 0)
 
     def _on_track_list_activate(self, event):
-        """Alt+Entrée ou double-clic sur la liste des pistes → propriétés."""
-        if wx.GetKeyState(wx.WXK_ALT):
+        """Entrée ou double-clic sur la liste des pistes.
+        Enter ou Alt → propriétés ; double-clic seul → joue le pad courant."""
+        if wx.GetKeyState(wx.WXK_RETURN) or wx.GetKeyState(wx.WXK_ALT):
             self._track_properties_dialog()
         else:
             self._play(self._cur_row)
@@ -702,6 +703,14 @@ class MainWindow(wx.Frame):
     def _on_listbox_play_activate(self, event):
         """Enter/double-clic sur une listbox sans handler spécifique → joue le pad courant."""
         self._play(self._cur_row)
+
+    def _on_slot_list_activate(self, event):
+        """Double-clic sur la liste des Slots → assigne le slot à la piste courante (≡ Ctrl+T)."""
+        self._assign_track_slot()
+
+    def _on_midi_port_activate(self, event):
+        """Double-clic sur la liste des ports MIDI → connecte le port sélectionné."""
+        self._midi_handler.connect()
 
     def _on_pad_select(self, event):
         idx = self._pad_list.GetSelection()
