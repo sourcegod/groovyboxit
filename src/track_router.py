@@ -147,6 +147,13 @@ class TrackRouter:
                 self._status_cb(f"Erreur slot {slot_idx + 1:02d}: {e}")
         threading.Thread(target=run, daemon=True).start()
 
+    def clear_slot_synths(self):
+        """Invalide tous les moteurs SYNTH en cache (force rechargement au prochain assign)."""
+        self._slot_synths.clear()
+        if self._synth is not self._kit_synth:
+            self._synth          = None
+            self._synth_slot_idx = None
+
     def reload_slot(self, slot_idx):
         """Invalide l'ancien moteur du slot et recharge le nouveau patch.
         Toutes les pistes assignées à ce slot bénéficieront du nouveau moteur."""

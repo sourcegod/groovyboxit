@@ -489,7 +489,7 @@ class PadPropertiesDialog(wx.Dialog):
 
 class ExplorerDialog(wx.Dialog):
     """Choix du type de fichier à charger : Kit, Patch ou Sound."""
-    ITEMS = ["Kit", "Patch", "Sound"]
+    ITEMS = ["Preset", "Kit", "Patch", "Sound"]
 
     def __init__(self, parent):
         super().__init__(parent, title="Explorateur")

@@ -9550,7 +9550,7 @@
       ],
       "voices": [
         {
-          "name": "",
+          "name": "Bass Drum 1",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9558,7 +9558,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Side Stick",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9566,7 +9566,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Snare 1",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9574,7 +9574,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Hand Clap",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9582,7 +9582,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Snare 2",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9590,7 +9590,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Low Floor Tom",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9598,7 +9598,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "HH Closed",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9606,7 +9606,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "High Floor Tom",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9614,7 +9614,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "HH Pedal",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9622,7 +9622,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Low Tom",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9630,7 +9630,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "HH Open",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9638,7 +9638,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Low Mid Tom",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9646,7 +9646,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Hi Mid Tom",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9654,7 +9654,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Crash 1",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9662,7 +9662,7 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "High Tom",
           "volume": 100,
           "pan": 0,
           "mute": false,
@@ -9670,14 +9670,16 @@
           "duration_ms": 500
         },
         {
-          "name": "",
+          "name": "Ride 1",
           "volume": 100,
           "pan": 0,
           "mute": false,
           "solo": false,
           "duration_ms": 500
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -19355,7 +19357,9 @@
           "solo": false,
           "duration_ms": 500
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -22121,7 +22125,9 @@
           "solo": false,
           "duration_ms": 500
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -24855,7 +24861,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -27589,7 +27597,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -30323,7 +30333,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -33057,7 +33069,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -35791,7 +35805,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -38525,7 +38541,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -41259,7 +41277,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -43993,7 +44013,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -46727,7 +46749,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -49461,7 +49485,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -52195,7 +52221,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -54929,7 +54957,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -57663,7 +57693,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -60397,7 +60429,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -63131,7 +63165,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -65865,7 +65901,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -68599,7 +68637,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -71333,7 +71373,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -74067,7 +74109,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -76801,7 +76845,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -79535,7 +79581,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -82269,7 +82317,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -85003,7 +85053,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -87737,7 +87789,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -90471,7 +90525,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -93205,7 +93261,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -95939,7 +95997,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -98673,7 +98733,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -101407,7 +101469,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -104141,7 +104205,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -106875,7 +106941,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -109609,7 +109677,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -112343,7 +112413,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -115077,7 +115149,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -117811,7 +117885,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -120545,7 +120621,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -123279,7 +123357,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -126013,7 +126093,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -128747,7 +128829,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -131481,7 +131565,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -134215,7 +134301,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -136949,7 +137037,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -139683,7 +139773,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -142417,7 +142509,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -145151,7 +145245,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -147885,7 +147981,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -150619,7 +150717,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -153353,7 +153453,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -156087,7 +156189,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -158821,7 +158925,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -161555,7 +161661,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -164289,7 +164397,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -167023,7 +167133,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -169757,7 +169869,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -172491,7 +172605,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -175225,7 +175341,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -177959,7 +178077,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -180693,7 +180813,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -183427,7 +183549,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -186161,7 +186285,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -188895,7 +189021,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -191629,7 +191757,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -194363,7 +194493,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -197097,7 +197229,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -199831,7 +199965,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -202565,7 +202701,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -205299,7 +205437,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -208033,7 +208173,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -210767,7 +210909,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -213501,7 +213645,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -216235,7 +216381,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -218969,7 +219117,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -221703,7 +221853,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -224437,7 +224589,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -227171,7 +227325,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -229905,7 +230061,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -232639,7 +232797,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -235373,7 +235533,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -238107,7 +238269,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -240841,7 +241005,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -243575,7 +243741,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -246309,7 +246477,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -249043,7 +249213,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -251777,7 +251949,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -254511,7 +254685,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -257245,7 +257421,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -259979,7 +260157,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -262713,7 +262893,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -265447,7 +265629,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -268181,7 +268365,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -270915,7 +271101,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -273649,7 +273837,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -276383,7 +276573,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -279117,7 +279309,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -281851,7 +282045,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     },
     {
       "name": "",
@@ -284585,7 +284781,9 @@
           "mute": false,
           "solo": false
         }
-      ]
+      ],
+      "kit_tape": [],
+      "patch_tape": []
     }
   ]
 }

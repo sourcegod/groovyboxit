@@ -63,9 +63,10 @@ class MainWindow(wx.Frame):
         self._init_sound()
         self._synths_dir  = os.path.join(self._base_dir, "synths")
         cfg = AppConfig(self._base_dir)
-        self._patches_dir = cfg.patches_dir
-        self._samples_dir = cfg.samples_dir
-        self._kits_dir    = cfg.kits_dir
+        self._patches_dir  = cfg.patches_dir
+        self._samples_dir  = cfg.samples_dir
+        self._kits_dir     = cfg.kits_dir
+        self._presets_dir  = cfg.presets_dir
         self._rack = Rack()
         self._rack.set_slot(0, InstrumentType.KIT, "TR-707",
                             {"kit": os.path.join(self._kits_dir, "tr_707.json")})
@@ -88,7 +89,7 @@ class MainWindow(wx.Frame):
         self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
-        self._preset_path = os.path.join(self._base_dir, "data", "presets", "preset_01.json")
+        self._preset_path = os.path.join(self._presets_dir, "preset_01.json")
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
             on_note_on  = lambda n, v, c: wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
@@ -436,13 +437,17 @@ class MainWindow(wx.Frame):
         cur._voices = self._player.voice_manager.to_list()
         self._flush_pattern_to_store(cur)
         os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
-        data = {"version": 1, "patterns": [pat.to_dict() for pat in self._pattern_list]}
+        data = {
+            "version":  1,
+            "rack":     self._rack.to_dict(),
+            "patterns": [pat.to_dict() for pat in self._pattern_list],
+        }
         with open(self._preset_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
 
     def _save_preset_as(self):
-        presets_dir = os.path.dirname(self._preset_path)
+        presets_dir = self._presets_dir
         os.makedirs(presets_dir, exist_ok=True)
         dlg = wx.FileDialog(
             self,
@@ -462,19 +467,42 @@ class MainWindow(wx.Frame):
             return
         with open(self._preset_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        # Restaurer le rack (contenu des slots) si présent
+        if "rack" in data:
+            self._rack.from_dict(data["rack"])
+            self._update_slot_list()
         for i, p in enumerate(data.get("patterns", [])):
             if i >= len(self._pattern_list):
                 break
             self._pattern_list[i].from_dict(p)
         self._refresh_pattern_listbox()
-        # Restaure le pattern 0 directement sans écraser ses _track_slots chargés
         self._cur_pattern_idx = 0
         new = self._pattern_list[0]
         self._apply_pattern_from_store(new)
+        # Invalider le cache des moteurs SYNTH pour forcer le rechargement
+        self._router.clear_slot_synths()
         for track_idx, slot_idx in enumerate(new._track_slots):
             slot = self._rack.get_slot(slot_idx)
             if slot.type == InstrumentType.SYNTH:
                 self._router.assign_slot(track_idx, slot_idx)
+        # Charger les kits de tous les slots KIT distincts utilisés par les pistes
+        loaded_kit_slots = set()
+        for slot_idx in new._track_slots:
+            if slot_idx not in loaded_kit_slots:
+                slot = self._rack.get_slot(slot_idx)
+                if slot.type == InstrumentType.KIT:
+                    self._load_kit_slot(slot_idx)
+                    loaded_kit_slots.add(slot_idx)
+        # Charger la preview du slot de la piste courante
+        cur_slot = new._track_slots[self._player._cur_track] \
+                   if self._player._cur_track < len(new._track_slots) else 0
+        self._cur_slot = cur_slot
+        self._slot_choice.SetSelection(cur_slot)
+        slot = self._rack.get_slot(cur_slot)
+        if slot.type == InstrumentType.SYNTH:
+            self._router.load_slot_preview(cur_slot)
+        elif slot.type == InstrumentType.KIT and cur_slot not in loaded_kit_slots:
+            self._load_kit_slot(cur_slot)
         self._player._compute_offsets()
         self._refresh_grid()
         self._refresh_all_voice_display()
@@ -959,12 +987,27 @@ class MainWindow(wx.Frame):
             return
         choice = dlg.get_selection()
         dlg.Destroy()
-        if choice == "Kit":
+        if choice == "Preset":
+            self._explorer_preset()
+        elif choice == "Kit":
             self._explorer_kit()
         elif choice == "Patch":
             self._explorer_patch()
         elif choice == "Sound":
             self._explorer_sound()
+
+    def _explorer_preset(self):
+        presets_dir = self._presets_dir
+        os.makedirs(presets_dir, exist_ok=True)
+        dlg = wx.FileDialog(self, "Choisir un preset (*.json)",
+                            defaultDir=presets_dir,
+                            wildcard="Preset JSON (*.json)|*.json",
+                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            self._preset_path = dlg.GetPath()
+            self._load_preset()
+            self._show_status(f"Preset chargé : {os.path.basename(self._preset_path)}")
+        dlg.Destroy()
 
     def _explorer_kit(self):
         start = self._kits_dir if os.path.isdir(self._kits_dir) else os.path.expanduser("~")

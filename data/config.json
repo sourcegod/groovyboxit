@@ -1,5 +1,6 @@
 {
-  "patches_dir": "/home/com/groovybox/PATCHS",
-  "samples_dir": "/home/com/groovybox/SAMPLES",
-  "kits_dir":    "/home/com/groovybox/KITS"
+  "patches_dir":  "/home/com/groovybox/PATCHS",
+  "samples_dir":  "/home/com/groovybox/SAMPLES",
+  "kits_dir":     "/home/com/groovybox/KITS",
+  "presets_dir":  "/home/com/groovybox/PRESETS"
 }
