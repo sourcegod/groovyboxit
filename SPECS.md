@@ -1,108 +1,195 @@
-# Spécifications — Groovebox
+# Spécifications — GroovyboxIt
 
-Application desktop Python permettant de jouer des sons via le pavé numérique et de séquencer des patterns et des songs.
+Application desktop Python permettant de jouer des sons via le pavé numérique, de séquencer des patterns et des songs.
 
-**Note architecture** : il s'agit d'un prototype Python. Si le test est concluant, les parties nécessitant plus de performances (notamment le Moteur Audio) seront réécrites en C/C++.
-
----
-
-## Phase 1 — Lecture directe (Mode Drum basique) ✓
-
-### Entrée clavier
-- Écoute exclusive du **pavé numérique physique** (NumPad 1–8, ou 9-16).
-- Les touches Numpad_Plus et Numpad_Minus du Pavé Numérique, permet de switcher les pads de (1-8, à 9-16).
-- Comportement indépendant du NumLock.
-- Par la suite, Entrée Midi, écoute des Pads par un Clavier Midi externe.
-
-### Audio
-- Format : **WAV uniquement**.
-- 16 fichiers fixés à l'avance, placés dans un dossier `samples/`, nommés `1.wav` à `16.wav`.
-- Comportement **one-shot** : chaque pression relance le son depuis le début (une nouvelle instance est créée).
-- **Polyphonie** : plusieurs sons peuvent jouer simultanément, y compris plusieurs instances du même pad.
+**Note architecture** : prototype Python. Si le test est concluant, les parties nécessitant plus de performances (moteur audio, pitch shifting) seront réécrites en C/C++.
 
 ---
 
-## Modes d'entrée (transversaux à toutes les phases)
+## État d'avancement
 
-Chaque piste dispose d'un **mode d'entrée** sélectionnable via une liste déroulante ou les raccourcis Ctrl+1/2/3/4 :
-
-| Raccourci | Mode | Description |
+| Phase | Description | État |
 |---|---|---|
-| Ctrl+1 | **Pad** | Chaque NumPad déclenche un son indépendant (mode Drum Phase 1) |
-| Ctrl+2 | **Keyboard** | Chaque NumPad joue une note d'une gamme (mode Synthé) |
-| Ctrl+3 | **Chord** | Chaque NumPad joue un accord de la gamme courante |
-| Ctrl+4 | **Steps** | Grille pas-à-pas (séquenceur, comme la grille actuelle) |
+| Phase 1 | Lecture directe (mode Drum basique) | ✓ |
+| Phase 2 | Séquenceur, patterns, grille, BPM | ✓ |
+| Phase 3 | MIDI, Keyboard/Synth, pitch shifting, presets, explorateur | ✓ |
+| Phase 4 | Mode Song, synchronisation MIDI Clock | — |
 
 ---
 
-## Mode Synthé — Keyboard
+## Stack technique
 
-### Principe
-- Un **Patch** (instrument) est chargé sur la piste courante.
-- Les touches NumPad 1–16 jouent les 16 notes consécutives d'une gamme choisie.
-- Le pitch est pur : **pas de changement de durée** (algorithme phase vocoder / WSOLA via `pyrubberband`).
-- **Polyphonie** maintenue.
-
-### Gammes disponibles
-- Chromatique (12 demi-tons)
-- Majeur
-- Mineur naturel
-- Pentatonique majeur
-- Pentatonique mineur
-- *(extensible)*
-
-### Navigation clavier en mode Keyboard
-- **NumPad 1–8 / 9-16** : jouer les notes de la gamme (positions 1–16)
-- **NumPad+** : décaler le clavier vers le haut (octave ou demi-ton selon config)
-- **NumPad-** : décaler le clavier vers le bas
-- **`/`** : changer de gamme (sens --)
-- **`*`** : changer de gamme (sens ++)
-
-### Pré-calcul du pitch
-- Au chargement d'un patch, les N sons nécessaires sont **pré-calculés en mémoire** (latence zéro à la frappe).
-- Le calcul se base sur les WAVs du patch et la configuration du clavier courant (gamme + octave).
-- Si la configuration change (`/`, `*`, NumPad+/-), le pré-calcul est relancé.
+| Rôle | Bibliothèque |
+|---|---|
+| GUI | `wxPython` |
+| Audio (one-shot, kit) | `pygame.mixer` |
+| Pitch shifting | `pyrubberband` (bindings Python de Rubber Band C++) |
+| Lecture WAV | `soundfile` |
+| Traitement audio | `numpy` |
+| MIDI in/out | `rtmidi` (via `python-rtmidi`) |
+| Effets (futur) | `pedalboard` (Spotify) |
 
 ---
 
-## Mode Synthé — Chord
+## Structure du projet
 
-### Principe (inspiré du Maschine+)
-- Chaque NumPad joue un **accord majeur** par défaut, construit sur la note de la gamme courante.
-- Si une note de la **gamme mineure** est ajoutée simultanément, l'accord est altéré en **mineur**.
-- Si une **septième mineure** est ajoutée, l'accord devient **accord de septième mineur**.
-- Le mode Chord respecte la gamme et le patch chargés sur la piste.
+```
+groovyboxit/
+├── main.py               # Point d'entrée
+├── src/
+│   ├── app_config.py     # Chargement data/config.json, chemins configurables
+│   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
+│   ├── drum_player.py    # Séquenceur : lecture, enregistrement, note repeat
+│   ├── midi_manager.py   # Connexion ports MIDI in/out
+│   ├── note.py           # Utilitaires note MIDI
+│   ├── pattern.py        # Données pattern : grille, kit_tape, patch_tape
+│   ├── rack.py           # Rack 16 slots + InstrumentType
+│   ├── sound_manager.py  # Lecture WAV : kits, note_map, pad_sound
+│   ├── synth_engine.py   # Moteur synthé : chargement patch, pitch shifting, cache
+│   ├── track_router.py   # Routage piste→slot→SynthEngine, dispatch audio
+│   ├── voice_manager.py  # Volume, pan, mute, solo, durée par pad
+│   └── ui/
+│       ├── dialogs.py    # Boîtes de dialogue
+│       ├── key_manager.py # Gestion clavier (raccourcis)
+│       ├── main_window.py # Fenêtre principale
+│       └── midi_handler.py # Logique MIDI (séparée de MainWindow)
+├── data/
+│   ├── config.json       # Chemins configurables (voir §Configuration)
+│   ├── kits/             # Fichiers kit JSON (ex. tr_707.json)
+│   └── presets/          # Presets JSON (ex. preset_01.json)
+├── media/                # Sons drum par défaut (1.wav … 16.wav) + métronome
+├── tools/
+│   ├── extract_gm_drums.py  # Script extraction drums GM depuis FluidSynth
+│   └── find_loop_points.py  # Script détection points de bouclage
+├── docs/
+│   └── shortcuts.md      # Liste des raccourcis clavier
+└── tests/
+    ├── test_all.sh
+    ├── test_app_launch.py
+    ├── test_explorer_actions.py
+    ├── test_explorer_dialog.py
+    ├── test_key_manager.py
+    ├── test_midi_manager.py
+    ├── test_multitrack.py
+    ├── test_pad_properties_dialog.py
+    ├── test_pattern.py
+    ├── test_pattern_properties_dialog.py
+    ├── test_pattern_serialization.py
+    ├── test_quantize.py
+    ├── test_synth_engine.py
+    ├── test_synth_utils.py
+    ├── test_tape.py
+    ├── test_track_properties_dialog.py
+    ├── test_track_router.py
+    └── test_voice_manager.py
+```
 
 ---
 
-## Patches (instruments Synthé)
+## Configuration (`data/config.json`)
+
+```json
+{
+  "patches_dir":  "/chemin/vers/PATCHS",
+  "samples_dir":  "/chemin/vers/SAMPLES",
+  "kits_dir":     "/chemin/vers/KITS",
+  "presets_dir":  "/chemin/vers/PRESETS"
+}
+```
+
+Chaque clé est facultative : si absente ou vide, le chemin correspondant tombe en fallback sur un sous-dossier relatif à la racine du projet (`patches/`, `samples/`, `kits/`, `presets/`).
+
+Chargement via `AppConfig(base_dir)` au démarrage.
+
+---
+
+## Rack d'instruments
+
+Le Rack est **global et partagé par tous les patterns**. Il contient 16 slots.
+
+### Types d'instrument (`InstrumentType`)
+
+| Constante | Valeur | Description |
+|---|---|---|
+| `KIT` | `"kit"` | 16 WAVs indépendants, mappés par note MIDI |
+| `SYNTH` | `"synth"` | Patch multi-samples + pitch shifting |
+| `LOOP` | `"loop"` | WAV synchronisé BPM (prévu) |
+| `AUDIO` | `"audio"` | WAV one-shot libre (prévu) |
+| `MIDI_FILE` | `"midi_file"` | Fichier MIDI .mid (prévu) |
+| `MIDI_PORT` | `"midi_port"` | Port MIDI externe (prévu) |
+
+*Implémentés et opérationnels : KIT et SYNTH.*
+
+### Structure d'un slot
+
+```
+Slot
+  ├── index   : int (0–15)
+  ├── type    : InstrumentType.* (ou None si vide)
+  ├── name    : str  (ex. "TR-707", "Piano")
+  └── config  : dict
+        KIT   → { "kit": "/chemin/vers/kit.json" }
+        SYNTH → { "patch": "/chemin/vers/dossier_patch" }
+```
+
+### Sérialisation Rack
+
+`Rack.to_dict()` / `Rack.from_dict(data)` — inclus dans le preset JSON sous la clé `"rack"`.
+
+---
+
+## Kits (type KIT)
+
+### Fichier kit JSON
+
+```json
+{
+  "name": "TR-707",
+  "pads": [
+    { "pad": 1, "note": 35, "filename": "/chemin/35_BassDrum2.wav", "label": "Kick 2" },
+    { "pad": 2, "note": 36, "filename": "/chemin/36_BassDrum1.wav", "label": "Kick 1" },
+    ...
+    { "pad": 16, "filename": "", "label": "---" }
+  ]
+}
+```
+
+- `note` : note MIDI GM (35–81), utilisée pour le mapping MIDI et le pitch
+- `filename` : chemin absolu ou relatif au JSON
+- `label` : nom affiché dans la liste des pads
+
+### SoundManager — API Kit
+
+| Méthode | Description |
+|---|---|
+| `load_kit(json_path)` | Charge le kit, construit `drum_sounds[16]` et `note_map` |
+| `load_pad_sound(pad_idx, wav_path)` | Remplace un son individuel dans `drum_sounds` |
+| `load_sounds()` | Charge les sons par défaut depuis `media/` |
+| `play_sound(index, vol, pan)` | Joue `drum_sounds[index]` |
+| `play_note(midi_note, vol, pan)` | Joue via `note_map[midi_note]` |
+| `shift_kit(delta)` | Décale `kit_offset` de ±8 (plage : 0 — max notes du kit) |
+
+- `drum_sounds` : liste de 16 `pygame.Sound`, reconstruite à partir de `note_map` + `kit_base` + `kit_offset`
+- `note_map` : `{midi_note: pygame.Sound}` — tous les sons du kit avec champ `"note"`
+
+---
+
+## Patches (type SYNTH)
 
 ### Structure d'un patch
-Un patch = un sous-répertoire de `synths/`, nommé par l'instrument :
+
+Un patch = un répertoire contenant `patch.json` et des fichiers WAV :
 
 ```
-synths/
-├── Piano/
-│   ├── patch.json
-│   ├── C2.wav
-│   ├── G2.wav
-│   ├── C3.wav
-│   ├── G3.wav
-│   └── C4.wav
-├── Rhodes/
-│   ├── patch.json
-│   ├── C2.wav
-│   └── ...
-├── Organ/
-│   └── ...
+/PATCHS/Piano/
+  ├── patch.json
+  ├── 01_C1.wav
+  ├── 02_C2.wav
+  └── ...
 ```
-
-### Convention de nommage des WAVs
-- Nom = note racine du fichier : `C3.wav`, `G#2.wav`, `Bb4.wav`…
-- La note racine est lue depuis le nom du fichier (pas besoin de l'indiquer séparément).
-- Au minimum **un fichier WAV par octave** pour une qualité de rééchantillonnage acceptable.
 
 ### Fichier `patch.json`
+
 ```json
 {
   "name": "Piano",
@@ -110,277 +197,491 @@ synths/
   "loop_start": null,
   "loop_end": null,
   "samples": [
-    { "file": "C2.wav", "root": "C2" },
-    { "file": "G2.wav", "root": "G2" },
-    { "file": "C3.wav", "root": "C3" }
+    { "file": "01_C1.wav", "root": "C1" },
+    { "file": "02_C2.wav", "root": "C2" }
   ]
 }
 ```
 
-### One-shot vs Loop
-- **One-shot** (joué une fois) : Piano, Rhodes, Cloche, tout instrument à attaque percussive.
-- **Loop** (boucle en sustain) : Orgue, Saxophone, Violon, tout instrument à son tenu.
-- Le champ `loop` dans `patch.json` détermine le comportement.
-- Les points de bouclage (`loop_start`, `loop_end`) sont définis dans le JSON.
-- *À terme* : librairie de détection automatique de points de bouclage.
+- `root` : note racine du sample (`"C3"`, `"A4"`, etc.)
+- `loop` : `true` → boucle en sustain (orgue, cordes) ; `false` → one-shot (piano, percussions)
+- `loop_start` / `loop_end` : secondes (par sample ou au niveau racine). Calculés automatiquement par `find_loop_points.py`
+- Rétrocompatibilité : `"sounds"` accepté comme alias de `"samples"`, `"rootnote"` comme alias de `"root"`
 
-### Liste des patches
-- Visible dans l'interface (liste déroulante ou ListBox), comme la liste des patterns.
-- Chargeable sur la piste courante.
+### SynthEngine — comportement
+
+- Chargement du patch → lecture de chaque WAV avec `soundfile`
+- `precompute(notes)` : pré-calcule les notes MIDI demandées via `pyrubberband` et les met en cache comme `pygame.Sound`
+- `play(midi_note, vol, pan, duration_ms)` : lecture depuis le cache (latence nulle)
+- Cache : `{(midi_note, duration_ms): pygame.Sound}`
+- Pré-calcul en arrière-plan (`threading.Thread`)
+- `load_single_sample(wav_path, root_midi)` : charge un seul sample (mode Kit pitché)
 
 ---
 
-## Stack technique
+## Gammes disponibles
 
-| Rôle | Bibliothèque | Justification |
+Définies dans `synth_engine.SCALES`, accessible via `SCALE_NAMES` :
+
+| Clé | Nom affiché | Intervalles |
 |---|---|---|
-| GUI | `wxPython` | Robuste, accessibilité lecteur d'écran |
-| Audio Phase 1 | `pygame.mixer` | Simple, polyphonie intégrée |
-| Pitch shifting | `pyrubberband` | Bindings Python de Rubber Band (C++), pitch pur sans changement de durée |
-| Chargement WAV | `soundfile` ou `scipy.io.wavfile` | Lecture dans un tableau numpy |
-| Traitement audio | `numpy` | Manipulation des tableaux audio |
-| Effets (futur) | `pedalboard` (Spotify) | Chaîne d'effets audio |
-| Audio (futur C++) | `sounddevice` | Contrôle fin du timing et du streaming |
+| `chromatic` | Chromatique | 0 1 2 3 4 5 6 7 8 9 10 11 |
+| `major` | Majeur | 0 2 4 5 7 9 11 |
+| `minor_nat` | Mineur naturel | 0 2 3 5 7 8 10 |
+| `minor_harm_1` | Mineur harmonique | 0 2 3 5 7 8 11 |
+| `pentatonic_major` | Penta majeur | 0 2 4 7 9 |
+| `pentatonic_minor` | Penta mineur | 0 3 5 7 10 |
+
+`scale_midi_notes(scale, root_midi, count)` → liste de `count` notes MIDI.
 
 ---
 
-## Mode Séquence / Pattern
+## Modes de jeu
 
-- **99 séquences** disponibles (Seq 01–99).
-- Chaque séquence contient **8 pistes** (extensible à 16).
-- Chaque séquence a un tempo (BPM) propre.
-- Chaque piste peut être de 3 types :
-  - **Drum** (par défaut) : chaque Pad = un son différent.
-  - **Synthé** : chaque Pad = une hauteur différente (Pitch) du patch chargé.
-  - **Midi** : chaque Pad peut être joué par un périphérique MIDI externe.
-- Chaque piste contient **de 1 à 128 mesures**.
-- Chaque mesure contient **de 16 à 128 Pas** (16, 32, 64, 128).
-- Chaque Pas peut être : actif ou inactif, avec vélocité et (en mode Synthé) hauteur.
-- Les pistes d'une même séquence peuvent avoir des longueurs différentes (polymétrisme optionnel).
+### Mode Pad (Ctrl+1)
+
+- NumPad 1–8 / 9–16 déclenche le son du kit chargé sur la piste courante
+- NumPad+ : passer aux pads 9–16 / NumPad- : revenir aux pads 1–8
+- Mode MIDI : chaque note entrante est mappée directement sur un pad via `note_map`
+
+### Mode Keyboard (Ctrl+2)
+
+Deux comportements selon le type du slot courant :
+
+**Slot SYNTH** :
+- NumPad 1–8 joue les 8 premières notes de la gamme courante (pré-calculées)
+- NumPad+ : octave suivante / NumPad- : octave précédente
+- NumPad/ : gamme précédente / NumPad* : gamme suivante
+- Clavier MIDI : 25 notes de gamme (`kb_notes`), précalculées
+- NumPad joue sur 16 notes (`kb_notes_input`), transposables indépendamment
+
+**Slot KIT** (batterie pitchée, style Maschine+) :
+- Le dernier pad joué est pitcher sur les notes de la gamme
+- NumPad 1–8 joue le pad source pitché sur 8 notes de la gamme
+- Root C4 = pitch original du son
+- NumPad+/- décale l'octave, NumPad/*  change de gamme
+
+### TrackRouter — routage audio multi-piste
+
+```
+TrackRouter
+  ├── _track_slots[8]     slot assigné à chaque piste (défaut : slot 0)
+  ├── _slot_synths        {slot_idx: SynthEngine} — un moteur par slot SYNTH commis
+  ├── _synth              moteur de preview interactive (slot courant)
+  ├── _kit_synth          moteur dédié au mode Keyboard/KIT pitché
+  ├── kb_notes[25]        notes MIDI de gamme pour le clavier MIDI
+  └── kb_notes_input[16]  notes MIDI de gamme pour le Numpad (transposables)
+```
+
+`on_play(track, pad, vol, pan, dur)` :
+- Slot KIT → `sound_manager.play_sound(pad_idx)`
+- Slot SYNTH → `_slot_synths[slot_idx].play(kb_notes[pad_idx])`
 
 ---
 
-## Mode Song
+## Patterns
 
-- **16 songs** disponibles (Song 01–16).
-- Chaque song est une liste ordonnée de séquences à enchaîner.
-- Lecture linéaire ; bouclage optionnel.
+### Structure
+
+```
+Pattern
+  ├── _name          str
+  ├── _bpm           float (tempo)
+  ├── _num_bars      int (1–999)
+  ├── _num_steps     int (16, 32, 64, 128 — pas par mesure)
+  ├── _start_bar     int (première mesure jouée)
+  ├── _looping       bool
+  ├── _track_slots   [int × 8]   slot assigné à chaque piste
+  ├── _track_mutes   [bool × 8]
+  ├── _track_solos   [bool × 8]
+  ├── _track_volumes [int × 8]   0..100
+  ├── _track_pans    [int × 8]   -100..+100
+  ├── _voices        [dict × 16] volume, pan, mute, solo, durée par pad
+  ├── _curpattern    [8 pistes × 16 pads × N mesures × N pas]  valeurs = vélocité (0 ou 0..127)
+  ├── _kit_tape      {(track,bar,step): [(note,vel,dur)…]}  notes MIDI brutes (kit)
+  └── _patch_tape    {(track,bar,step): [(note,vel,dur)…]}  notes MIDI brutes (synth)
+```
+
+- 99 patterns disponibles (Pattern 01–99)
+- 8 pistes par pattern
+- 16 pads par piste
+- Pas : vélocité 0 (inactif) ou 1–127 (actif avec vélocité)
+- `_kit_tape` : capture MIDI brute pour les pistes KIT (note MIDI réelle, indépendante du kit_offset)
+- `_patch_tape` : capture MIDI brute pour les pistes SYNTH (note MIDI absolue + durée réelle)
+
+### Quantisation
+
+Valeurs disponibles (`Pattern.QUANT_STEPS`) :
+`[1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]`
+
+La quantisation s'applique à l'enregistrement (caler les hits sur la grille) et à la relecture (appliquer au pattern).
 
 ---
 
-## Structure de données clés
+## Vélocité MIDI en entrée (Vel Level)
 
-### TNote — structure de base d'une note
+5 niveaux de quantification de la vélocité entrante :
 
-Unité fondamentale commune aux patterns et aux patches. Inspirée du format MIDI.
+| Niveau | Comportement |
+|---|---|
+| Full Level | Toutes les notes à 127 |
+| 4 Levels | Paliers de 32 (4 valeurs) |
+| 8 Levels | Paliers de 16 (8 valeurs) |
+| 16 Levels | Paliers de 8 (16 valeurs) |
+| No Level | Vélocité brute (pas de quantification) |
 
-```
-TNote
-  ├── position  : float   position dans la mesure, en pas (0.0 = début)
-  ├── channel   : int     canal MIDI (0–15)
-  ├── pitch     : int     hauteur MIDI (0–127, 60 = Do4)
-  ├── velocity  : int     vélocité (0–127)
-  └── length    : float   durée en pas (ex. 1.0 = un pas, 4.0 = noire à 1/16)
-```
+---
 
-- En mode **Drum** : `pitch` = index du pad (0–15), `length` = durée du son (souvent 1 pas).
-- En mode **Synthé** : `pitch` = note MIDI absolue (calculée depuis gamme + octave).
-- En mode **Midi** : tous les champs transmis tels quels au périphérique MIDI.
-- Compatible export/import MIDI standard (SMF).
+## Note Repeat
 
-### Rack d'instruments (global)
+- Touche `Q` : activer/désactiver le mode Note Repeat
+- En mode actif, appuyer sur un pad déclenche le son en répétition au taux choisi
+- Touches 1–8 (clavier) : taux binaires (1/1 à 1/128)
+- Touche 9 : basculer binaire ↔ ternaire
+- Touches 1–6 (ternaire) : 1/3 à 1/96
+- Les répétitions peuvent être enregistrées dans le pattern (si Rec actif)
 
-Le Rack est **global et partagé par tous les patterns**. Il persiste indépendamment des patterns, comme dans Maschine+.
+---
 
-```
-Rack
-  └── slots[16]           Inst 01 – Inst 16
-        ├── index         : int (0–15)
-        ├── type          : kit | synth | loop | audio | midi_file | midi_port
-        ├── name          : str          (ex. "808 Kit", "Piano", "Synth ext.")
-        └── config        : dict         (dépend du type)
+## Enregistrement
 
-  Type kit       → { "samples": ["1.wav", …, "16.wav"] }
-  Type synth     → { "patch": "Piano",
-                     "scale": "major", "root_note": "C3",
-                     "cache": {(scale, octave): [pygame.Sound × 16]} }
-  Type loop      → { "file": "bassline.wav", "sync_bpm": true }
-  Type audio     → { "file": "vocal.wav", "loop": false }
-  Type midi_file → { "file": "bassline.mid" }
-  Type midi_port → { "port": "Synth MIDI Out", "channel": 0 }
-```
+### Mode Overdub (R)
+- Ajoute les nouvelles notes sans effacer les existantes
+- Démarre aussi la lecture si elle n'est pas active
 
-**Correspondance type Instrument ↔ type Track :**
+### Mode Remplacement (Shift+R)
+- Efface les notes au fil du playback, remplacées par les nouvelles frappes
 
-Le `track_type` d'une piste correspond au type de l'instrument chargé dans son slot. Les 6 types sont communs aux deux :
+### Count-In (Ctrl+R)
+- 1 mesure de métronome, puis Rec+Play démarre automatiquement
+- La première frappe pendant le Count-In est capturée sur le premier temps
 
-| Type | Instrument (Rack) | Comportement NumPad / lecture |
-|---|---|---|
-| **kit** | 16 WAVs indépendants | chaque pad = son différent |
-| **synth** | Patch + pitch shifting | chaque pad = hauteur de gamme |
-| **loop** | WAV synchronisé BPM | lecture / stop de la boucle |
-| **audio** | WAV one-shot ou libre | déclenche le sample |
-| **midi_file** | Fichier MIDI (.mid) | lit le fichier sur la piste |
-| **midi_port** | Port MIDI externe | envoie TNote au périphérique |
+### Mode Erase (E)
+- NumPad 1–8 : efface l'événement le plus proche du temps d'appui sur ce pad
+- Fonctionne en temps réel pendant la lecture
+- Prend en charge la plage de notes MIDI tenues (effacement par plage)
 
-**Règles du Rack :**
-- On peut charger un nouvel instrument dans un slot **sans modifier les données des patterns**.
-- Pour les slots `synth` : seule la gamme/octave active est pré-calculée ; les autres sont calculées à la demande et mises en cache.
+---
 
-**Hiérarchie de chargement :**
+## Volume et Pan
 
-| Action | Slots affectés | Patterns affectés |
-|---|---|---|
-| Charger un instrument | **1 slot** seulement | aucun |
-| Charger un pattern | Les slots référencés par ses pistes | 1 pattern |
-| Charger un projet | **Les 16 slots** (Rack complet) | tous les patterns |
+### Global
+- Volume global : 0..100 (Ctrl+↑/↓)
+- Pan global : -100..+100 (Ctrl+←/→, Ctrl+0 pour centrer)
 
-### Structures patterns et projet
+### Par pad (Voice Manager)
+- Volume : 0..100 (Alt+↑/↓)
+- Pan : -100..+100 (Alt+←/→, Alt+0)
+- Mute / Solo (X, S)
+- Durée en ms (configurable via PadPropertiesDialog)
 
-```
-Patch (descripteur d'un instrument Synth sur disque)
-  ├── name        : str
-  ├── loop        : bool
-  ├── loop_start  : float | None   (secondes)
-  ├── loop_end    : float | None
-  └── samples[]
-        ├── file  : str            (ex. "C3.wav")
-        └── root  : str            (note racine MIDI, ex. "C3" = 48)
+### Par piste (TrackRouter)
+- Volume : 0..100 (Alt+↑/↓ depuis la liste des pistes)
+- Pan : -100..+100 (Alt+←/→)
+- Mute (X) / Solo (S) par piste
+- Appliqués en facteur multiplicatif lors du dispatch audio
 
-Pattern (Séquence)
-  ├── id          : 1–99
-  ├── bpm         : float
-  └── tracks[8]
-        ├── instrument_slot : int  (0–15, référence dans le Rack global)
-        ├── track_type      : kit | synth | loop | audio | midi_file | midi_port
-        ├── mode            : pad | keyboard | chord | steps
-        ├── scale           : str  (si keyboard/chord, peut surcharger le slot)
-        ├── root_note       : str  (si keyboard/chord)
-        └── measures[1–128]
-              └── notes[]   : list[TNote]  (liste libre, non limitée à num_steps)
+---
 
-Song
-  ├── id          : 1–16
-  └── sequence_ids[] : liste ordonnée de Pattern.id
-```
+## BPM
 
-> La grille 16×16 de l'interface (mode Steps) est une **vue quantisée** de la liste `notes[]`.
-> Cocher une case = ajouter un TNote à `position` correspondante.
-> Décocher = supprimer le TNote à cette position.
+- Plage : non bornée en code (valeur par défaut 100)
+- Raccourcis : `(` ou `5` → BPM+5 ; `)` → BPM-5
+- Stocké par pattern dans `_bpm`
+- Affiché et éditable via PatternPropertiesDialog
 
-### Fichier projet (`.grp`)
+---
 
-Extension propriétaire `.grp` (GroovyboxIt Project), format JSON interne.
+## Pitch Shifting (`pyrubberband`)
+
+- Algorithme : Rubber Band (C++), bindings Python via `pyrubberband`
+- Pitch pur : **pas de changement de durée** (phase vocoder / WSOLA)
+- Pré-calcul de toutes les notes de la gamme au chargement d'un patch
+- Si la gamme ou l'octave change, le pré-calcul est relancé en arrière-plan
+- Cache par `(midi_note, duration_ms)` → `pygame.Sound`
+
+---
+
+## Points de bouclage et cross-fading
+
+### Détection (`AudioTools.find_loop_points`)
+- Analyse la fin du sample (queue) par corrélation avec le reste du signal
+- Paramètres : `tail_ratio` (part analysée, défaut 15%) et `min_corr` (seuil, défaut 0.98)
+- Retourne `(loop_start, loop_end)` en secondes, ou `None` si aucun point valide
+- Cross-fade aux points de bouclage : appliqué lors du pré-calcul dans `SynthEngine`
+
+### Script `tools/find_loop_points.py`
+- Analyse tous les samples d'un patch et met à jour `patch.json` (`loop_start`/`loop_end` par sample)
+- Option `--dry-run` : affiche les résultats sans modifier le fichier
+- Options : `--tail`, `--min-corr`
+
+*Statut : détection implémentée, cross-fade appliqué dans SynthEngine. Interface graphique d'édition manuelle non terminée.*
+
+---
+
+## Sérialisations — Fichiers JSON
+
+### Preset (`presets/preset_01.json`)
 
 ```json
 {
   "version": 1,
   "rack": {
     "slots": [
-      { "index": 0, "type": "kit",       "name": "808 Kit",
-        "config": { "samples": ["1.wav", "..."] } },
-      { "index": 1, "type": "synth",     "name": "Piano",
-        "config": { "patch": "Piano", "scale": "major", "root_note": "C3" } },
-      { "index": 2, "type": "loop",      "name": "Bass loop",
-        "config": { "file": "bassline.wav", "sync_bpm": true } },
-      { "index": 3, "type": "midi_file", "name": "Seq MIDI",
-        "config": { "file": "sequence.mid" } },
-      { "index": 4, "type": "midi_port", "name": "Synth ext.",
-        "config": { "port": "Synth MIDI Out", "channel": 0 } }
+      { "index": 0, "type": "kit",   "name": "TR-707",
+        "config": { "kit": "/chemin/tr_707.json" } },
+      { "index": 1, "type": "synth", "name": "Piano",
+        "config": { "patch": "/chemin/Piano" } }
     ]
   },
   "patterns": [
     {
-      "id": 1, "bpm": 120,
-      "tracks": [
-        { "instrument_slot": 0, "track_type": "kit",  "mode": "steps",
-          "measures": [ { "notes": [
-            { "pos": 0, "ch": 0, "pitch": 36, "vel": 100, "len": 1 }
-          ]} ] },
-        { "instrument_slot": 1, "track_type": "synth", "mode": "keyboard",
-          "scale": "major", "root_note": "C3",
-          "measures": [ { "notes": [] } ] }
-      ]
-    }
-  ],
-  "songs": []
+      "name": "",
+      "bpm": 100,
+      "num_bars": 1,
+      "num_steps": 16,
+      "start_bar": 0,
+      "looping": true,
+      "track_slots":   [0, 0, 0, 0, 0, 0, 0, 0],
+      "track_mutes":   [false, …],
+      "track_solos":   [false, …],
+      "track_volumes": [100, …],
+      "track_pans":    [0, …],
+      "curpattern":    [[[[0, 0, …], …], …], …],
+      "voices":        [{ "name": "", "volume": 100, "pan": 0, "mute": false,
+                          "solo": false, "duration_ms": 500 }, …],
+      "kit_tape":   [[track, bar, step, note_midi, vel, dur_ms], …],
+      "patch_tape": [[track, bar, step, note_midi, vel, dur_ms], …]
+    },
+    …
+  ]
+}
+```
+
+- Le preset sauvegarde l'intégralité des 99 patterns + le rack complet.
+- Chargé au démarrage via `_load_preset()`, sauvegardé via `_save_preset()` (Alt+W).
+
+### Kit (`data/kits/tr_707.json`)
+
+```json
+{
+  "name": "TR-707",
+  "pads": [
+    { "pad": 1, "note": 35, "filename": "/chemin/35_BassDrum2.wav", "label": "Kick 2" },
+    …
+  ]
+}
+```
+
+### Patch (`/PATCHS/Piano/patch.json`)
+
+```json
+{
+  "name": "Piano",
+  "loop": false,
+  "loop_start": null,
+  "loop_end": null,
+  "samples": [
+    { "file": "01_C1.wav", "root": "C1" },
+    …
+  ]
 }
 ```
 
 ---
 
-## Organisation des fichiers source (cible)
+## Interface graphique
 
-```
-groovyboxit/
-├── media/              # sons drum + métronome
-├── synths/             # patches synthé (Piano/, Rhodes/, Organ/…)
-├── main.py
-├── src/
-│   ├── pattern.py
-│   ├── drum_player.py
-│   ├── sound_manager.py
-│   ├── voice_manager.py
-│   ├── synth_engine.py     # pitch shifting, gestion patches
-│   └── ui/
-│       ├── main_window.py
-│       └── dialogs.py
-└── data/
-    └── presets/        # presets JSON
-```
+### Fenêtre principale — widgets
+
+| Widget | Type | Description |
+|---|---|---|
+| Grille | CheckBox 16×16 | Séquenceur pas-à-pas |
+| Liste Quantisation | ListBox | Valeurs de quant (1/1 à 1/128) |
+| Liste Patterns | ListBox | 99 patterns (Pattern 01–99) |
+| Liste Mode | ListBox | Mode Pad / Mode Keyboard |
+| Liste Gammes | ListBox | Gammes disponibles |
+| Liste Slots | ListBox | 16 slots du Rack |
+| Liste Pistes | ListBox | 8 pistes du pattern courant |
+| Liste Pads | ListBox | 16 pads de la piste courante |
+| Liste Vel Level | ListBox | Niveaux de quantification vélocité MIDI |
+| Liste MIDI Ports | ListBox | Ports MIDI in disponibles |
+
+### Grille (séquenceur)
+
+- 16 lignes (pads) × 16 colonnes (pas)
+- Cases à cocher — accessibles au lecteur d'écran
+- Navigation clavier : flèches, Entrée (cocher/décocher + jouer la ligne), Shift+Entrée (décocher + jouer)
+- Autoplay : cocher/décocher une case rejoue automatiquement la ligne courante
+- La valeur d'une case = vélocité (0 ou 1–127)
+
+### Gestion du focus et Enter sur ListBox (GTK)
+
+Sur Linux/GTK, la touche Entrée sur une `wx.ListBox` est interceptée par GTK et transformée en `EVT_LISTBOX_DCLICK` **avant** qu'elle n'atteigne `EVT_CHAR_HOOK`. Solution utilisée : handler `EVT_LISTBOX_DCLICK` avec `wx.GetKeyState(wx.WXK_RETURN)` pour distinguer Entrée d'un vrai double-clic.
 
 ---
 
-## Sauvegarde des données
-- Persistance : fichier projet `.grp` (format JSON, contient Rack + patterns + songs).
+## Boîtes de dialogue
 
-## Interface
+| Classe | Déclencheur | Description |
+|---|---|---|
+| `KeyboardHelpDialog` | F1 | Aide raccourcis clavier |
+| `GenRowDialog` | Ctrl+Shift+E | Générer un motif sur la ligne + choisir la quant |
+| `QuantizeDialog` | Ctrl+Shift+Q | Choisir la valeur de quantisation + appliquer au pattern |
+| `SavePatternDialog` | Ctrl+Shift+W | Sauvegarder le pattern sous un nouveau nom |
+| `TrackPropertiesDialog` | Ctrl+T / Entrée sur piste | Propriétés de la piste (slot, volume, pan, mute, solo) |
+| `PatternPropertiesDialog` | Alt+Entrée sur pattern | Propriétés du pattern (nom, BPM, mesures, pas) |
+| `PadPropertiesDialog` | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée) |
+| `ExplorerDialog` | Alt+X | Sélection du type de ressource à charger |
 
-### Éléments principaux
-- Grille 16×16 de cases à cocher (accessibilité lecteur d'écran).
-- Mode d'entrée sélectionnable par liste déroulante + Ctrl+1/2/3/4.
-- Navigation clavier complète (flèches, Entrée, raccourcis).
+### ExplorerDialog (Alt+X)
 
-### Liste des Slots (Rack)
-- Liste déroulante affichant les 16 slots avec le nom de l'instrument associé.
-- Si le slot est vide : affiche `"Empty"`.
-- Exemple : `01 - 808 Kit`, `02 - Piano`, `03 - Empty`, …
+ListBox avec 4 items :
+- **Preset** : ouvre un FileDialog dans `presets_dir`, charge le fichier `.json` sélectionné
+- **Kit** : ouvre un FileDialog dans `kits_dir`, affecte le kit au slot courant
+- **Patch** : ouvre un FileDialog dans `patches_dir`, affecte le patch au slot courant (SYNTH)
+- **Sound** : ouvre un FileDialog dans `samples_dir`, remplace le WAV du pad courant
 
-### Explorateur (Alt+X)
-Boîte de dialogue permettant de naviguer et charger des ressources sonores.
+Le double-clic sur un item valide directement la sélection (`EVT_LISTBOX_DCLICK → EndModal(ID_OK)`).
 
-- **Navigation par** : Projet, Type d'instrument (Kit / Synth / Loop / Audio / Midi), Pattern, Fichier.
-- **Preview** : pré-écoute de l'instrument ou du pattern sélectionné.
-- **Autoplay** : navigation automatique avec ou sans preview.
-- Chargement dans le slot courant ou dans un slot choisi.
+---
 
-### Liste des Tracks
-- Liste déroulante affichant les pistes de la séquence courante.
+## Chargement des ressources
 
-### Propriétés de Piste (Ctrl+T)
-Boîte de dialogue de configuration d'une piste.
+### Preset
+1. `rack.from_dict(data["rack"])` — restaure les 16 slots
+2. `_pattern_list[i].from_dict(p)` pour chaque pattern
+3. Pour chaque slot KIT distinct utilisé par les pistes : `_load_kit_slot(slot_idx)`
+4. Pour le slot de la piste courante si SYNTH : `_router.load_slot_preview(cur_slot)`
+5. `_router.clear_slot_synths()` — invalide le cache des moteurs SYNTH
 
-| Paramètre | Valeurs |
+### Kit
+- `sound_manager.load_kit(json_path)` → met à jour `drum_sounds[16]` et `note_map`
+- Labels des pads mis à jour dans `voice_manager`
+
+### Patch
+- `_router.reload_slot(slot_idx)` → invalide l'ancien moteur, crée un `SynthEngine`, pré-calcule
+- Toutes les pistes utilisant ce slot bénéficient du nouveau moteur
+
+### Sound (sample individuel)
+- `sound_manager.load_pad_sound(pad_idx, wav_path)` → remplace `drum_sounds[pad_idx]`
+- `voice_manager.set_name(pad_idx, nom)` + mise à jour de `_media_lst`
+
+---
+
+## Gestion MIDI
+
+### MidiManager
+- Détection et connexion des ports MIDI in via `rtmidi`
+- Callback `on_note_on(note, velocity, channel)` / `on_note_off(note, channel)`
+- Thread de lecture MIDI indépendant
+
+### MidiHandler (logique extraite de MainWindow)
+- `on_note_on` / `on_note_off` : dispatch selon le mode (Pad, Keyboard)
+- Mode Pad : mapping note MIDI → pad via `note_map` du SoundManager
+- Mode Keyboard : jeu sur les notes de la gamme (`kb_notes`)
+- Note Repeat MIDI : répétition au taux sélectionné
+- Erase MIDI : effacement par plage de notes tenues
+- Vel Level : quantification de la vélocité entrante
+
+### kit_tape / patch_tape
+- Capture MIDI brute pendant l'enregistrement
+- `kit_tape` : note MIDI brute (indépendante du kit_offset) → `play_note(midi_note)`
+- `patch_tape` : note MIDI absolue + durée réelle → `engine.play(midi_note, dur)`
+
+---
+
+## Raccourcis clavier
+
+Liste complète dans `docs/shortcuts.md`.
+
+Catégories principales :
+- Preset (Alt+W, Alt+Shift+W)
+- Pattern (Ctrl+W/D/P/F/Shift+P/F)
+- Quantisation (Ctrl+E/Q, Shift+E/Q)
+- Lecture (Espace, P, V, C, Q)
+- Mute/Solo pads et pistes (X, S, Shift+X/S)
+- Volume/Pan pad (Alt+flèches)
+- Enregistrement (R, Shift+R, Ctrl+R)
+- Erase (E)
+- Note Repeat (Q, touches 1–9)
+- BPM/Volume/Pan global
+- Navigation grille (flèches, Entrée)
+- NumPad (1–9, Entrée, 0, +, -)
+- Mode Keyboard (Ctrl+1/2, NumPad+/-/×/÷)
+- Patterns (Alt+Entrée, double-clic)
+- Slots (double-clic)
+- Pistes (Ctrl+T, Shift+D, Entrée)
+- MIDI (Alt+M, Alt+Shift+M)
+- Aide (F1)
+
+---
+
+## Tests unitaires
+
+Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
+
+| Fichier | Couvre |
 |---|---|
-| **Entrée** | Keyboard interne / Audio / Midi_port |
-| **Sortie** | Type d'instrument (kit / synth / loop / audio / midi_file / midi_port) |
-| **Canal** | 1 – 16 |
-| **Bank MIDI / Slot** | selon la sortie |
-| **Preset MIDI** | selon la sortie |
-| **Patch** | 0 – 128 |
-| **Velocity** | 0 – 127 |
-| **Volume** | 0 – 100 |
-| **Pan** | -100 – +100 |
+| `test_app_launch.py` | Démarrage de l'application |
+| `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
+| `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
+| `test_key_manager.py` | Raccourcis clavier, Shift+D, Enter grille, Enter ListBox |
+| `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
+| `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
+| `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |
+| `test_pattern.py` | Pattern : création, reset, resize, double/halve, random |
+| `test_pattern_properties_dialog.py` | PatternPropertiesDialog : BPM, mesures, pas |
+| `test_pattern_serialization.py` | to_dict / from_dict (round-trip) |
+| `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern |
+| `test_synth_engine.py` | SynthEngine : chargement patch, pré-calcul, lecture |
+| `test_synth_utils.py` | Utilitaires : scale_midi_notes, midi_to_note_name |
+| `test_tape.py` | kit_tape / patch_tape : enregistrement, sérialisation |
+| `test_track_properties_dialog.py` | TrackPropertiesDialog : slot, volume, pan |
+| `test_track_router.py` | TrackRouter : routing, mute/solo, SynthEngine cache |
+| `test_voice_manager.py` | VoiceManager : volume, pan, mute, solo, durée |
 
-### Raccourcis interface
-| Raccourci | Action |
-|---|---|
-| Alt+X | Ouvrir l'Explorateur |
-| Ctrl+T | Ouvrir les Propriétés de la piste courante |
-| Ctrl+1/2/3/4 | Basculer entre les modes Pad / Keyboard / Chord / Steps |
+---
 
-## Points ouverts
-- **MIDI** : entrée pad MIDI externe, MIDI Clock entrant/sortant.
-- **Détection de points de bouclage** : librairie à identifier.
-- **Mode Chord** : définition précise des voicings et inversions d'accords.
-- **Synchronisation** : MIDI Clock entrant/sortant.
+## Outils
+
+### `tools/extract_gm_drums.py`
+
+Extrait les 47 sons de batterie GM (notes 35–81) depuis un soundfont SF2 via FluidSynth, et génère le fichier kit JSON correspondant.
+
+```
+Usage:
+  python3 tools/extract_gm_drums.py
+  python3 tools/extract_gm_drums.py --sf2 /chemin/soundfont.sf2
+  python3 tools/extract_gm_drums.py --out /répertoire/sortie
+  python3 tools/extract_gm_drums.py --duration 3000
+```
+
+- SF2 par défaut : `/usr/share/sounds/sf2/FluidR3_GM.sf2`
+- Génère : un WAV par note + un fichier `kit_gm.json`
+
+### `tools/find_loop_points.py`
+
+Détecte les points de bouclage d'un patch et met à jour `patch.json`.
+
+```
+Usage:
+  python3 tools/find_loop_points.py synths/Organ_B3
+  python3 tools/find_loop_points.py synths/Organ_B3 --dry-run
+  python3 tools/find_loop_points.py synths/Organ_B3 --tail 0.20 --min-corr 0.95
+```
+
+- Analyse chaque sample via `AudioTools.find_loop_points()`
+- Met à jour `loop_start` / `loop_end` dans `patch.json` par sample
+- Si au moins un point trouvé, passe `"loop": true`
+
+---
+
+## Points ouverts / Phase 4
+
+- **Mode Song** : liste ordonnée de patterns à enchaîner
+- **MIDI Clock** : synchronisation entrante/sortante
+- **Slots LOOP / AUDIO / MIDI_FILE / MIDI_PORT** : types définis, non implémentés
+- **Mode Chord** : voicings d'accords sur la gamme courante
+- **Explorateur graphique avancé** : navigation arborescente par type, preview sonore
+- **Interface édition points de bouclage** : visualisation forme d'onde, édition manuelle loop_start/loop_end
