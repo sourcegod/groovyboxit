@@ -28,6 +28,7 @@ class PygameDriver:
 
     def __init__(self):
         pygame.init()
+        self._mixer_freq = None   # détecté au premier make_sound_from_array
 
     # ------------------------------------------------------------------
     # Chargement
@@ -62,6 +63,44 @@ class PygameDriver:
     # ------------------------------------------------------------------
     # Contrôle du volume
     # ------------------------------------------------------------------
+
+    def make_sound_from_array(self, data: np.ndarray, sr: int) -> pygame.mixer.Sound:
+        """Convertit un tableau numpy en pygame.Sound (resampling + int16 + stéréo)."""
+        if self._mixer_freq is None:
+            self._mixer_freq, _, _ = pygame.mixer.get_init()
+            pygame.mixer.set_num_channels(32)
+        # Resampling si le taux diffère du mixer
+        if sr != self._mixer_freq and self._mixer_freq:
+            ratio = self._mixer_freq / sr
+            n_out = max(1, round(len(data) * ratio))
+            if data.ndim == 1:
+                data = np.interp(
+                    np.linspace(0, len(data) - 1, n_out),
+                    np.arange(len(data)), data,
+                )
+            else:
+                data = np.column_stack([
+                    np.interp(np.linspace(0, len(data) - 1, n_out),
+                              np.arange(len(data)), data[:, ch])
+                    for ch in range(data.shape[1])
+                ])
+        # Normalisation douce
+        peak = np.max(np.abs(data))
+        if peak > 0:
+            data = data / peak * 0.5
+        arr = (data * 32767).clip(-32768, 32767).astype(np.int16)
+        # Forcer stéréo
+        if arr.ndim == 1:
+            arr = np.column_stack([arr, arr])
+        elif arr.shape[1] == 1:
+            arr = np.column_stack([arr[:, 0], arr[:, 0]])
+        elif arr.shape[1] > 2:
+            arr = arr[:, :2]
+        return pygame.sndarray.make_sound(np.ascontiguousarray(arr))
+
+    def stop_sound(self, sound: pygame.mixer.Sound):
+        """Arrête la lecture du pygame.Sound donné."""
+        sound.stop()
 
     def set_sound_volume(self, sound: pygame.mixer.Sound, vol_norm: float):
         """Règle le volume d'un son de façon persistante (0.0..1.0)."""

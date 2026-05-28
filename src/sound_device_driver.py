@@ -192,6 +192,30 @@ class SoundDeviceDriver:
         with self._lock:
             self._voices.clear()
 
+    def make_sound_from_array(self, data: np.ndarray, sr: int) -> "SdSound":
+        """Convertit un tableau numpy en SdSound (float32 stéréo, resample si besoin)."""
+        data = data.astype(np.float32)
+        # Normalisation douce
+        peak = np.max(np.abs(data))
+        if peak > 0:
+            data = data / peak * 0.5
+        # Forcer stéréo
+        if data.ndim == 1:
+            data = np.column_stack([data, data])
+        elif data.shape[1] == 1:
+            data = np.column_stack([data[:, 0], data[:, 0]])
+        elif data.shape[1] > 2:
+            data = data[:, :2]
+        # Resample si nécessaire
+        if sr != self._sr:
+            data = self._resample(data, sr, self._sr)
+        return SdSound(data, self._sr)
+
+    def stop_sound(self, sound: "SdSound"):
+        """Arrête la lecture du SdSound donné (retire les voix correspondantes)."""
+        with self._lock:
+            self._voices = [v for v in self._voices if v.data is not sound.data]
+
     def set_sound_volume(self, sound, vol_norm: float):
         """No-op : le volume est appliqué au moment de play(), pas de façon persistante."""
         pass

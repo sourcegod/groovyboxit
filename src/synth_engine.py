@@ -11,7 +11,6 @@ import json
 import numpy as np
 import soundfile as sf
 import pyrubberband as rb
-import pygame
 from audio_tools import AudioTools
 
 
@@ -90,15 +89,18 @@ class SynthEngine:
 
     SUSTAIN_SECONDS = 8    # durée max du buffer de sustain pré-rendu
 
-    def __init__(self, synths_dir):
+    def __init__(self, synths_dir, driver=None):
+        if driver is None:
+            from pygame_driver import PygameDriver
+            driver = PygameDriver()
+        self._driver      = driver
         self._synths_dir  = synths_dir
         self._patch_name  = None
         self._patch_meta  = {}
         self._samples     = []    # [{"root_midi","data","sr","path","loop_start","loop_end"}]
         self._raw_cache   = {}    # {midi_note: (data, sr)} — pitch-shifté, pleine durée
-        self._cache       = {}    # {(midi_note, duration_ms): pygame.Sound}
+        self._cache       = {}    # {(midi_note, duration_ms): sound}
         self._loop        = False
-        self._mixer_freq  = None  # fréquence du mixer pygame (vérifiée au 1er usage)
 
     # ------------------------------------------------------------------
     # Chargement de patch
@@ -183,46 +185,9 @@ class SynthEngine:
             return None
         return min(self._samples, key=lambda s: abs(s["root_midi"] - midi_note))
 
-    def _to_pygame_sound(self, data, sr):
-        """Convertit un tableau numpy float64 en pygame.Sound 16-bit stéréo."""
-        # Vérification (une seule fois) de la cohérence avec le mixer
-        if self._mixer_freq is None:
-            self._mixer_freq, _, _ = pygame.mixer.get_init()
-            pygame.mixer.set_num_channels(32)
-
-        # Rééchantillonnage si le WAV n'est pas à la fréquence du mixer
-        if sr != self._mixer_freq and self._mixer_freq:
-            ratio = self._mixer_freq / sr
-            n_out = max(1, round(len(data) * ratio))
-            if data.ndim == 1:
-                data = np.interp(
-                    np.linspace(0, len(data) - 1, n_out),
-                    np.arange(len(data)),
-                    data,
-                )
-            else:
-                data = np.column_stack([
-                    np.interp(np.linspace(0, len(data) - 1, n_out),
-                              np.arange(len(data)), data[:, ch])
-                    for ch in range(data.shape[1])
-                ])
-
-        # Normalisation douce
-        peak = np.max(np.abs(data))
-        if peak > 0:
-            data = data / peak * 0.5
-
-        arr = (data * 32767).clip(-32768, 32767).astype(np.int16)
-
-        # Forcer stéréo (pygame attend 2 canaux par défaut)
-        if arr.ndim == 1:
-            arr = np.column_stack([arr, arr])
-        elif arr.shape[1] == 1:
-            arr = np.column_stack([arr[:, 0], arr[:, 0]])
-        elif arr.shape[1] > 2:
-            arr = arr[:, :2]
-
-        return pygame.sndarray.make_sound(np.ascontiguousarray(arr))
+    def _make_sound(self, data, sr):
+        """Délègue la création du son (numpy → sound object) au driver."""
+        return self._driver.make_sound_from_array(data, sr)
 
     def _build_looped_data(self, data, sr, loop_start, loop_end):
         """
@@ -301,7 +266,7 @@ class SynthEngine:
             return None
         trimmed = self._apply_duration(data, sr, duration_ms) \
                   if duration_ms > 0 else data
-        sound = self._to_pygame_sound(trimmed, sr)
+        sound = self._make_sound(trimmed, sr)
         self._cache[(midi_note, duration_ms)] = sound
         return sound
 
@@ -328,20 +293,14 @@ class SynthEngine:
         """Joue midi_note. maxtime_ms=0 → durée complète du WAV."""
         sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
-            return None
-        channel = sound.play(0)
-        if channel is not None and (volume_factor != 1.0 or pan != 0):
-            pan_norm = pan / 100.0
-            left  = volume_factor * (1.0 - max(0.0, pan_norm))
-            right = volume_factor * (1.0 + min(0.0, pan_norm))
-            channel.set_volume(left, right)
-        return channel
+            return
+        self._driver.play(sound, volume_factor, pan)
 
     def stop(self, midi_note):
         """Arrête la note sustain (utile pour les instruments en loop)."""
         sound = self._cache.get((midi_note, 0))
         if sound:
-            sound.stop()
+            self._driver.stop_sound(sound)
 
     # ------------------------------------------------------------------
     # Informations

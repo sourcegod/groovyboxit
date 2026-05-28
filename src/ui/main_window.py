@@ -3,6 +3,7 @@ import os
 import threading
 import wx
 from sound_manager import SoundManager
+from sound_device_driver import SoundDeviceDriver
 from drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
@@ -82,6 +83,7 @@ class MainWindow(wx.Frame):
         self._router = TrackRouter(
             self._rack, self._synths_dir, self._snd,
             lambda msg: wx.CallAfter(self._show_status, msg),
+            driver=self._audio_driver,
         )
         self._player._on_track_play_cb = self._router.on_play
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
@@ -115,7 +117,8 @@ class MainWindow(wx.Frame):
         click1 = os.path.join(media_dir, "hi_wood_block_mono.wav")
         click2 = os.path.join(media_dir, "low_wood_block_mono.wav")
         self._media_lst = media_lst
-        self._snd = SoundManager(media_lst, click1, click2)
+        self._audio_driver = SoundDeviceDriver()
+        self._snd = SoundManager(media_lst, click1, click2, driver=self._audio_driver)
         # Les sons du kit sont chargés plus tard par _load_kit_slot()
         self._player = DrumPlayer(self._snd)
         self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
@@ -593,6 +596,7 @@ class MainWindow(wx.Frame):
 
     def _on_close(self, event):
         self._midi.close()
+        self._audio_driver.close()
         event.Skip()
 
     # ------------------------------------------------------------------

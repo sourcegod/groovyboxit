@@ -24,7 +24,7 @@ from synth_engine import scale_midi_notes
 class FakeSynthEngine:
     """Remplace SynthEngine — aucun fichier audio chargé."""
 
-    def __init__(self, synths_dir=None):
+    def __init__(self, synths_dir=None, driver=None):
         self._loaded     = False
         self._cache      = {}
         self._played     = []   # (midi, vol, pan)

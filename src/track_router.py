@@ -36,11 +36,12 @@ class TrackRouter:
     KB_NUMPAD_NOTES = 16   # notes de gamme pour les Numpads (8 touches × 2 banques)
     KB_MIDI_NOTES   = 25   # notes de gamme pour le clavier MIDI (à étendre plus tard)
 
-    def __init__(self, rack, synths_dir, sound_manager, status_cb):
+    def __init__(self, rack, synths_dir, sound_manager, status_cb, driver=None):
         self._rack       = rack
         self._synths_dir = synths_dir
         self._snd        = sound_manager
         self._status_cb  = status_cb
+        self._driver     = driver   # propagé aux SynthEngine
 
         self._track_slots    = [0] * self.NUM_TRACKS
         self._track_mutes    = [False] * self.NUM_TRACKS
@@ -132,7 +133,7 @@ class TrackRouter:
         patch_name = slot.config.get("patch", "")
         if not patch_name:
             return
-        engine = SynthEngine(self._synths_dir)
+        engine = SynthEngine(self._synths_dir, driver=self._driver)
         self._slot_synths[slot_idx] = engine
         notes = self.kb_notes[:]
         def run():
@@ -185,7 +186,7 @@ class TrackRouter:
         if (self._synth is None
                 or self._synth in self._slot_synths.values()
                 or self._synth is self._kit_synth):
-            self._synth = SynthEngine(self._synths_dir)
+            self._synth = SynthEngine(self._synths_dir, driver=self._driver)
         self._synth_slot_idx = slot_idx
         self._status_cb(f"Chargement du patch '{patch_name}'…")
         engine = self._synth
@@ -299,7 +300,7 @@ class TrackRouter:
         if not wav_path:
             return
         if self._kit_synth is None:
-            self._kit_synth = SynthEngine(self._synths_dir)
+            self._kit_synth = SynthEngine(self._synths_dir, driver=self._driver)
 
         if self._kb_kit_pad != pad_idx:
             self._kb_kit_pad = pad_idx
