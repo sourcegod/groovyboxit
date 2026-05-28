@@ -17,6 +17,7 @@ from ui.dialogs import (
     TrackPropertiesDialog,
     PatternPropertiesDialog,
     PadPropertiesDialog,
+    ExplorerDialog,
 )
 from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
@@ -952,9 +953,37 @@ class MainWindow(wx.Frame):
         self._show_status("Kit: sons media par défaut")
 
     def _open_explorer(self):
-        start = self._patches_dir if os.path.isdir(self._patches_dir) \
-                else (self._synths_dir if os.path.isdir(self._synths_dir) else os.path.expanduser("~"))
-        dlg = wx.FileDialog(self, "Choisir un fichier patch (*.json)",
+        dlg = ExplorerDialog(self)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        choice = dlg.get_selection()
+        dlg.Destroy()
+        if choice == "Kit":
+            self._explorer_kit()
+        elif choice == "Patch":
+            self._explorer_patch()
+        elif choice == "Sound":
+            self._explorer_sound()
+
+    def _explorer_kit(self):
+        start = self._kits_dir if os.path.isdir(self._kits_dir) else os.path.expanduser("~")
+        dlg = wx.FileDialog(self, "Choisir un kit (*.json)",
+                            defaultDir=start,
+                            wildcard="Kit JSON (*.json)|*.json",
+                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            json_path = dlg.GetPath()
+            kit_name  = os.path.splitext(os.path.basename(json_path))[0]
+            self._rack.set_slot(self._cur_slot, InstrumentType.KIT,
+                                kit_name, {"kit": json_path})
+            self._update_slot_list()
+            self._load_kit_slot(self._cur_slot)
+        dlg.Destroy()
+
+    def _explorer_patch(self):
+        start = self._patches_dir if os.path.isdir(self._patches_dir) else os.path.expanduser("~")
+        dlg = wx.FileDialog(self, "Choisir un patch (*.json)",
                             defaultDir=start,
                             wildcard="Patch JSON (*.json)|*.json",
                             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
@@ -964,7 +993,25 @@ class MainWindow(wx.Frame):
             self._rack.set_slot(self._cur_slot, InstrumentType.SYNTH,
                                 patch_name, {"patch": json_path})
             self._update_slot_list()
-            self._router.load_slot_preview(self._cur_slot)
+            self._router.reload_slot(self._cur_slot)
+        dlg.Destroy()
+
+    def _explorer_sound(self):
+        start = self._samples_dir if os.path.isdir(self._samples_dir) else os.path.expanduser("~")
+        dlg = wx.FileDialog(self, "Choisir un sample (*.wav)",
+                            defaultDir=start,
+                            wildcard="Fichiers WAV (*.wav)|*.wav",
+                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            wav_path  = dlg.GetPath()
+            pad_name  = os.path.splitext(os.path.basename(wav_path))[0]
+            pad_idx   = self._cur_row
+            self._snd.load_pad_sound(pad_idx, wav_path)
+            if pad_idx < len(self._media_lst):
+                self._media_lst[pad_idx] = wav_path
+            self._player.voice_manager.set_name(pad_idx, pad_name)
+            self._refresh_pad_list()
+            self._show_status(f"Pad {pad_idx + 1}: {pad_name}")
         dlg.Destroy()
 
     def _refresh_voice_display(self, pad_idx):

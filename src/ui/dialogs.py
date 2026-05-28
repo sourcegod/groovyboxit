@@ -485,3 +485,33 @@ class PadPropertiesDialog(wx.Dialog):
     def get_mute(self):        return self._mute.GetValue()
     def get_solo(self):        return self._solo.GetValue()
     def get_duration_ms(self): return self._dur.GetValue()
+
+
+class ExplorerDialog(wx.Dialog):
+    """Choix du type de fichier à charger : Kit, Patch ou Sound."""
+    ITEMS = ["Kit", "Patch", "Sound"]
+
+    def __init__(self, parent):
+        super().__init__(parent, title="Explorateur")
+        self._listbox = wx.ListBox(self, choices=self.ITEMS, style=wx.LB_SINGLE)
+        self._listbox.SetSelection(0)
+
+        ok_btn = wx.Button(self, wx.ID_OK, "Ok")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._listbox, 1, wx.EXPAND | wx.ALL, 8)
+        vbox.Add(btn_sizer,     0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.SetSize((220, 160))
+        self.Centre()
+
+        self._listbox.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+        self._listbox.SetFocus()
+
+    def get_selection(self):
+        return self._listbox.GetStringSelection()

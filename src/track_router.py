@@ -147,6 +147,20 @@ class TrackRouter:
                 self._status_cb(f"Erreur slot {slot_idx + 1:02d}: {e}")
         threading.Thread(target=run, daemon=True).start()
 
+    def reload_slot(self, slot_idx):
+        """Invalide l'ancien moteur du slot et recharge le nouveau patch.
+        Toutes les pistes assignées à ce slot bénéficieront du nouveau moteur."""
+        self._slot_synths.pop(slot_idx, None)
+        if self._synth_slot_idx == slot_idx:
+            self._synth = None
+            self._synth_slot_idx = None
+        slot = self._rack.get_slot(slot_idx)
+        if slot.type != InstrumentType.SYNTH:
+            return
+        self._ensure_slot_synth(slot_idx)
+        self._synth          = self._slot_synths.get(slot_idx)
+        self._synth_slot_idx = slot_idx
+
     def load_slot_preview(self, slot_idx):
         """Charge slot_idx dans _synth pour la preview interactive."""
         slot = self._rack.get_slot(slot_idx)

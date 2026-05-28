@@ -33,6 +33,13 @@ class SoundManager(object):
                 for item in self.media_lst
         ]
 
+    def load_pad_sound(self, pad_idx, wav_path):
+        """Remplace le son du pad pad_idx par le WAV donné."""
+        snd = pygame.mixer.Sound(wav_path)
+        while len(self.drum_sounds) <= pad_idx:
+            self.drum_sounds.append(self._silent_sound())
+        self.drum_sounds[pad_idx] = snd
+
     #----------------------------------------
 
     def _silent_sound(self):
