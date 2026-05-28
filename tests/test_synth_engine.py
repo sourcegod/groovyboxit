@@ -2,7 +2,7 @@
 """
     File: test_synth_engine.py
     Test du SynthEngine avec un vrai fichier WAV :
-    chargement de patch, pitch shifting, cache, lecture pygame.
+    chargement de patch, pitch shifting, cache, lecture via SoundDeviceDriver.
     WAV source : /home/com/audiotest/a440.wav  (La4, MIDI 69, 440 Hz)
     Date: Fri, 16/05/2026
     Author: Coolbrother
@@ -15,8 +15,8 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import pygame
 import soundfile as sf
+from sound_device_driver import SoundDeviceDriver, SdSound
 from synth_engine import (
     SynthEngine, scale_midi_notes, midi_to_note_name, note_name_to_midi,
 )
@@ -52,7 +52,6 @@ def test_wav_info():
 
 def test_load_patch(engine, patch_dir):
     patch_name = os.path.basename(patch_dir)
-    synths_dir = os.path.dirname(patch_dir)
     engine.load_patch(patch_name)
     assert engine.is_loaded()
     assert engine._patch_name == "TestPatch"
@@ -72,10 +71,10 @@ def test_precompute_scale(engine):
 
 
 def test_get_sound(engine):
-    midi = note_name_to_midi("C4")
+    midi  = note_name_to_midi("C4")
     sound = engine.get_sound(midi)
     assert sound is not None
-    assert isinstance(sound, pygame.mixer.Sound)
+    assert isinstance(sound, SdSound)
     # 2e appel → depuis le cache
     sound2 = engine.get_sound(midi)
     assert sound is sound2, "Le 2e appel doit retourner le même objet (cache)"
@@ -104,12 +103,10 @@ if __name__ == "__main__":
         print(f"SKIP : fichier WAV introuvable ({WAV_SRC})")
         sys.exit(0)
 
-    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-    pygame.init()
-
+    drv       = SoundDeviceDriver()
     patch_dir = _make_temp_patch(WAV_SRC, ROOT_NOTE)
     try:
-        engine = SynthEngine(os.path.dirname(patch_dir))
+        engine = SynthEngine(os.path.dirname(patch_dir), driver=drv)
 
         test_wav_info()
         test_load_patch(engine, patch_dir)
@@ -121,4 +118,4 @@ if __name__ == "__main__":
         print("Tous les tests : OK")
     finally:
         shutil.rmtree(patch_dir, ignore_errors=True)
-        pygame.quit()
+        drv.close()

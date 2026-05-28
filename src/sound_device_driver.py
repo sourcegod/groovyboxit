@@ -2,7 +2,7 @@
 """
     File: src/sound_device_driver.py
     Moteur de playback audio polyphonique via sounddevice (PortAudio).
-    Remplacement progressif de pygame.mixer pour SoundManager.
+    Driver audio principal de l'application (remplace pygame.mixer).
     Date: Thu, 28/05/2026
     Author: Coolbrother
 """

@@ -1,8 +1,9 @@
 #python3
 """
     File: src/pygame_driver.py
-    Driver audio pygame.mixer — implémentation de référence pour SoundManager.
-    Même interface que SoundDeviceDriver pour une substitution transparente.
+    Driver audio pygame.mixer — backend optionnel / legacy.
+    Même interface que SoundDeviceDriver. Conservé pour référence et tests ;
+    n'est plus le driver par défaut de l'application (remplacé par SoundDeviceDriver).
     Date: Thu, 28/05/2026
     Author: Coolbrother
 """

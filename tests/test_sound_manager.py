@@ -1,8 +1,8 @@
 #python3
 """
     File: tests/test_sound_manager.py
-    Tests unitaires de SoundManager avec PygameDriver (défaut) et
-    SoundDeviceDriver. Vérifie que les deux backends donnent le même
+    Tests unitaires de SoundManager avec SoundDeviceDriver (défaut) et
+    PygameDriver (optionnel). Vérifie que les deux backends donnent le même
     comportement observable : chargement, note_map, play, stop, volume.
     Date: Thu, 28/05/2026
     Author: Coolbrother
@@ -62,10 +62,11 @@ def make_kit_json(wav_paths):
 # Initialisation — driver par défaut
 # ---------------------------------------------------------------------------
 
-def test_default_driver_is_pygame():
+def test_default_driver_is_sounddevice():
     sm = SoundManager(list(MEDIA16), CLICK1, CLICK2)
-    assert isinstance(sm._driver, PygameDriver)
-    print("  driver par défaut == PygameDriver : OK")
+    assert isinstance(sm._driver, SoundDeviceDriver)
+    sm._driver.close()
+    print("  driver par défaut == SoundDeviceDriver : OK")
 
 
 def test_click_sounds_loaded():
@@ -282,7 +283,7 @@ if __name__ == "__main__":
     print("=== test_sound_manager ===")
 
     # Init
-    test_default_driver_is_pygame()
+    test_default_driver_is_sounddevice()
     test_click_sounds_loaded()
 
     # Backend PygameDriver

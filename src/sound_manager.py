@@ -2,8 +2,8 @@
 """
     File: src/sound_manager.py
     Gestion des sons : chargement kits/pads, lecture, métronome.
-    Le backend audio est injecté via un driver (PygameDriver par défaut,
-    ou SoundDeviceDriver pour la migration progressive hors de pygame).
+    Le backend audio est injecté via un driver (SoundDeviceDriver par défaut).
+    PygameDriver reste disponible dans pygame_driver.py comme backend optionnel.
     Date: Thu, 28/05/2026
     Author: Coolbrother
 """
@@ -17,8 +17,8 @@ class SoundManager(object):
 
     def __init__(self, media_lst, click_name1, click_name2, driver=None):
         if driver is None:
-            from pygame_driver import PygameDriver
-            driver = PygameDriver()
+            from sound_device_driver import SoundDeviceDriver
+            driver = SoundDeviceDriver()
 
         self._driver     = driver
         self.media_lst   = media_lst
@@ -176,8 +176,8 @@ class SoundManager(object):
 
     def set_volume(self, volume):
         """Règle le volume global (0..100).
-        - PygameDriver  : applique le volume sur chaque son individuellement.
-        - SoundDeviceDriver : applique via master_volume.
+        - SoundDeviceDriver : applique via set_master_volume.
+        - PygameDriver (optionnel) : applique le volume sur chaque son individuellement.
         """
         vol_norm = volume / 100.0
         self._driver.set_master_volume(volume)

@@ -2,7 +2,7 @@
 """
     File: synth_engine.py
     Moteur Synthé : chargement de patch, pitch shifting (pyrubberband),
-    gestion des gammes, cache par note MIDI, lecture via pygame.
+    gestion des gammes, cache par note MIDI, lecture via SoundDeviceDriver.
     Date: Fri, 16/05/2026
     Author: Coolbrother
 """
@@ -84,15 +84,15 @@ class SynthEngine:
     """
     Charge un patch (répertoire de WAVs + patch.json), génère les sons
     à la note demandée par pitch shifting (pyrubberband) et les met en
-    cache comme pygame.Sound pour une lecture sans latence.
+    cache comme SdSound pour une lecture sans latence via SoundDeviceDriver.
     """
 
     SUSTAIN_SECONDS = 8    # durée max du buffer de sustain pré-rendu
 
     def __init__(self, synths_dir, driver=None):
         if driver is None:
-            from pygame_driver import PygameDriver
-            driver = PygameDriver()
+            from sound_device_driver import SoundDeviceDriver
+            driver = SoundDeviceDriver()
         self._driver      = driver
         self._synths_dir  = synths_dir
         self._patch_name  = None
@@ -260,7 +260,7 @@ class SynthEngine:
         return out
 
     def _build_sound(self, midi_note, duration_ms):
-        """Crée et met en cache le pygame.Sound pour (midi_note, duration_ms)."""
+        """Crée et met en cache le son pour (midi_note, duration_ms)."""
         data, sr = self._get_raw(midi_note)
         if data is None:
             return None
@@ -271,7 +271,7 @@ class SynthEngine:
         return sound
 
     def get_sound(self, midi_note, duration_ms=500):
-        """Retourne le pygame.Sound pour (midi_note, duration_ms), avec cache."""
+        """Retourne le son pour (midi_note, duration_ms), avec cache."""
         key = (midi_note, duration_ms)
         return self._cache.get(key) or self._build_sound(midi_note, duration_ms)
 
