@@ -192,6 +192,10 @@ class SoundDeviceDriver:
         with self._lock:
             self._voices.clear()
 
+    def set_sound_volume(self, sound, vol_norm: float):
+        """No-op : le volume est appliqué au moment de play(), pas de façon persistante."""
+        pass
+
     def set_master_volume(self, vol):
         """Règle le volume global.
 

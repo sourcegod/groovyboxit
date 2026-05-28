@@ -1,51 +1,52 @@
 #python3
 """
-    File: soundmanager.py
-    Sound manager from pygame
-    Date: Sat, 05/04/2025
+    File: src/sound_manager.py
+    Gestion des sons : chargement kits/pads, lecture, métronome.
+    Le backend audio est injecté via un driver (PygameDriver par défaut,
+    ou SoundDeviceDriver pour la migration progressive hors de pygame).
+    Date: Thu, 28/05/2026
     Author: Coolbrother
 """
 import os
 import json
 import numpy as np
-import pygame
+
 
 class SoundManager(object):
-    """ Sound manager """
-    def __init__(self, media_lst, click_name1, click_name2):
-        pygame.init()
+    """Gestionnaire de sons — indépendant du backend audio."""
+
+    def __init__(self, media_lst, click_name1, click_name2, driver=None):
+        if driver is None:
+            from pygame_driver import PygameDriver
+            driver = PygameDriver()
+
+        self._driver     = driver
         self.media_lst   = media_lst
         self.drum_sounds = []
-        self.note_map    = {}   # {midi_note: pygame.Sound} — tous les sons du kit
+        self.note_map    = {}   # {midi_note: sound} — tous les sons du kit
         self.kit_base    = 36  # première note du kit (note MIDI)
         self.kit_offset  = 0   # décalage courant en demi-tons (multiples de 8)
 
-        # Load metronome sounds
-        self.sound_click1 = pygame.mixer.Sound(click_name1)
-        self.sound_click2 = pygame.mixer.Sound(click_name2)
+        self.sound_click1 = self._driver.load(click_name1)
+        self.sound_click2 = self._driver.load(click_name2)
 
-
-    #----------------------------------------
+    # ------------------------------------------------------------------
+    # Chargement
+    # ------------------------------------------------------------------
 
     def load_sounds(self):
-        self.drum_sounds = [
-                pygame.mixer.Sound(item)
-                for item in self.media_lst
-        ]
+        self.drum_sounds = [self._driver.load(item) for item in self.media_lst]
 
     def load_pad_sound(self, pad_idx, wav_path):
         """Remplace le son du pad pad_idx par le WAV donné."""
-        snd = pygame.mixer.Sound(wav_path)
+        snd = self._driver.load(wav_path)
         while len(self.drum_sounds) <= pad_idx:
             self.drum_sounds.append(self._silent_sound())
         self.drum_sounds[pad_idx] = snd
 
-    #----------------------------------------
-
     def _silent_sound(self):
-        """Son silencieux (1 échantillon stéréo) pour pad sans fichier."""
-        arr = np.zeros((2, 2), dtype=np.int16)
-        return pygame.sndarray.make_sound(arr)
+        """Son silencieux pour pad sans fichier."""
+        return self._driver.make_silent()
 
     def load_kit(self, json_path):
         """Charge un kit depuis un fichier JSON.
@@ -56,7 +57,7 @@ class SoundManager(object):
           "filename" et "label"
 
         Retourne (labels, wav_paths) — deux listes de 16 éléments (pads Numpad).
-        Construit aussi self.note_map {midi_note: Sound} pour le routage MIDI.
+        Construit aussi self.note_map {midi_note: sound} pour le routage MIDI.
         """
         json_path = os.path.abspath(json_path)
         json_dir  = os.path.dirname(json_path)
@@ -73,7 +74,7 @@ class SoundManager(object):
             if not os.path.exists(wav_path):
                 return None, wav_path
             if wav_path not in sound_cache:
-                sound_cache[wav_path] = pygame.mixer.Sound(wav_path)
+                sound_cache[wav_path] = self._driver.load(wav_path)
             return sound_cache[wav_path], wav_path
 
         pad_map = {p["pad"]: p for p in meta.get("pads", []) if "pad" in p}
@@ -111,7 +112,9 @@ class SoundManager(object):
         self.kit_offset = 0
         return labels, wav_paths
 
-    #----------------------------------------
+    # ------------------------------------------------------------------
+    # Décalage du kit
+    # ------------------------------------------------------------------
 
     def shift_kit(self, delta):
         """Décale la fenêtre de 16 pads de delta demi-tons.
@@ -123,7 +126,6 @@ class SoundManager(object):
         min_note = notes[0]
         max_note = notes[-1]
         new_offset = self.kit_offset + delta
-        # Bornes : la fenêtre [base+offset, base+offset+15] doit rester dans [min, max]
         new_offset = max(min_note - self.kit_base, new_offset)
         new_offset = min(max_note - self.kit_base - 15, new_offset)
         self.kit_offset = new_offset
@@ -139,62 +141,51 @@ class SoundManager(object):
             labels.append(self.note_labels.get(note, f"Note {note}"))
         return labels
 
-    #----------------------------------------
+    # ------------------------------------------------------------------
+    # Lecture
+    # ------------------------------------------------------------------
 
     def play_note(self, midi_note, volume_factor=1.0, pan=0):
         """Joue un son par note MIDI (utilise note_map)."""
         sound = self.note_map.get(midi_note)
         if sound is None:
             return
-        channel = sound.play()
-        if channel is not None and (volume_factor != 1.0 or pan != 0):
-            pan_norm = pan / 100.0
-            left  = volume_factor * (1.0 - max(0.0, pan_norm))
-            right = volume_factor * (1.0 + min(0.0, pan_norm))
-            channel.set_volume(left, right)
-
-    #----------------------------------------
+        self._driver.play(sound, volume_factor, pan)
 
     def play_sound(self, index, volume_factor=1.0, pan=0):
-        channel = self.drum_sounds[index].play()
-        if channel is not None and (volume_factor != 1.0 or pan != 0):
-            pan_norm = pan / 100.0
-            left  = volume_factor * (1.0 - max(0.0, pan_norm))
-            right = volume_factor * (1.0 + min(0.0, pan_norm))
-            channel.set_volume(left, right)
+        """Joue drum_sounds[index]."""
+        self._driver.play(self.drum_sounds[index], volume_factor, pan)
 
-    #----------------------------------------
-     
     def preview_sound(self, sound_name):
         if sound_name in self.drum_sounds:
-            self.play_sound(sound_name)
-
-    #----------------------------------------
+            self._driver.play(self.drum_sounds[sound_name])
 
     def play_metronome(self, beat_counter):
         """Joue le son du métronome."""
         if beat_counter == 0:
-            self.sound_click1.play()
+            self._driver.play(self.sound_click1)
         else:
-            self.sound_click2.play()
+            self._driver.play(self.sound_click2)
 
-    #----------------------------------------
- 
+    # ------------------------------------------------------------------
+    # Contrôle
+    # ------------------------------------------------------------------
+
     def stop_all(self):
-        pygame.mixer.stop()
-
-    #----------------------------------------
+        self._driver.stop_all()
 
     def set_volume(self, volume):
+        """Règle le volume global (0..100).
+        - PygameDriver  : applique le volume sur chaque son individuellement.
+        - SoundDeviceDriver : applique via master_volume.
+        """
+        vol_norm = volume / 100.0
+        self._driver.set_master_volume(volume)
         for sound in self.drum_sounds:
-            sound.set_volume(volume / 100)
-        self.sound_click1.set_volume(volume / 100)
-        self.sound_click2.set_volume(volume / 100)
+            self._driver.set_sound_volume(sound, vol_norm)
+        self._driver.set_sound_volume(self.sound_click1, vol_norm)
+        self._driver.set_sound_volume(self.sound_click2, vol_norm)
 
-    #----------------------------------------
-
-#=========================================
 
 if __name__ == "__main__":
     input("It's OK...")
-#----------------------------------------
