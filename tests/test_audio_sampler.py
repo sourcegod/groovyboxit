@@ -221,10 +221,12 @@ def test_crossfade_shape_preserved():
 
 
 def test_crossfade_modifies_end_region():
-    s    = _make()
-    data = s.data.copy()
+    # Signal non périodique pour garantir data[ls-N:ls] ≠ data[le-N:le]
+    rng  = np.random.default_rng(42)
+    data = rng.uniform(-0.5, 0.5, (SR * 2, 2)).astype(np.float32)
+    s    = AudioSampler(data, SR)
     ls, le = SR // 2, SR
-    out  = s._apply_crossfade(data, ls, le)
+    out    = s._apply_crossfade(data, ls, le)
     xf_len = int(s._crossfade_ms / 1000.0 * SR)
     region_orig = data[le - xf_len : le]
     region_out  = out[le - xf_len : le]
@@ -238,6 +240,22 @@ def test_crossfade_too_short_returns_unchanged():
     out  = s._apply_crossfade(data, ls=1, le=2)   # trop court → xf_len < 2
     assert np.array_equal(data, out)
     print("  crossfade trop court → données inchangées : OK")
+
+
+def test_crossfade_end_approaches_pre_start():
+    """Le dernier échantillon du blend doit approcher data[ls-1],
+    pas data[ls+N-1] — garantit l'absence de discontinuité au saut."""
+    s    = _make(freq=440.0, duration_s=2.0)
+    data = s.data.copy()
+    ls, le = SR // 2, SR
+    out    = s._apply_crossfade(data, ls, le)
+    xf_len = int(s._crossfade_ms / 1000.0 * SR)
+    last_blend   = float(out[le - 1, 0])
+    pre_start    = float(data[ls - 1, 0])       # cible : data[ls-1]
+    wrong_target = float(data[ls + xf_len - 1, 0])  # ancienne cible incorrecte
+    assert abs(last_blend - pre_start) < abs(last_blend - wrong_target) \
+           or abs(last_blend - pre_start) < 0.05
+    print("  crossfade : fin du blend → data[ls-1] (pas de discontinuité) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +494,7 @@ if __name__ == "__main__":
     test_crossfade_shape_preserved()
     test_crossfade_modifies_end_region()
     test_crossfade_too_short_returns_unchanged()
+    test_crossfade_end_approaches_pre_start()
     # _apply_adsr
     test_adsr_attack_starts_near_zero()
     test_adsr_after_attack_near_one()

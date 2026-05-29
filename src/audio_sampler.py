@@ -76,7 +76,7 @@ class AudioSampler:
         self._looping      = False
         self._loop_start   = None       # secondes
         self._loop_end     = None       # secondes
-        self._crossfade_ms = 10.0
+        self._crossfade_ms = 150.0      # ms — long crossfade style Gemini/FluidSynth
 
         self._attack_ms  = 0.0
         self._decay_ms   = 0.0
@@ -109,14 +109,16 @@ class AudioSampler:
     # ------------------------------------------------------------------
 
     def set_loop(self, loop_start: float, loop_end: float,
-                 crossfade_ms: float = 10.0):
+                 crossfade_ms: float = None):
         """Configure les points de bouclage (secondes) et le crossfade.
+        crossfade_ms=None conserve la valeur courante de _crossfade_ms (150ms par défaut).
         Activer le bouclage n'affecte pas le mode (ONESHOT reste ONESHOT).
         """
-        self._looping      = True
-        self._loop_start   = float(loop_start)
-        self._loop_end     = float(loop_end)
-        self._crossfade_ms = max(0.0, crossfade_ms)
+        self._looping    = True
+        self._loop_start = float(loop_start)
+        self._loop_end   = float(loop_end)
+        if crossfade_ms is not None:
+            self._crossfade_ms = max(0.0, crossfade_ms)
 
     def clear_loop(self):
         """Supprime les points de bouclage."""
@@ -175,9 +177,17 @@ class AudioSampler:
 
     def _apply_crossfade(self, data: np.ndarray,
                           ls: int, le: int) -> np.ndarray:
-        """Fonde les xf_len derniers échantillons avant loop_end avec
-        les xf_len premiers après loop_start.
-        Le saut loop_end → loop_start devient ainsi inaudible.
+        """Crossfade FluidSynth-style : fond la fin de la boucle avec la région
+        qui PRÉCÈDE loop_start (data[ls-N : ls]).
+
+        Pourquoi data[ls-N:ls] et non data[ls:ls+N] ?
+        -----------------------------------------------
+        Avec data[ls:ls+N], le blend se termine à ~data[ls+N-1] puis saute à
+        data[ls] → discontinuité (clic).
+        Avec data[ls-N:ls], le blend se termine à ~data[ls-1] puis enchaîne sur
+        data[ls] → transition normale entre échantillons consécutifs (inaudible).
+
+        Contrainte : ls >= xf_len (garanti par le min() ci-dessous).
         """
         sr     = self.samplerate
         xf_len = int(self._crossfade_ms / 1000.0 * sr)
@@ -189,9 +199,9 @@ class AudioSampler:
         fade_out = np.linspace(1.0, 0.0, xf_len, dtype=np.float32)[:, np.newaxis]
         fade_in  = np.linspace(0.0, 1.0, xf_len, dtype=np.float32)[:, np.newaxis]
 
-        end_region   = data[le - xf_len : le]
-        start_region = data[ls : ls + xf_len]
-        data[le - xf_len : le] = end_region * fade_out + start_region * fade_in
+        end_region = data[le - xf_len : le]     # fin de boucle (fade out)
+        pre_start  = data[ls - xf_len : ls]     # juste avant loop_start (fade in)
+        data[le - xf_len : le] = end_region * fade_out + pre_start * fade_in
         return data
 
     # ------------------------------------------------------------------
@@ -226,7 +236,55 @@ class AudioSampler:
         else:
             raise ValueError(f"Méthode de pitch shifting inconnue : {method!r}")
 
-        return self._clone(shifted)
+        cloned = self._clone(shifted)
+
+        # Après pitch shift, les points de bouclage (en secondes) pointent vers
+        # des positions dont la phase a changé dans l'audio pitché.
+        # On re-snap ls et le sur des passages à zéro montants CORRÉLÉS dans
+        # l'audio pitché (même logique que l'ancien SynthEngine._get_raw).
+        if cloned._looping and cloned._loop_start is not None:
+            from audio_tools import AudioTools
+            sr   = cloned.samplerate
+            mono = AudioTools.to_mono(shifted)
+            n    = len(mono)
+            ls_raw = int(cloned._loop_start * sr)
+            le_raw = int(cloned._loop_end   * sr)
+
+            # Étape 1 : snap loop_start sur le zéro montant le plus proche
+            zc_starts = AudioTools.zero_crossings_up(
+                mono, max(0, ls_raw - 2048), min(n - 1, ls_raw + 2048)
+            )
+            new_ls = int(zc_starts[np.argmin(np.abs(zc_starts - ls_raw))]) \
+                     if len(zc_starts) else ls_raw
+
+            # Étape 2 : trouver le loop_end qui minimise le reste fractionnaire
+            # (le - new_ls) / période  →  zéro montant le plus proche d'un
+            # multiple entier de la période.
+            # Sans ça, un déphasage résiduel crée un battement audible pour
+            # les notes pitchées (ex: F5 depuis root Gb5 → 73.93 périodes).
+            period = AudioTools.find_fundamental_period(shifted, sr)
+            if period and period >= 2:
+                search_r = max(4096, int(period * 4))
+                zc_ends  = AudioTools.zero_crossings_up(
+                    mono,
+                    max(0,    le_raw - search_r),
+                    min(n - 1, le_raw + search_r),
+                )
+                if len(zc_ends):
+                    fracs  = (zc_ends - new_ls) / period % 1
+                    fracs  = np.minimum(fracs, 1.0 - fracs)   # symétrie mod 1
+                    new_le = int(zc_ends[np.argmin(fracs)])
+                else:
+                    new_le = le_raw
+            else:
+                _, new_le = AudioTools.snap_loop_to_zero_crossings(
+                    shifted, new_ls, le_raw
+                )
+
+            cloned._loop_start = new_ls / sr
+            cloned._loop_end   = new_le / sr
+
+        return cloned
 
     def _clone(self, data: np.ndarray) -> "AudioSampler":
         """Crée un nouvel AudioSampler avec data et les mêmes réglages."""
@@ -421,6 +479,26 @@ class AudioSampler:
     # ------------------------------------------------------------------
     # Informations
     # ------------------------------------------------------------------
+
+    def get_loop_params(self) -> tuple:
+        """Retourne (ls, le, xf_samples) en échantillons si _looping, sinon (None, None, 0).
+        ls et le sont snappés au passage à zéro le plus proche.
+
+        xf est capé à min(ls, llen) comme Gemini/FluidSynth :
+          - xf <= ls  : prev = pos - llen >= 0 toujours valide
+          - xf <= llen: crossfade ne dépasse jamais un cycle de boucle
+        """
+        if not self._looping or self._loop_start is None:
+            return None, None, 0
+        sr     = self.samplerate
+        ls_raw = int(self._loop_start * sr)
+        le_raw = int(self._loop_end   * sr)
+        ls   = self.snap_to_zero_crossing(ls_raw, direction="nearest")
+        le   = self.snap_to_zero_crossing(le_raw, direction="nearest")
+        llen = le - ls
+        xf   = max(2, int(self._crossfade_ms / 1000.0 * sr))
+        xf   = min(xf, ls, llen)          # bornes Gemini-style
+        return ls, le, xf
 
     @property
     def duration_s(self) -> float:

@@ -204,6 +204,20 @@ class SynthEngine:
         sampler = self._get_pitched_sampler(midi_note)
         if sampler is None:
             return None
+
+        if sampler._looping and sampler._mode in (PlayMode.LOOP, PlayMode.GATE):
+            # Boucle temps réel FluidSynth-style : pas de buffer de sustain
+            ls, le, xf = sampler.get_loop_params()
+            if ls is not None and le > ls:
+                # Données brutes avec attack/decay ADSR (sans release ni sustain pré-rendu)
+                data  = sampler._apply_adsr(sampler.data, apply_release=False)
+                sound = self._driver.make_loop_sound(
+                    data, sampler.samplerate, ls, le, xf
+                )
+                self._cache[(midi_note, duration_ms)] = sound
+                return sound
+
+        # One-shot ou loop params invalides : buffer pré-rendu classique
         data  = sampler.render(duration_ms)
         sound = self._make_sound(data, sampler.samplerate)
         self._cache[(midi_note, duration_ms)] = sound

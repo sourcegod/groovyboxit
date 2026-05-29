@@ -29,16 +29,29 @@ NOTES_DEFAULT = ["C3", "C4", "C5"]
 DURATION_S    = 20   # durée de lecture par note (secondes)
 
 
+def _loop_diag(sound, sr):
+    """Retourne une ligne de diagnostic pour un SdSound bouclant."""
+    if sound.loop_start is None:
+        return "(one-shot)"
+    ls, le, xf = sound.loop_start, sound.loop_end, sound.xf_samples
+    llen = le - ls
+    llen_ms = llen / sr * 1000
+    xf_ms   = xf   / sr * 1000
+    return (f"ls={ls} le={le} llen={llen}smp/{llen_ms:.1f}ms "
+            f"xf={xf}smp/{xf_ms:.1f}ms")
+
+
 def play_note(engine, driver, note_name, duration_s):
-    midi       = note_name_to_midi(note_name)
-    # Passer la durée exacte pour que le buffer de sustain soit assez long
+    midi        = note_name_to_midi(note_name)
     duration_ms = int(duration_s * 1000)
     sound = engine.get_sound(midi, duration_ms=duration_ms)
     if sound is None:
         print(f"  ✗ pas de son pour {note_name} (MIDI {midi})")
         return
 
-    print(f"  ♩ {note_name} (MIDI {midi}) — écoute {duration_s}s …", flush=True)
+    diag = _loop_diag(sound, driver._sr)
+    print(f"  ♩ {note_name} (MIDI {midi})  {diag}", flush=True)
+    print(f"    → écoute {duration_s}s …", flush=True)
     driver.play(sound, vol=0.8, pan=0)
     time.sleep(duration_s)
     driver.stop_all()
