@@ -31,6 +31,20 @@ class AppConfig:
         value = self._data.get(key, "").strip()
         return value if value else os.path.join(self._base_dir, default_name)
 
+    def _get_file(self, key):
+        """Retourne le chemin de fichier pour 'key'.
+
+        - Chemin absolu dans config.json → utilisé tel quel.
+        - Chemin relatif → résolu depuis base_dir (racine du projet).
+        - Clé absente ou vide → retourne "".
+        """
+        value = self._data.get(key, "").strip()
+        if not value:
+            return ""
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
     @property
     def patches_dir(self):
         return self._get_dir("patches_dir", "patches")
@@ -46,3 +60,11 @@ class AppConfig:
     @property
     def presets_dir(self):
         return self._get_dir("presets_dir", "presets")
+
+    @property
+    def click1_file(self):
+        return self._get_file("click1_file")
+
+    @property
+    def click2_file(self):
+        return self._get_file("click2_file")

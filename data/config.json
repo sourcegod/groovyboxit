@@ -2,5 +2,7 @@
   "patches_dir":  "/home/com/groovybox/PATCHS",
   "samples_dir":  "/home/com/groovybox/SAMPLES",
   "kits_dir":     "/home/com/groovybox/KITS",
-  "presets_dir":  "/home/com/groovybox/PRESETS"
+  "presets_dir":  "/home/com/groovybox/PRESETS",
+  "click1_file":  "media/hi_wood_block_mono.wav",
+  "click2_file":  "media/low_wood_block_mono.wav"
 }

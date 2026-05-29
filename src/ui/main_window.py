@@ -111,11 +111,12 @@ class MainWindow(wx.Frame):
         ui_dir = os.path.dirname(os.path.abspath(__file__))
         self._base_dir = os.path.dirname(os.path.dirname(ui_dir))
         base_dir = self._base_dir
+        cfg = AppConfig(base_dir)
         media_dir = os.path.join(base_dir, "media")
         self._media_dir = media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
-        click1 = os.path.join(media_dir, "hi_wood_block_mono.wav")
-        click2 = os.path.join(media_dir, "low_wood_block_mono.wav")
+        click1 = cfg.click1_file
+        click2 = cfg.click2_file
         self._media_lst = media_lst
         self._audio_driver = SoundDeviceDriver()
         self._snd = SoundManager(media_lst, click1, click2, driver=self._audio_driver)
