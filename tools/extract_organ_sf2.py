@@ -315,16 +315,106 @@ class SF2Parser:
 
 
 # ---------------------------------------------------------------------------
+# Chunk smpl (WAV Sampler Chunk — spec RIFF, section 'smpl')
+# ---------------------------------------------------------------------------
+
+def _make_smpl_chunk(loop_start, loop_end, root_midi, samplerate):
+    """Construit le contenu binaire du chunk 'smpl' (sans l'en-tête chunk).
+
+    Structure (tous little-endian uint32) :
+      Manufacturer   Product   SamplePeriod   MIDIUnityNote
+      MIDIPitchFraction   SMPTEFormat   SMPTEOffset
+      NumSampleLoops   SamplerData
+      [Loop: CuePointID  Type  Start  End  Fraction  PlayCount]
+    """
+    sample_period = int(1_000_000_000 / samplerate)  # nanosecondes
+    num_loops     = 1
+    header = struct.pack("<IIIIIIIII",
+        0,              # Manufacturer
+        0,              # Product
+        sample_period,  # SamplePeriod (ns)
+        root_midi,      # MIDIUnityNote
+        0,              # MIDIPitchFraction
+        0,              # SMPTEFormat
+        0,              # SMPTEOffset
+        num_loops,
+        0,              # SamplerData (extra bytes)
+    )
+    loop_rec = struct.pack("<IIIIII",
+        0,          # CuePointID
+        0,          # Type : 0 = forward loop
+        loop_start, # Start (en échantillons)
+        loop_end,   # End   (en échantillons)
+        0,          # Fraction
+        0,          # PlayCount : 0 = infini
+    )
+    return header + loop_rec
+
+
+def _read_smpl_chunk(wav_path):
+    """Lit le chunk 'smpl' d'un fichier WAV s'il existe.
+
+    Retourne (root_midi, loop_start, loop_end) ou (None, None, None).
+    """
+    with open(wav_path, "rb") as f:
+        data = f.read()
+
+    pos = 12   # sauter RIFF header
+    while pos < len(data) - 8:
+        tag, sz = struct.unpack_from("<4sI", data, pos)
+        pos += 8
+        if tag == b"smpl" and sz >= 36:
+            # Lire les champs de l'en-tête smpl
+            (_, _, _, root_midi, _, _, _, num_loops, _) = \
+                struct.unpack_from("<IIIIIIIII", data, pos)
+            if num_loops >= 1 and sz >= 60:
+                # Premier loop record (24 octets à offset 36)
+                loop_off = pos + 36
+                _, _, ls, le, _, _ = struct.unpack_from("<IIIIII", data, loop_off)
+                return int(root_midi), int(ls), int(le)
+        pos += sz
+        if pos % 2:
+            pos += 1
+    return None, None, None
+
+
+# ---------------------------------------------------------------------------
 # Écriture WAV + patch.json
 # ---------------------------------------------------------------------------
 
-def save_wav(path, audio_f32, samplerate):
+def save_wav(path, audio_f32, samplerate, root_midi=60,
+             loop_start=None, loop_end=None):
+    """Sauvegarde float32 → WAV 16-bit mono avec chunk 'smpl' si loop fourni."""
     pcm = np.clip(audio_f32 * 32767, -32768, 32767).astype(np.int16)
-    with wave.open(path, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(samplerate)
-        w.writeframes(pcm.tobytes())
+    pcm_bytes = pcm.tobytes()
+
+    if loop_start is not None and loop_end is not None:
+        # Construire le RIFF manuellement pour insérer le chunk smpl
+        smpl_data  = _make_smpl_chunk(loop_start, loop_end, root_midi, samplerate)
+        smpl_chunk = b"smpl" + struct.pack("<I", len(smpl_data)) + smpl_data
+
+        # fmt chunk (PCM 16-bit mono)
+        fmt_data  = struct.pack("<HHIIHH",
+            1,          # PCM
+            1,          # canaux
+            samplerate,
+            samplerate * 2,   # ByteRate
+            2,          # BlockAlign
+            16,         # BitsPerSample
+        )
+        fmt_chunk  = b"fmt " + struct.pack("<I", len(fmt_data)) + fmt_data
+        data_chunk = b"data" + struct.pack("<I", len(pcm_bytes)) + pcm_bytes
+
+        body = b"WAVE" + fmt_chunk + data_chunk + smpl_chunk
+        with open(path, "wb") as f:
+            f.write(b"RIFF" + struct.pack("<I", len(body)) + body)
+    else:
+        # Pas de loop : écriture standard via wave module
+        with wave.open(path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(samplerate)
+            w.writeframes(pcm_bytes)
 
 
 def build_patch(preset_name, samples, patches_dir, samples_dir, dry_run=False):
@@ -358,7 +448,10 @@ def build_patch(preset_name, samples, patches_dir, samples_dir, dry_run=False):
             continue
 
         if not dry_run:
-            save_wav(wav_path, s["audio"], s["samplerate"])
+            save_wav(wav_path, s["audio"], s["samplerate"],
+                     root_midi=s["orig_pitch"],
+                     loop_start=s["loopstart"],
+                     loop_end=s["loopend"])
 
         patch_samples.append({
             "file":       wav_path,    # chemin absolu

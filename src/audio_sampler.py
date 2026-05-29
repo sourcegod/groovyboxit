@@ -89,10 +89,50 @@ class AudioSampler:
 
     @classmethod
     def from_file(cls, wav_path: str) -> "AudioSampler":
-        """Charge un fichier WAV (float32 stéréo normalisé)."""
+        """Charge un fichier WAV (float32 stéréo normalisé).
+
+        Si le WAV contient un chunk 'smpl' (Sampler Chunk), les loop points
+        et la note racine sont lus automatiquement — aucune configuration
+        manuelle nécessaire.
+        """
         import soundfile as sf
         data, sr = sf.read(wav_path, dtype="float32", always_2d=True)
-        return cls(data, sr)
+        s = cls(data, sr)
+
+        # Lire le chunk smpl si présent
+        root_midi, ls, le = cls._read_smpl_chunk(wav_path)
+        if ls is not None and le is not None and 0 <= ls < le <= len(data):
+            s.set_mode(PlayMode.LOOP)
+            s.set_loop(ls / sr, le / sr)
+
+        return s
+
+    @staticmethod
+    def _read_smpl_chunk(wav_path: str):
+        """Lit le chunk 'smpl' d'un WAV. Retourne (root_midi, ls, le) ou (None,None,None)."""
+        import struct as _struct
+        try:
+            with open(wav_path, "rb") as f:
+                data = f.read()
+        except OSError:
+            return None, None, None
+
+        pos = 12
+        while pos < len(data) - 8:
+            tag, sz = _struct.unpack_from("<4sI", data, pos)
+            pos += 8
+            if tag == b"smpl" and sz >= 36:
+                (_, _, _, root_midi, _, _, _, num_loops, _) = \
+                    _struct.unpack_from("<IIIIIIIII", data, pos)
+                if num_loops >= 1 and sz >= 60:
+                    _, _, ls, le, _, _ = _struct.unpack_from(
+                        "<IIIIII", data, pos + 36
+                    )
+                    return int(root_midi), int(ls), int(le)
+            pos += sz
+            if pos % 2:
+                pos += 1
+        return None, None, None
 
     # ------------------------------------------------------------------
     # Configuration — mode
