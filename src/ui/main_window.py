@@ -112,14 +112,11 @@ class MainWindow(wx.Frame):
         self._base_dir = os.path.dirname(os.path.dirname(ui_dir))
         base_dir = self._base_dir
         cfg = AppConfig(base_dir)
-        media_dir = os.path.join(base_dir, "media")
-        self._media_dir = media_dir
+        media_dir = cfg.media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
-        click1 = cfg.click1_file
-        click2 = cfg.click2_file
-        self._media_lst = media_lst
         self._audio_driver = SoundDeviceDriver()
-        self._snd = SoundManager(media_lst, click1, click2, driver=self._audio_driver)
+        self._snd = SoundManager(media_lst, cfg.click1_file, cfg.click2_file,
+                                 driver=self._audio_driver)
         # Les sons du kit sont chargés plus tard par _load_kit_slot()
         self._player = DrumPlayer(self._snd)
         self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
@@ -973,7 +970,6 @@ class MainWindow(wx.Frame):
         if kit_path and os.path.isfile(kit_path):
             try:
                 labels, wav_paths = self._snd.load_kit(kit_path)
-                self._media_lst = wav_paths
                 for i, label in enumerate(labels):
                     self._player.voice_manager.set_name(i, label)
                 self._refresh_pad_list()
@@ -1055,8 +1051,8 @@ class MainWindow(wx.Frame):
             pad_name  = os.path.splitext(os.path.basename(wav_path))[0]
             pad_idx   = self._cur_row
             self._snd.load_pad_sound(pad_idx, wav_path)
-            if pad_idx < len(self._media_lst):
-                self._media_lst[pad_idx] = wav_path
+            if pad_idx < len(self._snd.media_lst):
+                self._snd.media_lst[pad_idx] = wav_path
             self._player.voice_manager.set_name(pad_idx, pad_name)
             self._refresh_pad_list()
             self._show_status(f"Pad {pad_idx + 1}: {pad_name}")
@@ -1123,7 +1119,7 @@ class MainWindow(wx.Frame):
     def _play_kit_pitched(self, note_idx):
         last    = self._player.last_played_pad
         pad_idx = last if last is not None else (self._cur_row + self._shift_pad)
-        wav_path = self._media_lst[pad_idx] if pad_idx < len(self._media_lst) else None
+        wav_path = self._snd.media_lst[pad_idx] if pad_idx < len(self._snd.media_lst) else None
         self._router.play_kit_pitched(
             note_idx, pad_idx, wav_path, self._player.play_sound
         )

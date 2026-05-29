@@ -27,9 +27,18 @@ class AppConfig:
                 self._data = json.load(f)
 
     def _get_dir(self, key, default_name):
-        """Retourne le chemin pour 'key', ou <base_dir>/<default_name> si absent."""
+        """Retourne le chemin pour 'key'.
+
+        - Chemin absolu → utilisé tel quel.
+        - Chemin relatif → résolu depuis base_dir.
+        - Clé absente ou vide → <base_dir>/<default_name>.
+        """
         value = self._data.get(key, "").strip()
-        return value if value else os.path.join(self._base_dir, default_name)
+        if not value:
+            return os.path.join(self._base_dir, default_name)
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
 
     def _get_file(self, key):
         """Retourne le chemin de fichier pour 'key'.
@@ -44,6 +53,10 @@ class AppConfig:
         if os.path.isabs(value):
             return value
         return os.path.join(self._base_dir, value)
+
+    @property
+    def media_dir(self):
+        return self._get_dir("media_dir", "media")
 
     @property
     def patches_dir(self):
