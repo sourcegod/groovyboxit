@@ -1,17 +1,16 @@
 #python3
 """
     File: synth_engine.py
-    Moteur Synthé : chargement de patch, pitch shifting (pyrubberband),
-    gestion des gammes, cache par note MIDI, lecture via SoundDeviceDriver.
+    Moteur Synthé : chargement de patch, pitch shifting, cache par note MIDI,
+    lecture via SoundDeviceDriver.
+    Boucle, crossfade et ADSR délégués à AudioSampler.
     Date: Fri, 16/05/2026
     Author: Coolbrother
 """
 import os
 import json
 import numpy as np
-import soundfile as sf
-import pyrubberband as rb
-from audio_tools import AudioTools
+from audio_sampler import AudioSampler, PlayMode
 
 
 # ======================================================================
@@ -83,11 +82,11 @@ def scale_midi_notes(scale_name, root_midi, count=16):
 class SynthEngine:
     """
     Charge un patch (répertoire de WAVs + patch.json), génère les sons
-    à la note demandée par pitch shifting (pyrubberband) et les met en
-    cache comme SdSound pour une lecture sans latence via SoundDeviceDriver.
-    """
+    à la note demandée par pitch shifting et les met en cache comme SdSound
+    pour une lecture sans latence via SoundDeviceDriver.
 
-    SUSTAIN_SECONDS = 8    # durée max du buffer de sustain pré-rendu
+    Boucle, crossfade FluidSynth-style et ADSR sont délégués à AudioSampler.
+    """
 
     def __init__(self, synths_dir, driver=None):
         if driver is None:
@@ -97,10 +96,9 @@ class SynthEngine:
         self._synths_dir  = synths_dir
         self._patch_name  = None
         self._patch_meta  = {}
-        self._samples     = []    # [{"root_midi","data","sr","path","loop_start","loop_end"}]
-        self._raw_cache   = {}    # {midi_note: (data, sr)} — pitch-shifté, pleine durée
-        self._cache       = {}    # {(midi_note, duration_ms): sound}
-        self._loop        = False
+        self._samples     = []   # [{"root_midi", "sampler", "path"}]
+        self._raw_cache   = {}   # {midi_note: AudioSampler} — pitch-shifté
+        self._cache       = {}   # {(midi_note, duration_ms): SdSound}
 
     # ------------------------------------------------------------------
     # Chargement de patch
@@ -129,30 +127,35 @@ class SynthEngine:
 
         self._patch_name = meta.get("name", os.path.splitext(os.path.basename(json_path))[0])
         self._patch_meta = meta
-        self._loop       = meta.get("loop", False)
         self._samples    = []
         self._raw_cache  = {}
         self._cache      = {}
 
+        loop           = meta.get("loop", False)
         sounds         = meta.get("sounds", meta.get("samples", []))
         top_loop_start = meta.get("loop_start")
         top_loop_end   = meta.get("loop_end")
 
         for s in sounds:
-            filename   = s.get("filename", s.get("file", ""))
-            rootnote   = s.get("rootnote", s.get("root", "C4"))
-            wav_path   = os.path.normpath(os.path.join(json_dir, filename))
-            data, sr   = sf.read(wav_path, dtype="float64", always_2d=False)
-            root_midi  = note_name_to_midi(rootnote)
+            filename  = s.get("filename", s.get("file", ""))
+            rootnote  = s.get("rootnote", s.get("root", "C4"))
+            wav_path  = os.path.normpath(os.path.join(json_dir, filename))
+            root_midi = note_name_to_midi(rootnote)
+
+            sampler    = AudioSampler.from_file(wav_path)
             loop_start = s.get("loop_start", top_loop_start)
             loop_end   = s.get("loop_end",   top_loop_end)
+
+            if loop and loop_start is not None and loop_end is not None:
+                sampler.set_mode(PlayMode.LOOP)
+                sampler.set_loop(float(loop_start), float(loop_end))
+            else:
+                sampler.set_mode(PlayMode.ONESHOT)
+
             self._samples.append({
-                "root_midi":  root_midi,
-                "data":       data,
-                "sr":         sr,
-                "path":       wav_path,
-                "loop_start": loop_start,
-                "loop_end":   loop_end,
+                "root_midi": root_midi,
+                "sampler":   sampler,
+                "path":      wav_path,
             })
 
         self._samples.sort(key=lambda s: s["root_midi"])
@@ -160,113 +163,47 @@ class SynthEngine:
     def load_single_sample(self, wav_path, root_midi=60):
         """Charge un WAV unique comme patch mono-sample (sans patch.json).
         Utilisé pour le mode Keyboard/Kit : pitcher un pad de batterie."""
-        data, sr = sf.read(wav_path, dtype="float64", always_2d=False)
+        sampler = AudioSampler.from_file(wav_path)
+        sampler.set_mode(PlayMode.ONESHOT)
         self._patch_name = os.path.basename(wav_path)
         self._patch_meta = {}
-        self._loop       = False
         self._raw_cache  = {}
         self._cache      = {}
-        self._samples    = [{
-            "root_midi":  root_midi,
-            "data":       data,
-            "sr":         sr,
-            "path":       wav_path,
-            "loop_start": None,
-            "loop_end":   None,
-        }]
+        self._samples    = [{"root_midi": root_midi, "sampler": sampler, "path": wav_path}]
 
     # ------------------------------------------------------------------
     # Génération et cache
     # ------------------------------------------------------------------
 
     def _find_nearest_sample(self, midi_note):
-        """Sample dont la note racine est la plus proche de midi_note."""
+        """Entrée dont la note racine est la plus proche de midi_note."""
         if not self._samples:
             return None
         return min(self._samples, key=lambda s: abs(s["root_midi"] - midi_note))
 
     def _make_sound(self, data, sr):
-        """Délègue la création du son (numpy → sound object) au driver."""
+        """Délègue la création du son (numpy → SdSound) au driver."""
         return self._driver.make_sound_from_array(data, sr)
 
-    def _build_looped_data(self, data, sr, loop_start, loop_end):
-        """
-        Construit un buffer sustain : [0 → loop_end] + [loop_start → loop_end] × N.
-
-        On inclut l'échantillon loop_end lui-même (passage à zéro montant) dans
-        la région de boucle, de sorte que loop_region[-1] ≈ 0 comme loop_region[0].
-        La jonction est ainsi zero→zero : pas de discontinuité, pas de clic.
-        """
-        n   = len(data)
-        ls  = min(loop_start, n - 1)
-        le  = min(loop_end + 1, n)    # +1 : inclure l'échantillon au passage à zéro
-        if le <= ls:
-            return data
-        attack      = data[:le]
-        loop_region = data[ls:le]
-        loop_len    = len(loop_region)
-        if loop_len == 0:
-            return attack
-        target    = int(self.SUSTAIN_SECONDS * sr)
-        remaining = target - len(attack)
-        if remaining <= 0:
-            return attack
-
-        n_rep     = max(1, (remaining + loop_len - 1) // loop_len)
-        sustained = np.concatenate([attack] + [loop_region] * n_rep)[:target].copy()
-
-        # Fadeout sur les 300 ms finaux pour éviter la coupure abrupte
-        fade_samples = min(int(0.3 * sr), len(sustained) // 8)
-        if fade_samples > 1:
-            fade = np.linspace(1.0, 0.0, fade_samples)
-            if data.ndim > 1:
-                fade = fade[:, np.newaxis]
-            sustained[-fade_samples:] *= fade
-
-        return sustained
-
-    FADEOUT_MS = 50   # durée du fondu final appliqué aux données (ms)
-
-    def _get_raw(self, midi_note):
-        """Retourne (data, sr) pitch-shifté pour midi_note, avec cache."""
+    def _get_pitched_sampler(self, midi_note):
+        """Retourne l'AudioSampler pitch-shifté pour midi_note, avec cache."""
         if midi_note in self._raw_cache:
             return self._raw_cache[midi_note]
-        sample = self._find_nearest_sample(midi_note)
-        if sample is None:
-            return None, None
-        n_steps = midi_note - sample["root_midi"]
-        data    = rb.pitch_shift(sample["data"], sample["sr"], n_steps=n_steps) \
-                  if n_steps != 0 else sample["data"]
-        if self._loop \
-                and sample["loop_start"] is not None \
-                and sample["loop_end"]   is not None:
-            ls, le = AudioTools.snap_loop_to_zero_crossings(
-                data, sample["loop_start"], sample["loop_end"]
-            )
-            data = self._build_looped_data(data, sample["sr"], ls, le)
-        self._raw_cache[midi_note] = (data, sample["sr"])
-        return data, sample["sr"]
-
-    def _apply_duration(self, data, sr, duration_ms):
-        """Tronque data à duration_ms ms et applique un fadeout final."""
-        n_total   = int(duration_ms / 1000.0 * sr)
-        n_fadeout = min(int(self.FADEOUT_MS / 1000.0 * sr), max(1, n_total // 4))
-        out = data[:n_total].copy() if len(data) > n_total else data.copy()
-        if n_fadeout > 1:
-            fade = np.linspace(1.0, 0.0, n_fadeout)
-            if out.ndim > 1:
-                fade = fade[:, np.newaxis]
-            out[-n_fadeout:] *= fade
-        return out
+        entry = self._find_nearest_sample(midi_note)
+        if entry is None:
+            return None
+        n_steps = midi_note - entry["root_midi"]
+        pitched = entry["sampler"].pitch_shift(n_steps)
+        self._raw_cache[midi_note] = pitched
+        return pitched
 
     def _build_sound(self, midi_note, duration_ms):
         """Crée et met en cache le son pour (midi_note, duration_ms)."""
-        data, sr = self._get_raw(midi_note)
-        if data is None:
+        sampler = self._get_pitched_sampler(midi_note)
+        if sampler is None:
             return None
-        trimmed = self._apply_duration(data, sr, duration_ms) \
-                  if duration_ms > 0 else data
-        sound = self._make_sound(trimmed, sr)
+        data  = sampler.render(duration_ms)
+        sound = self._make_sound(data, sampler.samplerate)
         self._cache[(midi_note, duration_ms)] = sound
         return sound
 
@@ -297,7 +234,7 @@ class SynthEngine:
         self._driver.play(sound, volume_factor, pan)
 
     def stop(self, midi_note):
-        """Arrête la note sustain (utile pour les instruments en loop)."""
+        """Arrête la note sustain (utile pour les instruments en loop/gate)."""
         sound = self._cache.get((midi_note, 0))
         if sound:
             self._driver.stop_sound(sound)
@@ -317,15 +254,14 @@ class SynthEngine:
 #=========================================
 
 if __name__ == "__main__":
-    # Test sans patch réel : vérifier les utilitaires note/gamme
-    assert note_name_to_midi("C4")  == 60   # 12*(4+1)+0
-    assert note_name_to_midi("G#3") == 56   # 12*(3+1)+8
-    assert note_name_to_midi("Bb2") == 46   # Bb2=A#2 : 12*(2+1)+10
-    assert note_name_to_midi("Db4") == 61   # Db4=C#4 : 12*(4+1)+1
+    assert note_name_to_midi("C4")  == 60
+    assert note_name_to_midi("G#3") == 56
+    assert note_name_to_midi("Bb2") == 46
+    assert note_name_to_midi("Db4") == 61
     assert midi_to_note_name(60) == "C4"
     print("note_name_to_midi / midi_to_note_name : OK")
 
-    notes_major = scale_midi_notes("major", 48, 16)  # C3
+    notes_major = scale_midi_notes("major", 48, 16)
     print("Gamme majeure C3 (16 notes) :", [midi_to_note_name(n) for n in notes_major])
 
     notes_penta = scale_midi_notes("pentatonic_minor", 48, 16)

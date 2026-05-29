@@ -57,6 +57,7 @@ def test_load_patch(engine, patch_dir):
     assert engine._patch_name == "TestPatch"
     assert len(engine._samples) == 1
     assert engine._samples[0]["root_midi"] == note_name_to_midi(ROOT_NOTE)
+    assert isinstance(engine._samples[0]["sampler"], __import__("audio_sampler").AudioSampler)
     print(f"  load_patch : OK  ({engine})")
 
 
