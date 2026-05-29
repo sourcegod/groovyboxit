@@ -147,8 +147,10 @@ class SynthEngine:
             loop_end   = s.get("loop_end",   top_loop_end)
 
             if loop and loop_start is not None and loop_end is not None:
+                # loop_start/loop_end stockés en samples dans le JSON
+                sr = sampler.samplerate
                 sampler.set_mode(PlayMode.LOOP)
-                sampler.set_loop(float(loop_start), float(loop_end))
+                sampler.set_loop(float(loop_start) / sr, float(loop_end) / sr)
             else:
                 sampler.set_mode(PlayMode.ONESHOT)
 
