@@ -384,11 +384,13 @@ def test_pitch_shift_clone_preserves_mode():
     s.set_mode(PlayMode.GATE)
     s.set_loop(0.5, 1.5)
     s2 = s.pitch_shift(0)
-    assert s2.mode        == PlayMode.GATE
-    assert s2.is_looping  == True
-    assert s2._loop_start == 0.5
-    assert s2._loop_end   == 1.5
-    print("  pitch_shift clone préserve mode/loop : OK")
+    assert s2.mode       == PlayMode.GATE
+    assert s2.is_looping == True
+    # L'alignement de période peut déplacer légèrement les loop points :
+    # on vérifie seulement qu'ils restent dans la zone attendue (±50ms)
+    assert abs(s2._loop_start - 0.5) < 0.05
+    assert abs(s2._loop_end   - 1.5) < 0.05
+    print("  pitch_shift clone préserve mode/loop (±50ms) : OK")
 
 
 def test_pitch_shift_rubberband_same_sr():

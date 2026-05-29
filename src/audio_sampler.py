@@ -225,7 +225,38 @@ class AudioSampler:
         Nouvel AudioSampler avec les mêmes réglages (mode, loop, ADSR).
         """
         if n_steps == 0:
-            return self._clone(self.data)
+            # Même sans pitch shift, appliquer l'alignement de période
+            # (les notes root peuvent aussi avoir frac_period > 0)
+            cloned = self._clone(self.data)
+            if cloned._looping and cloned._loop_start is not None:
+                from audio_tools import AudioTools
+                sr     = cloned.samplerate
+                mono   = AudioTools.to_mono(self.data)
+                n      = len(mono)
+                ls_raw = int(cloned._loop_start * sr)
+                le_raw = int(cloned._loop_end   * sr)
+                zc_starts = AudioTools.zero_crossings_up(
+                    mono, max(0, ls_raw - 2048), min(n - 1, ls_raw + 2048)
+                )
+                new_ls = int(zc_starts[np.argmin(np.abs(zc_starts - ls_raw))]) \
+                         if len(zc_starts) else ls_raw
+                period = AudioTools.find_fundamental_period(self.data, sr)
+                if period and period >= 2:
+                    search_r = max(4096, int(period * 4))
+                    zc_ends  = AudioTools.zero_crossings_up(
+                        mono,
+                        max(0,     le_raw - search_r),
+                        min(n - 1, le_raw + search_r),
+                    )
+                    if len(zc_ends):
+                        fracs  = (zc_ends - new_ls) / period % 1
+                        fracs  = np.minimum(fracs, 1.0 - fracs)
+                        new_le = int(zc_ends[np.argmin(fracs)])
+                    else:
+                        new_le = le_raw
+                    cloned._loop_start = new_ls / sr
+                    cloned._loop_end   = new_le / sr
+            return cloned
 
         if method == "rubberband":
             shifted = self._pitch_shift_rubberband(self.data, n_steps)
