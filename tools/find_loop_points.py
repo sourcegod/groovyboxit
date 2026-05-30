@@ -1,86 +1,257 @@
-#python3
+#!/usr/bin/env python3
 """
     File: tools/find_loop_points.py
-    Détecte les points de bouclage (loop_start, loop_end) dans les samples
-    WAV d'un patch et met à jour patch.json.
-    La logique de détection est dans src/audio_tools.AudioTools.
+    Détecte les points de bouclage dans les samples WAV d'un patch
+    et les embarque directement dans le chunk 'smpl' de chaque WAV.
+
+    Nouvelle stratégie (v2) :
+      - Fixer loop_start dans la zone sustain (25-80% du fichier)
+      - Chercher loop_end = zéro montant le plus proche de
+        loop_start + n×période → frac_period minimal garanti
+      - Scorer par corr_loop (2 périodes à la jonction)
 
     Usage :
-      python3 tools/find_loop_points.py synths/Organ_B3_Basic_Fast
-      python3 tools/find_loop_points.py synths/Organ_B3_Basic_Fast --dry-run
-      python3 tools/find_loop_points.py synths/Organ_B3_Basic_Fast --tail 0.20 --min-corr 0.95
+      # Sur un répertoire de patch (patch.json requis)
+      python3 tools/find_loop_points.py /chemin/vers/patch_dir
+      python3 tools/find_loop_points.py /chemin/vers/patch_dir --dry-run
 
-    Date: Sun, 17/05/2026
+      # Sur un fichier WAV individuel
+      python3 tools/find_loop_points.py /chemin/vers/sample.wav
+      python3 tools/find_loop_points.py /chemin/vers/sample.wav --dry-run
+
+      # Ajuster les paramètres
+      python3 tools/find_loop_points.py /chemin --sustain-start 0.30 \\
+              --sustain-end 0.75 --min-corr 0.85
+
+    Date: Sat, 30/05/2026
     Author: Coolbrother
 """
+
 import os
 import sys
 import json
+import struct
 import argparse
+import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from audio_tools import AudioTools
 
 
-def process_patch(patch_dir, tail_ratio=0.15, min_corr=0.98, dry_run=False):
-    """Analyse tous les samples d'un patch et met à jour patch.json."""
-    json_path = os.path.join(patch_dir, "patch.json")
+# ---------------------------------------------------------------------------
+# Chunk smpl (réutilisé depuis extract_instruments_sf2.py)
+# ---------------------------------------------------------------------------
+
+def _embed_smpl(wav_path, root_midi, loop_start, loop_end, samplerate):
+    """Embarque (ou remplace) le chunk smpl dans un WAV existant."""
+    with open(wav_path, "rb") as f:
+        original = f.read()
+
+    sample_period = int(1_000_000_000 / samplerate)
+    smpl_data  = struct.pack("<IIIIIIIII",
+        0, 0, sample_period, root_midi, 0, 0, 0, 1, 0)
+    smpl_data += struct.pack("<IIIIII", 0, 0, loop_start, loop_end, 0, 0)
+
+    # Reconstruire le RIFF en excluant tout smpl existant
+    chunks = bytearray(b"WAVE")
+    pos = 12
+    while pos < len(original) - 8:
+        tag, sz = struct.unpack_from("<4sI", original, pos)
+        pos += 8
+        if tag != b"smpl":
+            chunks += tag + struct.pack("<I", sz) + original[pos:pos + sz]
+            if sz % 2:
+                chunks += b"\x00"
+        pos += sz
+        if pos % 2:
+            pos += 1
+
+    chunks += b"smpl" + struct.pack("<I", len(smpl_data)) + smpl_data
+
+    with open(wav_path, "wb") as f:
+        f.write(b"RIFF" + struct.pack("<I", len(chunks)) + bytes(chunks))
+
+
+# ---------------------------------------------------------------------------
+# Traitement d'un WAV individuel
+# ---------------------------------------------------------------------------
+
+def process_wav(wav_path, root_midi=60,
+                sustain_start=0.25, sustain_end=0.80,
+                min_loop_ms=100, max_loop_ms=3000,
+                min_corr=0.90, dry_run=False):
+    """Détecte les loop points d'un WAV et embarque le chunk smpl."""
+    result = AudioTools.find_loop_points(
+        wav_path,
+        sustain_start = sustain_start,
+        sustain_end   = sustain_end,
+        min_loop_ms   = min_loop_ms,
+        max_loop_ms   = max_loop_ms,
+        min_corr      = min_corr,
+        verbose       = True,
+    )
+    if result is None:
+        return None
+
+    ls, le, corr = result
+
+    if not dry_run:
+        # Lire le samplerate depuis le WAV
+        import soundfile as sf
+        _, sr = sf.read(wav_path, dtype='float32')
+        _embed_smpl(wav_path, root_midi, ls, le, sr)
+        print(f"      → chunk smpl embarqué dans {os.path.basename(wav_path)}")
+    else:
+        print("      → (dry-run : fichier non modifié)")
+
+    return ls, le, corr
+
+
+# ---------------------------------------------------------------------------
+# Traitement d'un répertoire de patch
+# ---------------------------------------------------------------------------
+
+def process_patch(patch_path, sustain_start=0.25, sustain_end=0.80,
+                  min_loop_ms=100, max_loop_ms=3000,
+                  min_corr=0.90, dry_run=False):
+    """Analyse tous les WAV d'un patch.json et met à jour le JSON + les smpl."""
+    import soundfile as sf
+    from synth_engine import note_name_to_midi
+
+    # patch_path peut être un répertoire ou le JSON directement
+    if os.path.isdir(patch_path):
+        json_path = os.path.join(patch_path, "patch.json")
+    else:
+        json_path = patch_path
+        patch_path = os.path.dirname(patch_path)
+
     if not os.path.exists(json_path):
-        print(f"ERREUR : {json_path} introuvable")
-        sys.exit(1)
+        # Pas de patch.json → chercher les WAVs dans le répertoire
+        wavs = sorted(glob.glob(os.path.join(patch_path, "*.wav")))
+        if not wavs:
+            print(f"Aucun WAV trouvé dans : {patch_path}")
+            sys.exit(1)
+        print(f"\n=== Répertoire (sans patch.json) : {patch_path} ===\n")
+        found = 0
+        for wav_path in wavs:
+            r = process_wav(wav_path, root_midi=60,
+                            sustain_start=sustain_start,
+                            sustain_end=sustain_end,
+                            min_loop_ms=min_loop_ms,
+                            max_loop_ms=max_loop_ms,
+                            min_corr=min_corr,
+                            dry_run=dry_run)
+            if r:
+                found += 1
+        print(f"\n{found}/{len(wavs)} samples avec points de boucle.")
+        return
 
     with open(json_path, "r", encoding="utf-8") as f:
         meta = json.load(f)
 
-    print(f"\n=== Patch : {meta.get('name', os.path.basename(patch_dir))} ===\n")
+    print(f"\n=== Patch : {meta.get('name', os.path.basename(patch_path))} ===\n")
 
-    found = 0
-    for s in meta.get("samples", []):
-        wav_path = os.path.join(patch_dir, s["file"])
+    sounds = meta.get("sounds", meta.get("samples", []))
+    found  = 0
+
+    for s in sounds:
+        filename = s.get("filename", s.get("file", ""))
+        wav_path = filename if os.path.isabs(filename) \
+                   else os.path.join(patch_path, filename)
+
         if not os.path.exists(wav_path):
-            print(f"  MANQUANT : {s['file']}")
+            print(f"  MANQUANT : {filename}")
             continue
-        result = AudioTools.find_loop_points(wav_path,
-                                             tail_ratio=tail_ratio,
-                                             min_corr=min_corr)
+
+        # Deviner la note root depuis le champ du JSON ou le nom du fichier
+        rootnote = s.get("rootnote", s.get("root", ""))
+        try:
+            root_midi = note_name_to_midi(rootnote) if rootnote else 60
+        except Exception:
+            root_midi = 60
+
+        _, sr_file = sf.read(wav_path, dtype='float32')
+        result = AudioTools.find_loop_points(
+            wav_path,
+            sustain_start = sustain_start,
+            sustain_end   = sustain_end,
+            min_loop_ms   = min_loop_ms,
+            max_loop_ms   = max_loop_ms,
+            min_corr      = min_corr,
+            verbose       = True,
+        )
+
         if result:
-            s["loop_start"] = result[0]
-            s["loop_end"]   = result[1]
+            ls, le, corr = result
+            s["loop_start"] = ls
+            s["loop_end"]   = le
             found += 1
+            if not dry_run:
+                _embed_smpl(wav_path, root_midi, ls, le, sr_file)
+                print(f"      → smpl embarqué")
         else:
             s.pop("loop_start", None)
             s.pop("loop_end",   None)
 
-    print(f"\n{found}/{len(meta.get('samples', []))} samples avec points de boucle.")
+    print(f"\n{found}/{len(sounds)} samples avec points de boucle.")
 
     if found > 0:
         meta["loop"] = True
 
     if dry_run:
-        print("(dry-run : patch.json non modifié)")
+        print("(dry-run : patch.json et WAVs non modifiés)")
     else:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
         print(f"patch.json mis à jour : {json_path}")
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
-        description="Détecte les points de bouclage d'un patch multi-sample."
+        description="Détecte les points de bouclage et embarque le chunk smpl dans les WAVs."
     )
-    ap.add_argument("patch_dir",
-                    help="Répertoire du patch (contenant patch.json)")
-    ap.add_argument("--tail", type=float, default=0.15,
+    ap.add_argument("path",
+                    help="Répertoire de patch, chemin patch.json, ou fichier WAV")
+
+    ap.add_argument("--sustain-start", type=float, default=0.25,
                     metavar="RATIO",
-                    help="Portion finale analysée (défaut : 0.15 = 15%%)")
-    ap.add_argument("--min-corr", type=float, default=0.98,
+                    help="Début zone sustain pour loop_start (défaut 0.25 = 25%%)")
+    ap.add_argument("--sustain-end",   type=float, default=0.80,
+                    metavar="RATIO",
+                    help="Fin zone sustain pour loop_end (défaut 0.80 = 80%%)")
+    ap.add_argument("--min-loop-ms",   type=float, default=100,
+                    metavar="MS",
+                    help="Durée minimale de boucle en ms (défaut 100)")
+    ap.add_argument("--max-loop-ms",   type=float, default=3000,
+                    metavar="MS",
+                    help="Durée maximale de boucle en ms (défaut 3000)")
+    ap.add_argument("--min-corr",      type=float, default=0.90,
                     metavar="CORR",
-                    help="Corrélation minimale acceptée (défaut : 0.98)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Affiche les résultats sans modifier patch.json")
+                    help="Corrélation minimale acceptée (défaut 0.90)")
+    ap.add_argument("--dry-run",       action="store_true",
+                    help="Affiche les résultats sans modifier les fichiers")
+
+    # Rétrocompat avec l'ancien paramètre --tail
+    ap.add_argument("--tail", type=float, default=None,
+                    help=argparse.SUPPRESS)
+
     args = ap.parse_args()
 
-    process_patch(args.patch_dir,
-                  tail_ratio=args.tail,
-                  min_corr=args.min_corr,
-                  dry_run=args.dry_run)
+    kwargs = dict(
+        sustain_start = args.sustain_start,
+        sustain_end   = args.sustain_end,
+        min_loop_ms   = args.min_loop_ms,
+        max_loop_ms   = args.max_loop_ms,
+        min_corr      = args.min_corr,
+        dry_run       = args.dry_run,
+    )
+
+    path = args.path
+    if path.endswith(".wav"):
+        process_wav(path, **kwargs)
+    else:
+        process_patch(path, **kwargs)
