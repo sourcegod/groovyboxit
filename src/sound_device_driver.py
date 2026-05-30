@@ -73,19 +73,27 @@ class _LoopVoice:
         on blende la position courante avec la position correspondante dans
         le cycle PRÉCÉDENT (pos - loop_len), soit data[ls-N:ls].
       - À pos=le-1 : output ≈ data[ls-1] → saut à data[ls] = enchaînement normal.
+
+    Release :
+      - Déclenché par stop_sound() → releasing=True
+      - Fondu linéaire sur rel_len échantillons, puis la voix est retirée.
     """
-    __slots__ = ("data", "pos", "ls", "le", "xf", "loop_len", "vol_l", "vol_r")
+    __slots__ = ("data", "pos", "ls", "le", "xf", "loop_len", "vol_l", "vol_r",
+                 "releasing", "rel_pos", "rel_len")
 
     def __init__(self, data: np.ndarray, ls: int, le: int,
                  xf: int, vol_l: float, vol_r: float):
-        self.data     = data
-        self.pos      = 0
-        self.ls       = ls
-        self.le       = le
-        self.xf       = max(2, xf)
-        self.loop_len = le - ls
-        self.vol_l    = vol_l
-        self.vol_r    = vol_r
+        self.data      = data
+        self.pos       = 0
+        self.ls        = ls
+        self.le        = le
+        self.xf        = max(2, xf)
+        self.loop_len  = le - ls
+        self.vol_l     = vol_l
+        self.vol_r     = vol_r
+        self.releasing = False
+        self.rel_pos   = 0
+        self.rel_len   = 0
 
 
 # ---------------------------------------------------------------------------
@@ -125,10 +133,12 @@ class SoundDeviceDriver:
     close()
     """
 
-    SAMPLERATE = 44100
-    BLOCKSIZE  = 512
-    CHANNELS   = 2
-    DTYPE      = "float32"
+    SAMPLERATE   = 44100
+    BLOCKSIZE    = 512
+    CHANNELS     = 2
+    DTYPE        = "float32"
+    END_FADE_MS  = 20    # fondu de fin baked dans les sons one-shot (ms)
+    RELEASE_MS   = 80    # durée du release des voix bouclantes après stop() (ms)
 
     def __init__(self, samplerate: int = SAMPLERATE, blocksize: int = BLOCKSIZE):
         self._sr          = samplerate
@@ -171,25 +181,35 @@ class SoundDeviceDriver:
             self._voices = alive
 
             # ── Voix bouclantes (FluidSynth-style) ────────────────────
+            alive_lv = []
             for v in self._loop_voices:
                 self._mix_loop_voice(v, mix, frames)
+                if not v.releasing or v.rel_pos < v.rel_len:
+                    alive_lv.append(v)
+            self._loop_voices = alive_lv
 
         np.clip(mix * self._master_vol, -1.0, 1.0, out=outdata)
 
     def _mix_loop_voice(self, v: _LoopVoice,
                         mix: np.ndarray, frames: int):
         """Mélange une _LoopVoice dans mix (per-sample, style FluidSynth)."""
-        data     = v.data
-        n_data   = len(data)
-        ls       = v.ls
-        le       = v.le
-        llen     = v.loop_len
-        xf       = v.xf
-        pos      = v.pos
-        vl       = v.vol_l
-        vr       = v.vol_r
+        data       = v.data
+        n_data     = len(data)
+        ls         = v.ls
+        le         = v.le
+        llen       = v.loop_len
+        xf         = v.xf
+        pos        = v.pos
+        vl         = v.vol_l
+        vr         = v.vol_r
+        releasing  = v.releasing
+        rel_pos    = v.rel_pos
+        rel_len    = v.rel_len
 
         for i in range(frames):
+            if releasing and rel_pos >= rel_len:
+                break   # silence le reste du bloc, voix sera retirée
+
             # Lecture de la position courante
             if pos < n_data:
                 sl = data[pos, 0]
@@ -200,26 +220,42 @@ class SoundDeviceDriver:
             # Crossfade : zone [le-xf, le)
             dist = le - pos
             if 0 < dist <= xf:
-                # alpha : 0 en début de zone, 1 juste avant le
                 alpha = 1.0 - dist / xf
-                prev  = pos - llen            # position dans le cycle précédent
+                prev  = pos - llen
                 if 0 <= prev < n_data:
                     sl = sl * (1.0 - alpha) + data[prev, 0] * alpha
                     sr = sr * (1.0 - alpha) + data[prev, 1] * alpha
 
-            mix[i, 0] += sl * vl
-            mix[i, 1] += sr * vr
+            # Enveloppe de release
+            if releasing:
+                gain     = 1.0 - rel_pos / rel_len
+                rel_pos += 1
+            else:
+                gain = 1.0
 
-            # Avance et wrap
+            mix[i, 0] += sl * vl * gain
+            mix[i, 1] += sr * vr * gain
+
             pos += 1
             if pos >= le:
                 pos = ls
 
-        v.pos = pos
+        v.pos     = pos
+        v.rel_pos = rel_pos
 
     # ------------------------------------------------------------------
     # Chargement
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_end_fade(data: np.ndarray, fade_ms: float, sr: int) -> np.ndarray:
+        """Fondu de sortie linéaire baked sur les dernières fade_ms ms du buffer."""
+        n = min(int(fade_ms / 1000 * sr), len(data))
+        if n < 2:
+            return data
+        data = data.copy()
+        data[-n:] *= np.linspace(1.0, 0.0, n, dtype=np.float32)[:, np.newaxis]
+        return data
 
     def load(self, wav_path: str) -> SdSound:
         """Charge un fichier WAV en mémoire (float32 stéréo, resample si besoin)."""
@@ -228,6 +264,7 @@ class SoundDeviceDriver:
             data = np.repeat(data, 2, axis=1)
         if sr != self._sr:
             data = self._resample(data, sr, self._sr)
+        data = self._apply_end_fade(data, self.END_FADE_MS, self._sr)
         return SdSound(data, self._sr)
 
     def _resample(self, data: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
@@ -259,6 +296,7 @@ class SoundDeviceDriver:
             data = data[:, :2]
         if sr != self._sr:
             data = self._resample(data, sr, self._sr)
+        data = self._apply_end_fade(data, self.END_FADE_MS, self._sr)
         return SdSound(data, self._sr)
 
     def make_loop_sound(self, data: np.ndarray, sr: int,
@@ -327,12 +365,16 @@ class SoundDeviceDriver:
             self._loop_voices.clear()
 
     def stop_sound(self, sound: SdSound):
-        """Arrête la lecture du SdSound donné (toutes les voix correspondantes)."""
+        """Stoppe un SdSound : coupure immédiate (one-shot), release (bouclant)."""
         with self._lock:
-            self._voices      = [v for v in self._voices
-                                 if v.data is not sound.data]
-            self._loop_voices = [v for v in self._loop_voices
-                                 if v.data is not sound.data]
+            self._voices = [v for v in self._voices
+                            if v.data is not sound.data]
+            rel_len = int(self.RELEASE_MS / 1000 * self._sr)
+            for v in self._loop_voices:
+                if v.data is sound.data and not v.releasing:
+                    v.releasing = True
+                    v.rel_pos   = 0
+                    v.rel_len   = rel_len
 
     def set_sound_volume(self, sound, vol_norm: float):
         """No-op : le volume est appliqué au moment de play()."""
