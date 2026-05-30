@@ -138,6 +138,8 @@ class AudioTools:
                 print("      → SKIP : aucun zéro montant dans la zone sustain")
             return None
 
+        min_llen = int(min_loop_ms / 1000 * sr)
+        max_llen = int(max_loop_ms / 1000 * sr)
         min_n = max(1, int(np.ceil(min_loop_ms / 1000 * sr / period)))
         max_n = max(min_n + 1, int(np.floor(max_loop_ms / 1000 * sr / period)))
 
@@ -147,43 +149,46 @@ class AudioTools:
         best_corr  = -1.0
         best_frac  = 1.0
 
-        corr_len = min(int(period * 2), 4096)
+        # Tolérance : P_local = llen/n doit être dans ±5 % de period
+        period_tol = 0.05
 
         # Sous-ensemble représentatif de loop_start (max 30 candidats)
         step = max(1, len(zc_starts) // 30)
         for ls in zc_starts[::step]:
-            for n_per in range(min_n, max_n + 1):
-                ideal_le = int(ls + n_per * period)
-                if ideal_le >= int(n * sustain_end):
-                    break
+            le_min = ls + min_llen
+            le_max = min(ls + max_llen, int(n * sustain_end))
+            if le_min >= le_max:
+                continue
 
-                search_r = max(int(period // 2), 64)
-                zc_e = AudioTools.zero_crossings_up(
-                    mono,
-                    max(ls + 2, ideal_le - search_r),
-                    min(n - 1, ideal_le + search_r),
-                )
-                if len(zc_e) == 0:
-                    continue
-                le = int(zc_e[np.argmin(np.abs(zc_e - ideal_le))])
+            # Tous les zéros montants dans la fenêtre de recherche
+            zc_ends = AudioTools.zero_crossings_up(mono, le_min, le_max)
+            if len(zc_ends) == 0:
+                continue
 
+            for le in zc_ends:
                 llen = le - ls
-                if llen <= 0:
+                n_per = round(llen / period)
+                if n_per < min_n or n_per > max_n:
                     continue
 
-                # corr_loop : 2 périodes à la jonction, dans la boucle
+                # Période locale : llen = n_per × P_local → frac = 0 par construction
+                P_local = llen / n_per
+                if abs(P_local - period) / period > period_tol:
+                    continue
+
+                corr_len = min(int(P_local * 2), 4096)
                 corr = AudioTools.cross_correlation(
                     mono, le - corr_len, ls, corr_len
                 )
                 if corr < 0:
                     continue
 
-                frac  = (llen / period) % 1.0
-                frac  = min(frac, 1.0 - frac)
-                score = corr * (1.0 - frac * 2)
+                # frac ≈ 0 par construction ; score = corr seul
+                frac = abs((llen / P_local) % 1.0)
+                frac = min(frac, 1.0 - frac)
 
-                if score > best_score:
-                    best_score = score
+                if corr > best_score:
+                    best_score = corr
                     best_ls    = ls
                     best_le    = le
                     best_corr  = corr

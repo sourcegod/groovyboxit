@@ -113,7 +113,7 @@ def process_wav(wav_path, root_midi=60,
 
 def process_patch(patch_path, sustain_start=0.25, sustain_end=0.80,
                   min_loop_ms=100, max_loop_ms=3000,
-                  min_corr=0.90, dry_run=False):
+                  min_corr=0.90, dry_run=False, json_only=False):
     """Analyse tous les WAV d'un patch.json et met à jour le JSON + les smpl."""
     import soundfile as sf
     from synth_engine import note_name_to_midi
@@ -186,7 +186,7 @@ def process_patch(patch_path, sustain_start=0.25, sustain_end=0.80,
             s["loop_start"] = ls
             s["loop_end"]   = le
             found += 1
-            if not dry_run:
+            if not dry_run and not json_only:
                 _embed_smpl(wav_path, root_midi, ls, le, sr_file)
                 print(f"      → smpl embarqué")
         else:
@@ -200,6 +200,10 @@ def process_patch(patch_path, sustain_start=0.25, sustain_end=0.80,
 
     if dry_run:
         print("(dry-run : patch.json et WAVs non modifiés)")
+    elif json_only:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        print(f"patch.json mis à jour (WAVs non modifiés) : {json_path}")
     else:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
@@ -234,6 +238,8 @@ if __name__ == "__main__":
                     help="Corrélation minimale acceptée (défaut 0.90)")
     ap.add_argument("--dry-run",       action="store_true",
                     help="Affiche les résultats sans modifier les fichiers")
+    ap.add_argument("--json-only",     action="store_true",
+                    help="Met à jour le patch.json sans modifier les WAVs")
 
     # Rétrocompat avec l'ancien paramètre --tail
     ap.add_argument("--tail", type=float, default=None,
@@ -248,10 +254,12 @@ if __name__ == "__main__":
         max_loop_ms   = args.max_loop_ms,
         min_corr      = args.min_corr,
         dry_run       = args.dry_run,
+        json_only     = args.json_only,
     )
 
     path = args.path
     if path.endswith(".wav"):
-        process_wav(path, **kwargs)
+        wav_kwargs = {k: v for k, v in kwargs.items() if k != "json_only"}
+        process_wav(path, **wav_kwargs)
     else:
         process_patch(path, **kwargs)
