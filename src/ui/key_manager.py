@@ -428,14 +428,13 @@ class KeyManager:
                         f"NR: Pad {pad_idx + 1} @ {Pattern.QUANT_LIST[win._nr_rate_idx]}"
                     )
             else:
-                pad_idx  = (key - wx.WXK_NUMPAD1) + win._shift_pad
-                note_idx = key - wx.WXK_NUMPAD1
+                pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
                 slot = win._rack.get_slot(win._cur_slot)
                 if slot.type == InstrumentType.SYNTH and win._router.synth_ready():
-                    if note_idx < len(win._router.kb_notes_input):
-                        midi = win._router.kb_notes_input[note_idx]
+                    if pad_idx < len(win._router.kb_notes_input):
+                        midi = win._router.kb_notes_input[pad_idx]
                         vm   = win._player.voice_manager
-                        v    = vm.get_voice(note_idx)
+                        v    = vm.get_voice(pad_idx)
                         win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
                         win._router.kb_last_midi = midi
                         win._debug_pad_status(pad_idx, midi)
@@ -493,12 +492,9 @@ class KeyManager:
                     win._kb_root_midi += 12
                     win._router.update_input_kb(win._kb_root_midi)
                     win._show_status(f"Keyboard: octave entrée → {midi_to_note_name(win._kb_root_midi)}")
-            elif win._rack.get_slot(win._cur_slot).type == InstrumentType.KIT \
-                    and win._snd.note_map:
-                win._shift_kit(8)
             else:
                 win._shift_pad = min(8, win._shift_pad + 8)
-                win._show_status(f"ShiftPad: {win._shift_pad + 1}/{win._shift_pad + 8}")
+                win._show_status(f"Pads {win._shift_pad + 1}–{win._shift_pad + 8}")
             return True
 
         if key == wx.WXK_NUMPAD_SUBTRACT:
@@ -509,12 +505,9 @@ class KeyManager:
                     win._kb_root_midi -= 12
                     win._router.update_input_kb(win._kb_root_midi)
                     win._show_status(f"Keyboard: octave entrée → {midi_to_note_name(win._kb_root_midi)}")
-            elif win._rack.get_slot(win._cur_slot).type == InstrumentType.KIT \
-                    and win._snd.note_map:
-                win._shift_kit(-8)
             else:
                 win._shift_pad = max(0, win._shift_pad - 8)
-                win._show_status(f"ShiftPad: {win._shift_pad + 1}/{win._shift_pad + 8}")
+                win._show_status(f"Pads {win._shift_pad + 1}–{win._shift_pad + 8}")
             return True
 
         if win._input_mode == "keyboard" and not ctrl and not shift and not alt:
