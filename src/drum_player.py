@@ -184,17 +184,19 @@ class DrumPlayer:
                                 events.append((t_sec, track_idx, pad_idx, velocity))
             if self.playing:
                 num_steps = self._pattern._num_steps
-                for (t_idx, bar_idx, step_idx), note_list in self._pattern._kit_tape.items():
+                # list() : snapshot atomique — évite RuntimeError si le thread UI
+                # efface une entrée pendant l'itération (erase_patch/kit_tape_note)
+                for (t_idx, bar_idx, step_idx), note_list in list(self._pattern._kit_tape.items()):
                     float_off = bar_idx * num_steps + step_idx
                     t_sec = float_off * self.step_duration
                     if t_sec > elapsed - 0.002:
-                        for midi_note, vel, dur in note_list:
+                        for midi_note, vel, dur in list(note_list):
                             events.append((t_sec, self.KIT_TAPE_EVENT, (t_idx, midi_note, dur), vel))
-                for (t_idx, bar_idx, step_idx), note_list in self._pattern._patch_tape.items():
+                for (t_idx, bar_idx, step_idx), note_list in list(self._pattern._patch_tape.items()):
                     float_off = bar_idx * num_steps + step_idx
                     t_sec = float_off * self.step_duration
                     if t_sec > elapsed - 0.002:
-                        for midi_note, vel, dur in note_list:
+                        for midi_note, vel, dur in list(note_list):
                             events.append((t_sec, self.PATCH_TAPE_EVENT, (t_idx, midi_note, dur), vel))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
@@ -550,6 +552,45 @@ class DrumPlayer:
             self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
 
         return bar_idx, step_idx
+
+    def erase_patch_tape_note(self, track_idx, midi_note):
+        """Efface l'événement patch_tape le plus proche du temps courant pour midi_note."""
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+
+        if self._measure_start is not None:
+            measure_secs = total_steps * self.step_duration
+            now     = time.perf_counter()
+            current = ((now - self._measure_start) % measure_secs) / self.step_duration
+        else:
+            current = 0.0   # hors lecture : efface le premier événement trouvé
+
+        def circ_dist(step_f):
+            d = abs(step_f - current) % total_steps
+            return min(d, total_steps - d)
+
+        best_dist = float('inf')
+        best_key  = None
+        best_i    = None
+
+        for (t, b, s), events in self._pattern._patch_tape.items():
+            if t != track_idx:
+                continue
+            dist = circ_dist(b * self._pattern._num_steps + s)
+            for i, (note, vel, dur) in enumerate(events):
+                if note == midi_note and dist < best_dist:
+                    best_dist = dist
+                    best_key  = (t, b, s)
+                    best_i    = i
+
+        if best_key is None:
+            return None
+
+        events = self._pattern._patch_tape[best_key]
+        events.pop(best_i)
+        if not events:
+            del self._pattern._patch_tape[best_key]
+
+        return best_key[1], best_key[2]   # bar_idx, step_idx
 
     #--------------------------------------------------------------------------
 

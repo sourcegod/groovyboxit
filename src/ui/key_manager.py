@@ -6,6 +6,7 @@
     Author: Coolbrother
 """
 import types
+import threading
 import wx
 from drum_player import DrumPlayer
 from pattern import Pattern
@@ -394,8 +395,15 @@ class KeyManager:
                     win._play_kit_pitched(note_idx)
             elif win._player.erasing:
                 pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
-                win._player._erase_active_pads.add(pad_idx)
-                result = win._player.erase_hit(pad_idx)
+                slot = win._rack.get_slot(win._cur_slot)
+                if slot.type == InstrumentType.SYNTH and win._router.synth_ready() \
+                        and pad_idx < len(win._router.kb_notes_input):
+                    midi = win._router.kb_notes_input[pad_idx]
+                    win._router.synth.stop(midi)
+                    result = win._player.erase_patch_tape_note(win._player._cur_track, midi)
+                else:
+                    win._player._erase_active_pads.add(pad_idx)
+                    result = win._player.erase_hit(pad_idx)
                 if result:
                     bar_idx, step_idx = result
                     if bar_idx == 0 and step_idx < win.COLS:
@@ -435,11 +443,15 @@ class KeyManager:
                         midi = win._router.kb_notes_input[pad_idx]
                         vm   = win._player.voice_manager
                         v    = vm.get_voice(pad_idx)
-                        win._router.synth.play(midi, v.volume / 100.0, v.pan, v.duration_ms)
+                        dur  = max(50, v.duration_ms)
+                        win._router.synth.play(midi, v.volume / 100.0, v.pan, dur)
+                        threading.Timer(
+                            dur / 1000.0, win._router.synth.stop, [midi]
+                        ).start()
                         win._router.kb_last_midi = midi
                         win._debug_pad_status(pad_idx, midi)
                         if win._player.recording:
-                            win._player.record_patch_note(midi, 100, v.duration_ms)
+                            win._player.record_patch_note(midi, 100, dur)
                 else:
                     win._play(pad_idx)
                     win._debug_pad_status(pad_idx)

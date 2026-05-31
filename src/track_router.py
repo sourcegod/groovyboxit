@@ -288,7 +288,10 @@ class TrackRouter:
         if slot.type == InstrumentType.SYNTH:
             engine = self._slot_synths.get(slot_idx)
             if engine and engine.is_loaded() and pad_idx < len(self._kb_notes_play):
-                engine.play(self._kb_notes_play[pad_idx], vol_factor, pan, duration_ms)
+                midi = self._kb_notes_play[pad_idx]
+                dur  = duration_ms if duration_ms > 0 else 500
+                engine.play(midi, vol_factor, pan, dur)
+                threading.Timer(dur / 1000.0, engine.stop, [midi]).start()
         else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 

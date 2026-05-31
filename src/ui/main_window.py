@@ -377,8 +377,6 @@ class MainWindow(wx.Frame):
         pat._track_pans    = self._router._track_pans[:]
         pat._kit_tape      = dict(self._player._pattern._kit_tape)
         pat._patch_tape    = dict(self._player._pattern._patch_tape)
-        pat._kb_scale      = self._kb_scale
-        pat._kb_root_midi  = self._kb_play_root
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""

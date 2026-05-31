@@ -100,6 +100,7 @@ class SynthEngine:
         self._raw_cache   = {}   # {midi_note: AudioSampler} — pitch-shifté
         self._cache       = {}   # {(midi_note, duration_ms): SdSound} — one-shot
         self._loop_cache  = {}   # {midi_note: SdSound} — sons bouclants (clé sans durée)
+        self._last_played = {}   # {midi_note: SdSound} — dernier son joué (pour stop fiable)
 
     # ------------------------------------------------------------------
     # Chargement de patch
@@ -243,9 +244,10 @@ class SynthEngine:
                 self._build_sound(note, duration_ms)
 
     def clear_cache(self):
-        self._raw_cache  = {}
-        self._cache      = {}
-        self._loop_cache = {}
+        self._raw_cache   = {}
+        self._cache       = {}
+        self._loop_cache  = {}
+        self._last_played = {}
 
     # ------------------------------------------------------------------
     # Lecture
@@ -256,11 +258,13 @@ class SynthEngine:
         sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
             return
+        self._last_played[midi_note] = sound
         self._driver.play(sound, volume_factor, pan)
 
     def stop(self, midi_note):
         """Arrête la note sustain (utile pour les instruments en loop/gate)."""
-        sound = self._loop_cache.get(midi_note)
+        sound = self._last_played.pop(midi_note, None) \
+                or self._loop_cache.get(midi_note)
         if sound:
             self._driver.stop_sound(sound)
 

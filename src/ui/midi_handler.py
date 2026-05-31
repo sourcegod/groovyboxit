@@ -132,12 +132,17 @@ class MidiHandler:
         transposed = max(0, min(127, note + offset))
         play_idx   = self._kb_play_idx(transposed)
         if win._player.erasing:
-            if play_idx >= 0:
+            # Cherche d'abord dans patch_tape (notes MIDI absolues en mode keyboard)
+            result = win._player.erase_patch_tape_note(
+                win._player._cur_track, transposed
+            )
+            if result is None and play_idx >= 0:
                 result = win._player.erase_hit(play_idx)
-                if result:
-                    bar_idx, step_idx = result
-                    if bar_idx == 0 and step_idx < win.COLS:
-                        win._cells[play_idx][step_idx].SetValue(False)
+            if result:
+                bar_idx, step_idx = result
+                if bar_idx == 0 and step_idx < win.COLS:
+                    idx = play_idx if 0 <= play_idx < win.ROWS else 0
+                    win._cells[idx][step_idx].SetValue(False)
         elif win._note_repeat:
             vol_factor = velocity / 127.0
             v   = win._player.voice_manager.get_voice(win._cur_row)

@@ -427,6 +427,117 @@ def test_record_patch_note_midi_then_fixed_cancels_pending():
 
 
 # ---------------------------------------------------------------------------
+# erase_patch_tape_note
+# ---------------------------------------------------------------------------
+
+def test_erase_patch_tape_note_removes_event():
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    key = list(pl._pattern._patch_tape.keys())[0]
+    result = pl.erase_patch_tape_note(0, 60)
+    assert result is not None
+    assert key not in pl._pattern._patch_tape, "clé supprimée quand liste vide"
+    print("  erase_patch_tape_note supprime l'événement et la clé vide : OK")
+
+def test_erase_patch_tape_note_returns_bar_step():
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    bar_idx, step_idx = pl.erase_patch_tape_note(0, 60)
+    assert isinstance(bar_idx,  int)
+    assert isinstance(step_idx, int)
+    assert 0 <= bar_idx  < pl._pattern._num_bars
+    assert 0 <= step_idx < pl._pattern._num_steps
+    print("  erase_patch_tape_note retourne (bar_idx, step_idx) valides : OK")
+
+def test_erase_patch_tape_note_unknown_note_returns_none():
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    result = pl.erase_patch_tape_note(0, 99)   # note 99 non enregistrée
+    assert result is None
+    print("  erase_patch_tape_note note absente → None sans plantage : OK")
+
+def test_erase_patch_tape_note_wrong_track_returns_none():
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    result = pl.erase_patch_tape_note(1, 60)   # note sur track 0, pas track 1
+    assert result is None
+    print("  erase_patch_tape_note mauvaise piste → None : OK")
+
+def test_erase_patch_tape_note_keeps_other_note_at_same_step():
+    """Effacer note 60 ne doit pas toucher note 64 au même pas."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    pl.record_patch_note(64, 90, 400)
+    key = list(pl._pattern._patch_tape.keys())[0]
+    pl.erase_patch_tape_note(0, 60)
+    remaining = [e[0] for e in pl._pattern._patch_tape.get(key, [])]
+    assert 64 in remaining, "note 64 doit rester"
+    assert 60 not in remaining
+    print("  erase_patch_tape_note ne touche pas les autres notes du même step : OK")
+
+def test_erase_patch_tape_note_twice_removes_both():
+    """Effacer deux fois des notes différentes fonctionne."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    pl.record_patch_note(64, 90, 400)
+    pl.erase_patch_tape_note(0, 60)
+    pl.erase_patch_tape_note(0, 64)
+    assert pl._pattern._patch_tape == {}, "patch_tape vide après deux effacements"
+    print("  erase_patch_tape_note deux effacements successifs : OK")
+
+def test_erase_patch_tape_note_empty_tape_returns_none():
+    pl = _make_player()
+    result = pl.erase_patch_tape_note(0, 60)
+    assert result is None
+    print("  erase_patch_tape_note sur tape vide → None : OK")
+
+
+# ---------------------------------------------------------------------------
+# Sécurité accès concurrent (simulation du bug de régression)
+# ---------------------------------------------------------------------------
+
+def test_patch_tape_list_snapshot_safe_during_erase():
+    """Simule la race condition _run_thread vs erase_patch_tape_note.
+
+    Sans list() : RuntimeError 'dictionary changed size during iteration'.
+    Avec list() : aucune exception.
+    """
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    pl.record_patch_note(62, 100, 500)
+    pl.record_patch_note(64, 100, 500)
+
+    collected = []
+    try:
+        for (t_idx, b, s), note_list in list(pl._pattern._patch_tape.items()):
+            # modification concurrente pendant l'itération (comme erase UI thread)
+            pl.erase_patch_tape_note(0, 60)
+            for midi_note, vel, dur in list(note_list):
+                collected.append(midi_note)
+    except RuntimeError as e:
+        assert False, f"RuntimeError (accès concurrent non protégé) : {e}"
+    print("  list(patch_tape.items()) immunise contre la modification concurrente : OK")
+
+def test_kit_tape_list_snapshot_safe_during_modification():
+    """Même vérification pour kit_tape."""
+    pl = _make_player()
+    pl.record_kit_note(36, 100)
+    pl.record_kit_note(38, 100)
+
+    try:
+        for (t_idx, b, s), note_list in list(pl._pattern._kit_tape.items()):
+            # modification concurrente
+            for k in list(pl._pattern._kit_tape.keys()):
+                del pl._pattern._kit_tape[k]
+                break
+            for midi_note, vel, dur in list(note_list):
+                pass
+    except RuntimeError as e:
+        assert False, f"RuntimeError (accès concurrent kit_tape non protégé) : {e}"
+    print("  list(kit_tape.items()) immunise contre la modification concurrente : OK")
+
+
+# ---------------------------------------------------------------------------
 # Dispatch callbacks (simulation)
 # ---------------------------------------------------------------------------
 
@@ -528,6 +639,17 @@ if __name__ == "__main__":
     test_record_patch_note_off_removes_from_pending()
     test_record_patch_note_off_unknown_note_is_noop()
     test_record_patch_note_midi_then_fixed_cancels_pending()
+    # erase_patch_tape_note
+    test_erase_patch_tape_note_removes_event()
+    test_erase_patch_tape_note_returns_bar_step()
+    test_erase_patch_tape_note_unknown_note_returns_none()
+    test_erase_patch_tape_note_wrong_track_returns_none()
+    test_erase_patch_tape_note_keeps_other_note_at_same_step()
+    test_erase_patch_tape_note_twice_removes_both()
+    test_erase_patch_tape_note_empty_tape_returns_none()
+    # Sécurité accès concurrent
+    test_patch_tape_list_snapshot_safe_during_erase()
+    test_kit_tape_list_snapshot_safe_during_modification()
     # Dispatch callbacks
     test_kit_tape_callback_receives_duration()
     test_patch_tape_callback_receives_duration()
