@@ -377,6 +377,8 @@ class MainWindow(wx.Frame):
         pat._track_pans    = self._router._track_pans[:]
         pat._kit_tape      = dict(self._player._pattern._kit_tape)
         pat._patch_tape    = dict(self._player._pattern._patch_tape)
+        pat._kb_scale      = self._kb_scale
+        pat._kb_root_midi  = self._kb_play_root
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
@@ -390,6 +392,8 @@ class MainWindow(wx.Frame):
         self._router._track_solos[:]   = new._track_solos
         self._router._track_volumes[:] = new._track_volumes
         self._router._track_pans[:]    = new._track_pans
+        # Restaure la gamme de lecture du pattern (indépendante de la gamme UI courante)
+        self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
 
     def _play_toggle(self):
         """Bascule lecture / arrêt (utilisé comme callback par les dialogs de propriétés)."""

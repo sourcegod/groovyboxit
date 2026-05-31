@@ -58,9 +58,10 @@ class TrackRouter:
         self._kb_scale       = "chromatic"  # pour le message de status
         self._kb_root_midi   = 48       # pour play_kit_pitched / status
 
-        self.kb_notes       = []   # notes de lecture (stables)
-        self.kb_notes_input = []   # notes d'entrée (transposables par Numpad+/-)
-        self.kb_last_midi   = None
+        self.kb_notes        = []   # notes d'entrée MIDI (clavier externe)
+        self.kb_notes_input  = []   # notes d'entrée Numpad (transposables)
+        self._kb_notes_play  = []   # notes de lecture (gamme du pattern courant — figée)
+        self.kb_last_midi    = None
 
     # ------------------------------------------------------------------
     # Propriétés (accès lecture seule aux moteurs)
@@ -77,6 +78,14 @@ class TrackRouter:
     # ------------------------------------------------------------------
     # kb_notes / gamme
     # ------------------------------------------------------------------
+
+    def set_playback_kb(self, scale, root_midi):
+        """Fixe les notes de LECTURE depuis la gamme stockée dans le pattern courant.
+
+        Appelé lors du chargement/changement de pattern.
+        Indépendant des changements de gamme dans l'UI (update_kb_notes).
+        """
+        self._kb_notes_play = scale_midi_notes(scale, root_midi, self.KB_NUMPAD_NOTES)
 
     def update_kb_notes(self, scale, root_midi):
         """Recalcule kb_notes/kb_notes_input (entrées clavier et numpad uniquement).
@@ -278,8 +287,8 @@ class TrackRouter:
         slot     = self._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.SYNTH:
             engine = self._slot_synths.get(slot_idx)
-            if engine and engine.is_loaded() and pad_idx < len(self.kb_notes):
-                engine.play(self.kb_notes[pad_idx], vol_factor, pan, duration_ms)
+            if engine and engine.is_loaded() and pad_idx < len(self._kb_notes_play):
+                engine.play(self._kb_notes_play[pad_idx], vol_factor, pan, duration_ms)
         else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 

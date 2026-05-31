@@ -68,6 +68,10 @@ class Pattern:
         # Capture MIDI brute pour les patchs synth : même structure
         self._patch_tape = {}
 
+        # Gamme utilisée lors de l'enregistrement (lecture indépendante de l'UI)
+        self._kb_scale     = "major"   # défaut "major" pour rétrocompat anciens patterns
+        self._kb_root_midi = 48        # C3
+
     #--------------------------------------------------------------------------
 
     @staticmethod
@@ -265,6 +269,8 @@ class Pattern:
             "track_pans":    self._track_pans,
             "curpattern":    self._curpattern,
             "voices":        self._voices,
+            "kb_scale":      self._kb_scale,
+            "kb_root_midi":  self._kb_root_midi,
             "kit_tape":   [
                 [t, b, s, note, vel, dur]
                 for (t, b, s), events in self._kit_tape.items()
@@ -294,6 +300,8 @@ class Pattern:
         if "track_volumes" in d: self._track_volumes = d["track_volumes"]
         if "track_pans"    in d: self._track_pans    = d["track_pans"]
         if "voices"        in d: self._voices        = d["voices"]
+        self._kb_scale     = d.get("kb_scale",     "major")
+        self._kb_root_midi = d.get("kb_root_midi", 48)
         self._kit_tape = {}
         for rec in d.get("kit_tape", []):
             t, b, s, note, vel = rec[:5]
