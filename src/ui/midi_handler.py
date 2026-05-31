@@ -132,7 +132,7 @@ class MidiHandler:
     # ------------------------------------------------------------------
 
     def on_cc(self, cc_num, value, channel):
-        """Control Change MIDI reçu — CC#7 = Volume du pad ou de la piste selon le focus."""
+        """Control Change MIDI reçu — CC#7 = Volume, CC#10 = Pan (pad ou piste selon focus)."""
         win = self._win
         if cc_num == 7:                            # CC#7 : Volume standard
             vol = round(value * 100 / 127)
@@ -145,6 +145,17 @@ class MidiHandler:
                 win._player.voice_manager.set_volume(pad, vol)
                 win._vol_ctrls[pad].SetValue(vol)
                 win._show_status(f"Pad {pad + 1}: Volume {vol}")
+        elif cc_num == 10:                         # CC#10 : Pan standard (0=gauche, 64=centre, 127=droite)
+            pan = round((value - 64) * 100 / 63)
+            if win._track_list.HasFocus():
+                track = win._player._cur_track
+                win._router.set_track_pan(track, pan)
+                win._show_status(f"Piste {track + 1}: Pan {pan}")
+            else:
+                pad = win._cur_row
+                win._player.voice_manager.set_pan(pad, pan)
+                win._pan_ctrls[pad].SetValue(pan)
+                win._show_status(f"Pad {pad + 1}: Pan {pan}")
 
     # ------------------------------------------------------------------
     # Note On
