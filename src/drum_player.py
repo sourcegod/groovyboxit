@@ -39,7 +39,8 @@ class DrumPlayer:
         self.recording            = False
         self.replace_recording    = False
         self._erase_active_pads   = set()   # pads MIDI tenus en mode Erase
-        self.erasing              = False
+        self.erasing                  = False
+        self._erase_active_midi_notes = set()   # notes MIDI tenues en Erase (patch_tape)
         self._erase_was_recording = False
         self._erase_was_replace   = False
         self.click_in_recording   = True
@@ -138,6 +139,7 @@ class DrumPlayer:
         self.replace_recording   = False
         self.erasing             = False
         self._erase_active_pads.clear()
+        self._erase_active_midi_notes.clear()
         self._count_in           = 0
         self.stop_thread()
         self.sound_man.stop_all()
@@ -250,13 +252,19 @@ class DrumPlayer:
                             self._clear_offset(pad_idx, t_sec / self.step_duration)
                 elif track_or_type == self.KIT_TAPE_EVENT:
                     t_idx, midi_note, dur = evt_data
-                    if self._on_kit_tape_cb:
+                    if self.erasing and t_idx == self._cur_track \
+                            and midi_note in self._erase_active_midi_notes:
+                        self._erase_kit_tape_event(t_idx, midi_note, t_sec)
+                    elif self._on_kit_tape_cb:
                         self._on_kit_tape_cb(t_idx, midi_note, velocity, dur)
                     else:
                         self.sound_man.play_note(midi_note, velocity / 127.0)
                 elif track_or_type == self.PATCH_TAPE_EVENT:
                     t_idx, midi_note, dur = evt_data
-                    if self._on_patch_tape_cb:
+                    if self.erasing and t_idx == self._cur_track \
+                            and midi_note in self._erase_active_midi_notes:
+                        self._erase_patch_tape_event(t_idx, midi_note, t_sec)
+                    elif self._on_patch_tape_cb:
                         self._on_patch_tape_cb(t_idx, midi_note, velocity, dur)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
@@ -514,6 +522,7 @@ class DrumPlayer:
         if self.erasing:
             self.erasing = False
             self._erase_active_pads.clear()
+            self._erase_active_midi_notes.clear()
             if self._erase_was_recording:
                 self.recording         = True
                 self.replace_recording = self._erase_was_replace
@@ -521,11 +530,42 @@ class DrumPlayer:
             self._erase_was_recording = self.recording
             self._erase_was_replace   = self.replace_recording
             self.erasing = True
+            self._erase_active_midi_notes.clear()
             if self.recording:
                 self.stop_record()
         return self.erasing
 
     #--------------------------------------------------------------------------
+
+    def _erase_kit_tape_event(self, track_idx, midi_note, t_sec):
+        """Efface un événement kit_tape au passage (appelé par _run_thread en mode Erase)."""
+        total_steps = self._pattern._num_bars * self._pattern._num_steps
+        float_off   = t_sec / self.step_duration
+        step        = round(float_off) % total_steps
+        bar_idx     = step // self._pattern._num_steps
+        step_idx    = step % self._pattern._num_steps
+        key         = (track_idx, bar_idx, step_idx)
+        events = self._pattern._kit_tape.get(key)
+        if events is None:
+            return
+        events[:] = [(n, v, d) for n, v, d in events if n != midi_note]
+        if not events:
+            self._pattern._kit_tape.pop(key, None)
+
+    def _erase_patch_tape_event(self, track_idx, midi_note, t_sec):
+        """Efface un événement patch_tape au passage (appelé par _run_thread en mode Erase)."""
+        total_steps = self._pattern._num_bars * self._pattern._num_steps
+        float_off   = t_sec / self.step_duration
+        step        = round(float_off) % total_steps
+        bar_idx     = step // self._pattern._num_steps
+        step_idx    = step % self._pattern._num_steps
+        key         = (track_idx, bar_idx, step_idx)
+        events = self._pattern._patch_tape.get(key)
+        if events is None:
+            return
+        events[:] = [(n, v, d) for n, v, d in events if n != midi_note]
+        if not events:
+            self._pattern._patch_tape.pop(key, None)
 
     def erase_hit(self, pad_idx):
         if not self.float_offsets[pad_idx]:

@@ -22,9 +22,17 @@ from drum_player import DrumPlayer
 # Helpers
 # ---------------------------------------------------------------------------
 
+class _FakeSoundManager:
+    """Sound manager minimal pour les tests qui appellent stop_all()."""
+    def stop_all(self):    pass
+    def play_sound(self, *a): pass
+    def play_metronome(self, *a): pass
+    def play_note(self, *a): pass
+
+
 def _make_player():
     """DrumPlayer prêt pour l'enregistrement (non lancé, quant désactivée)."""
-    p = DrumPlayer()
+    p = DrumPlayer(_FakeSoundManager())
     p._quant_in_recording = False   # évite les effets de grille dans les tests
     p._measure_start = None         # → ref = now dans record_*
     return p
@@ -493,6 +501,242 @@ def test_erase_patch_tape_note_empty_tape_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# _erase_active_midi_notes — note_on / note_off / toggle_erase
+# ---------------------------------------------------------------------------
+
+def test_erase_active_midi_notes_initially_empty():
+    pl = _make_player()
+    assert pl._erase_active_midi_notes == set()
+    print("  _erase_active_midi_notes vide à l'init : OK")
+
+def test_toggle_erase_clears_active_midi_notes_on_enter():
+    pl = _make_player()
+    pl._erase_active_midi_notes.add(60)
+    pl.toggle_erase()   # entre en Erase
+    assert pl._erase_active_midi_notes == set(), \
+        "activer Erase doit vider _erase_active_midi_notes"
+    print("  toggle_erase (entrée) vide _erase_active_midi_notes : OK")
+
+def test_toggle_erase_clears_active_midi_notes_on_exit():
+    pl = _make_player()
+    pl.toggle_erase()   # entre en Erase
+    pl._erase_active_midi_notes.add(60)
+    pl.toggle_erase()   # sort du Erase
+    assert pl._erase_active_midi_notes == set(), \
+        "désactiver Erase doit vider _erase_active_midi_notes"
+    print("  toggle_erase (sortie) vide _erase_active_midi_notes : OK")
+
+def test_stop_all_clears_active_midi_notes():
+    pl = _make_player()
+    pl._erase_active_midi_notes.add(60)
+    pl._erase_active_midi_notes.add(62)
+    pl.stop_all()
+    assert pl._erase_active_midi_notes == set()
+    print("  stop_all vide _erase_active_midi_notes : OK")
+
+def test_update_erase_midi_range_pad_mode_uses_erase_held():
+    """En mode pad, _update_erase_midi_range doit utiliser les notes brutes de _erase_held."""
+    pl = _make_player()
+    pl.toggle_erase()
+    # Simule ce que _update_erase_midi_range fait en mode pad
+    erase_held = {36, 43}   # raw MIDI notes (kick C2, snare G2)
+    pl._erase_active_midi_notes = set(range(min(erase_held), max(erase_held) + 1))
+    assert pl._erase_active_midi_notes == set(range(36, 44))
+    print("  update_erase_midi_range (pad) : plage depuis notes brutes : OK")
+
+def test_note_on_range_two_notes():
+    """Tenir C2(36) et G2(43) → plage {36..43} dans _erase_active_midi_notes.
+
+    Simule ce que _handle_keyboard_note_on + _update_erase_midi_range font.
+    """
+    pl = _make_player()
+    pl.toggle_erase()
+    # Simule note_on C2
+    erase_held_kb = set()
+    erase_held_kb.add(36)
+    pl._erase_active_midi_notes = set(range(min(erase_held_kb), max(erase_held_kb) + 1))
+    assert pl._erase_active_midi_notes == {36}
+    # Simule note_on G2 (tenu en même temps)
+    erase_held_kb.add(43)
+    pl._erase_active_midi_notes = set(range(min(erase_held_kb), max(erase_held_kb) + 1))
+    assert pl._erase_active_midi_notes == set(range(36, 44)), \
+        "tenir C2+G2 doit couvrir toute la plage 36-43"
+    print("  note_on Erase : deux notes tenues → plage complète : OK")
+
+def test_note_off_shrinks_range():
+    """Relâcher C2 pendant que G2 est tenu → plage réduite à {43}."""
+    pl = _make_player()
+    pl.toggle_erase()
+    erase_held_kb = {36, 43}
+    pl._erase_active_midi_notes = set(range(36, 44))
+    # Simule note_off C2
+    erase_held_kb.discard(36)
+    pl._erase_active_midi_notes = set(range(min(erase_held_kb), max(erase_held_kb) + 1))
+    assert pl._erase_active_midi_notes == {43}
+    print("  note_off Erase : relâcher une note réduit la plage : OK")
+
+def test_note_off_last_note_clears_range():
+    """Relâcher la dernière note tenue → plage vide."""
+    pl = _make_player()
+    pl.toggle_erase()
+    erase_held_kb = {60}
+    pl._erase_active_midi_notes = {60}
+    # Simule note_off de la dernière note
+    erase_held_kb.discard(60)
+    if not erase_held_kb:
+        pl._erase_active_midi_notes.clear()
+    assert pl._erase_active_midi_notes == set()
+    print("  note_off Erase : dernière note relâchée → plage vide : OK")
+
+def test_note_off_discard_unknown_note_is_safe():
+    """discard sur note absente ne doit pas planter."""
+    pl = _make_player()
+    try:
+        pl._erase_active_midi_notes.discard(99)
+        print("  note_off Erase : discard note inconnue → no-op : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+# ---------------------------------------------------------------------------
+# _erase_patch_tape_event — auto-effacement pendant la lecture
+# ---------------------------------------------------------------------------
+
+def test_erase_kit_tape_event_removes_note():
+    """_erase_kit_tape_event supprime la note ciblée dans kit_tape."""
+    pl = _make_player()
+    pl.record_kit_note(36, 100)
+    key = list(pl._pattern._kit_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    pl._erase_kit_tape_event(0, 36, t_sec)
+
+    assert key not in pl._pattern._kit_tape
+    print("  _erase_kit_tape_event supprime l'événement : OK")
+
+def test_erase_kit_tape_event_keeps_other_notes():
+    """Note 38 au même step n'est pas touchée quand on efface note 36."""
+    pl = _make_player()
+    pl.record_kit_note(36, 100)
+    pl.record_kit_note(38, 80)
+    key = list(pl._pattern._kit_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    pl._erase_kit_tape_event(0, 36, t_sec)
+
+    remaining = [e[0] for e in pl._pattern._kit_tape.get(key, [])]
+    assert 38 in remaining
+    assert 36 not in remaining
+    print("  _erase_kit_tape_event conserve les autres notes du step : OK")
+
+def test_run_thread_auto_erase_kit_tape():
+    """Simule la logique _run_thread pour KIT_TAPE_EVENT en mode Erase."""
+    pl = _make_player()
+    pl.record_kit_note(36, 100)
+    key = list(pl._pattern._kit_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    pl.toggle_erase()
+    pl._erase_active_midi_notes = {36}
+
+    t_idx, midi_note, dur = 0, 36, 0
+    if pl.erasing and t_idx == pl._cur_track \
+            and midi_note in pl._erase_active_midi_notes:
+        pl._erase_kit_tape_event(t_idx, midi_note, t_sec)
+
+    assert key not in pl._pattern._kit_tape
+    print("  _run_thread logique : KIT_TAPE_EVENT effacé si note active en Erase : OK")
+
+def test_erase_patch_tape_event_removes_note():
+    """_erase_patch_tape_event supprime la note ciblée à un step donné."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    # Retrouve le step enregistré
+    key = list(pl._pattern._patch_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    pl._erase_patch_tape_event(0, 60, t_sec)
+
+    assert key not in pl._pattern._patch_tape, "clé supprimée après effacement"
+    print("  _erase_patch_tape_event supprime l'événement et la clé vide : OK")
+
+def test_erase_patch_tape_event_keeps_other_notes_at_same_step():
+    """Note 64 au même step n'est pas touchée quand on efface note 60."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    pl.record_patch_note(64, 90, 400)
+    key = list(pl._pattern._patch_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    pl._erase_patch_tape_event(0, 60, t_sec)
+
+    remaining = [e[0] for e in pl._pattern._patch_tape.get(key, [])]
+    assert 64 in remaining, "note 64 doit rester"
+    assert 60 not in remaining
+    print("  _erase_patch_tape_event ne touche pas les autres notes du step : OK")
+
+def test_erase_patch_tape_event_no_crash_on_missing_step():
+    """Pas de plantage si t_sec ne correspond à aucun step enregistré."""
+    pl = _make_player()
+    try:
+        pl._erase_patch_tape_event(0, 60, 99.9)
+        print("  _erase_patch_tape_event step absent → no-op : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+def test_run_thread_auto_erase_uses_erase_active_midi_notes():
+    """Simule la logique _run_thread : PATCH_TAPE_EVENT efface si note dans _erase_active_midi_notes."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    key = list(pl._pattern._patch_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    pl.toggle_erase()
+    pl._erase_active_midi_notes.add(60)
+
+    # Simule ce que _run_thread fait pour PATCH_TAPE_EVENT
+    t_idx, midi_note, dur = 0, 60, 500
+    if pl.erasing and t_idx == pl._cur_track \
+            and midi_note in pl._erase_active_midi_notes:
+        pl._erase_patch_tape_event(t_idx, midi_note, t_sec)
+
+    assert key not in pl._pattern._patch_tape, \
+        "l'événement doit être effacé automatiquement pendant la lecture"
+    print("  _run_thread logique : PATCH_TAPE_EVENT effacé si note active en Erase : OK")
+
+def test_run_thread_no_erase_if_note_not_active():
+    """Si la note n'est pas dans _erase_active_midi_notes, elle ne doit pas être effacée."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    key = list(pl._pattern._patch_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    played = []
+    pl._on_patch_tape_cb = lambda t, n, v, d: played.append(n)
+
+    pl.toggle_erase()
+    # note 60 PAS dans _erase_active_midi_notes
+
+    t_idx, midi_note, dur = 0, 60, 500
+    if pl.erasing and t_idx == pl._cur_track \
+            and midi_note in pl._erase_active_midi_notes:
+        pl._erase_patch_tape_event(t_idx, midi_note, t_sec)
+    elif pl._on_patch_tape_cb:
+        pl._on_patch_tape_cb(t_idx, midi_note, 100, dur)
+
+    assert 60 in played, "la note doit être jouée, pas effacée"
+    assert key in pl._pattern._patch_tape, "l'événement ne doit pas être supprimé"
+    print("  _run_thread logique : PATCH_TAPE_EVENT joué si note pas active en Erase : OK")
+
+
+# ---------------------------------------------------------------------------
 # Sécurité accès concurrent (simulation du bug de régression)
 # ---------------------------------------------------------------------------
 
@@ -647,6 +891,26 @@ if __name__ == "__main__":
     test_erase_patch_tape_note_keeps_other_note_at_same_step()
     test_erase_patch_tape_note_twice_removes_both()
     test_erase_patch_tape_note_empty_tape_returns_none()
+    # _erase_active_midi_notes
+    test_erase_active_midi_notes_initially_empty()
+    test_toggle_erase_clears_active_midi_notes_on_enter()
+    test_toggle_erase_clears_active_midi_notes_on_exit()
+    test_stop_all_clears_active_midi_notes()
+    test_update_erase_midi_range_pad_mode_uses_erase_held()
+    # _erase_kit_tape_event
+    test_erase_kit_tape_event_removes_note()
+    test_erase_kit_tape_event_keeps_other_notes()
+    test_run_thread_auto_erase_kit_tape()
+    test_note_on_range_two_notes()
+    test_note_off_shrinks_range()
+    test_note_off_last_note_clears_range()
+    test_note_off_discard_unknown_note_is_safe()
+    # _erase_patch_tape_event
+    test_erase_patch_tape_event_removes_note()
+    test_erase_patch_tape_event_keeps_other_notes_at_same_step()
+    test_erase_patch_tape_event_no_crash_on_missing_step()
+    test_run_thread_auto_erase_uses_erase_active_midi_notes()
+    test_run_thread_no_erase_if_note_not_active()
     # Sécurité accès concurrent
     test_patch_tape_list_snapshot_safe_during_erase()
     test_kit_tape_list_snapshot_safe_during_modification()

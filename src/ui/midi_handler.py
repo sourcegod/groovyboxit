@@ -16,8 +16,9 @@ class MidiHandler:
     """Traite les événements MIDI entrants pour MainWindow."""
 
     def __init__(self, win):
-        self._win        = win
-        self._erase_held = set()   # notes MIDI tenues en mode Erase
+        self._win          = win
+        self._erase_held   = set()   # notes MIDI tenues en mode Erase (pad mode)
+        self._erase_held_kb = set()  # notes MIDI tenues en mode Erase (keyboard mode)
 
     # ------------------------------------------------------------------
     # Connexion MIDI
@@ -59,6 +60,7 @@ class MidiHandler:
     def toggle_erase(self):
         """Bascule le mode Erase et vide les notes MIDI tenues."""
         self._erase_held.clear()
+        self._erase_held_kb.clear()
         return self._win._player.toggle_erase()
 
     # ------------------------------------------------------------------
@@ -110,6 +112,21 @@ class MidiHandler:
         pads = [self._midi_to_pad(n) for n in self._erase_held]
         win._player._erase_active_pads = set(range(min(pads), max(pads) + 1))
 
+    def _update_erase_midi_range(self):
+        """Recalcule _erase_active_midi_notes selon les notes tenues (plage min→max).
+
+        - mode keyboard : source = _erase_held_kb (notes transposées → patch_tape)
+        - mode pad      : source = _erase_held    (notes MIDI brutes  → kit_tape)
+        Exemple : tenir C2(36) et G2(43) → {36, 37, 38, 39, 40, 41, 42, 43}.
+        """
+        win    = self._win
+        source = self._erase_held_kb if win._input_mode == "keyboard" else self._erase_held
+        if not source:
+            win._player._erase_active_midi_notes.clear()
+            return
+        notes = list(source)
+        win._player._erase_active_midi_notes = set(range(min(notes), max(notes) + 1))
+
     # ------------------------------------------------------------------
     # Note On
     # ------------------------------------------------------------------
@@ -132,7 +149,8 @@ class MidiHandler:
         transposed = max(0, min(127, note + offset))
         play_idx   = self._kb_play_idx(transposed)
         if win._player.erasing:
-            # Cherche d'abord dans patch_tape (notes MIDI absolues en mode keyboard)
+            self._erase_held_kb.add(transposed)
+            self._update_erase_midi_range()   # plage [min_note, max_note] tenues
             result = win._player.erase_patch_tape_note(
                 win._player._cur_track, transposed
             )
@@ -183,6 +201,7 @@ class MidiHandler:
             prev_range = set(win._player._erase_active_pads)
             self._erase_held.add(note)
             self._update_erase_range()
+            self._update_erase_midi_range()   # kit_tape auto-erase pendant la lecture
             for p in sorted(win._player._erase_active_pads - prev_range):
                 result = win._player.erase_hit(p)
                 if result:
@@ -277,6 +296,8 @@ class MidiHandler:
                 offset     = win._kb_root_midi - win._kb_play_root
                 transposed = max(0, min(127, note + offset))
                 win._router.synth.stop(transposed)
+                self._erase_held_kb.discard(transposed)
+                self._update_erase_midi_range()   # recalcule la plage après relâchement
                 if win._player.recording:
                     win._player.record_patch_note_off(transposed)
             else:
@@ -285,3 +306,4 @@ class MidiHandler:
                     win._router.synth.stop(win._router.kb_notes_input[pad_idx])
         self._erase_held.discard(note)
         self._update_erase_range()
+        self._update_erase_midi_range()
