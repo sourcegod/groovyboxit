@@ -131,10 +131,25 @@ class MidiHandler:
     # Control Change
     # ------------------------------------------------------------------
 
-    def on_cc(self, cc_num, value, channel):
-        """Control Change MIDI reçu — CC#7 = Volume, CC#10 = Pan (pad ou piste selon focus)."""
+    def on_pitch_bend(self, bend, channel):
+        """Pitch Bend MIDI (-8192..+8191, 0=centre) — temps réel sur les voix actives."""
         win = self._win
-        if cc_num == 7:                            # CC#7 : Volume standard
+        if not win._router.synth_ready():
+            return
+        synth = win._router.synth
+        synth.pitch_bend = bend
+        synth.apply_pitch_bend()   # met à jour phase_incr de toutes les voix actives
+        st = synth.pitch_bend_semitones
+        win._show_status(f"Pitch Bend: {st:+.2f} st")
+
+    def on_cc(self, cc_num, value, channel):
+        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan."""
+        win = self._win
+        if cc_num == 1:                            # CC#1 : Modulation Wheel
+            if win._router.synth_ready():
+                win._router.synth.mod_wheel = value
+                win._show_status(f"Mod Wheel: {value}")
+        elif cc_num == 7:                          # CC#7 : Volume standard
             vol = round(value * 100 / 127)
             if win._track_list.HasFocus():
                 track = win._player._cur_track

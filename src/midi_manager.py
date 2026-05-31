@@ -28,11 +28,13 @@ class MidiManager:
     sinon seul le canal correspondant (0–15) est traité.
     """
 
-    def __init__(self, on_note_on=None, on_note_off=None, on_status=None, on_cc=None):
-        self._on_note_on  = on_note_on
-        self._on_note_off = on_note_off
-        self._on_status   = on_status
-        self._on_cc       = on_cc
+    def __init__(self, on_note_on=None, on_note_off=None, on_status=None,
+                 on_cc=None, on_pitch_bend=None):
+        self._on_note_on    = on_note_on
+        self._on_note_off   = on_note_off
+        self._on_status     = on_status
+        self._on_cc         = on_cc
+        self._on_pitch_bend = on_pitch_bend
 
         self.channel    = None   # None = tous les canaux, 0–15 = filtre
         self._midi_in   = None
@@ -144,6 +146,12 @@ class MidiManager:
             value  = message[2]
             if self._on_cc:
                 self._on_cc(cc_num, value, chan)
+
+        elif msg_type == 0xE0:                # Pitch Bend
+            # 14 bits : LSB (message[1]) + MSB (message[2]), centre = 8192
+            bend = ((message[2] << 7) | message[1]) - 8192
+            if self._on_pitch_bend:
+                self._on_pitch_bend(bend, chan)
 
     # ------------------------------------------------------------------
     # Utilitaire interne

@@ -96,11 +96,15 @@ class SynthEngine:
         self._synths_dir  = synths_dir
         self._patch_name  = None
         self._patch_meta  = {}
-        self._samples     = []   # [{"root_midi", "sampler", "path"}]
-        self._raw_cache   = {}   # {midi_note: AudioSampler} — pitch-shifté
-        self._cache       = {}   # {(midi_note, duration_ms): SdSound} — one-shot
-        self._loop_cache  = {}   # {midi_note: SdSound} — sons bouclants (clé sans durée)
-        self._last_played = {}   # {midi_note: SdSound} — dernier son joué (pour stop fiable)
+        self._samples       = []   # [{"root_midi", "sampler", "path"}]
+        self._raw_cache     = {}   # {midi_note: AudioSampler} — pitch-shifté rubberband
+        self._cache         = {}   # {(midi_note, duration_ms): SdSound} — one-shot
+        self._loop_cache    = {}   # {midi_note: SdSound} — sons bouclants (clé sans durée)
+        self._active_voices = {}   # {midi_note: voice_ref} — voix actives (bend + stop)
+
+        self.pitch_bend       = 0    # -8192..+8191 (0 = centre)
+        self.pitch_bend_range = 2    # ±semitones (standard MIDI = 2)
+        self.mod_wheel        = 0    # 0..127 (réservé pour future LFO/vibrato)
 
     # ------------------------------------------------------------------
     # Chargement de patch
@@ -169,11 +173,12 @@ class SynthEngine:
         Utilisé pour le mode Keyboard/Kit : pitcher un pad de batterie."""
         sampler = AudioSampler.from_file(wav_path)
         sampler.set_mode(PlayMode.ONESHOT)
-        self._patch_name = os.path.basename(wav_path)
-        self._patch_meta = {}
-        self._raw_cache  = {}
-        self._cache      = {}
-        self._samples    = [{"root_midi": root_midi, "sampler": sampler, "path": wav_path}]
+        self._patch_name    = os.path.basename(wav_path)
+        self._patch_meta    = {}
+        self._raw_cache     = {}
+        self._cache         = {}
+        self._active_voices = {}
+        self._samples       = [{"root_midi": root_midi, "sampler": sampler, "path": wav_path}]
 
     # ------------------------------------------------------------------
     # Génération et cache
@@ -244,29 +249,51 @@ class SynthEngine:
                 self._build_sound(note, duration_ms)
 
     def clear_cache(self):
-        self._raw_cache   = {}
-        self._cache       = {}
-        self._loop_cache  = {}
-        self._last_played = {}
+        self._raw_cache     = {}
+        self._cache         = {}
+        self._loop_cache    = {}
+        self._active_voices = {}
+
+    @property
+    def pitch_bend_semitones(self):
+        """Décalage en demi-tons correspondant au pitch bend courant."""
+        return self.pitch_bend / 8192.0 * self.pitch_bend_range
 
     # ------------------------------------------------------------------
     # Lecture
     # ------------------------------------------------------------------
 
     def play(self, midi_note, volume_factor=1.0, pan=0, maxtime_ms=500):
-        """Joue midi_note. maxtime_ms=0 → durée complète du WAV."""
+        """Joue midi_note via rubberband (qualité) + phase_incr pour le pitch bend.
+
+        - Transposition semitone (midi_note − root_midi) : rubberband pré-calculé.
+        - Pitch bend courant (±pitch_bend_range st) : phase_incr en temps réel.
+        - Sans bend : phase_incr = 1.0 → lecture à vitesse normale, qualité max.
+        """
         sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
             return
-        self._last_played[midi_note] = sound
-        self._driver.play(sound, volume_factor, pan)
+        phase_incr = 2.0 ** (self.pitch_bend_semitones / 12.0)
+        voice = self._driver.play(sound, volume_factor, pan, phase_incr)
+        self._active_voices[midi_note] = voice
 
     def stop(self, midi_note):
         """Arrête la note sustain (utile pour les instruments en loop/gate)."""
-        sound = self._last_played.pop(midi_note, None) \
-                or self._loop_cache.get(midi_note)
-        if sound:
-            self._driver.stop_sound(sound)
+        voice = self._active_voices.pop(midi_note, None)
+        if voice is not None:
+            self._driver.stop_voice(voice)
+        else:
+            sound = self._loop_cache.get(midi_note)
+            if sound:
+                self._driver.stop_sound(sound)
+
+    def apply_pitch_bend(self):
+        """Met à jour le phase_incr de toutes les voix actives (pitch bend temps réel).
+        Appelé depuis MidiHandler à chaque message Pitch Bend reçu."""
+        pi = 2.0 ** (self.pitch_bend_semitones / 12.0)
+        for voice in self._active_voices.values():
+            if voice is not None:
+                voice.phase_incr = pi
 
     # ------------------------------------------------------------------
     # Informations

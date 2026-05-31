@@ -94,10 +94,11 @@ class MainWindow(wx.Frame):
         self._preset_path = os.path.join(self._presets_dir, "preset_01.json")
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
-            on_note_on  = lambda n, v, c:    wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
-            on_note_off = lambda n, c:       wx.CallAfter(self._midi_handler.on_note_off, n, c),
-            on_status   = lambda msg:        wx.CallAfter(self._show_status, msg),
-            on_cc       = lambda cc, v, c:   wx.CallAfter(self._midi_handler.on_cc, cc, v, c),
+            on_note_on    = lambda n, v, c:  wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
+            on_note_off   = lambda n, c:     wx.CallAfter(self._midi_handler.on_note_off, n, c),
+            on_status     = lambda msg:      wx.CallAfter(self._show_status, msg),
+            on_cc         = lambda cc, v, c: wx.CallAfter(self._midi_handler.on_cc, cc, v, c),
+            on_pitch_bend = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
         )
         self._build_ui()
         self._load_kit_slot(0)
