@@ -56,7 +56,7 @@ class MainWindow(wx.Frame):
         self._nr_rate_idx      = 7      # indice QUANT_LIST courant (défaut 1/16)
         self._nr_ternary       = False  # False=binaire, True=ternaire
         self._nr_midi_note     = None   # note MIDI tenue en mode Note Repeat
-        self._kb_scale     = "major"
+        self._kb_scale     = "chromatic"
         self._kb_play_root = 48   # C3 — root de lecture, stable (non affectée par Numpad+/-)
         self._kb_root_midi = 48   # C3 — root d'entrée, transposable avec Numpad+/-
         self._input_mode       = "pad"   # "pad" | "keyboard"

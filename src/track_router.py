@@ -34,7 +34,9 @@ class TrackRouter:
 
     NUM_TRACKS      = 8
     KB_NUMPAD_NOTES = 16   # notes de gamme pour les Numpads (8 touches × 2 banques)
-    KB_MIDI_NOTES   = 25   # notes de gamme pour le clavier MIDI (à étendre plus tard)
+    KB_MIDI_NOTES   = 25   # notes de gamme pour le clavier MIDI
+    KB_SYNTH_MIN    = 36   # C2 — borne basse du pré-calcul chromatique
+    KB_SYNTH_MAX    = 96   # C7 — borne haute du pré-calcul chromatique (61 notes)
 
     def __init__(self, rack, synths_dir, sound_manager, status_cb, driver=None):
         self._rack       = rack
@@ -53,7 +55,7 @@ class TrackRouter:
         self._synth_slot_idx = None     # slot_idx actuellement chargé dans _synth
         self._kit_synth      = None     # moteur Keyboard/KIT
         self._kb_kit_pad     = None     # pad source du Kit pitché courant
-        self._kb_scale       = "major"  # pour le message de status
+        self._kb_scale       = "chromatic"  # pour le message de status
         self._kb_root_midi   = 48       # pour play_kit_pitched / status
 
         self.kb_notes       = []   # notes de lecture (stables)
@@ -77,30 +79,36 @@ class TrackRouter:
     # ------------------------------------------------------------------
 
     def update_kb_notes(self, scale, root_midi):
-        """Recalcule kb_notes (25 notes, lecture MIDI) et kb_notes_input (16, Numpad)."""
+        """Recalcule kb_notes/kb_notes_input (entrées clavier et numpad uniquement).
+
+        Ne relance pas le pré-calcul : la plage C2-C7 est déjà en cache depuis
+        le chargement du patch. Le changement de gamme n'affecte pas la lecture
+        des données déjà enregistrées dans les patterns.
+        """
         self._kb_scale      = scale
         self._kb_root_midi  = root_midi
         self.kb_notes       = scale_midi_notes(scale, root_midi, self.KB_MIDI_NOTES)
         self.kb_notes_input = scale_midi_notes(scale, root_midi, self.KB_NUMPAD_NOTES)
-        self.precompute_async()
 
     def update_input_kb(self, root_midi):
         """Transpose le clavier Numpad d'entrée sans affecter kb_notes (lecture)."""
         self.kb_notes_input = scale_midi_notes(self._kb_scale, root_midi, self.KB_NUMPAD_NOTES)
 
     def precompute_async(self):
-        """Précalcule les notes pour _synth en arrière-plan."""
+        """Précalcule la plage C2-C7 (61 notes) pour _synth en arrière-plan.
+
+        Skip si le patch couvre déjà ≥88 notes (pas de pitch shift nécessaire).
+        """
         if self._synth is None or not self._synth.is_loaded():
             return
-        notes  = self.kb_notes[:]
+        if self._synth.has_full_range():
+            self._status_cb("Keyboard: patch complet (≥88 notes) — prêt")
+            return
+        notes  = list(range(self.KB_SYNTH_MIN, self.KB_SYNTH_MAX + 1))
         engine = self._synth
-        scale  = self._kb_scale
-        root   = self._kb_root_midi
         def run():
             engine.precompute(notes)
-            self._status_cb(
-                f"Keyboard: {scale} @ {midi_to_note_name(root)} — prêt"
-            )
+            self._status_cb("Keyboard: C2–C7 pré-calculé — prêt")
         threading.Thread(target=run, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -135,11 +143,12 @@ class TrackRouter:
             return
         engine = SynthEngine(self._synths_dir, driver=self._driver)
         self._slot_synths[slot_idx] = engine
-        notes = self.kb_notes[:]
         def run():
             try:
                 engine.load_patch(patch_name)
-                engine.precompute(notes)
+                if not engine.has_full_range():
+                    notes = list(range(self.KB_SYNTH_MIN, self.KB_SYNTH_MAX + 1))
+                    engine.precompute(notes)
                 self._status_cb(
                     f"Slot {slot_idx + 1:02d} ({patch_name}) prêt pour lecture"
                 )
@@ -293,7 +302,9 @@ class TrackRouter:
         if engine and engine.is_loaded():
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
             pan = self._track_pans[track_idx]
-            engine.play(midi_note, vol, pan, duration_ms)
+            dur = duration_ms if duration_ms > 0 else 500
+            engine.play(midi_note, vol, pan, dur)
+            threading.Timer(dur / 1000.0, engine.stop, [midi_note]).start()
 
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):
         """Mode Keyboard/KIT : joue pad_idx pitché sur la gamme courante."""

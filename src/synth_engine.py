@@ -98,7 +98,8 @@ class SynthEngine:
         self._patch_meta  = {}
         self._samples     = []   # [{"root_midi", "sampler", "path"}]
         self._raw_cache   = {}   # {midi_note: AudioSampler} — pitch-shifté
-        self._cache       = {}   # {(midi_note, duration_ms): SdSound}
+        self._cache       = {}   # {(midi_note, duration_ms): SdSound} — one-shot
+        self._loop_cache  = {}   # {midi_note: SdSound} — sons bouclants (clé sans durée)
 
     # ------------------------------------------------------------------
     # Chargement de patch
@@ -206,15 +207,16 @@ class SynthEngine:
             return None
 
         if sampler._looping and sampler._mode in (PlayMode.LOOP, PlayMode.GATE):
-            # Boucle temps réel FluidSynth-style : pas de buffer de sustain
+            # Boucle temps réel FluidSynth-style : pas de buffer de sustain.
+            # Stocké dans _loop_cache (clé = midi_note seul, sans duration_ms)
+            # pour que stop() et get_sound() le retrouvent quel que soit duration_ms.
             ls, le, xf = sampler.get_loop_params()
             if ls is not None and le > ls:
-                # Données brutes avec attack/decay ADSR (sans release ni sustain pré-rendu)
                 data  = sampler._apply_adsr(sampler.data, apply_release=False)
                 sound = self._driver.make_loop_sound(
                     data, sampler.samplerate, ls, le, xf
                 )
-                self._cache[(midi_note, duration_ms)] = sound
+                self._loop_cache[midi_note] = sound
                 return sound
 
         # One-shot ou loop params invalides : buffer pré-rendu classique
@@ -224,19 +226,26 @@ class SynthEngine:
         return sound
 
     def get_sound(self, midi_note, duration_ms=500):
-        """Retourne le son pour (midi_note, duration_ms), avec cache."""
+        """Retourne le SdSound pour midi_note, avec cache.
+
+        Sons bouclants : _loop_cache (durée ignorée, stop() les retrouve toujours).
+        Sons one-shot  : _cache[(midi_note, duration_ms)].
+        """
+        if midi_note in self._loop_cache:
+            return self._loop_cache[midi_note]
         key = (midi_note, duration_ms)
         return self._cache.get(key) or self._build_sound(midi_note, duration_ms)
 
     def precompute(self, midi_notes, duration_ms=500):
         """Pré-calcule et met en cache une liste de notes MIDI."""
         for note in midi_notes:
-            if (note, duration_ms) not in self._cache:
+            if note not in self._loop_cache and (note, duration_ms) not in self._cache:
                 self._build_sound(note, duration_ms)
 
     def clear_cache(self):
-        self._raw_cache = {}
-        self._cache     = {}
+        self._raw_cache  = {}
+        self._cache      = {}
+        self._loop_cache = {}
 
     # ------------------------------------------------------------------
     # Lecture
@@ -251,7 +260,7 @@ class SynthEngine:
 
     def stop(self, midi_note):
         """Arrête la note sustain (utile pour les instruments en loop/gate)."""
-        sound = self._cache.get((midi_note, 0))
+        sound = self._loop_cache.get(midi_note)
         if sound:
             self._driver.stop_sound(sound)
 
@@ -261,6 +270,10 @@ class SynthEngine:
 
     def is_loaded(self):
         return bool(self._samples)
+
+    def has_full_range(self) -> bool:
+        """True si le patch couvre déjà 88 notes ou plus (pas de pitch shift nécessaire)."""
+        return len(self._samples) >= 88
 
     def __repr__(self):
         return (f"SynthEngine(patch={self._patch_name!r}, "
