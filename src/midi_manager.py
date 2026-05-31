@@ -28,10 +28,11 @@ class MidiManager:
     sinon seul le canal correspondant (0–15) est traité.
     """
 
-    def __init__(self, on_note_on=None, on_note_off=None, on_status=None):
+    def __init__(self, on_note_on=None, on_note_off=None, on_status=None, on_cc=None):
         self._on_note_on  = on_note_on
         self._on_note_off = on_note_off
         self._on_status   = on_status
+        self._on_cc       = on_cc
 
         self.channel    = None   # None = tous les canaux, 0–15 = filtre
         self._midi_in   = None
@@ -138,6 +139,12 @@ class MidiManager:
             if self._on_note_off:
                 self._on_note_off(note, chan)
 
+        elif msg_type == 0xB0:                # Control Change
+            cc_num = message[1]
+            value  = message[2]
+            if self._on_cc:
+                self._on_cc(cc_num, value, chan)
+
     # ------------------------------------------------------------------
     # Utilitaire interne
 
@@ -164,10 +171,14 @@ if __name__ == "__main__":
     def on_note_off(note, chan):
         print(f"  NOTE OFF note={note:3d}             chan={chan}")
 
+    def on_cc(cc_num, value, chan):
+        print(f"  CC       cc={cc_num:3d}  val={value:3d}  chan={chan}")
+
     def on_status(msg):
         print(f"[MIDI] {msg}")
 
-    mgr = MidiManager(on_note_on=on_note_on, on_note_off=on_note_off, on_status=on_status)
+    mgr = MidiManager(on_note_on=on_note_on, on_note_off=on_note_off,
+                      on_status=on_status, on_cc=on_cc)
 
     ports = mgr.list_ports()
     print(f"Ports disponibles : {ports}")

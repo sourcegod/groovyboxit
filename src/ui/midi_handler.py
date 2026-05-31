@@ -128,6 +128,25 @@ class MidiHandler:
         win._player._erase_active_midi_notes = set(range(min(notes), max(notes) + 1))
 
     # ------------------------------------------------------------------
+    # Control Change
+    # ------------------------------------------------------------------
+
+    def on_cc(self, cc_num, value, channel):
+        """Control Change MIDI reçu — CC#7 = Volume du pad ou de la piste selon le focus."""
+        win = self._win
+        if cc_num == 7:                            # CC#7 : Volume standard
+            vol = round(value * 100 / 127)
+            if win._track_list.HasFocus():
+                track = win._player._cur_track
+                win._router.set_track_volume(track, vol)
+                win._show_status(f"Piste {track + 1}: Volume {vol}")
+            else:
+                pad = win._cur_row
+                win._player.voice_manager.set_volume(pad, vol)
+                win._vol_ctrls[pad].SetValue(vol)
+                win._show_status(f"Pad {pad + 1}: Volume {vol}")
+
+    # ------------------------------------------------------------------
     # Note On
     # ------------------------------------------------------------------
 
