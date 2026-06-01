@@ -88,6 +88,7 @@ class MainWindow(wx.Frame):
         self._player._on_track_play_cb = self._router.on_play
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
         self._player._on_patch_tape_cb  = self._router.on_patch_tape
+        self._player._on_bend_tape_cb   = self._router.on_bend_tape
         self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0

@@ -897,6 +897,182 @@ def test_run_thread_dispatch_passes_bend_to_callback():
 
 
 # ---------------------------------------------------------------------------
+# Automation Pitch Bend — _bend_tape
+# ---------------------------------------------------------------------------
+
+def test_bend_tape_initially_empty():
+    p = Pattern()
+    assert isinstance(p._bend_tape, list)
+    assert len(p._bend_tape) == p._num_tracks
+    assert all(t == [] for t in p._bend_tape)
+    print("  _bend_tape vide à l'init (liste de listes) : OK")
+
+def test_new_pattern_resets_bend_tape():
+    p = Pattern()
+    p._bend_tape[0] = [(4.0, 2048)]
+    p.new_pattern()
+    assert all(t == [] for t in p._bend_tape)
+    print("  new_pattern efface _bend_tape : OK")
+
+def test_reset_pattern_clears_bend_tape():
+    p = Pattern()
+    p._bend_tape[1] = [(8.0, -1024)]
+    p.reset_pattern()
+    assert all(t == [] for t in p._bend_tape)
+    print("  reset_pattern efface _bend_tape : OK")
+
+def test_clear_track_clears_bend_tape_for_track():
+    p = Pattern()
+    p.new_pattern(1, 16)
+    p._bend_tape[0] = [(2.0, 4096)]
+    p._bend_tape[1] = [(3.0, -2000)]
+    p.clear_track(0)
+    assert p._bend_tape[0] == [], "piste 0 effacée"
+    assert p._bend_tape[1] == [(3.0, -2000)], "piste 1 intacte"
+    print("  clear_track efface _bend_tape[track] sans toucher les autres : OK")
+
+def test_double_bars_duplicates_bend_tape():
+    p = Pattern()
+    p.new_pattern(2, 16)    # 2 mesures × 16 pas = 32 pas
+    p._bend_tape[0] = [(4.0, 2048), (10.0, -1024)]
+    p.double_bars()          # maintenant 4 mesures × 16 = 64 pas
+    offsets = [off for off, _ in p._bend_tape[0]]
+    assert 4.0  in offsets, "offset 4 original présent"
+    assert 10.0 in offsets, "offset 10 original présent"
+    assert 36.0 in offsets, "offset 4+32=36 dupliqué présent"
+    assert 42.0 in offsets, "offset 10+32=42 dupliqué présent"
+    print("  double_bars duplique _bend_tape avec offset + half_steps : OK")
+
+def test_double_bars_preserves_bend_values():
+    p = Pattern()
+    p.new_pattern(1, 16)
+    p._bend_tape[0] = [(3.0, 8191)]
+    p.double_bars()
+    vals = [b for _, b in p._bend_tape[0]]
+    assert vals.count(8191) == 2
+    print("  double_bars préserve les valeurs bend dans les copies : OK")
+
+def test_halve_bars_filters_bend_tape():
+    p = Pattern()
+    p.new_pattern(4, 16)    # 64 pas
+    p._bend_tape[0] = [(5.0, 1000), (20.0, -500), (35.0, 2000)]
+    p.halve_bars()           # garde seulement les 32 premiers pas
+    offsets = [off for off, _ in p._bend_tape[0]]
+    assert 5.0  in offsets,  "offset 5 conservé (< 32)"
+    assert 20.0 in offsets,  "offset 20 conservé (< 32)"
+    assert 35.0 not in offsets, "offset 35 supprimé (>= 32)"
+    print("  halve_bars filtre _bend_tape : OK")
+
+def test_resize_filters_bend_tape():
+    p = Pattern()
+    p.new_pattern(4, 16)    # 64 pas
+    p._bend_tape[0] = [(5.0, 100), (40.0, -200)]
+    p.resize(2, 16)          # 32 pas désormais
+    offsets = [off for off, _ in p._bend_tape[0]]
+    assert 5.0  in offsets,  "offset 5 conservé"
+    assert 40.0 not in offsets, "offset 40 supprimé"
+    print("  resize filtre _bend_tape : OK")
+
+def test_roundtrip_bend_tape():
+    src = Pattern()
+    src.new_pattern(1, 16)
+    src._bend_tape[0] = [(2.5, 4096), (7.0, -2000)]
+    src._bend_tape[2] = [(1.0, 8191)]
+    dst = Pattern()
+    dst.from_dict(src.to_dict())
+    assert dst._bend_tape[0] == src._bend_tape[0]
+    assert dst._bend_tape[2] == src._bend_tape[2]
+    print("  to_dict → from_dict _bend_tape round-trip : OK")
+
+def test_from_dict_without_bend_tape_gives_empty():
+    p = Pattern()
+    p.from_dict({"curpattern": Pattern()._curpattern})
+    assert isinstance(p._bend_tape, list)
+    assert all(t == [] for t in p._bend_tape)
+    print("  from_dict sans bend_tape → listes vides (rétrocompat) : OK")
+
+def test_from_dict_bend_tape_pads_to_num_tracks():
+    """Si bend_tape sérialisé contient moins de pistes, from_dict complète avec []."""
+    p = Pattern()
+    d = p.to_dict()
+    d["bend_tape"] = [[(1.0, 100)]]   # seulement 1 piste au lieu de 8
+    p2 = Pattern()
+    p2.from_dict(d)
+    assert len(p2._bend_tape) == p2._num_tracks
+    assert p2._bend_tape[0] == [(1.0, 100)]
+    assert p2._bend_tape[1] == []
+    print("  from_dict bend_tape incomplet → complété avec [] : OK")
+
+def test_record_bend_stores_float_offset_and_value():
+    pl = _make_player()
+    pl.record_bend(2048)
+    bends = pl._pattern._bend_tape[0]
+    assert len(bends) == 1
+    off, val = bends[0]
+    assert isinstance(off, float)
+    assert val == 2048
+    print("  record_bend stocke (float_offset, bend_value) : OK")
+
+def test_record_bend_multiple_points_accumulate():
+    pl = _make_player()
+    pl.record_bend(0)
+    pl.record_bend(4096)
+    pl.record_bend(-4096)
+    bends = pl._pattern._bend_tape[0]
+    assert len(bends) == 3
+    assert [b for _, b in bends] == [0, 4096, -4096]
+    print("  record_bend accumule plusieurs points sans déduplication : OK")
+
+def test_record_bend_uses_cur_track():
+    pl = _make_player()
+    pl._cur_track = 3
+    pl.record_bend(1234)
+    assert pl._pattern._bend_tape[3] != []
+    assert pl._pattern._bend_tape[0] == []
+    print("  record_bend enregistre sur la piste courante : OK")
+
+def test_bend_tape_callback_receives_track_and_value():
+    """Simule le dispatch BEND_TAPE_EVENT → callback (track_idx, bend_value)."""
+    received = []
+    pl = _make_player()
+    pl._on_bend_tape_cb = lambda t, b: received.append((t, b))
+
+    t_idx, bend_val = 2, -8000
+    if pl._on_bend_tape_cb:
+        pl._on_bend_tape_cb(t_idx, bend_val)
+
+    assert len(received) == 1
+    assert received[0] == (2, -8000)
+    print("  on_bend_tape_cb reçoit (track_idx, bend_value) : OK")
+
+def test_bend_tape_no_callback_is_safe():
+    pl = _make_player()
+    pl._on_bend_tape_cb = None
+    try:
+        if pl._on_bend_tape_cb:
+            pl._on_bend_tape_cb(0, 0)
+        print("  on_bend_tape_cb=None → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+def test_run_thread_build_bend_tape_events():
+    """Simule la construction des BEND_TAPE_EVENTs dans _run_thread."""
+    pl = _make_player()
+    pl._pattern._bend_tape[0] = [(4.0, 2048), (12.0, -1024)]
+    events = []
+    for t_idx, track_bends in enumerate(pl._pattern._bend_tape):
+        for float_off, bend_val in list(track_bends):
+            t_sec = float_off * pl.step_duration
+            events.append((t_sec, pl.BEND_TAPE_EVENT, (t_idx, bend_val), 0))
+    assert len(events) == 2
+    _, etype, (ti, bv), _ = events[0]
+    assert etype == pl.BEND_TAPE_EVENT
+    assert ti == 0
+    assert bv == 2048
+    print("  _run_thread construit les BEND_TAPE_EVENTs correctement : OK")
+
+
+# ---------------------------------------------------------------------------
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
@@ -984,9 +1160,27 @@ if __name__ == "__main__":
     test_kit_tape_callback_receives_duration()
     test_patch_tape_callback_receives_duration()
     test_kit_tape_no_callback_is_safe()
-    # Simulation Pitch Bend — enregistrement et lecture
+    # Simulation Pitch Bend — enregistrement et lecture (snapshot note_on)
     test_record_patch_note_stores_bend()
     test_record_patch_note_bend_zero_by_default()
     test_record_patch_note_off_preserves_bend()
     test_run_thread_dispatch_passes_bend_to_callback()
+    # Automation Pitch Bend — _bend_tape
+    test_bend_tape_initially_empty()
+    test_new_pattern_resets_bend_tape()
+    test_reset_pattern_clears_bend_tape()
+    test_clear_track_clears_bend_tape_for_track()
+    test_double_bars_duplicates_bend_tape()
+    test_double_bars_preserves_bend_values()
+    test_halve_bars_filters_bend_tape()
+    test_resize_filters_bend_tape()
+    test_roundtrip_bend_tape()
+    test_from_dict_without_bend_tape_gives_empty()
+    test_from_dict_bend_tape_pads_to_num_tracks()
+    test_record_bend_stores_float_offset_and_value()
+    test_record_bend_multiple_points_accumulate()
+    test_record_bend_uses_cur_track()
+    test_bend_tape_callback_receives_track_and_value()
+    test_bend_tape_no_callback_is_safe()
+    test_run_thread_build_bend_tape_events()
     print("Tous les tests : OK")

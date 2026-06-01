@@ -337,6 +337,21 @@ class TrackRouter:
             engine.pitch_bend = old_bend
             threading.Timer(dur / 1000.0, engine.stop, [midi_note]).start()
 
+    def on_bend_tape(self, track_idx, bend_value):
+        """Applique un point d'automation pitch bend au moteur du slot de la piste."""
+        if not self._track_is_audible(track_idx):
+            return
+        slot_idx = self._track_slots[track_idx]
+        slot     = self._rack.get_slot(slot_idx)
+        if slot.type != InstrumentType.SYNTH:
+            return
+        engine = self._slot_synths.get(slot_idx)
+        if engine and engine.is_loaded():
+            engine.pitch_bend = bend_value
+            engine.apply_pitch_bend()
+            _bend_log(f"BEND_AUTO track={track_idx} bend={bend_value} "
+                      f"({engine.pitch_bend_semitones:+.3f}st)")
+
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):
         """Mode Keyboard/KIT : joue pad_idx pitché sur la gamme courante."""
         if not wav_path:

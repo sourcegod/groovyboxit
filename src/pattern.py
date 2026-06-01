@@ -67,6 +67,9 @@ class Pattern:
         self._kit_tape   = {}
         # Capture MIDI brute pour les patchs synth : même structure
         self._patch_tape = {}
+        # Automation pitch bend : liste par piste de (float_offset, bend_value)
+        # float_offset = position en pas (0.0 .. num_bars*num_steps)
+        self._bend_tape  = [[] for _ in range(self._num_tracks)]
 
         # Gamme utilisée lors de l'enregistrement (lecture indépendante de l'UI)
         self._kb_scale     = "major"   # défaut "major" pour rétrocompat anciens patterns
@@ -98,6 +101,7 @@ class Pattern:
         self._curpattern = self._make_empty()
         self._kit_tape   = {}
         self._patch_tape = {}
+        self._bend_tape  = [[] for _ in range(self._num_tracks)]
 
     #--------------------------------------------------------------------------
 
@@ -121,6 +125,7 @@ class Pattern:
                     bar[:] = [0] * len(bar)
         self._kit_tape   = {}
         self._patch_tape = {}
+        self._bend_tape  = [[] for _ in range(self._num_tracks)]
 
     def clear_track(self, track_idx):
         """Efface tous les pas de la piste track_idx (grille + tapes MIDI)."""
@@ -129,6 +134,8 @@ class Pattern:
                 bar[:] = [0] * len(bar)
         self._patch_tape = {k: v for k, v in self._patch_tape.items() if k[0] != track_idx}
         self._kit_tape   = {k: v for k, v in self._kit_tape.items()   if k[0] != track_idx}
+        if track_idx < len(self._bend_tape):
+            self._bend_tape[track_idx] = []
 
     #--------------------------------------------------------------------------
 
@@ -149,6 +156,7 @@ class Pattern:
         if self._num_bars * 2 > self.MAX_BARS:
             return False
         half = self._num_bars
+        half_steps = half * self._num_steps
         for track in self._curpattern:
             for pad in track:
                 pad.extend([bar[:] for bar in pad])
@@ -160,6 +168,10 @@ class Pattern:
         for (t, b, s), events in self._patch_tape.items():
             new_ptape[(t, b + half, s)] = events[:]
         self._patch_tape = new_ptape
+        self._bend_tape = [
+            track_bends + [(off + half_steps, b) for off, b in track_bends]
+            for track_bends in self._bend_tape
+        ]
         self._num_bars *= 2
         return True
 
@@ -170,6 +182,7 @@ class Pattern:
         if self._num_bars < 2:
             return False
         half = self._num_bars // 2
+        half_steps = half * self._num_steps
         for track in self._curpattern:
             for pad in track:
                 del pad[half:]
@@ -183,6 +196,10 @@ class Pattern:
             for (t, b, s), events in self._patch_tape.items()
             if b < half
         }
+        self._bend_tape = [
+            [(off, b) for off, b in track_bends if off < half_steps]
+            for track_bends in self._bend_tape
+        ]
         self._num_bars = half
         return True
 
@@ -252,6 +269,11 @@ class Pattern:
             for (t, b, s), events in self._patch_tape.items()
             if b < self._num_bars and s < self._num_steps
         }
+        total_steps = self._num_bars * self._num_steps
+        self._bend_tape = [
+            [(off, b) for off, b in track_bends if off < total_steps]
+            for track_bends in self._bend_tape
+        ]
 
     #--------------------------------------------------------------------------
 
@@ -283,6 +305,7 @@ class Pattern:
                 for (t, b, s), events in self._patch_tape.items()
                 for note, vel, dur in events
             ],
+            "bend_tape": [list(t) for t in self._bend_tape],
         }
 
     #--------------------------------------------------------------------------
@@ -314,3 +337,10 @@ class Pattern:
             t, b, s, note, vel = rec[:5]
             dur = rec[5] if len(rec) > 5 else 0
             self._patch_tape.setdefault((t, b, s), []).append((note, vel, dur))
+        raw_bends = d.get("bend_tape", [])
+        self._bend_tape = [
+            [tuple(p) for p in track_bends]
+            for track_bends in raw_bends
+        ]
+        while len(self._bend_tape) < self._num_tracks:
+            self._bend_tape.append([])
