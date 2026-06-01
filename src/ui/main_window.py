@@ -447,18 +447,21 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _save_preset(self):
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = self._player.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
-        os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
-        data = {
-            "version":  1,
-            "rack":     self._rack.to_dict(),
-            "patterns": [pat.to_dict() for pat in self._pattern_list],
-        }
-        with open(self._preset_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, separators=(',', ':'))
-        self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
+        try:
+            cur = self._pattern_list[self._cur_pattern_idx]
+            cur._voices = self._player.voice_manager.to_list()
+            self._flush_pattern_to_store(cur)
+            os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
+            data = {
+                "version":  1,
+                "rack":     self._rack.to_dict(),
+                "patterns": [pat.to_dict() for pat in self._pattern_list],
+            }
+            with open(self._preset_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, separators=(',', ':'))
+            self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
+        except Exception as e:
+            self._show_status(f"ERREUR sauvegarde : {e}")
 
     def _save_preset_as(self):
         presets_dir = self._presets_dir

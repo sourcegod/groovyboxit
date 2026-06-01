@@ -1165,6 +1165,116 @@ def test_flush_and_apply_roundtrip_via_todict():
 
 
 # ---------------------------------------------------------------------------
+# Tests préventifs — anti-régression structurelle
+#
+# Règle : utiliser les méthodes record_* pour produire les données,
+# jamais des tuples fabriqués à la main.  Ces tests auraient détecté
+# le bug to_dict/4-tuples dès le commit 423d46b.
+# ---------------------------------------------------------------------------
+
+def test_to_dict_does_not_raise_after_record_patch_note():
+    """Régression critique : to_dict levait ValueError sur les 4-tuples
+    produits par record_patch_note (champ bend ajouté en cours de dev).
+    Ce test doit passer même si le format interne évolue."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500, bend=2048)
+    pl.record_patch_note(64, 90, 300, bend=-4096)
+    try:
+        pl._pattern.to_dict()
+    except Exception as e:
+        assert False, f"to_dict lève une exception sur données runtime : {e}"
+    print("  to_dict ne lève pas d'exception sur données de record_patch_note : OK")
+
+def test_to_dict_does_not_raise_after_record_kit_note():
+    pl = _make_player()
+    pl.record_kit_note(36, 100)
+    pl.record_kit_note(38, 80)
+    try:
+        pl._pattern.to_dict()
+    except Exception as e:
+        assert False, f"to_dict lève une exception sur kit_tape runtime : {e}"
+    print("  to_dict ne lève pas d'exception sur données de record_kit_note : OK")
+
+def test_to_dict_does_not_raise_after_record_bend():
+    pl = _make_player()
+    pl.record_bend(4096)
+    pl.record_bend(-2048)
+    try:
+        pl._pattern.to_dict()
+    except Exception as e:
+        assert False, f"to_dict lève une exception sur bend_tape runtime : {e}"
+    print("  to_dict ne lève pas d'exception sur données de record_bend : OK")
+
+def test_integration_record_json_reload():
+    """Intégration : enregistrement via API → sérialisation JSON complète
+    → rechargement → vérification de toutes les tapes.
+    Ce test couvre la chaîne complète que _save_preset/_load_preset exécute."""
+    import json as _json
+    pl = _make_player()
+    # Enregistrement via les vraies méthodes
+    pl.record_kit_note(36, 100)
+    pl.record_kit_note(38, 80)
+    pl.record_patch_note(60, 100, 500, bend=2048)
+    pl.record_patch_note(64,  90, 300, bend=-1000)
+    pl.record_bend(4096)
+    pl.record_bend(-2048)
+
+    # Simulation _flush_pattern_to_store
+    store = Pattern()
+    store._kit_tape   = dict(pl._pattern._kit_tape)
+    store._patch_tape = dict(pl._pattern._patch_tape)
+    store._bend_tape  = [list(t) for t in pl._pattern._bend_tape]
+
+    # Sérialisation JSON complète (comme json.dump dans _save_preset)
+    try:
+        json_str = _json.dumps(store.to_dict(), separators=(',', ':'))
+    except Exception as e:
+        assert False, f"json.dumps échoue : {e}"
+
+    # Rechargement (comme from_dict dans _load_preset)
+    restored = Pattern()
+    restored.from_dict(_json.loads(json_str))
+
+    # Simulation _apply_pattern_from_store
+    pl2 = _make_player()
+    pl2._pattern._kit_tape   = dict(restored._kit_tape)
+    pl2._pattern._patch_tape = dict(restored._patch_tape)
+    pl2._pattern._bend_tape  = [list(t) for t in restored._bend_tape]
+
+    assert pl2._pattern._kit_tape   == pl._pattern._kit_tape,   "kit_tape perdu"
+    assert pl2._pattern._patch_tape == pl._pattern._patch_tape, "patch_tape perdu"
+    assert pl2._pattern._bend_tape  == pl._pattern._bend_tape,  "bend_tape perdu"
+    print("  intégration record→JSON→rechargement préserve kit/patch/bend tapes : OK")
+
+def test_integration_record_json_reload_all_tracks():
+    """Même test sur plusieurs pistes simultanément."""
+    import json as _json
+    pl = _make_player()
+    pl._cur_track = 0; pl.record_patch_note(60, 100, 400, bend=1000)
+    pl._cur_track = 1; pl.record_kit_note(36, 127)
+    pl._cur_track = 2; pl.record_bend(8191)
+    pl._cur_track = 3; pl.record_patch_note(67, 80, 200, bend=-500)
+
+    store = Pattern()
+    store._kit_tape   = dict(pl._pattern._kit_tape)
+    store._patch_tape = dict(pl._pattern._patch_tape)
+    store._bend_tape  = [list(t) for t in pl._pattern._bend_tape]
+
+    restored = Pattern()
+    restored.from_dict(_json.loads(_json.dumps(store.to_dict(), separators=(',', ':'))))
+
+    pl2 = _make_player()
+    pl2._pattern._kit_tape   = dict(restored._kit_tape)
+    pl2._pattern._patch_tape = dict(restored._patch_tape)
+    pl2._pattern._bend_tape  = [list(t) for t in restored._bend_tape]
+
+    assert pl2._pattern._kit_tape   == pl._pattern._kit_tape
+    assert pl2._pattern._patch_tape == pl._pattern._patch_tape
+    assert pl2._pattern._bend_tape  == pl._pattern._bend_tape
+    print("  intégration multi-pistes record→JSON→rechargement : OK")
+
+
+# ---------------------------------------------------------------------------
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
@@ -1280,4 +1390,10 @@ if __name__ == "__main__":
     # Régression — flush/apply store
     test_flush_and_apply_preserve_bend_tape()
     test_flush_and_apply_roundtrip_via_todict()
+    # Tests préventifs — utilise les méthodes record_* (données runtime réelles)
+    test_to_dict_does_not_raise_after_record_patch_note()
+    test_to_dict_does_not_raise_after_record_kit_note()
+    test_to_dict_does_not_raise_after_record_bend()
+    test_integration_record_json_reload()
+    test_integration_record_json_reload_all_tracks()
     print("Tous les tests : OK")
