@@ -156,7 +156,7 @@ class SoundDeviceDriver:
     DTYPE         = "float32"
     END_FADE_MS   = 20    # fondu de fin baked dans les sons one-shot (ms)
     RELEASE_MS    = 80    # durée du release des voix bouclantes après stop() (ms)
-    LFO_DEPTH_MAX = 2.0 ** (0.5 / 12.0) - 1.0  # ±0.5 semitone à mod_wheel=127
+    LFO_DEPTH_MAX = 2.0 ** (2.0 / 12.0) - 1.0  # ±2 semitones à mod_wheel=127
 
     def __init__(self, samplerate: int = SAMPLERATE, blocksize: int = BLOCKSIZE):
         self._sr          = samplerate
