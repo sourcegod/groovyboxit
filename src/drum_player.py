@@ -22,6 +22,7 @@ class DrumPlayer:
     KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
     BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
+    MOD_TAPE_EVENT   = -5   # marqueur interne pour les événements d'automation mod wheel
 
     def __init__(self, sound_manager=None):
         self._play_thread = None
@@ -65,6 +66,7 @@ class DrumPlayer:
         self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture kit_tape
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
+        self._on_mod_tape_cb      = None  # callback(track_idx, mod_value) lecture automation mod wheel
         self._pending_patch       = {}    # {midi_note: (key, entry_idx, t_start)} — note_on en attente de note_off
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
@@ -220,6 +222,11 @@ class DrumPlayer:
                         t_sec = float_off * self.step_duration
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, self.BEND_TAPE_EVENT, (t_idx, bend_val), 0))
+                for t_idx, track_mods in enumerate(self._pattern._mod_tape):
+                    for float_off, mod_val in list(track_mods):
+                        t_sec = float_off * self.step_duration
+                        if t_sec > elapsed - 0.002:
+                            events.append((t_sec, self.MOD_TAPE_EVENT, (t_idx, mod_val), 0))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
                 for bar_idx in range(loop_bars):
@@ -290,6 +297,10 @@ class DrumPlayer:
                     t_idx, bend_val = evt_data
                     if self._on_bend_tape_cb:
                         self._on_bend_tape_cb(t_idx, bend_val)
+                elif track_or_type == self.MOD_TAPE_EVENT:
+                    t_idx, mod_val = evt_data
+                    if self._on_mod_tape_cb:
+                        self._on_mod_tape_cb(t_idx, mod_val)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
@@ -788,6 +799,18 @@ class DrumPlayer:
         float_offset = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
         track_bends  = self._pattern._bend_tape[self._cur_track]
         track_bends.append((float_offset, bend_value))
+
+    #--------------------------------------------------------------------------
+
+    def record_mod(self, mod_value):
+        """Enregistre un point d'automation mod wheel dans _mod_tape de la piste courante."""
+        now          = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref          = self._measure_start if self._measure_start is not None else now
+        float_offset = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
+        track_mods   = self._pattern._mod_tape[self._cur_track]
+        track_mods.append((float_offset, mod_value))
 
     #--------------------------------------------------------------------------
 

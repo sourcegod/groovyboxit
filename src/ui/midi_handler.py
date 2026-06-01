@@ -170,6 +170,8 @@ class MidiHandler:
             if win._router.synth_ready():
                 win._router.synth.set_mod_wheel(value)
                 win._show_status(f"Mod Wheel: {value}")
+            if win._player.recording:
+                win._player.record_mod(value)
         elif cc_num == 7:                          # CC#7 : Volume standard
             vol = round(value * 100 / 127)
             if win._track_list.HasFocus():

@@ -89,6 +89,7 @@ class MainWindow(wx.Frame):
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
         self._player._on_patch_tape_cb  = self._router.on_patch_tape
         self._player._on_bend_tape_cb   = self._router.on_bend_tape
+        self._player._on_mod_tape_cb    = self._router.on_mod_tape
         self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
@@ -384,6 +385,7 @@ class MainWindow(wx.Frame):
         pat._kit_tape      = dict(live._kit_tape)
         pat._patch_tape    = dict(live._patch_tape)
         pat._bend_tape     = [list(t) for t in live._bend_tape]
+        pat._mod_tape      = [list(t) for t in live._mod_tape]
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
@@ -395,6 +397,7 @@ class MainWindow(wx.Frame):
         live._kit_tape   = dict(new._kit_tape)
         live._patch_tape = dict(new._patch_tape)
         live._bend_tape  = [list(t) for t in new._bend_tape]
+        live._mod_tape   = [list(t) for t in new._mod_tape]
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes

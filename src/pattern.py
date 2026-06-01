@@ -70,6 +70,8 @@ class Pattern:
         # Automation pitch bend : liste par piste de (float_offset, bend_value)
         # float_offset = position en pas (0.0 .. num_bars*num_steps)
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
+        # Automation mod wheel : liste par piste de (float_offset, mod_value)
+        self._mod_tape   = [[] for _ in range(self._num_tracks)]
 
         # Gamme utilisée lors de l'enregistrement (lecture indépendante de l'UI)
         self._kb_scale     = "major"   # défaut "major" pour rétrocompat anciens patterns
@@ -102,6 +104,7 @@ class Pattern:
         self._kit_tape   = {}
         self._patch_tape = {}
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
+        self._mod_tape   = [[] for _ in range(self._num_tracks)]
 
     #--------------------------------------------------------------------------
 
@@ -126,6 +129,7 @@ class Pattern:
         self._kit_tape   = {}
         self._patch_tape = {}
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
+        self._mod_tape   = [[] for _ in range(self._num_tracks)]
 
     def clear_track(self, track_idx):
         """Efface tous les pas de la piste track_idx (grille + tapes MIDI)."""
@@ -136,6 +140,8 @@ class Pattern:
         self._kit_tape   = {k: v for k, v in self._kit_tape.items()   if k[0] != track_idx}
         if track_idx < len(self._bend_tape):
             self._bend_tape[track_idx] = []
+        if track_idx < len(self._mod_tape):
+            self._mod_tape[track_idx] = []
 
     #--------------------------------------------------------------------------
 
@@ -172,6 +178,10 @@ class Pattern:
             track_bends + [(off + half_steps, b) for off, b in track_bends]
             for track_bends in self._bend_tape
         ]
+        self._mod_tape = [
+            track_mods + [(off + half_steps, m) for off, m in track_mods]
+            for track_mods in self._mod_tape
+        ]
         self._num_bars *= 2
         return True
 
@@ -199,6 +209,10 @@ class Pattern:
         self._bend_tape = [
             [(off, b) for off, b in track_bends if off < half_steps]
             for track_bends in self._bend_tape
+        ]
+        self._mod_tape = [
+            [(off, m) for off, m in track_mods if off < half_steps]
+            for track_mods in self._mod_tape
         ]
         self._num_bars = half
         return True
@@ -274,6 +288,10 @@ class Pattern:
             [(off, b) for off, b in track_bends if off < total_steps]
             for track_bends in self._bend_tape
         ]
+        self._mod_tape = [
+            [(off, m) for off, m in track_mods if off < total_steps]
+            for track_mods in self._mod_tape
+        ]
 
     #--------------------------------------------------------------------------
 
@@ -306,6 +324,7 @@ class Pattern:
                 for ev in events
             ],
             "bend_tape": [list(t) for t in self._bend_tape],
+            "mod_tape":  [list(t) for t in self._mod_tape],
         }
 
     #--------------------------------------------------------------------------
@@ -345,3 +364,10 @@ class Pattern:
         ]
         while len(self._bend_tape) < self._num_tracks:
             self._bend_tape.append([])
+        raw_mods = d.get("mod_tape", [])
+        self._mod_tape = [
+            [tuple(p) for p in track_mods]
+            for track_mods in raw_mods
+        ]
+        while len(self._mod_tape) < self._num_tracks:
+            self._mod_tape.append([])
