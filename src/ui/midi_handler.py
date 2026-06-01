@@ -168,7 +168,7 @@ class MidiHandler:
         win = self._win
         if cc_num == 1:                            # CC#1 : Modulation Wheel
             if win._router.synth_ready():
-                win._router.synth.mod_wheel = value
+                win._router.synth.set_mod_wheel(value)
                 win._show_status(f"Mod Wheel: {value}")
         elif cc_num == 7:                          # CC#7 : Volume standard
             vol = round(value * 100 / 127)

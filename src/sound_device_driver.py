@@ -13,6 +13,7 @@
     Author: Coolbrother
 """
 
+import math
 import threading
 import numpy as np
 import soundfile as sf
@@ -49,15 +50,20 @@ class _Voice:
     """Une voix active (lecture one-shot avec interpolation linéaire).
     phase_incr=1.0 → lecture normale ; >1.0 → plus aigu ; <1.0 → plus grave.
     Modifiable depuis le thread principal (GIL garantit l'atomicité float)."""
-    __slots__ = ("data", "pos", "vol_l", "vol_r", "phase_incr")
+    __slots__ = ("data", "pos", "vol_l", "vol_r", "phase_incr",
+                 "lfo_depth", "lfo_phase", "lfo_freq")
 
     def __init__(self, data: np.ndarray, vol_l: float, vol_r: float,
-                 phase_incr: float = 1.0):
+                 phase_incr: float = 1.0, lfo_depth: float = 0.0,
+                 lfo_freq: float = 5.0):
         self.data        = data
         self.pos         = 0.0       # position flottante dans data
         self.vol_l       = vol_l
         self.vol_r       = vol_r
         self.phase_incr  = phase_incr
+        self.lfo_depth   = lfo_depth  # amplitude LFO (0=off) ; modifiable depuis thread principal
+        self.lfo_phase   = 0.0        # phase LFO courante (radians)
+        self.lfo_freq    = lfo_freq   # fréquence LFO en Hz
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +89,13 @@ class _LoopVoice:
       - Fondu linéaire sur rel_len échantillons, puis la voix est retirée.
     """
     __slots__ = ("data", "pos", "ls", "le", "xf", "loop_len", "vol_l", "vol_r",
-                 "releasing", "rel_pos", "rel_len", "phase_incr")
+                 "releasing", "rel_pos", "rel_len", "phase_incr",
+                 "lfo_depth", "lfo_phase", "lfo_freq")
 
     def __init__(self, data: np.ndarray, ls: int, le: int,
                  xf: int, vol_l: float, vol_r: float,
-                 phase_incr: float = 1.0):
+                 phase_incr: float = 1.0, lfo_depth: float = 0.0,
+                 lfo_freq: float = 5.0):
         self.data       = data
         self.pos        = 0.0        # position flottante dans data
         self.ls         = float(ls)
@@ -100,6 +108,9 @@ class _LoopVoice:
         self.rel_pos    = 0
         self.rel_len    = 0
         self.phase_incr = phase_incr
+        self.lfo_depth  = lfo_depth  # amplitude LFO (0=off) ; modifiable depuis thread principal
+        self.lfo_phase  = 0.0        # phase LFO courante (radians)
+        self.lfo_freq   = lfo_freq   # fréquence LFO en Hz
 
 
 # ---------------------------------------------------------------------------
@@ -139,12 +150,13 @@ class SoundDeviceDriver:
     close()
     """
 
-    SAMPLERATE   = 44100
-    BLOCKSIZE    = 512
-    CHANNELS     = 2
-    DTYPE        = "float32"
-    END_FADE_MS  = 20    # fondu de fin baked dans les sons one-shot (ms)
-    RELEASE_MS   = 80    # durée du release des voix bouclantes après stop() (ms)
+    SAMPLERATE    = 44100
+    BLOCKSIZE     = 512
+    CHANNELS      = 2
+    DTYPE         = "float32"
+    END_FADE_MS   = 20    # fondu de fin baked dans les sons one-shot (ms)
+    RELEASE_MS    = 80    # durée du release des voix bouclantes après stop() (ms)
+    LFO_DEPTH_MAX = 2.0 ** (0.5 / 12.0) - 1.0  # ±0.5 semitone à mod_wheel=127
 
     def __init__(self, samplerate: int = SAMPLERATE, blocksize: int = BLOCKSIZE):
         self._sr          = samplerate
@@ -195,12 +207,16 @@ class SoundDeviceDriver:
         n_src = len(v.data)
         if n_src < 2:
             return
+        # LFO vibrato : valeur constante sur le bloc (LFO ≈5 Hz << sr, approximation correcte)
+        lfo_val  = v.lfo_depth * math.sin(v.lfo_phase)
+        eff_incr = v.phase_incr * (1.0 + lfo_val)
+        v.lfo_phase = (v.lfo_phase + 2.0 * math.pi * v.lfo_freq * frames / self._sr) % (2.0 * math.pi)
         # positions source pour chaque frame de sortie
-        src = v.pos + np.arange(frames, dtype=np.float64) * v.phase_incr
+        src = v.pos + np.arange(frames, dtype=np.float64) * eff_incr
         ip  = src.astype(np.int32)
         valid = (ip >= 0) & (ip < n_src - 1)
         if not np.any(valid):
-            v.pos = float(src[-1]) + v.phase_incr
+            v.pos = float(src[-1]) + eff_incr
             return
         ip_c  = np.where(valid, ip, 0)
         ip_c1 = np.minimum(ip_c + 1, n_src - 1)
@@ -212,7 +228,7 @@ class SoundDeviceDriver:
         sr[~valid] = 0.0
         mix[:, 0] += sl * v.vol_l
         mix[:, 1] += sr * v.vol_r
-        v.pos = float(src[-1]) + v.phase_incr
+        v.pos = float(src[-1]) + eff_incr
 
     def _mix_loop_voice(self, v: _LoopVoice,
                         mix: np.ndarray, frames: int):
@@ -230,6 +246,10 @@ class SoundDeviceDriver:
         releasing   = v.releasing
         rel_pos     = v.rel_pos
         rel_len     = v.rel_len
+        lfo_depth   = v.lfo_depth  # float, modifiable depuis le thread principal
+        lfo_phase   = v.lfo_phase
+        lfo_incr    = 2.0 * math.pi * v.lfo_freq / self._sr
+        use_lfo     = lfo_depth != 0.0
 
         for i in range(frames):
             if releasing and rel_pos >= rel_len:
@@ -270,13 +290,22 @@ class SoundDeviceDriver:
             mix[i, 0] += sl * vl * gain
             mix[i, 1] += sr * vr * gain
 
-            pos += phase_incr
+            # LFO vibrato : modulation per-sample (qualité maximale)
+            if use_lfo:
+                eff_incr   = phase_incr * (1.0 + lfo_depth * math.sin(lfo_phase))
+                lfo_phase += lfo_incr
+            else:
+                eff_incr = phase_incr
+
+            pos += eff_incr
             if pos >= le:
                 # wrap avec gestion du dépassement (phase_incr > 1 possible)
                 pos = ls + (pos - le) % llen
 
-        v.pos     = pos
-        v.rel_pos = rel_pos
+        v.pos      = pos
+        v.rel_pos  = rel_pos
+        if use_lfo:
+            v.lfo_phase = lfo_phase % (2.0 * math.pi)
 
     # ------------------------------------------------------------------
     # Chargement
@@ -370,11 +399,12 @@ class SoundDeviceDriver:
     # ------------------------------------------------------------------
 
     def play(self, sound: SdSound, vol: float = 1.0, pan: int = 0,
-             phase_incr: float = 1.0):
+             phase_incr: float = 1.0, lfo_depth: float = 0.0):
         """Lance la lecture d'un SdSound. Retourne la voix créée (_Voice ou _LoopVoice).
 
         phase_incr : vitesse de lecture (1.0=normal, 2^(1/12)≈1.0595 = +1 demi-ton).
-        La voix retournée permet de modifier phase_incr après coup (pitch bend temps réel).
+        lfo_depth  : amplitude LFO vibrato (0=off, LFO_DEPTH_MAX=±0.5 st à 5 Hz).
+        La voix retournée permet de modifier phase_incr/lfo_depth après coup.
         """
         if sound is None or len(sound.data) == 0:
             return None
@@ -384,10 +414,10 @@ class SoundDeviceDriver:
         with self._lock:
             if sound.loop_start is not None:
                 voice = _LoopVoice(sound.data, sound.loop_start, sound.loop_end,
-                                   sound.xf_samples, vol_l, vol_r, phase_incr)
+                                   sound.xf_samples, vol_l, vol_r, phase_incr, lfo_depth)
                 self._loop_voices.append(voice)
             else:
-                voice = _Voice(sound.data, vol_l, vol_r, phase_incr)
+                voice = _Voice(sound.data, vol_l, vol_r, phase_incr, lfo_depth)
                 self._voices.append(voice)
         return voice
 

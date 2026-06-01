@@ -286,7 +286,8 @@ class SynthEngine:
             _bend_log(f"ENGINE_PLAY note={midi_note} bend={self.pitch_bend} → sound=None (pas de voix créée!)")
             return
         phase_incr = 2.0 ** (self.pitch_bend_semitones / 12.0)
-        voice = self._driver.play(sound, volume_factor, pan, phase_incr)
+        lfo_depth  = self.mod_wheel / 127.0 * self._driver.LFO_DEPTH_MAX
+        voice = self._driver.play(sound, volume_factor, pan, phase_incr, lfo_depth)
         loop = sound.loop_start is not None
         _bend_log(f"ENGINE_PLAY note={midi_note} bend={self.pitch_bend} "
                   f"phase_incr={phase_incr:.5f} voice={'LoopVoice' if loop else 'Voice'} "
@@ -310,6 +311,15 @@ class SynthEngine:
         for voice in self._active_voices.values():
             if voice is not None:
                 voice.phase_incr = pi
+
+    def set_mod_wheel(self, value: int):
+        """Met à jour mod_wheel et propage le LFO vibrato aux voix actives.
+        Appelé depuis MidiHandler à chaque CC#1 reçu."""
+        self.mod_wheel = value
+        depth = value / 127.0 * self._driver.LFO_DEPTH_MAX
+        for voice in self._active_voices.values():
+            if voice is not None:
+                voice.lfo_depth = depth
 
     # ------------------------------------------------------------------
     # Informations
