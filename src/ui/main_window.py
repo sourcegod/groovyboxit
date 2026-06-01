@@ -372,21 +372,29 @@ class MainWindow(wx.Frame):
         self._pattern_listbox.SetSelection(sel if sel != wx.NOT_FOUND else 0)
 
     def _flush_pattern_to_store(self, pat):
-        """Copie l'état courant (router + tapes) dans l'objet Pattern du store."""
+        """Copie l'état courant du player + router dans l'objet Pattern du store."""
+        live = self._player._pattern
+        pat.load_pattern(live._curpattern)        # sync curpattern + num_bars/num_steps
+        pat._bpm           = self._player.bpm     # sync BPM per-pattern
         pat._track_slots   = self._router._track_slots[:]
         pat._track_mutes   = self._router._track_mutes[:]
         pat._track_solos   = self._router._track_solos[:]
         pat._track_volumes = self._router._track_volumes[:]
         pat._track_pans    = self._router._track_pans[:]
-        pat._kit_tape      = dict(self._player._pattern._kit_tape)
-        pat._patch_tape    = dict(self._player._pattern._patch_tape)
+        pat._kit_tape      = dict(live._kit_tape)
+        pat._patch_tape    = dict(live._patch_tape)
+        pat._bend_tape     = [list(t) for t in live._bend_tape]
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
-        self._player._pattern.load_pattern(new._curpattern)
-        self._player._pattern._looping    = new._looping
-        self._player._pattern._kit_tape   = dict(new._kit_tape)
-        self._player._pattern._patch_tape = dict(new._patch_tape)
+        live = self._player._pattern
+        live.load_pattern(new._curpattern)
+        self._player.set_bpm(new._bpm)
+        self._bpm_ctrl.SetValue(int(new._bpm))
+        live._looping    = new._looping
+        live._kit_tape   = dict(new._kit_tape)
+        live._patch_tape = dict(new._patch_tape)
+        live._bend_tape  = [list(t) for t in new._bend_tape]
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes
@@ -449,24 +457,40 @@ class MainWindow(wx.Frame):
             "patterns": [pat.to_dict() for pat in self._pattern_list],
         }
         with open(self._preset_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, separators=(',', ':'))
         self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
 
     def _save_preset_as(self):
         presets_dir = self._presets_dir
         os.makedirs(presets_dir, exist_ok=True)
+        # FD_OVERWRITE_PROMPT évité : sur GTK le dialog natif a "Non" comme bouton
+        # par défaut (Enter = annuler). On gère la confirmation nous-mêmes.
         dlg = wx.FileDialog(
             self,
             message="Enregistrer le preset sous…",
             defaultDir=presets_dir,
             defaultFile=os.path.basename(self._preset_path),
             wildcard="Preset JSON (*.json)|*.json",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+            style=wx.FD_SAVE,
         )
-        if dlg.ShowModal() == wx.ID_OK:
-            self._preset_path = dlg.GetPath()
-            self._save_preset()
+        result = dlg.ShowModal()
+        path   = dlg.GetPath() if result == wx.ID_OK else ""
         dlg.Destroy()
+        if result != wx.ID_OK or not path:
+            return
+        if os.path.exists(path):
+            msg = wx.MessageDialog(
+                self,
+                f"'{os.path.basename(path)}' existe déjà.\nRemplacer ?",
+                "Remplacer le fichier",
+                wx.YES_NO | wx.YES_DEFAULT | wx.ICON_WARNING,
+            )
+            replace = msg.ShowModal()
+            msg.Destroy()
+            if replace != wx.ID_YES:
+                return
+        self._preset_path = path
+        self._save_preset()
 
     def _load_preset(self):
         if not os.path.exists(self._preset_path):

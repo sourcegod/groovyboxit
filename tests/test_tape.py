@@ -209,13 +209,13 @@ def test_to_dict_kit_tape_6_columns():
     assert rec[0] == [0, 0, 3, 36, 100, 0]
     print("  to_dict kit_tape : enregistrement 6 colonnes : OK")
 
-def test_to_dict_patch_tape_6_columns():
+def test_to_dict_patch_tape_7_columns():
     p = Pattern()
-    p._patch_tape = {(1, 0, 7): [(60, 90, 350)]}
+    p._patch_tape = {(1, 0, 7): [(60, 90, 350, 2048)]}
     rec = p.to_dict()["patch_tape"]
     assert len(rec) == 1
-    assert rec[0] == [1, 0, 7, 60, 90, 350]
-    print("  to_dict patch_tape : enregistrement 6 colonnes : OK")
+    assert rec[0] == [1, 0, 7, 60, 90, 350, 2048]
+    print("  to_dict patch_tape : enregistrement 7 colonnes (avec bend) : OK")
 
 def test_roundtrip_kit_tape():
     src = Pattern()
@@ -231,13 +231,32 @@ def test_roundtrip_kit_tape():
 def test_roundtrip_patch_tape():
     src = Pattern()
     src._patch_tape = {
-        (0, 0, 4): [(60, 100, 500), (64, 90, 250)],
-        (0, 1, 0): [(67, 80, 300)],
+        (0, 0, 4): [(60, 100, 500, 0), (64, 90, 250, 0)],
+        (0, 1, 0): [(67, 80, 300, 0)],
     }
     dst = Pattern()
     dst.from_dict(src.to_dict())
     assert dst._patch_tape == src._patch_tape
     print("  to_dict → from_dict patch_tape round-trip : OK")
+
+def test_roundtrip_patch_tape_with_bend():
+    """Régression : to_dict levait ValueError sur les 4-tuples (note,vel,dur,bend).
+    Ce bug empêchait toute sauvegarde preset dès qu'une note synth était enregistrée."""
+    src = Pattern()
+    src._patch_tape = {
+        (0, 0, 0): [(60, 100, 500, 4096), (62, 90, 300, -2000)],
+        (1, 0, 4): [(67, 80, 200, 0)],
+    }
+    try:
+        d = src.to_dict()
+    except ValueError as e:
+        assert False, f"to_dict lève ValueError sur patch_tape 4-tuples : {e}"
+    dst = Pattern()
+    dst.from_dict(d)
+    assert dst._patch_tape[(0, 0, 0)][0] == (60, 100, 500, 4096)
+    assert dst._patch_tape[(0, 0, 0)][1] == (62, 90, 300, -2000)
+    assert dst._patch_tape[(1, 0, 4)][0] == (67, 80, 200, 0)
+    print("  to_dict → from_dict patch_tape 4-tuples avec bend (régression) : OK")
 
 def test_from_dict_kit_tape_backward_compat_5_columns():
     """Anciens presets sans colonne dur doivent se charger avec dur=0."""
@@ -252,16 +271,27 @@ def test_from_dict_kit_tape_backward_compat_5_columns():
     print("  from_dict kit_tape rétro-compat 5 colonnes → dur=0 : OK")
 
 def test_from_dict_patch_tape_backward_compat_5_columns():
-    """Anciens presets sans colonne dur doivent se charger avec dur=0."""
+    """Anciens presets sans colonne dur doivent se charger avec dur=0, bend=0."""
     old = {
         "curpattern": Pattern()._curpattern,
-        "patch_tape": [[0, 0, 7, 60, 90]],   # 5 colonnes, sans dur
+        "patch_tape": [[0, 0, 7, 60, 90]],   # 5 colonnes, sans dur ni bend
     }
     p = Pattern()
     p.from_dict(old)
     assert (0, 0, 7) in p._patch_tape
-    assert p._patch_tape[(0, 0, 7)] == [(60, 90, 0)]
-    print("  from_dict patch_tape rétro-compat 5 colonnes → dur=0 : OK")
+    assert p._patch_tape[(0, 0, 7)] == [(60, 90, 0, 0)]
+    print("  from_dict patch_tape rétro-compat 5 colonnes → dur=0, bend=0 : OK")
+
+def test_from_dict_patch_tape_backward_compat_6_columns():
+    """Anciens presets avec dur mais sans bend doivent charger bend=0."""
+    old = {
+        "curpattern": Pattern()._curpattern,
+        "patch_tape": [[0, 0, 3, 60, 100, 500]],   # 6 colonnes, sans bend
+    }
+    p = Pattern()
+    p.from_dict(old)
+    assert p._patch_tape[(0, 0, 3)] == [(60, 100, 500, 0)]
+    print("  from_dict patch_tape rétro-compat 6 colonnes → bend=0 : OK")
 
 def test_from_dict_empty_tapes():
     p = Pattern()
@@ -1073,6 +1103,68 @@ def test_run_thread_build_bend_tape_events():
 
 
 # ---------------------------------------------------------------------------
+# Régression — flush/apply store (bug bend_tape non synchronisé)
+# ---------------------------------------------------------------------------
+
+def _flush_pattern_to_store(pat, player_pattern):
+    """Simule _flush_pattern_to_store de MainWindow."""
+    pat._kit_tape   = dict(player_pattern._kit_tape)
+    pat._patch_tape = dict(player_pattern._patch_tape)
+    pat._bend_tape  = [list(t) for t in player_pattern._bend_tape]
+
+def _apply_pattern_from_store(player_pattern, store_pat):
+    """Simule _apply_pattern_from_store de MainWindow."""
+    player_pattern._kit_tape   = dict(store_pat._kit_tape)
+    player_pattern._patch_tape = dict(store_pat._patch_tape)
+    player_pattern._bend_tape  = [list(t) for t in store_pat._bend_tape]
+
+def test_flush_and_apply_preserve_bend_tape():
+    """Régression : _flush_pattern_to_store/_apply_pattern_from_store doivent
+    inclure _bend_tape, sinon les courbes bend sont perdues lors de la
+    sauvegarde preset ou du changement de pattern."""
+    pl = _make_player()
+    pl.record_bend(2048)
+    pl.record_bend(-1000)
+
+    store_pat = Pattern()
+    _flush_pattern_to_store(store_pat, pl._pattern)
+
+    # _bend_tape doit être dans le store
+    assert store_pat._bend_tape[0] != [], "flush doit copier _bend_tape"
+    assert len(store_pat._bend_tape[0]) == 2
+
+    # Simuler un rechargement (apply)
+    player2 = _make_player()
+    _apply_pattern_from_store(player2._pattern, store_pat)
+
+    assert player2._pattern._bend_tape[0] == pl._pattern._bend_tape[0], \
+        "apply doit restaurer _bend_tape identiquement"
+    print("  flush+apply store préserve _bend_tape (régression) : OK")
+
+def test_flush_and_apply_roundtrip_via_todict():
+    """Cycle complet : record_bend → flush → to_dict → from_dict → apply."""
+    pl = _make_player()
+    pl.record_bend(4096)
+    pl.record_bend(-8192)
+    pl._cur_track = 3
+    pl.record_bend(1111)
+
+    store_pat = Pattern()
+    _flush_pattern_to_store(store_pat, pl._pattern)
+
+    # Sérialise via to_dict → from_dict (comme _save_preset/_load_preset)
+    loaded_pat = Pattern()
+    loaded_pat.from_dict(store_pat.to_dict())
+
+    player2 = _make_player()
+    _apply_pattern_from_store(player2._pattern, loaded_pat)
+
+    assert player2._pattern._bend_tape[0] == pl._pattern._bend_tape[0]
+    assert player2._pattern._bend_tape[3] == pl._pattern._bend_tape[3]
+    print("  cycle complet record→flush→to_dict→from_dict→apply préserve _bend_tape : OK")
+
+
+# ---------------------------------------------------------------------------
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
@@ -1099,11 +1191,13 @@ if __name__ == "__main__":
     test_resize_filters_kit_tape_steps_out_of_range()
     # to_dict / from_dict
     test_to_dict_kit_tape_6_columns()
-    test_to_dict_patch_tape_6_columns()
+    test_to_dict_patch_tape_7_columns()
     test_roundtrip_kit_tape()
     test_roundtrip_patch_tape()
+    test_roundtrip_patch_tape_with_bend()
     test_from_dict_kit_tape_backward_compat_5_columns()
     test_from_dict_patch_tape_backward_compat_5_columns()
+    test_from_dict_patch_tape_backward_compat_6_columns()
     test_from_dict_empty_tapes()
     # record_kit_note
     test_record_kit_note_stores_tuple()
@@ -1183,4 +1277,7 @@ if __name__ == "__main__":
     test_bend_tape_callback_receives_track_and_value()
     test_bend_tape_no_callback_is_safe()
     test_run_thread_build_bend_tape_events()
+    # Régression — flush/apply store
+    test_flush_and_apply_preserve_bend_tape()
+    test_flush_and_apply_roundtrip_via_todict()
     print("Tous les tests : OK")

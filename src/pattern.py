@@ -301,9 +301,9 @@ class Pattern:
                 for note, vel, dur in events
             ],
             "patch_tape": [
-                [t, b, s, note, vel, dur]
+                [t, b, s, ev[0], ev[1], ev[2], ev[3] if len(ev) > 3 else 0]
                 for (t, b, s), events in self._patch_tape.items()
-                for note, vel, dur in events
+                for ev in events
             ],
             "bend_tape": [list(t) for t in self._bend_tape],
         }
@@ -335,8 +335,9 @@ class Pattern:
         self._patch_tape = {}
         for rec in d.get("patch_tape", []):
             t, b, s, note, vel = rec[:5]
-            dur = rec[5] if len(rec) > 5 else 0
-            self._patch_tape.setdefault((t, b, s), []).append((note, vel, dur))
+            dur  = rec[5] if len(rec) > 5 else 0
+            bend = rec[6] if len(rec) > 6 else 0
+            self._patch_tape.setdefault((t, b, s), []).append((note, vel, dur, bend))
         raw_bends = d.get("bend_tape", [])
         self._bend_tape = [
             [tuple(p) for p in track_bends]
