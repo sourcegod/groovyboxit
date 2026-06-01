@@ -1275,6 +1275,258 @@ def test_integration_record_json_reload_all_tracks():
 
 
 # ---------------------------------------------------------------------------
+# Automation Mod Wheel — _mod_tape (miroir de _bend_tape)
+# ---------------------------------------------------------------------------
+
+def test_mod_tape_initially_empty():
+    p = Pattern()
+    assert len(p._mod_tape) == p._num_tracks
+    assert all(t == [] for t in p._mod_tape)
+    print("  _mod_tape initialement vide sur toutes les pistes : OK")
+
+def test_new_pattern_resets_mod_tape():
+    p = Pattern()
+    p._mod_tape[0].append((3.5, 64))
+    p.new_pattern()
+    assert p._mod_tape[0] == []
+    print("  new_pattern réinitialise _mod_tape : OK")
+
+def test_reset_pattern_clears_mod_tape():
+    p = Pattern()
+    p._mod_tape[1].append((1.0, 100))
+    p.reset_pattern()
+    assert p._mod_tape[1] == []
+    print("  reset_pattern efface _mod_tape : OK")
+
+def test_clear_track_clears_mod_tape_for_track():
+    p = Pattern()
+    p._mod_tape[2].append((5.0, 32))
+    p._mod_tape[3].append((1.0, 64))
+    p.clear_track(2)
+    assert p._mod_tape[2] == []
+    assert p._mod_tape[3] != []   # autre piste inchangée
+    print("  clear_track efface uniquement _mod_tape de la piste ciblée : OK")
+
+def test_double_bars_duplicates_mod_tape():
+    p = Pattern()
+    p._num_steps = 16; p._num_bars = 1
+    p._mod_tape[0] = [(4.0, 80), (8.0, 100)]
+    p.double_bars()
+    mods = p._mod_tape[0]
+    assert (4.0, 80) in mods and (8.0, 100) in mods
+    assert (4.0 + 16, 80) in mods and (8.0 + 16, 100) in mods
+    print("  double_bars duplique _mod_tape avec offset correct : OK")
+
+def test_double_bars_preserves_mod_values():
+    p = Pattern()
+    p._num_steps = 16; p._num_bars = 1
+    p._mod_tape[0] = [(2.0, 127)]
+    p.double_bars()
+    vals = [v for _, v in p._mod_tape[0]]
+    assert vals.count(127) == 2
+    print("  double_bars préserve les valeurs mod_tape : OK")
+
+def test_halve_bars_filters_mod_tape():
+    p = Pattern()
+    p._num_steps = 16; p._num_bars = 2
+    p._mod_tape[0] = [(4.0, 50), (20.0, 80)]  # 20.0 >= 16 → hors de la 1ère moitié
+    p.halve_bars()
+    mods = p._mod_tape[0]
+    assert (4.0, 50) in mods
+    assert not any(off >= 16 for off, _ in mods)
+    print("  halve_bars retire les points mod_tape hors de la 1ère moitié : OK")
+
+def test_resize_filters_mod_tape():
+    p = Pattern()
+    p._num_steps = 16; p._num_bars = 2
+    p._mod_tape[0] = [(5.0, 64), (50.0, 100)]  # 50.0 >= 16 → hors limites
+    p.resize(1, 16)
+    mods = p._mod_tape[0]
+    assert (5.0, 64) in mods
+    assert not any(off >= 16 for off, _ in mods)
+    print("  resize filtre les points mod_tape hors des nouvelles limites : OK")
+
+def test_roundtrip_mod_tape():
+    import json as _json
+    p = Pattern()
+    p._mod_tape[0] = [(2.0, 64), (10.0, 127)]
+    p._mod_tape[3] = [(7.5, 32)]
+    d = p.to_dict()
+    assert "mod_tape" in d
+    p2 = Pattern()
+    p2.from_dict(_json.loads(_json.dumps(d)))
+    assert p2._mod_tape[0] == [(2.0, 64), (10.0, 127)]
+    assert p2._mod_tape[3] == [(7.5, 32)]
+    print("  to_dict/from_dict round-trip _mod_tape : OK")
+
+def test_from_dict_without_mod_tape_gives_empty():
+    p = Pattern()
+    d = p.to_dict()
+    del d["mod_tape"]
+    p2 = Pattern()
+    p2.from_dict(d)
+    assert all(t == [] for t in p2._mod_tape)
+    print("  from_dict sans clé mod_tape → listes vides (rétrocompat) : OK")
+
+def test_from_dict_mod_tape_pads_to_num_tracks():
+    p = Pattern()
+    d = p.to_dict()
+    d["mod_tape"] = [[(1.0, 50)]]   # une seule piste dans le JSON
+    p2 = Pattern()
+    p2.from_dict(d)
+    assert len(p2._mod_tape) == p2._num_tracks
+    assert p2._mod_tape[0] == [(1.0, 50)]
+    assert all(t == [] for t in p2._mod_tape[1:])
+    print("  from_dict _mod_tape complété jusqu'à num_tracks si trop court : OK")
+
+def test_record_mod_stores_float_offset_and_value():
+    pl = _make_player()
+    pl.record_mod(64)
+    mods = pl._pattern._mod_tape[0]
+    assert len(mods) == 1
+    off, val = mods[0]
+    assert isinstance(off, float)
+    assert val == 64
+    print("  record_mod stocke (float_offset, mod_value) : OK")
+
+def test_record_mod_multiple_points_accumulate():
+    pl = _make_player()
+    pl.record_mod(0)
+    pl.record_mod(64)
+    pl.record_mod(127)
+    mods = pl._pattern._mod_tape[0]
+    assert len(mods) == 3
+    assert [v for _, v in mods] == [0, 64, 127]
+    print("  record_mod accumule plusieurs points sans déduplication : OK")
+
+def test_record_mod_uses_cur_track():
+    pl = _make_player()
+    pl._cur_track = 4
+    pl.record_mod(100)
+    assert pl._pattern._mod_tape[4] != []
+    assert pl._pattern._mod_tape[0] == []
+    print("  record_mod enregistre sur la piste courante : OK")
+
+def test_mod_tape_callback_receives_track_and_value():
+    received = []
+    pl = _make_player()
+    pl._on_mod_tape_cb = lambda t, m: received.append((t, m))
+    if pl._on_mod_tape_cb:
+        pl._on_mod_tape_cb(2, 80)
+    assert received == [(2, 80)]
+    print("  _on_mod_tape_cb reçoit (track_idx, mod_value) : OK")
+
+def test_mod_tape_no_callback_is_safe():
+    pl = _make_player()
+    pl._on_mod_tape_cb = None
+    try:
+        if pl._on_mod_tape_cb:
+            pl._on_mod_tape_cb(0, 0)
+        print("  _on_mod_tape_cb=None → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+def test_run_thread_build_mod_tape_events():
+    """Simule la construction des MOD_TAPE_EVENTs dans _run_thread."""
+    pl = _make_player()
+    pl._pattern._mod_tape[0] = [(4.0, 64), (12.0, 127)]
+    events = []
+    for t_idx, track_mods in enumerate(pl._pattern._mod_tape):
+        for float_off, mod_val in list(track_mods):
+            t_sec = float_off * pl.step_duration
+            events.append((t_sec, pl.MOD_TAPE_EVENT, (t_idx, mod_val), 0))
+    assert len(events) == 2
+    _, etype, (ti, mv), _ = events[0]
+    assert etype == pl.MOD_TAPE_EVENT
+    assert ti == 0
+    assert mv == 64
+    print("  _run_thread construit les MOD_TAPE_EVENTs correctement : OK")
+
+# helpers flush/apply mod_tape (simlent MainWindow)
+def _flush_mod(pat, live):
+    pat._mod_tape = [list(t) for t in live._mod_tape]
+
+def _apply_mod(live, store):
+    live._mod_tape = [list(t) for t in store._mod_tape]
+
+def test_flush_and_apply_preserve_mod_tape():
+    pl = _make_player()
+    pl.record_mod(64)
+    pl.record_mod(127)
+    store = Pattern()
+    _flush_mod(store, pl._pattern)
+    assert store._mod_tape[0] != []
+    assert len(store._mod_tape[0]) == 2
+    pl2 = _make_player()
+    _apply_mod(pl2._pattern, store)
+    assert pl2._pattern._mod_tape[0] == pl._pattern._mod_tape[0]
+    print("  flush+apply store préserve _mod_tape : OK")
+
+def test_flush_and_apply_roundtrip_mod_tape_via_todict():
+    import json as _json
+    pl = _make_player()
+    pl.record_mod(32)
+    pl.record_mod(100)
+    pl._cur_track = 2
+    pl.record_mod(0)
+    store = Pattern()
+    _flush_mod(store, pl._pattern)
+    loaded = Pattern()
+    loaded.from_dict(_json.loads(_json.dumps(store.to_dict(), separators=(',', ':'))))
+    pl2 = _make_player()
+    _apply_mod(pl2._pattern, loaded)
+    assert pl2._pattern._mod_tape[0] == pl._pattern._mod_tape[0]
+    assert pl2._pattern._mod_tape[2] == pl._pattern._mod_tape[2]
+    print("  cycle complet record→flush→to_dict→from_dict→apply préserve _mod_tape : OK")
+
+def test_to_dict_does_not_raise_after_record_mod():
+    pl = _make_player()
+    pl.record_mod(64)
+    pl.record_mod(127)
+    try:
+        pl._pattern.to_dict()
+    except Exception as e:
+        assert False, f"to_dict lève une exception sur mod_tape runtime : {e}"
+    print("  to_dict ne lève pas d'exception sur données de record_mod : OK")
+
+def test_integration_record_json_reload_with_mod():
+    """Intégration complète incluant mod_tape : record→JSON→rechargement."""
+    import json as _json
+    pl = _make_player()
+    pl.record_kit_note(36, 100)
+    pl.record_patch_note(60, 100, 500, bend=2048)
+    pl.record_bend(4096)
+    pl.record_mod(80)
+    pl.record_mod(127)
+
+    store = Pattern()
+    store._kit_tape   = dict(pl._pattern._kit_tape)
+    store._patch_tape = dict(pl._pattern._patch_tape)
+    store._bend_tape  = [list(t) for t in pl._pattern._bend_tape]
+    store._mod_tape   = [list(t) for t in pl._pattern._mod_tape]
+
+    try:
+        json_str = _json.dumps(store.to_dict(), separators=(',', ':'))
+    except Exception as e:
+        assert False, f"json.dumps échoue : {e}"
+
+    restored = Pattern()
+    restored.from_dict(_json.loads(json_str))
+
+    pl2 = _make_player()
+    pl2._pattern._kit_tape   = dict(restored._kit_tape)
+    pl2._pattern._patch_tape = dict(restored._patch_tape)
+    pl2._pattern._bend_tape  = [list(t) for t in restored._bend_tape]
+    pl2._pattern._mod_tape   = [list(t) for t in restored._mod_tape]
+
+    assert pl2._pattern._kit_tape   == pl._pattern._kit_tape,   "kit_tape perdu"
+    assert pl2._pattern._patch_tape == pl._pattern._patch_tape, "patch_tape perdu"
+    assert pl2._pattern._bend_tape  == pl._pattern._bend_tape,  "bend_tape perdu"
+    assert pl2._pattern._mod_tape   == pl._pattern._mod_tape,   "mod_tape perdu"
+    print("  intégration record→JSON→rechargement préserve kit/patch/bend/mod tapes : OK")
+
+
+# ---------------------------------------------------------------------------
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
@@ -1396,4 +1648,26 @@ if __name__ == "__main__":
     test_to_dict_does_not_raise_after_record_bend()
     test_integration_record_json_reload()
     test_integration_record_json_reload_all_tracks()
+    # Automation Mod Wheel — _mod_tape
+    test_mod_tape_initially_empty()
+    test_new_pattern_resets_mod_tape()
+    test_reset_pattern_clears_mod_tape()
+    test_clear_track_clears_mod_tape_for_track()
+    test_double_bars_duplicates_mod_tape()
+    test_double_bars_preserves_mod_values()
+    test_halve_bars_filters_mod_tape()
+    test_resize_filters_mod_tape()
+    test_roundtrip_mod_tape()
+    test_from_dict_without_mod_tape_gives_empty()
+    test_from_dict_mod_tape_pads_to_num_tracks()
+    test_record_mod_stores_float_offset_and_value()
+    test_record_mod_multiple_points_accumulate()
+    test_record_mod_uses_cur_track()
+    test_mod_tape_callback_receives_track_and_value()
+    test_mod_tape_no_callback_is_safe()
+    test_run_thread_build_mod_tape_events()
+    test_flush_and_apply_preserve_mod_tape()
+    test_flush_and_apply_roundtrip_mod_tape_via_todict()
+    test_to_dict_does_not_raise_after_record_mod()
+    test_integration_record_json_reload_with_mod()
     print("Tous les tests : OK")

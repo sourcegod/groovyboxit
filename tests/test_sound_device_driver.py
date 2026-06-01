@@ -381,6 +381,101 @@ def test_resample_downsample():
 
 
 # ---------------------------------------------------------------------------
+# LFO vibrato — constante, attributs, propagation
+# ---------------------------------------------------------------------------
+
+from sound_device_driver import _LoopVoice
+import math as _math
+
+def test_lfo_depth_max_constant():
+    dm = SoundDeviceDriver.LFO_DEPTH_MAX
+    expected = 2.0 ** (2.0 / 12.0) - 1.0
+    assert abs(dm - expected) < 1e-9, f"LFO_DEPTH_MAX={dm}, attendu {expected}"
+    print(f"  LFO_DEPTH_MAX = {dm:.5f} (±2 st) : OK")
+
+
+def test_voice_lfo_defaults():
+    data = np.zeros((100, 2), dtype=np.float32)
+    v = _Voice(data, 0.8, 0.8)
+    assert v.lfo_depth == 0.0
+    assert v.lfo_phase == 0.0
+    assert v.lfo_freq  == 5.0
+    print("  _Voice : lfo_depth/phase/freq défauts : OK")
+
+
+def test_loop_voice_lfo_defaults():
+    data = np.zeros((200, 2), dtype=np.float32)
+    v = _LoopVoice(data, 50, 150, 8, 0.8, 0.8)
+    assert v.lfo_depth == 0.0
+    assert v.lfo_phase == 0.0
+    assert v.lfo_freq  == 5.0
+    print("  _LoopVoice : lfo_depth/phase/freq défauts : OK")
+
+
+def test_voice_lfo_depth_set_at_creation():
+    data  = np.zeros((100, 2), dtype=np.float32)
+    depth = SoundDeviceDriver.LFO_DEPTH_MAX
+    v = _Voice(data, 0.8, 0.8, lfo_depth=depth)
+    assert v.lfo_depth == depth
+    print(f"  _Voice créée avec lfo_depth={depth:.5f} : OK")
+
+
+def test_play_passes_lfo_depth_to_voice():
+    snd   = _drv.make_silent(100)
+    depth = SoundDeviceDriver.LFO_DEPTH_MAX / 2
+    voice = _drv.play(snd, lfo_depth=depth)
+    assert voice is not None
+    assert abs(voice.lfo_depth - depth) < 1e-9
+    print(f"  play(lfo_depth=…) → voice.lfo_depth={depth:.5f} : OK")
+
+
+def test_lfo_depth_modifiable_on_live_voice():
+    snd   = _drv.make_silent(200)
+    voice = _drv.play(snd, lfo_depth=0.0)
+    assert voice.lfo_depth == 0.0
+    voice.lfo_depth = SoundDeviceDriver.LFO_DEPTH_MAX
+    assert voice.lfo_depth == SoundDeviceDriver.LFO_DEPTH_MAX
+    print("  lfo_depth modifiable sur voix active (GIL-safe) : OK")
+
+
+def test_lfo_phase_advances_after_mix_voice():
+    """_mix_voice fait avancer lfo_phase à chaque appel."""
+    data = np.zeros((4410, 2), dtype=np.float32)
+    snd  = SdSound(data, 44100)
+    voice = _drv.play(snd, lfo_depth=0.01)
+    assert voice is not None
+    phase_before = voice.lfo_phase
+    # Appel manuel de _mix_voice sur un buffer de 512 frames
+    mix = np.zeros((512, 2), dtype=np.float32)
+    _drv._mix_voice(voice, mix, 512)
+    expected_advance = 2.0 * _math.pi * voice.lfo_freq * 512 / _drv._sr
+    assert abs(voice.lfo_phase - (phase_before + expected_advance) % (2 * _math.pi)) < 1e-6
+    print(f"  lfo_phase avance de {expected_advance:.5f} rad après _mix_voice : OK")
+
+
+def test_lfo_depth_zero_gives_same_output_as_no_lfo():
+    """Sans LFO (depth=0), la sortie doit être identique à l'original."""
+    n    = 2048
+    freq = 440.0
+    sr   = 44100
+    t    = np.linspace(0, n / sr, n, endpoint=False)
+    mono = (np.sin(2 * _math.pi * freq * t) * 0.5).astype(np.float32)
+    data = np.column_stack([mono, mono])
+    snd  = SdSound(data, sr)
+
+    mix_no_lfo  = np.zeros((512, 2), dtype=np.float32)
+    voice_no    = _Voice(data, 1.0, 1.0, lfo_depth=0.0)
+    _drv._mix_voice(voice_no, mix_no_lfo, 512)
+
+    mix_zero_lfo = np.zeros((512, 2), dtype=np.float32)
+    voice_zero   = _Voice(data, 1.0, 1.0, lfo_depth=0.0)
+    _drv._mix_voice(voice_zero, mix_zero_lfo, 512)
+
+    np.testing.assert_array_equal(mix_no_lfo, mix_zero_lfo)
+    print("  lfo_depth=0 → sortie identique à sans LFO : OK")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=== test_sound_device_driver ===")
@@ -429,6 +524,15 @@ if __name__ == "__main__":
     # Resample
     test_resample_output_length()
     test_resample_downsample()
+    # LFO vibrato
+    test_lfo_depth_max_constant()
+    test_voice_lfo_defaults()
+    test_loop_voice_lfo_defaults()
+    test_voice_lfo_depth_set_at_creation()
+    test_play_passes_lfo_depth_to_voice()
+    test_lfo_depth_modifiable_on_live_voice()
+    test_lfo_phase_advances_after_mix_voice()
+    test_lfo_depth_zero_gives_same_output_as_no_lfo()
 
     _drv.close()
     print("Tous les tests : OK")

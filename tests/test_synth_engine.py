@@ -97,6 +97,99 @@ def test_clear_cache(engine):
     print("  clear_cache : OK")
 
 
+# ---------------------------------------------------------------------------
+# set_mod_wheel — sans WAV (mock driver)
+# ---------------------------------------------------------------------------
+
+import numpy as _np
+from sound_device_driver import _Voice as _SddVoice
+
+class _MockDriver:
+    """Driver minimal pour tester set_mod_wheel sans PortAudio ni WAV."""
+    LFO_DEPTH_MAX = SoundDeviceDriver.LFO_DEPTH_MAX
+    def play(self, *a, **kw): return None
+    def stop_voice(self, v): pass
+
+
+def _make_engine_mock():
+    eng = SynthEngine.__new__(SynthEngine)
+    eng._driver          = _MockDriver()
+    eng.pitch_bend       = 0
+    eng.pitch_bend_range = 2
+    eng.mod_wheel        = 0
+    eng._active_voices   = {}
+    eng._samples         = []
+    eng._raw_cache       = {}
+    eng._cache           = {}
+    eng._loop_cache      = {}
+    return eng
+
+
+def test_set_mod_wheel_stores_value():
+    eng = _make_engine_mock()
+    eng.set_mod_wheel(64)
+    assert eng.mod_wheel == 64
+    print("  set_mod_wheel stocke mod_wheel : OK")
+
+
+def test_set_mod_wheel_propagates_to_active_voices():
+    eng  = _make_engine_mock()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v1   = _SddVoice(data, 0.8, 0.8)
+    v2   = _SddVoice(data, 0.8, 0.8)
+    eng._active_voices = {60: v1, 64: v2}
+
+    eng.set_mod_wheel(127)
+    expected = 127 / 127.0 * SoundDeviceDriver.LFO_DEPTH_MAX
+    assert abs(v1.lfo_depth - expected) < 1e-9
+    assert abs(v2.lfo_depth - expected) < 1e-9
+    print(f"  set_mod_wheel(127) → lfo_depth={expected:.5f} sur toutes les voix actives : OK")
+
+
+def test_set_mod_wheel_zero_disables_lfo():
+    eng  = _make_engine_mock()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8, lfo_depth=0.05)
+    eng._active_voices = {60: v}
+
+    eng.set_mod_wheel(0)
+    assert v.lfo_depth == 0.0
+    assert eng.mod_wheel == 0
+    print("  set_mod_wheel(0) → lfo_depth=0.0 : OK")
+
+
+def test_set_mod_wheel_midrange():
+    eng  = _make_engine_mock()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8)
+    eng._active_voices = {60: v}
+
+    eng.set_mod_wheel(64)
+    expected = 64 / 127.0 * SoundDeviceDriver.LFO_DEPTH_MAX
+    assert abs(v.lfo_depth - expected) < 1e-9
+    print(f"  set_mod_wheel(64) → lfo_depth={expected:.5f} (interpolation linéaire) : OK")
+
+
+def test_set_mod_wheel_no_active_voices_is_safe():
+    eng = _make_engine_mock()
+    eng._active_voices = {}
+    try:
+        eng.set_mod_wheel(100)
+        print("  set_mod_wheel sans voix actives → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+def test_set_mod_wheel_none_voice_skipped():
+    eng = _make_engine_mock()
+    eng._active_voices = {60: None}
+    try:
+        eng.set_mod_wheel(80)
+        print("  set_mod_wheel avec voix=None → ignorée sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
 if __name__ == "__main__":
     print("=== test_synth_engine ===")
 
@@ -120,3 +213,12 @@ if __name__ == "__main__":
     finally:
         shutil.rmtree(patch_dir, ignore_errors=True)
         drv.close()
+
+    # Tests set_mod_wheel — pas de WAV requis
+    test_set_mod_wheel_stores_value()
+    test_set_mod_wheel_propagates_to_active_voices()
+    test_set_mod_wheel_zero_disables_lfo()
+    test_set_mod_wheel_midrange()
+    test_set_mod_wheel_no_active_voices_is_safe()
+    test_set_mod_wheel_none_voice_skipped()
+    print("Tests set_mod_wheel : OK")
