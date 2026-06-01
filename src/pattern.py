@@ -123,10 +123,12 @@ class Pattern:
         self._patch_tape = {}
 
     def clear_track(self, track_idx):
-        """Efface tous les pas de la piste track_idx (toutes les mesures)."""
+        """Efface tous les pas de la piste track_idx (grille + tapes MIDI)."""
         for pad in self._curpattern[track_idx]:
             for bar in pad:
                 bar[:] = [0] * len(bar)
+        self._patch_tape = {k: v for k, v in self._patch_tape.items() if k[0] != track_idx}
+        self._kit_tape   = {k: v for k, v in self._kit_tape.items()   if k[0] != track_idx}
 
     #--------------------------------------------------------------------------
 

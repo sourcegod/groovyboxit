@@ -7,8 +7,19 @@
 """
 
 import threading
+import os, time as _time
 from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
 from rack import InstrumentType
+
+_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
+_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "bend_log.txt")
+
+def _bend_log(msg):
+    if not _BEND_LOG:
+        return
+    ts = _time.strftime("%H:%M:%S")
+    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {msg}\n")
 
 
 class TrackRouter:
@@ -302,8 +313,9 @@ class TrackRouter:
         vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
         self._snd.play_note(midi_note, vol)
 
-    def on_patch_tape(self, track_idx, midi_note, velocity, duration_ms=0):
-        """Lecture d'un événement patch_tape : note MIDI brute pour un synth."""
+    def on_patch_tape(self, track_idx, midi_note, velocity, duration_ms=0, bend=0):
+        """Lecture d'un événement patch_tape : note MIDI brute pour un synth.
+        bend : valeur pitch bend enregistrée (-8192..+8191) — appliquée via phase_incr."""
         if not self._track_is_audible(track_idx):
             return
         slot_idx = self._track_slots[track_idx]
@@ -315,7 +327,14 @@ class TrackRouter:
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
             pan = self._track_pans[track_idx]
             dur = duration_ms if duration_ms > 0 else 500
+            old_bend          = engine.pitch_bend
+            engine.pitch_bend = bend
+            pi = 2.0 ** (engine.pitch_bend_semitones / 12.0)
+            _bend_log(f"PLAY note={midi_note} bend={bend} "
+                      f"({engine.pitch_bend_semitones:+.3f}st) phase_incr={pi:.5f} "
+                      f"old_bend={old_bend} engine_id={id(engine)}")
             engine.play(midi_note, vol, pan, dur)
+            engine.pitch_bend = old_bend
             threading.Timer(dur / 1000.0, engine.stop, [midi_note]).start()
 
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):

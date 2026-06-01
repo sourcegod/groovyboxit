@@ -280,7 +280,7 @@ def test_record_kit_note_stores_tuple():
     pl.record_kit_note(36, 100)
     events = list(pl._pattern._kit_tape.values())[0]
     assert len(events) == 1
-    note, vel, dur = events[0]
+    note, vel, dur, *_ = events[0]
     assert note == 36
     assert vel  == 100
     assert dur  == 0
@@ -340,7 +340,7 @@ def test_record_patch_note_fixed_duration():
     pl.record_patch_note(60, 100, 500)
     events = list(pl._pattern._patch_tape.values())[0]
     assert len(events) == 1
-    note, vel, dur = events[0]
+    note, vel, dur, *_ = events[0]
     assert note == 60
     assert vel  == 100
     assert dur  == 500
@@ -404,7 +404,7 @@ def test_record_patch_note_off_updates_duration():
     pl._pending_patch[60] = (key, entry_idx, time.perf_counter() - 0.300)
     pl.record_patch_note_off(60)
     events = pl._pattern._patch_tape[key]
-    note, vel, dur = events[entry_idx]
+    note, vel, dur, *_ = events[entry_idx]
     assert dur >= 290, f"durée attendue ≥ 290 ms, obtenu {dur}"
     print(f"  record_patch_note_off met à jour la durée ({dur} ms) : OK")
 
@@ -756,7 +756,7 @@ def test_patch_tape_list_snapshot_safe_during_erase():
         for (t_idx, b, s), note_list in list(pl._pattern._patch_tape.items()):
             # modification concurrente pendant l'itération (comme erase UI thread)
             pl.erase_patch_tape_note(0, 60)
-            for midi_note, vel, dur in list(note_list):
+            for midi_note, vel, dur, *_ in list(note_list):
                 collected.append(midi_note)
     except RuntimeError as e:
         assert False, f"RuntimeError (accès concurrent non protégé) : {e}"
@@ -774,7 +774,7 @@ def test_kit_tape_list_snapshot_safe_during_modification():
             for k in list(pl._pattern._kit_tape.keys()):
                 del pl._pattern._kit_tape[k]
                 break
-            for midi_note, vel, dur in list(note_list):
+            for midi_note, vel, dur, *_ in list(note_list):
                 pass
     except RuntimeError as e:
         assert False, f"RuntimeError (accès concurrent kit_tape non protégé) : {e}"
@@ -821,13 +821,79 @@ def test_kit_tape_no_callback_is_safe():
     pl = _make_player()
     pl._on_kit_tape_cb = None
     try:
-        # Reproduit la branche fallback du dispatch
         if pl._on_kit_tape_cb:
             pl._on_kit_tape_cb(0, 36, 100, 0)
-        # Sinon play_note serait appelé, mais on_kit_tape_cb est None → pas de call
         print("  on_kit_tape_cb=None → no-op sans plantage : OK")
     except Exception as e:
         assert False, f"Exception inattendue : {e}"
+
+
+# ---------------------------------------------------------------------------
+# Simulation Pitch Bend — enregistrement et lecture
+# ---------------------------------------------------------------------------
+
+def test_record_patch_note_stores_bend():
+    """record_patch_note stocke le bend comme 4e élément du tuple."""
+    pl = _make_player()
+    bend_val = 4096   # +1 semitone (pitch_bend_range=2 → +1st)
+    pl.record_patch_note(60, 100, 500, bend=bend_val)
+    events = list(pl._pattern._patch_tape.values())[0]
+    assert len(events) == 1
+    assert len(events[0]) == 4, f"tuple doit avoir 4 éléments, a {len(events[0])}"
+    note, vel, dur, bend = events[0]
+    assert note == 60
+    assert bend == bend_val, f"bend attendu {bend_val}, reçu {bend}"
+    print(f"  record_patch_note stocke bend={bend_val} → tuple(60, 100, 500, {bend_val}) : OK")
+
+def test_record_patch_note_bend_zero_by_default():
+    """Sans pitch bend actif, le 4e élément doit être 0."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500)
+    events = list(pl._pattern._patch_tape.values())[0]
+    note, vel, dur, *rest = events[0]
+    bend = rest[0] if rest else 0
+    assert bend == 0, f"bend attendu 0 (pas de bend), reçu {bend}"
+    print("  record_patch_note sans bend → 4e élément = 0 : OK")
+
+def test_record_patch_note_off_preserves_bend():
+    """record_patch_note_off (durée MIDI) préserve le bend dans le tuple final."""
+    pl = _make_player()
+    bend_val = -8192   # -2 semitones (max bend down)
+    pl.record_patch_note(60, 100, bend=bend_val)   # duration_ms=None → pending
+    pl.record_patch_note_off(60)
+    events = list(pl._pattern._patch_tape.values())[0]
+    note, vel, dur, *rest = events[0]
+    bend = rest[0] if rest else 0
+    assert bend == bend_val, f"bend {bend_val} doit être conservé après note_off, reçu {bend}"
+    assert dur > 0, "durée doit être > 0 après note_off"
+    print(f"  record_patch_note_off préserve bend={bend_val} dans le tuple : OK")
+
+def test_run_thread_dispatch_passes_bend_to_callback():
+    """Simule le dispatch _run_thread : on_patch_tape_cb reçoit (t, n, v, d, bend)."""
+    received = []
+    pl = _make_player()
+    pl._on_patch_tape_cb = lambda t, n, v, d, b=0: received.append((t, n, v, d, b))
+
+    bend_val = 8191   # +2 semitones (max bend up)
+    pl.record_patch_note(60, 100, 500, bend=bend_val)
+    key = list(pl._pattern._patch_tape.keys())[0]
+    _, bar_idx, step_idx = key
+    t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
+
+    # Simule la boucle _run_thread (construction + dispatch)
+    note_list = pl._pattern._patch_tape[key]
+    for midi_note, vel, dur, *rest in list(note_list):
+        bend = rest[0] if rest else 0
+        # Simule le dispatch PATCH_TAPE_EVENT
+        t_idx = 0
+        if not pl.erasing:
+            pl._on_patch_tape_cb(t_idx, midi_note, vel, dur, bend)
+
+    assert len(received) == 1, "callback appelé exactement une fois"
+    t, n, v, d, b = received[0]
+    assert n == 60
+    assert b == bend_val, f"bend attendu {bend_val}, callback a reçu b={b}"
+    print(f"  _run_thread dispatch : callback reçoit bend={bend_val} correctement : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -918,4 +984,9 @@ if __name__ == "__main__":
     test_kit_tape_callback_receives_duration()
     test_patch_tape_callback_receives_duration()
     test_kit_tape_no_callback_is_safe()
+    # Simulation Pitch Bend — enregistrement et lecture
+    test_record_patch_note_stores_bend()
+    test_record_patch_note_bend_zero_by_default()
+    test_record_patch_note_off_preserves_bend()
+    test_run_thread_dispatch_passes_bend_to_callback()
     print("Tous les tests : OK")

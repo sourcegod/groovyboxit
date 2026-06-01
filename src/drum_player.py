@@ -1,8 +1,20 @@
 import time
 import threading
+import os
 
 from pattern import Pattern
 from voice_manager import VoiceManager
+
+# Fichier de log pitch bend — activé si GROOVY_BEND_LOG=1
+_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
+_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "bend_log.txt")
+
+def _bend_log(msg):
+    if not _BEND_LOG:
+        return
+    ts = time.strftime("%H:%M:%S")
+    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {msg}\n")
 
 
 class DrumPlayer:
@@ -198,8 +210,9 @@ class DrumPlayer:
                     float_off = bar_idx * num_steps + step_idx
                     t_sec = float_off * self.step_duration
                     if t_sec > elapsed - 0.002:
-                        for midi_note, vel, dur in list(note_list):
-                            events.append((t_sec, self.PATCH_TAPE_EVENT, (t_idx, midi_note, dur), vel))
+                        for midi_note, vel, dur, *rest in list(note_list):
+                            bend = rest[0] if rest else 0
+                            events.append((t_sec, self.PATCH_TAPE_EVENT, (t_idx, midi_note, dur, bend), vel))
             if self.clicking:
                 steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
                 for bar_idx in range(loop_bars):
@@ -260,12 +273,12 @@ class DrumPlayer:
                     else:
                         self.sound_man.play_note(midi_note, velocity / 127.0)
                 elif track_or_type == self.PATCH_TAPE_EVENT:
-                    t_idx, midi_note, dur = evt_data
+                    t_idx, midi_note, dur, bend = evt_data
                     if self.erasing and t_idx == self._cur_track \
                             and midi_note in self._erase_active_midi_notes:
                         self._erase_patch_tape_event(t_idx, midi_note, t_sec)
                     elif self._on_patch_tape_cb:
-                        self._on_patch_tape_cb(t_idx, midi_note, velocity, dur)
+                        self._on_patch_tape_cb(t_idx, midi_note, velocity, dur, bend)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
@@ -548,7 +561,7 @@ class DrumPlayer:
         events = self._pattern._kit_tape.get(key)
         if events is None:
             return
-        events[:] = [(n, v, d) for n, v, d in events if n != midi_note]
+        events[:] = [e for e in events if e[0] != midi_note]
         if not events:
             self._pattern._kit_tape.pop(key, None)
 
@@ -563,7 +576,7 @@ class DrumPlayer:
         events = self._pattern._patch_tape.get(key)
         if events is None:
             return
-        events[:] = [(n, v, d) for n, v, d in events if n != midi_note]
+        events[:] = [e for e in events if e[0] != midi_note]
         if not events:
             self._pattern._patch_tape.pop(key, None)
 
@@ -616,7 +629,8 @@ class DrumPlayer:
             if t != track_idx:
                 continue
             dist = circ_dist(b * self._pattern._num_steps + s)
-            for i, (note, vel, dur) in enumerate(events):
+            for i, entry in enumerate(events):
+                note = entry[0]
                 if note == midi_note and dist < best_dist:
                     best_dist = dist
                     best_key  = (t, b, s)
@@ -708,31 +722,33 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_patch_note(self, midi_note, velocity=100, duration_ms=None):
+    def record_patch_note(self, midi_note, velocity=100, duration_ms=None, bend=0):
         """Enregistre une note MIDI brute dans patch_tape.
 
         duration_ms=None → durée mesurée jusqu'au note_off via record_patch_note_off().
         duration_ms>=0   → durée fixe (numpad).
+        bend             → valeur pitch bend au moment du note_on (-8192..+8191).
         """
         float_offset, bar_idx, step_idx = self._compute_record_offset()
-        now = time.perf_counter()   # horodatage pour _pending_patch (note_off différé)
+        now = time.perf_counter()
         vel = max(1, min(127, int(velocity)))
         dur = 0 if duration_ms is None else max(0, int(duration_ms))
         key    = (self._cur_track, bar_idx, step_idx)
         events = self._pattern._patch_tape.setdefault(key, [])
-        # remplace une entrée existante pour ce midi_note, sinon ajoute
         for i, entry in enumerate(events):
             if entry[0] == midi_note:
-                events[i]   = (midi_note, vel, dur)
-                entry_idx   = i
+                events[i] = (midi_note, vel, dur, bend)
+                entry_idx = i
                 break
         else:
-            events.append((midi_note, vel, dur))
+            events.append((midi_note, vel, dur, bend))
             entry_idx = len(events) - 1
         if duration_ms is None:
             self._pending_patch[midi_note] = (key, entry_idx, now)
         else:
             self._pending_patch.pop(midi_note, None)
+        _bend_log(f"REC note_on  note={midi_note} vel={vel} dur={dur} bend={bend} "
+                  f"→ bar={bar_idx} step={step_idx} track={self._cur_track}")
         return bar_idx, step_idx
 
     def record_patch_note_off(self, midi_note):
@@ -745,8 +761,10 @@ class DrumPlayer:
         if events is None or entry_idx >= len(events):
             return
         duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
-        note, vel, _ = events[entry_idx]
-        events[entry_idx] = (note, vel, duration_ms)
+        note, vel, _, *rest = events[entry_idx]
+        bend = rest[0] if rest else 0
+        events[entry_idx] = (note, vel, duration_ms, bend)
+        _bend_log(f"REC note_off note={midi_note} dur_finale={duration_ms}ms bend={bend}")
 
     #--------------------------------------------------------------------------
 

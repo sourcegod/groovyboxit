@@ -6,8 +6,19 @@
     Author: Coolbrother
 """
 import wx
+import os, time as _time
 from drum_player import DrumPlayer
 from pattern import Pattern
+
+_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
+_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "bend_log.txt")
+
+def _bend_log(msg):
+    if not _BEND_LOG:
+        return
+    ts = _time.strftime("%H:%M:%S")
+    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {msg}\n")
 from rack import InstrumentType
 from synth_engine import midi_to_note_name
 
@@ -17,7 +28,7 @@ class MidiHandler:
 
     def __init__(self, win):
         self._win          = win
-        self._erase_held   = set()   # notes MIDI tenues en mode Erase (pad mode)
+        self._erase_held    = set()   # notes MIDI tenues en mode Erase (pad mode)
         self._erase_held_kb = set()  # notes MIDI tenues en mode Erase (keyboard mode)
 
     # ------------------------------------------------------------------
@@ -138,8 +149,16 @@ class MidiHandler:
             return
         synth = win._router.synth
         synth.pitch_bend = bend
-        synth.apply_pitch_bend()   # met à jour phase_incr de toutes les voix actives
+        synth.apply_pitch_bend()
+        # Propager au moteur séquenceur du même slot s'il est distinct
+        slot_idx     = win._router._synth_slot_idx
+        slot_engine  = win._router._slot_synths.get(slot_idx) if slot_idx is not None else None
+        if slot_engine is not None and slot_engine is not synth:
+            slot_engine.pitch_bend = bend
+            slot_engine.apply_pitch_bend()
         st = synth.pitch_bend_semitones
+        _bend_log(f"BEND_SET bend={bend} ({st:+.3f}st) synth_id={id(synth)} "
+                  f"slot_engine_id={id(slot_engine) if slot_engine else 'same'}")
         win._show_status(f"Pitch Bend: {st:+.2f} st")
 
     def on_cc(self, cc_num, value, channel):
@@ -238,7 +257,11 @@ class MidiHandler:
             win._router.synth.play(transposed, vol_factor, pan, 0)
             win._router.kb_last_midi = transposed
             if win._player.recording:
-                win._player.record_patch_note(transposed, velocity)
+                synth = win._router.synth if win._router.synth_ready() else None
+                bend = synth.pitch_bend if synth else 0
+                _bend_log(f"REC_READ note={transposed} synth_id={id(synth)} "
+                          f"synth_ready={win._router.synth_ready()} bend_read={bend}")
+                win._player.record_patch_note(transposed, velocity, bend=bend)
 
     def _handle_pad_note_on(self, note, velocity, slot, pad_idx):
         win = self._win

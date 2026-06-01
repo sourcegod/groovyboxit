@@ -8,9 +8,20 @@
     Author: Coolbrother
 """
 import os
+import time as _time
 import json
 import numpy as np
 from audio_sampler import AudioSampler, PlayMode
+
+_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
+_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "bend_log.txt")
+
+def _bend_log(msg):
+    if not _BEND_LOG:
+        return
+    ts = _time.strftime("%H:%M:%S")
+    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {msg}\n")
 
 
 # ======================================================================
@@ -272,9 +283,14 @@ class SynthEngine:
         """
         sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
+            _bend_log(f"ENGINE_PLAY note={midi_note} bend={self.pitch_bend} → sound=None (pas de voix créée!)")
             return
         phase_incr = 2.0 ** (self.pitch_bend_semitones / 12.0)
         voice = self._driver.play(sound, volume_factor, pan, phase_incr)
+        loop = sound.loop_start is not None
+        _bend_log(f"ENGINE_PLAY note={midi_note} bend={self.pitch_bend} "
+                  f"phase_incr={phase_incr:.5f} voice={'LoopVoice' if loop else 'Voice'} "
+                  f"voice_id={id(voice)} engine_id={id(self)}")
         self._active_voices[midi_note] = voice
 
     def stop(self, midi_note):
