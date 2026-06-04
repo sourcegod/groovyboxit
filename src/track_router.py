@@ -298,6 +298,15 @@ class TrackRouter:
         if self._synth is not None and id(self._synth) not in seen:
             self._synth.stop_all_voices()
 
+    def stop_all_sounds(self):
+        """Coupe voix synthé + sons one-shot drums (All Sounds Off, CC#120)."""
+        self.stop_all_synth_voices()
+        self._snd.stop_all()
+
+    def panic(self):
+        """Coupure d'urgence : All Notes Off + All Sounds Off."""
+        self.stop_all_sounds()
+
     def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):

@@ -255,6 +255,11 @@ class KeyManager:
             win._pan_ctrl.SetValue(0)
             win._show_status("Pan Global: 0 (centré)")
             return True
+        if not shift and not alt and key == wx.WXK_F12:   # Ctrl+F12 : Panic
+            win._player.stop_all()
+            win._router.panic()
+            win._show_status("Panic: All Notes Off + All Sounds Off")
+            return True
         return False
 
     # ------------------------------------------------------------------
