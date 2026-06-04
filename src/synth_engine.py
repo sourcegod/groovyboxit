@@ -304,6 +304,16 @@ class SynthEngine:
             if sound:
                 self._driver.stop_sound(sound)
 
+    def stop_all_voices(self):
+        """Arrête toutes les voix actives (CC#123 All Notes Off)."""
+        for voice in list(self._active_voices.values()):
+            if voice is not None:
+                self._driver.stop_voice(voice)
+        self._active_voices.clear()
+        for sound in list(self._loop_cache.values()):
+            self._driver.stop_sound(sound)
+        self._loop_cache.clear()
+
     def apply_pitch_bend(self):
         """Met à jour le phase_incr de toutes les voix actives (pitch bend temps réel).
         Appelé depuis MidiHandler à chaque message Pitch Bend reçu."""

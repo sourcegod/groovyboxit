@@ -164,8 +164,18 @@ class MidiHandler:
         win._show_status(f"Pitch Bend: {st:+.2f} st")
 
     def on_cc(self, cc_num, value, channel):
-        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan."""
+        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#123 = All Notes Off."""
         win = self._win
+        if cc_num == 123:                          # CC#123 : All Notes Off
+            if win._router.synth_ready():
+                synth = win._router.synth
+                synth.stop_all_voices()
+                slot_idx    = win._router._synth_slot_idx
+                slot_engine = win._router._slot_synths.get(slot_idx) if slot_idx is not None else None
+                if slot_engine is not None and slot_engine is not synth:
+                    slot_engine.stop_all_voices()
+            win._show_status("All Notes Off")
+            return
         if cc_num == 1:                            # CC#1 : Modulation Wheel
             if win._router.synth_ready():
                 win._router.synth.set_mod_wheel(value)

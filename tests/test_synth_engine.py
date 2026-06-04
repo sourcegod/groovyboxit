@@ -190,6 +190,90 @@ def test_set_mod_wheel_none_voice_skipped():
         assert False, f"Exception inattendue : {e}"
 
 
+# ---------------------------------------------------------------------------
+# stop_all_voices — sans WAV (mock driver)
+# ---------------------------------------------------------------------------
+
+class _TrackingMockDriver(_MockDriver):
+    """_MockDriver qui enregistre les appels stop_voice/stop_sound."""
+    def __init__(self):
+        self.stopped_voices = []
+        self.stopped_sounds = []
+    def stop_voice(self, v):
+        self.stopped_voices.append(v)
+    def stop_sound(self, s):
+        self.stopped_sounds.append(s)
+
+
+def _make_engine_tracking():
+    eng = SynthEngine.__new__(SynthEngine)
+    eng._driver          = _TrackingMockDriver()
+    eng.pitch_bend       = 0
+    eng.pitch_bend_range = 2
+    eng.mod_wheel        = 0
+    eng._active_voices   = {}
+    eng._samples         = []
+    eng._raw_cache       = {}
+    eng._cache           = {}
+    eng._loop_cache      = {}
+    return eng
+
+
+def test_stop_all_voices_stops_each_voice():
+    eng  = _make_engine_tracking()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v1   = _SddVoice(data, 0.8, 0.8)
+    v2   = _SddVoice(data, 0.8, 0.8)
+    eng._active_voices = {60: v1, 64: v2}
+
+    eng.stop_all_voices()
+    assert v1 in eng._driver.stopped_voices
+    assert v2 in eng._driver.stopped_voices
+    print("  stop_all_voices → stop_voice appelé pour chaque voix : OK")
+
+
+def test_stop_all_voices_clears_active_voices():
+    eng  = _make_engine_tracking()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    eng._active_voices = {60: _SddVoice(data, 0.8, 0.8)}
+
+    eng.stop_all_voices()
+    assert eng._active_voices == {}
+    print("  stop_all_voices → _active_voices vidé : OK")
+
+
+def test_stop_all_voices_stops_loop_cache():
+    eng        = _make_engine_tracking()
+    mock_sound = object()   # objet opaque représentant un SdSound
+    eng._loop_cache = {60: mock_sound}
+
+    eng.stop_all_voices()
+    assert mock_sound in eng._driver.stopped_sounds
+    assert eng._loop_cache == {}
+    print("  stop_all_voices → loop_cache arrêté et vidé : OK")
+
+
+def test_stop_all_voices_empty_is_safe():
+    eng = _make_engine_tracking()
+    try:
+        eng.stop_all_voices()
+        print("  stop_all_voices sans voix actives → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+def test_stop_all_voices_none_voice_skipped():
+    eng = _make_engine_tracking()
+    eng._active_voices = {60: None}
+    try:
+        eng.stop_all_voices()
+        assert eng._active_voices == {}
+        assert eng._driver.stopped_voices == []
+        print("  stop_all_voices avec voix=None → ignorée, dict vidé : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
 if __name__ == "__main__":
     print("=== test_synth_engine ===")
 
@@ -222,3 +306,11 @@ if __name__ == "__main__":
     test_set_mod_wheel_no_active_voices_is_safe()
     test_set_mod_wheel_none_voice_skipped()
     print("Tests set_mod_wheel : OK")
+
+    # Tests stop_all_voices — pas de WAV requis
+    test_stop_all_voices_stops_each_voice()
+    test_stop_all_voices_clears_active_voices()
+    test_stop_all_voices_stops_loop_cache()
+    test_stop_all_voices_empty_is_safe()
+    test_stop_all_voices_none_voice_skipped()
+    print("Tests stop_all_voices : OK")
