@@ -491,6 +491,7 @@ class KeyManager:
             win._nr_midi_note  = None
             win._nr_cancel_release()
             win._player.stop_all()
+            win._router.stop_all_synth_voices()
             return True
 
         if key == wx.WXK_NUMPAD_ADD:
@@ -702,6 +703,7 @@ class KeyManager:
             if win._player.playing:
                 was_recording = win._player.recording
                 win._player.stop_pattern()
+                win._router.stop_all_synth_voices()
                 if was_recording:
                     win._refresh_grid()
                     win._refresh_track_list()
@@ -719,6 +721,7 @@ class KeyManager:
             win._nr_midi_note  = None
             win._nr_cancel_release()
             win._player.stop_all()
+            win._router.stop_all_synth_voices()
             win._show_status("Stop All")
             return True
 

@@ -288,6 +288,16 @@ class TrackRouter:
         """Vrai si _synth est chargé et prêt à jouer."""
         return self._synth is not None and self._synth.is_loaded()
 
+    def stop_all_synth_voices(self):
+        """Coupe toutes les voix actives de tous les slots synthé (All Notes Off)."""
+        seen = set()
+        for eng in self._slot_synths.values():
+            if eng is not None and id(eng) not in seen:
+                eng.stop_all_voices()
+                seen.add(id(eng))
+        if self._synth is not None and id(self._synth) not in seen:
+            self._synth.stop_all_voices()
+
     def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):
