@@ -25,10 +25,11 @@ class FakeSynthEngine:
     """Remplace SynthEngine — aucun fichier audio chargé."""
 
     def __init__(self, synths_dir=None, driver=None):
-        self._loaded     = False
-        self._cache      = {}
-        self._played     = []   # (midi, vol, pan)
-        self._precomputed = []
+        self._loaded              = False
+        self._cache               = {}
+        self._played              = []   # (midi, vol, pan)
+        self._precomputed         = []
+        self.stop_all_voices_called = 0
 
     def is_loaded(self):
         return self._loaded
@@ -46,13 +47,20 @@ class FakeSynthEngine:
     def play(self, midi, vol=1.0, pan=0, duration_ms=0):
         self._played.append((midi, vol, pan))
 
+    def stop_all_voices(self):
+        self.stop_all_voices_called += 1
+
 
 class FakeSoundManager:
     def __init__(self):
-        self.played = []   # (pad_idx, vol, pan)
+        self.played          = []   # (pad_idx, vol, pan)
+        self.stop_all_called = 0
 
     def play_sound(self, pad_idx, vol, pan):
         self.played.append((pad_idx, vol, pan))
+
+    def stop_all(self):
+        self.stop_all_called += 1
 
 
 # ---------------------------------------------------------------------------
@@ -854,6 +862,79 @@ def test_play_kit_pitched_new_pad_resets_kit_pad():
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# stop_all_synth_voices / stop_all_sounds / panic
+# ---------------------------------------------------------------------------
+
+def test_stop_all_synth_voices_calls_each_slot_synth():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine(); e2 = FakeSynthEngine()
+    router._slot_synths = {1: e1, 2: e2}
+    router.stop_all_synth_voices()
+    assert e1.stop_all_voices_called == 1
+    assert e2.stop_all_voices_called == 1
+    print("  stop_all_synth_voices → chaque slot synth appelé : OK")
+
+
+def test_stop_all_synth_voices_includes_preview_synth():
+    router, _, _ = _make_router()
+    preview = FakeSynthEngine()
+    router._synth = preview
+    router._slot_synths = {}
+    router.stop_all_synth_voices()
+    assert preview.stop_all_voices_called == 1
+    print("  stop_all_synth_voices → synth preview inclus : OK")
+
+
+def test_stop_all_synth_voices_no_duplicate_when_preview_is_slot():
+    router, _, _ = _make_router()
+    shared = FakeSynthEngine()
+    router._slot_synths = {1: shared}
+    router._synth = shared   # même objet
+    router.stop_all_synth_voices()
+    assert shared.stop_all_voices_called == 1, "appelé une seule fois malgré double référence"
+    print("  stop_all_synth_voices → pas de doublon si preview == slot : OK")
+
+
+def test_stop_all_synth_voices_noop_when_empty():
+    router, _, _ = _make_router()
+    try:
+        router.stop_all_synth_voices()
+        print("  stop_all_synth_voices sans synths → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+def test_stop_all_sounds_calls_synth_voices_and_snd():
+    router, snd, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.stop_all_sounds()
+    assert e1.stop_all_voices_called == 1
+    assert snd.stop_all_called == 1
+    print("  stop_all_sounds → voix synthé + snd.stop_all : OK")
+
+
+def test_stop_all_sounds_noop_when_empty():
+    router, snd, _ = _make_router()
+    try:
+        router.stop_all_sounds()
+        assert snd.stop_all_called == 1, "snd.stop_all toujours appelé"
+        print("  stop_all_sounds sans synths → snd.stop_all appelé, pas de plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+def test_panic_calls_stop_all_sounds():
+    router, snd, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.panic()
+    assert e1.stop_all_voices_called == 1
+    assert snd.stop_all_called == 1
+    print("  panic → stop_all_sounds (voix synthé + snd.stop_all) : OK")
+
+
 if __name__ == "__main__":
     print("=== test_track_router ===")
     test_initial_state()
@@ -929,4 +1010,15 @@ if __name__ == "__main__":
     test_play_kit_pitched_same_pad_loaded_plays_midi()
     test_play_kit_pitched_same_pad_not_loaded_fallback()
     test_play_kit_pitched_new_pad_resets_kit_pad()
+
+    # Tests stop_all_synth_voices / stop_all_sounds / panic
+    test_stop_all_synth_voices_calls_each_slot_synth()
+    test_stop_all_synth_voices_includes_preview_synth()
+    test_stop_all_synth_voices_no_duplicate_when_preview_is_slot()
+    test_stop_all_synth_voices_noop_when_empty()
+    test_stop_all_sounds_calls_synth_voices_and_snd()
+    test_stop_all_sounds_noop_when_empty()
+    test_panic_calls_stop_all_sounds()
+    print("Tests stop_all / panic : OK")
+
     print("Tous les tests : OK")
