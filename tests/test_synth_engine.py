@@ -274,6 +274,62 @@ def test_stop_all_voices_none_voice_skipped():
         assert False, f"Exception inattendue : {e}"
 
 
+# ---------------------------------------------------------------------------
+# reset_all_controls — sans WAV (mock driver)
+# ---------------------------------------------------------------------------
+
+def test_reset_all_controls_zeroes_pitch_bend():
+    eng = _make_engine_mock()
+    eng.pitch_bend = 4096
+    eng.reset_all_controls()
+    assert eng.pitch_bend == 0
+    print("  reset_all_controls → pitch_bend=0 : OK")
+
+
+def test_reset_all_controls_applies_pitch_bend_to_voices():
+    eng  = _make_engine_mock()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8)
+    v.phase_incr = 1.5
+    eng._active_voices = {60: v}
+    eng.pitch_bend = 4096
+    eng.reset_all_controls()
+    assert abs(v.phase_incr - 1.0) < 1e-9, "phase_incr doit revenir à 1.0 (bend=0)"
+    print("  reset_all_controls → phase_incr voix actives = 1.0 : OK")
+
+
+def test_reset_all_controls_zeroes_mod_wheel():
+    eng = _make_engine_mock()
+    eng.set_mod_wheel(100)
+    eng.reset_all_controls()
+    assert eng.mod_wheel == 0
+    print("  reset_all_controls → mod_wheel=0 : OK")
+
+
+def test_reset_all_controls_clears_lfo_on_voices():
+    eng  = _make_engine_mock()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8, lfo_depth=0.05)
+    eng._active_voices = {60: v}
+    eng.set_mod_wheel(80)
+    eng.reset_all_controls()
+    assert v.lfo_depth == 0.0
+    print("  reset_all_controls → lfo_depth voix actives = 0.0 : OK")
+
+
+def test_reset_all_controls_no_active_voices_is_safe():
+    eng = _make_engine_mock()
+    eng.pitch_bend = 2000
+    eng.mod_wheel  = 64
+    try:
+        eng.reset_all_controls()
+        assert eng.pitch_bend == 0
+        assert eng.mod_wheel  == 0
+        print("  reset_all_controls sans voix actives → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
 if __name__ == "__main__":
     print("=== test_synth_engine ===")
 
@@ -314,3 +370,11 @@ if __name__ == "__main__":
     test_stop_all_voices_empty_is_safe()
     test_stop_all_voices_none_voice_skipped()
     print("Tests stop_all_voices : OK")
+
+    # Tests reset_all_controls — pas de WAV requis
+    test_reset_all_controls_zeroes_pitch_bend()
+    test_reset_all_controls_applies_pitch_bend_to_voices()
+    test_reset_all_controls_zeroes_mod_wheel()
+    test_reset_all_controls_clears_lfo_on_voices()
+    test_reset_all_controls_no_active_voices_is_safe()
+    print("Tests reset_all_controls : OK")

@@ -25,11 +25,12 @@ class FakeSynthEngine:
     """Remplace SynthEngine — aucun fichier audio chargé."""
 
     def __init__(self, synths_dir=None, driver=None):
-        self._loaded              = False
-        self._cache               = {}
-        self._played              = []   # (midi, vol, pan)
-        self._precomputed         = []
-        self.stop_all_voices_called = 0
+        self._loaded                  = False
+        self._cache                   = {}
+        self._played                  = []   # (midi, vol, pan)
+        self._precomputed             = []
+        self.stop_all_voices_called   = 0
+        self.reset_all_controls_called = 0
 
     def is_loaded(self):
         return self._loaded
@@ -49,6 +50,9 @@ class FakeSynthEngine:
 
     def stop_all_voices(self):
         self.stop_all_voices_called += 1
+
+    def reset_all_controls(self):
+        self.reset_all_controls_called += 1
 
 
 class FakeSoundManager:
@@ -935,6 +939,58 @@ def test_panic_calls_stop_all_sounds():
     print("  panic → stop_all_sounds (voix synthé + snd.stop_all) : OK")
 
 
+# ---------------------------------------------------------------------------
+# reset_all_controls (TrackRouter)
+# ---------------------------------------------------------------------------
+
+def test_reset_all_controls_calls_each_slot_synth():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine(); e2 = FakeSynthEngine()
+    router._slot_synths = {1: e1, 2: e2}
+    router.reset_all_controls()
+    assert e1.reset_all_controls_called == 1
+    assert e2.reset_all_controls_called == 1
+    print("  reset_all_controls → chaque slot synth appelé : OK")
+
+
+def test_reset_all_controls_includes_preview_synth():
+    router, _, _ = _make_router()
+    preview = FakeSynthEngine()
+    router._synth = preview; router._slot_synths = {}
+    router.reset_all_controls()
+    assert preview.reset_all_controls_called == 1
+    print("  reset_all_controls → synth preview inclus : OK")
+
+
+def test_reset_all_controls_no_duplicate_when_preview_is_slot():
+    router, _, _ = _make_router()
+    shared = FakeSynthEngine()
+    router._slot_synths = {1: shared}; router._synth = shared
+    router.reset_all_controls()
+    assert shared.reset_all_controls_called == 1
+    print("  reset_all_controls → pas de doublon si preview == slot : OK")
+
+
+def test_reset_all_controls_noop_when_empty():
+    router, _, _ = _make_router()
+    try:
+        router.reset_all_controls()
+        print("  reset_all_controls sans synths → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+def test_panic_calls_reset_all_controls():
+    router, snd, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.panic()
+    assert e1.stop_all_voices_called == 1
+    assert snd.stop_all_called == 1
+    assert e1.reset_all_controls_called == 1
+    print("  panic → stop_all_sounds + reset_all_controls : OK")
+
+
 if __name__ == "__main__":
     print("=== test_track_router ===")
     test_initial_state()
@@ -1020,5 +1076,13 @@ if __name__ == "__main__":
     test_stop_all_sounds_noop_when_empty()
     test_panic_calls_stop_all_sounds()
     print("Tests stop_all / panic : OK")
+
+    # Tests reset_all_controls (TrackRouter)
+    test_reset_all_controls_calls_each_slot_synth()
+    test_reset_all_controls_includes_preview_synth()
+    test_reset_all_controls_no_duplicate_when_preview_is_slot()
+    test_reset_all_controls_noop_when_empty()
+    test_panic_calls_reset_all_controls()
+    print("Tests reset_all_controls + panic complet : OK")
 
     print("Tous les tests : OK")

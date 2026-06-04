@@ -331,6 +331,12 @@ class SynthEngine:
             if voice is not None:
                 voice.lfo_depth = depth
 
+    def reset_all_controls(self):
+        """Remet à zéro Pitch Bend et Mod Wheel (CC#121 Reset All Controllers)."""
+        self.pitch_bend = 0
+        self.apply_pitch_bend()
+        self.set_mod_wheel(0)
+
     # ------------------------------------------------------------------
     # Informations
     # ------------------------------------------------------------------

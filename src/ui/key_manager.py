@@ -258,7 +258,7 @@ class KeyManager:
         if not shift and not alt and key == wx.WXK_F12:   # Ctrl+F12 : Panic
             win._player.stop_all()
             win._router.panic()
-            win._show_status("Panic: All Notes Off + All Sounds Off")
+            win._show_status("Panic: All Sounds Off + Reset All Controllers")
             return True
         return False
 

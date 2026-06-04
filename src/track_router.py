@@ -303,9 +303,20 @@ class TrackRouter:
         self.stop_all_synth_voices()
         self._snd.stop_all()
 
+    def reset_all_controls(self):
+        """Remet Pitch Bend et Mod Wheel à zéro sur tous les synths (CC#121)."""
+        seen = set()
+        for eng in self._slot_synths.values():
+            if eng is not None and id(eng) not in seen:
+                eng.reset_all_controls()
+                seen.add(id(eng))
+        if self._synth is not None and id(self._synth) not in seen:
+            self._synth.reset_all_controls()
+
     def panic(self):
-        """Coupure d'urgence : All Notes Off + All Sounds Off."""
+        """Coupure d'urgence : All Sounds Off + Reset All Controllers."""
         self.stop_all_sounds()
+        self.reset_all_controls()
 
     def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""

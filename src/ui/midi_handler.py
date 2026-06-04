@@ -170,6 +170,10 @@ class MidiHandler:
             win._router.stop_all_sounds()
             win._show_status("All Sounds Off")
             return
+        if cc_num == 121:                          # CC#121 : Reset All Controllers
+            win._router.reset_all_controls()
+            win._show_status("Reset All Controllers")
+            return
         if cc_num == 123:                          # CC#123 : All Notes Off
             win._router.stop_all_synth_voices()
             win._show_status("All Notes Off")
