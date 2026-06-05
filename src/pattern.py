@@ -1,4 +1,10 @@
 import random
+import threading
+from collections import namedtuple
+
+# Événement MIDI brut enregistré dans _tape.
+# etype: "K" = kit (note MIDI brute), "P" = patch synth (note + bend)
+TapeEvent = namedtuple("TapeEvent", ["etype", "note", "vel", "dur", "bend"])
 
 
 class Track:
@@ -63,12 +69,12 @@ class Pattern:
             for _ in range(self._num_pads)
         ]
 
-        # Capture MIDI brute pour les kits : {(track, bar, step): [(note, vel), ...]}
-        self._kit_tape   = {}
-        # Capture MIDI brute pour les patchs synth : même structure
-        self._patch_tape = {}
+        # Capture MIDI brute unifiée : {(track, bar, step): [TapeEvent]}
+        self._tape = {}
+        # Verrou pour les accès concurrents _run_thread / thread UI
+        self._lock = threading.RLock()
+
         # Automation pitch bend : liste par piste de (float_offset, bend_value)
-        # float_offset = position en pas (0.0 .. num_bars*num_steps)
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
         # Automation mod wheel : liste par piste de (float_offset, mod_value)
         self._mod_tape   = [[] for _ in range(self._num_tracks)]
@@ -101,8 +107,7 @@ class Pattern:
         self._num_bars  = num_bars
         self._num_steps = num_steps
         self._curpattern = self._make_empty()
-        self._kit_tape   = {}
-        self._patch_tape = {}
+        self._tape       = {}
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
         self._mod_tape   = [[] for _ in range(self._num_tracks)]
 
@@ -126,18 +131,17 @@ class Pattern:
             for pad in track:
                 for bar in pad:
                     bar[:] = [0] * len(bar)
-        self._kit_tape   = {}
-        self._patch_tape = {}
-        self._bend_tape  = [[] for _ in range(self._num_tracks)]
-        self._mod_tape   = [[] for _ in range(self._num_tracks)]
+        self._tape      = {}
+        self._bend_tape = [[] for _ in range(self._num_tracks)]
+        self._mod_tape  = [[] for _ in range(self._num_tracks)]
 
     def clear_track(self, track_idx):
-        """Efface tous les pas de la piste track_idx (grille + tapes MIDI)."""
+        """Efface tous les pas de la piste track_idx (grille + tape MIDI)."""
         for pad in self._curpattern[track_idx]:
             for bar in pad:
                 bar[:] = [0] * len(bar)
-        self._patch_tape = {k: v for k, v in self._patch_tape.items() if k[0] != track_idx}
-        self._kit_tape   = {k: v for k, v in self._kit_tape.items()   if k[0] != track_idx}
+        with self._lock:
+            self._tape = {k: v for k, v in self._tape.items() if k[0] != track_idx}
         if track_idx < len(self._bend_tape):
             self._bend_tape[track_idx] = []
         if track_idx < len(self._mod_tape):
@@ -161,19 +165,15 @@ class Pattern:
         """Duplique les mesures existantes (pattern deux fois plus long)."""
         if self._num_bars * 2 > self.MAX_BARS:
             return False
-        half = self._num_bars
+        half       = self._num_bars
         half_steps = half * self._num_steps
         for track in self._curpattern:
             for pad in track:
                 pad.extend([bar[:] for bar in pad])
-        new_tape = dict(self._kit_tape)
-        for (t, b, s), events in self._kit_tape.items():
+        new_tape = dict(self._tape)
+        for (t, b, s), events in self._tape.items():
             new_tape[(t, b + half, s)] = events[:]
-        self._kit_tape = new_tape
-        new_ptape = dict(self._patch_tape)
-        for (t, b, s), events in self._patch_tape.items():
-            new_ptape[(t, b + half, s)] = events[:]
-        self._patch_tape = new_ptape
+        self._tape = new_tape
         self._bend_tape = [
             track_bends + [(off + half_steps, b) for off, b in track_bends]
             for track_bends in self._bend_tape
@@ -191,19 +191,14 @@ class Pattern:
         """Garde la première moitié des mesures (pattern deux fois plus court)."""
         if self._num_bars < 2:
             return False
-        half = self._num_bars // 2
+        half       = self._num_bars // 2
         half_steps = half * self._num_steps
         for track in self._curpattern:
             for pad in track:
                 del pad[half:]
-        self._kit_tape = {
+        self._tape = {
             (t, b, s): events
-            for (t, b, s), events in self._kit_tape.items()
-            if b < half
-        }
-        self._patch_tape = {
-            (t, b, s): events
-            for (t, b, s), events in self._patch_tape.items()
+            for (t, b, s), events in self._tape.items()
             if b < half
         }
         self._bend_tape = [
@@ -222,7 +217,6 @@ class Pattern:
     def build_pattern_01(self):
         self.reset_pattern()
         p = self._curpattern
-        # Piste 0 — pad = son du kit (0..15)
         p[0][0][0][0]  = p[0][0][0][4]  = p[0][0][0][8]  = p[0][0][0][12] = 100
         p[0][4][0][2]  = p[0][4][0][6]  = p[0][4][0][10] = 100
         p[0][5][0][1:4]  = [100] * 3
@@ -273,14 +267,9 @@ class Pattern:
                         del pad[num_bars:]
             self._num_bars = num_bars
 
-        self._kit_tape = {
+        self._tape = {
             (t, b, s): events
-            for (t, b, s), events in self._kit_tape.items()
-            if b < self._num_bars and s < self._num_steps
-        }
-        self._patch_tape = {
-            (t, b, s): events
-            for (t, b, s), events in self._patch_tape.items()
+            for (t, b, s), events in self._tape.items()
             if b < self._num_bars and s < self._num_steps
         }
         total_steps = self._num_bars * self._num_steps
@@ -296,7 +285,11 @@ class Pattern:
     #--------------------------------------------------------------------------
 
     def to_dict(self):
-        """Sérialise le pattern en dict JSON-compatible."""
+        """Sérialise le pattern en dict JSON-compatible.
+
+        Le format JSON conserve les clés 'kit_tape' et 'patch_tape' séparées
+        pour la rétrocompatibilité des presets existants.
+        """
         return {
             "name":          self._name,
             "bpm":           self._bpm,
@@ -313,15 +306,15 @@ class Pattern:
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
             "kb_root_midi":  self._kb_root_midi,
-            "kit_tape":   [
-                [t, b, s, note, vel, dur]
-                for (t, b, s), events in self._kit_tape.items()
-                for note, vel, dur in events
+            "kit_tape": [
+                [t, b, s, ev.note, ev.vel, ev.dur]
+                for (t, b, s), events in self._tape.items()
+                for ev in events if ev.etype == "K"
             ],
             "patch_tape": [
-                [t, b, s, ev[0], ev[1], ev[2], ev[3] if len(ev) > 3 else 0]
-                for (t, b, s), events in self._patch_tape.items()
-                for ev in events
+                [t, b, s, ev.note, ev.vel, ev.dur, ev.bend]
+                for (t, b, s), events in self._tape.items()
+                for ev in events if ev.etype == "P"
             ],
             "bend_tape": [list(t) for t in self._bend_tape],
             "mod_tape":  [list(t) for t in self._mod_tape],
@@ -330,7 +323,11 @@ class Pattern:
     #--------------------------------------------------------------------------
 
     def from_dict(self, d):
-        """Restaure le pattern depuis un dict (issu de to_dict / JSON)."""
+        """Restaure le pattern depuis un dict (issu de to_dict / JSON).
+
+        Lit les clés 'kit_tape' et 'patch_tape' séparées (format historique)
+        et les fusionne dans _tape.
+        """
         self._name      = d.get("name", "")
         self._bpm       = d.get("bpm", 100)
         self._num_bars  = d.get("num_bars", 1)
@@ -346,17 +343,16 @@ class Pattern:
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
-        self._kit_tape = {}
+        self._tape = {}
         for rec in d.get("kit_tape", []):
             t, b, s, note, vel = rec[:5]
             dur = rec[5] if len(rec) > 5 else 0
-            self._kit_tape.setdefault((t, b, s), []).append((note, vel, dur))
-        self._patch_tape = {}
+            self._tape.setdefault((t, b, s), []).append(TapeEvent("K", note, vel, dur, 0))
         for rec in d.get("patch_tape", []):
             t, b, s, note, vel = rec[:5]
             dur  = rec[5] if len(rec) > 5 else 0
             bend = rec[6] if len(rec) > 6 else 0
-            self._patch_tape.setdefault((t, b, s), []).append((note, vel, dur, bend))
+            self._tape.setdefault((t, b, s), []).append(TapeEvent("P", note, vel, dur, bend))
         raw_bends = d.get("bend_tape", [])
         self._bend_tape = [
             [tuple(p) for p in track_bends]
