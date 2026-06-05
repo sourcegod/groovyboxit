@@ -339,6 +339,34 @@ def test_stop_all_voices_clears_sustained_notes():
     print("  stop_all_voices → _sustained_notes vidé : OK")
 
 
+def test_stop_now_calls_stop_sound_for_loop_note():
+    """_stop_now doit appeler stop_sound pour attraper les voix bouclantes orphelines."""
+    eng        = _make_engine_tracking()
+    data       = _np.zeros((100, 2), dtype=_np.float32)
+    v          = _SddVoice(data, 0.8, 0.8)
+    mock_sound = object()   # représente un SdSound de boucle
+    eng._active_voices = {60: v}
+    eng._loop_cache    = {60: mock_sound}
+    eng._stop_now(60)
+    assert v in eng._driver.stopped_voices,  "stop_voice doit être appelé"
+    assert mock_sound in eng._driver.stopped_sounds, "stop_sound doit être appelé"
+    print("  _stop_now → stop_voice + stop_sound(loop) appelés : OK")
+
+
+def test_release_sustain_catches_orphaned_loop_voice():
+    """Voix bouclante orpheline (retrigger pendant sustain) arrêtée via stop_sound."""
+    eng        = _make_engine_tracking()
+    mock_sound = object()
+    # Voix orpheline : plus dans _active_voices (écrasée par retrigger), son toujours en cache
+    eng._loop_cache      = {60: mock_sound}
+    eng._active_voices   = {}
+    eng._sustained_notes = {60}
+    eng.release_sustain()
+    assert mock_sound in eng._driver.stopped_sounds, "stop_sound doit rattraper la voix orpheline"
+    assert eng._sustained_notes == set()
+    print("  release_sustain → voix bouclante orpheline arrêtée via stop_sound : OK")
+
+
 # ---------------------------------------------------------------------------
 # reset_all_controls — sans WAV (mock driver)
 # ---------------------------------------------------------------------------
@@ -452,6 +480,8 @@ if __name__ == "__main__":
     test_release_sustain_stops_deferred_notes()
     test_release_sustain_empty_is_safe()
     test_stop_all_voices_clears_sustained_notes()
+    test_stop_now_calls_stop_sound_for_loop_note()
+    test_release_sustain_catches_orphaned_loop_voice()
     print("Tests sustain (CC#64) : OK")
 
     # Tests reset_all_controls — pas de WAV requis
