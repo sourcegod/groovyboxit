@@ -116,6 +116,8 @@ class SynthEngine:
         self.pitch_bend       = 0    # -8192..+8191 (0 = centre)
         self.pitch_bend_range = 2    # ±semitones (standard MIDI = 2)
         self.mod_wheel        = 0    # 0..127 (réservé pour future LFO/vibrato)
+        self.sustain          = False
+        self._sustained_notes = set()   # notes en attente de note_off (CC#64)
 
     # ------------------------------------------------------------------
     # Chargement de patch
@@ -294,18 +296,33 @@ class SynthEngine:
                   f"voice_id={id(voice)} engine_id={id(self)}")
         self._active_voices[midi_note] = voice
 
-    def stop(self, midi_note):
-        """Arrête la note sustain (utile pour les instruments en loop/gate)."""
+    def _stop_now(self, midi_note):
         voice = self._active_voices.pop(midi_note, None)
         if voice is not None:
             self._driver.stop_voice(voice)
-        else:
-            sound = self._loop_cache.get(midi_note)
-            if sound:
-                self._driver.stop_sound(sound)
+        # Pour les sons bouclants : stop_sound attrape aussi les voix orphelines
+        # (même note rejouée pendant le sustain → ancienne voix écrasée dans _active_voices)
+        sound = self._loop_cache.get(midi_note)
+        if sound is not None:
+            self._driver.stop_sound(sound)
+
+    def stop(self, midi_note):
+        """Arrête la note, ou la met en attente si la pédale sustain est enfoncée."""
+        if self.sustain:
+            self._sustained_notes.add(midi_note)
+            return
+        self._stop_now(midi_note)
+
+    def release_sustain(self):
+        """Applique les note_off en attente (pédale sustain relâchée)."""
+        notes = list(self._sustained_notes)
+        self._sustained_notes.clear()
+        for note in notes:
+            self._stop_now(note)
 
     def stop_all_voices(self):
         """Arrête toutes les voix actives (CC#123 All Notes Off)."""
+        self._sustained_notes.clear()
         for voice in list(self._active_voices.values()):
             if voice is not None:
                 self._driver.stop_voice(voice)
@@ -332,10 +349,12 @@ class SynthEngine:
                 voice.lfo_depth = depth
 
     def reset_all_controls(self):
-        """Remet à zéro Pitch Bend et Mod Wheel (CC#121 Reset All Controllers)."""
+        """Remet à zéro Pitch Bend, Mod Wheel et Sustain (CC#121 Reset All Controllers)."""
         self.pitch_bend = 0
         self.apply_pitch_bend()
         self.set_mod_wheel(0)
+        self.sustain = False
+        self.release_sustain()
 
     # ------------------------------------------------------------------
     # Informations

@@ -25,12 +25,15 @@ class FakeSynthEngine:
     """Remplace SynthEngine — aucun fichier audio chargé."""
 
     def __init__(self, synths_dir=None, driver=None):
-        self._loaded                  = False
-        self._cache                   = {}
-        self._played                  = []   # (midi, vol, pan)
-        self._precomputed             = []
-        self.stop_all_voices_called   = 0
+        self._loaded                   = False
+        self._cache                    = {}
+        self._played                   = []   # (midi, vol, pan)
+        self._precomputed              = []
+        self.stop_all_voices_called    = 0
         self.reset_all_controls_called = 0
+        self.sustain                   = False
+        self._sustained_notes          = set()
+        self.release_sustain_called    = 0
 
     def is_loaded(self):
         return self._loaded
@@ -53,6 +56,10 @@ class FakeSynthEngine:
 
     def reset_all_controls(self):
         self.reset_all_controls_called += 1
+
+    def release_sustain(self):
+        self.release_sustain_called += 1
+        self._sustained_notes.clear()
 
 
 class FakeSoundManager:
@@ -863,8 +870,60 @@ def test_play_kit_pitched_new_pad_resets_kit_pad():
 
 
 # ---------------------------------------------------------------------------
-# Point d'entrée
+# set_sustain (CC#64)
 # ---------------------------------------------------------------------------
+
+def test_set_sustain_on_propagates_to_slot_synths():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine(); e2 = FakeSynthEngine()
+    router._slot_synths = {1: e1, 2: e2}
+    router.set_sustain(True)
+    assert e1.sustain is True
+    assert e2.sustain is True
+    assert e1.release_sustain_called == 0
+    assert e2.release_sustain_called == 0
+    print("  set_sustain(True) → sustain=True sur tous les slots, pas de release : OK")
+
+
+def test_set_sustain_off_calls_release_sustain():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine(); e1.sustain = True
+    router._slot_synths = {1: e1}
+    router.set_sustain(False)
+    assert e1.sustain is False
+    assert e1.release_sustain_called == 1
+    print("  set_sustain(False) → sustain=False + release_sustain appelé : OK")
+
+
+def test_set_sustain_includes_preview_synth():
+    router, _, _ = _make_router()
+    preview = FakeSynthEngine()
+    router._synth = preview
+    router._slot_synths = {}
+    router.set_sustain(True)
+    assert preview.sustain is True
+    print("  set_sustain → synth preview inclus : OK")
+
+
+def test_set_sustain_no_duplicate_when_preview_is_slot():
+    router, _, _ = _make_router()
+    shared = FakeSynthEngine()
+    router._slot_synths = {1: shared}
+    router._synth = shared
+    router.set_sustain(False)
+    assert shared.release_sustain_called == 1, "release_sustain appelé une seule fois"
+    print("  set_sustain → pas de doublon si preview == slot : OK")
+
+
+def test_set_sustain_noop_when_no_synths():
+    router, _, _ = _make_router()
+    try:
+        router.set_sustain(True)
+        router.set_sustain(False)
+        print("  set_sustain sans synths → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
 
 # ---------------------------------------------------------------------------
 # stop_all_synth_voices / stop_all_sounds / panic
@@ -1066,6 +1125,14 @@ if __name__ == "__main__":
     test_play_kit_pitched_same_pad_loaded_plays_midi()
     test_play_kit_pitched_same_pad_not_loaded_fallback()
     test_play_kit_pitched_new_pad_resets_kit_pad()
+
+    # Tests set_sustain (CC#64)
+    test_set_sustain_on_propagates_to_slot_synths()
+    test_set_sustain_off_calls_release_sustain()
+    test_set_sustain_includes_preview_synth()
+    test_set_sustain_no_duplicate_when_preview_is_slot()
+    test_set_sustain_noop_when_no_synths()
+    print("Tests set_sustain : OK")
 
     # Tests stop_all_synth_voices / stop_all_sounds / panic
     test_stop_all_synth_voices_calls_each_slot_synth()

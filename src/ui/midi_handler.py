@@ -164,7 +164,7 @@ class MidiHandler:
         win._show_status(f"Pitch Bend: {st:+.2f} st")
 
     def on_cc(self, cc_num, value, channel):
-        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#123 = All Notes Off."""
+        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#64 = Sustain, CC#123 = All Notes Off."""
         win = self._win
         if cc_num == 120:                          # CC#120 : All Sounds Off
             win._router.stop_all_sounds()
@@ -177,6 +177,11 @@ class MidiHandler:
         if cc_num == 123:                          # CC#123 : All Notes Off
             win._router.stop_all_synth_voices()
             win._show_status("All Notes Off")
+            return
+        if cc_num == 64:                           # CC#64 : Sustain Pedal
+            on = value >= 64
+            win._router.set_sustain(on)
+            win._show_status("Sustain: ON" if on else "Sustain: OFF")
             return
         if cc_num == 1:                            # CC#1 : Modulation Wheel
             if win._router.synth_ready():

@@ -313,6 +313,20 @@ class TrackRouter:
         if self._synth is not None and id(self._synth) not in seen:
             self._synth.reset_all_controls()
 
+    def set_sustain(self, on: bool):
+        """Active/désactive la pédale sustain sur tous les synths (CC#64)."""
+        seen = set()
+        for eng in self._slot_synths.values():
+            if eng is not None and id(eng) not in seen:
+                eng.sustain = on
+                if not on:
+                    eng.release_sustain()
+                seen.add(id(eng))
+        if self._synth is not None and id(self._synth) not in seen:
+            self._synth.sustain = on
+            if not on:
+                self._synth.release_sustain()
+
     def panic(self):
         """Coupure d'urgence : All Sounds Off + Reset All Controllers."""
         self.stop_all_sounds()

@@ -117,6 +117,8 @@ def _make_engine_mock():
     eng.pitch_bend       = 0
     eng.pitch_bend_range = 2
     eng.mod_wheel        = 0
+    eng.sustain          = False
+    eng._sustained_notes = set()
     eng._active_voices   = {}
     eng._samples         = []
     eng._raw_cache       = {}
@@ -211,6 +213,8 @@ def _make_engine_tracking():
     eng.pitch_bend       = 0
     eng.pitch_bend_range = 2
     eng.mod_wheel        = 0
+    eng.sustain          = False
+    eng._sustained_notes = set()
     eng._active_voices   = {}
     eng._samples         = []
     eng._raw_cache       = {}
@@ -275,6 +279,67 @@ def test_stop_all_voices_none_voice_skipped():
 
 
 # ---------------------------------------------------------------------------
+# sustain (CC#64) — sans WAV (mock driver)
+# ---------------------------------------------------------------------------
+
+def test_stop_deferred_when_sustain_on():
+    eng  = _make_engine_tracking()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8)
+    eng._active_voices = {60: v}
+    eng.sustain = True
+    eng.stop(60)
+    assert 60 in eng._sustained_notes, "note doit être en attente"
+    assert 60 in eng._active_voices,   "voix encore active"
+    assert eng._driver.stopped_voices == [], "stop_voice pas encore appelé"
+    print("  stop avec sustain=True → note mise en attente, voix toujours active : OK")
+
+
+def test_stop_immediate_when_sustain_off():
+    eng  = _make_engine_tracking()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8)
+    eng._active_voices = {60: v}
+    eng.stop(60)
+    assert 60 not in eng._active_voices
+    assert v in eng._driver.stopped_voices
+    assert eng._sustained_notes == set()
+    print("  stop avec sustain=False → voix coupée immédiatement : OK")
+
+
+def test_release_sustain_stops_deferred_notes():
+    eng  = _make_engine_tracking()
+    data = _np.zeros((100, 2), dtype=_np.float32)
+    v    = _SddVoice(data, 0.8, 0.8)
+    eng._active_voices = {60: v}
+    eng.sustain = True
+    eng.stop(60)
+    # Relâchement pédale
+    eng.sustain = False
+    eng.release_sustain()
+    assert eng._sustained_notes == set()
+    assert v in eng._driver.stopped_voices
+    print("  release_sustain → notes en attente coupées : OK")
+
+
+def test_release_sustain_empty_is_safe():
+    eng = _make_engine_tracking()
+    try:
+        eng.release_sustain()
+        print("  release_sustain sans notes en attente → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+
+def test_stop_all_voices_clears_sustained_notes():
+    eng = _make_engine_tracking()
+    eng._sustained_notes = {60, 64}
+    eng.stop_all_voices()
+    assert eng._sustained_notes == set()
+    print("  stop_all_voices → _sustained_notes vidé : OK")
+
+
+# ---------------------------------------------------------------------------
 # reset_all_controls — sans WAV (mock driver)
 # ---------------------------------------------------------------------------
 
@@ -330,6 +395,16 @@ def test_reset_all_controls_no_active_voices_is_safe():
         assert False, f"Exception inattendue : {e}"
 
 
+def test_reset_all_controls_clears_sustain():
+    eng = _make_engine_mock()
+    eng.sustain = True
+    eng._sustained_notes = {60, 64}
+    eng.reset_all_controls()
+    assert eng.sustain is False
+    assert eng._sustained_notes == set()
+    print("  reset_all_controls → sustain=False et notes en attente vidées : OK")
+
+
 if __name__ == "__main__":
     print("=== test_synth_engine ===")
 
@@ -371,10 +446,19 @@ if __name__ == "__main__":
     test_stop_all_voices_none_voice_skipped()
     print("Tests stop_all_voices : OK")
 
+    # Tests sustain (CC#64) — pas de WAV requis
+    test_stop_deferred_when_sustain_on()
+    test_stop_immediate_when_sustain_off()
+    test_release_sustain_stops_deferred_notes()
+    test_release_sustain_empty_is_safe()
+    test_stop_all_voices_clears_sustained_notes()
+    print("Tests sustain (CC#64) : OK")
+
     # Tests reset_all_controls — pas de WAV requis
     test_reset_all_controls_zeroes_pitch_bend()
     test_reset_all_controls_applies_pitch_bend_to_voices()
     test_reset_all_controls_zeroes_mod_wheel()
     test_reset_all_controls_clears_lfo_on_voices()
     test_reset_all_controls_no_active_voices_is_safe()
+    test_reset_all_controls_clears_sustain()
     print("Tests reset_all_controls : OK")
