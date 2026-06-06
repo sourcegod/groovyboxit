@@ -21,10 +21,13 @@ Shift+Q          Quantiser le pattern (valeur par défaut)
 Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
 
 --- Lecture ---
-Espace / P       Play / Stop pattern
-V                Stop All (sons + pattern + Rec + Erase)
+Espace / P       Play / Pause pattern (reprend depuis la position pausée)
+V                Stop All (sons + pattern + Rec + Erase + réinitialise la position)
 C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
+g                Transport : Aller au début du pattern (Goto Start)
+Shift+G          Transport : Aller à la fin du pattern (Goto End)
+Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Mute / Solo (Pads — focus grille) ---
 X                Bascule le Mute du Pad courant
