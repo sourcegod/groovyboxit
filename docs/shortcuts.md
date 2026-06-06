@@ -27,6 +27,7 @@ C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
 g                Transport : Aller au début du pattern (Goto Start)
 Shift+G          Transport : Aller à la fin du pattern (Goto End)
+l                Boucle On / Off (le pattern redémarre ou s'arrête en fin de cycle)
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Mute / Solo (Pads — focus grille) ---

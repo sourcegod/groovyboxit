@@ -777,6 +777,15 @@ class KeyManager:
                 win._show_status(f"NR: {Pattern.QUANT_LIST[win._nr_rate_idx]}")
             return True
 
+        # l : toggle boucle
+        if not ctrl and not shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('l') or key == ord('L')):
+            pat = win._player._pattern
+            pat._looping = not pat._looping
+            win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
+            return True
+
         # g : GotoStart — G : GotoEnd
         if not ctrl and not shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
