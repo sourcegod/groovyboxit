@@ -219,6 +219,144 @@ def test_goto_start_thread_restarts_and_runs():
 
 
 # ---------------------------------------------------------------------------
+# _current_offset
+# ---------------------------------------------------------------------------
+
+def test_current_offset_stopped_no_resume():
+    p = _make_player()
+    assert p._current_offset() == 0.0
+    print("  _current_offset (arrêté, pas de resume) = 0.0 : OK")
+
+
+def test_current_offset_stopped_with_resume():
+    p = _make_player()
+    p._resume_offset = 6.0
+    assert p._current_offset() == 6.0
+    print("  _current_offset (arrêté, resume=6) = 6.0 : OK")
+
+
+def test_current_offset_from_measure_start():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    half  = total / 2.0
+    p.clicking = True   # branch "actif" sans démarrer le thread
+    p._measure_start = time.perf_counter() - half * p.step_duration
+    off = p._current_offset()
+    assert abs(off - half) <= 1.0
+    p.clicking = False
+    print(f"  _current_offset (actif) ≈ {half:.1f}, obtenu {off:.2f} : OK")
+
+
+# ---------------------------------------------------------------------------
+# move_by_ticks
+# ---------------------------------------------------------------------------
+
+def test_move_by_ticks_forward():
+    p = _make_player()
+    p._resume_offset = 4.0
+    p.move_by_ticks(1)
+    assert p._resume_offset == 5.0
+    print("  move_by_ticks(+1) depuis 4 → 5 : OK")
+
+
+def test_move_by_ticks_backward():
+    p = _make_player()
+    p._resume_offset = 4.0
+    p.move_by_ticks(-1)
+    assert p._resume_offset == 3.0
+    print("  move_by_ticks(-1) depuis 4 → 3 : OK")
+
+
+def test_move_by_ticks_wrap_forward():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p._resume_offset = float(total - 1)
+    p.move_by_ticks(1)
+    assert p._resume_offset == 0.0
+    print(f"  move_by_ticks(+1) depuis {total - 1} → 0 (wrap) : OK")
+
+
+def test_move_by_ticks_wrap_backward():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p._resume_offset = 0.0
+    p.move_by_ticks(-1)
+    assert p._resume_offset == float(total - 1)
+    print(f"  move_by_ticks(-1) depuis 0 → {total - 1} (wrap) : OK")
+
+
+# ---------------------------------------------------------------------------
+# move_by_beats
+# ---------------------------------------------------------------------------
+
+def test_move_by_beats_forward():
+    p = _make_player()
+    # défaut: num_steps=16, num_beats=4 → steps_per_beat=4
+    p._resume_offset = 0.0
+    p.move_by_beats(1)
+    assert p._resume_offset == 4.0
+    print("  move_by_beats(+1) depuis 0 → 4 : OK")
+
+
+def test_move_by_beats_backward():
+    p = _make_player()
+    p._resume_offset = 4.0
+    p.move_by_beats(-1)
+    assert p._resume_offset == 0.0
+    print("  move_by_beats(-1) depuis 4 → 0 : OK")
+
+
+def test_move_by_beats_wrap_backward():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps  # 16
+    steps_per_beat = p._pattern._num_steps // p._pattern._num_beats  # 4
+    p._resume_offset = 0.0
+    p.move_by_beats(-1)
+    assert p._resume_offset == float(total - steps_per_beat)
+    print(f"  move_by_beats(-1) depuis 0 → {total - steps_per_beat} (wrap) : OK")
+
+
+# ---------------------------------------------------------------------------
+# move_by_bars
+# ---------------------------------------------------------------------------
+
+def test_move_by_bars_forward_two_bars():
+    p = _make_player()
+    p._pattern.double_bars()           # num_bars=2, total=32
+    p._resume_offset = 0.0
+    p.move_by_bars(1)
+    assert p._resume_offset == float(p._pattern._num_steps)
+    print(f"  move_by_bars(+1) depuis 0 → {p._pattern._num_steps} : OK")
+
+
+def test_move_by_bars_backward_two_bars():
+    p = _make_player()
+    p._pattern.double_bars()
+    p._resume_offset = float(p._pattern._num_steps)
+    p.move_by_bars(-1)
+    assert p._resume_offset == 0.0
+    print("  move_by_bars(-1) depuis mesure 2 → 0 : OK")
+
+
+def test_move_by_bars_wrap_backward():
+    p = _make_player()
+    p._pattern.double_bars()           # total=32, num_steps=16
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p._resume_offset = 0.0
+    p.move_by_bars(-1)
+    assert p._resume_offset == float(total - p._pattern._num_steps)
+    print(f"  move_by_bars(-1) depuis 0 → {total - p._pattern._num_steps} (wrap) : OK")
+
+
+def test_move_by_bars_single_bar_wraps():
+    p = _make_player()                 # num_bars=1, total=16
+    p._resume_offset = 0.0
+    p.move_by_bars(1)
+    assert p._resume_offset == 0.0    # 16 % 16 = 0
+    print("  move_by_bars(+1) sur 1 seule mesure → wrap 0 : OK")
+
+
+# ---------------------------------------------------------------------------
 # etype_discriminates (régression Phase 4)
 # ---------------------------------------------------------------------------
 
