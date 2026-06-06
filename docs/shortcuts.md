@@ -28,6 +28,12 @@ Q                Activer / désactiver le mode Note Repeat
 g                Transport : Aller au début du pattern (Goto Start)
 Shift+G          Transport : Aller à la fin du pattern (Goto End)
 l                Boucle On / Off (le pattern redémarre ou s'arrête en fin de cycle)
+PageDown         Transport : +1 mesure
+PageUp           Transport : −1 mesure
+Ctrl+PageDown    Transport : +1 battement
+Ctrl+PageUp      Transport : −1 battement
+Shift+PageDown   Transport : +1 tick (pas)
+Shift+PageUp     Transport : −1 tick (pas)
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Mute / Solo (Pads — focus grille) ---

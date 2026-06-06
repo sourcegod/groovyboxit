@@ -288,6 +288,20 @@ class KeyManager:
             win._on_tab_order(shift)
             return True
 
+        if key in (wx.WXK_PAGEUP, wx.WXK_PAGEDOWN):
+            direction = -1 if key == wx.WXK_PAGEUP else 1
+            sign      = "−" if direction < 0 else "+"
+            if ctx.ctrl:
+                win._player.move_by_beats(direction)
+                win._show_status(f"Transport: {sign}1 battement")
+            elif shift:
+                win._player.move_by_ticks(direction)
+                win._show_status(f"Transport: {sign}1 tick")
+            else:
+                win._player.move_by_bars(direction)
+                win._show_status(f"Transport: {sign}1 mesure")
+            return True
+
         if key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
             if on_track_list and key in (wx.WXK_UP, wx.WXK_DOWN):
                 cur = win._track_list.GetSelection()

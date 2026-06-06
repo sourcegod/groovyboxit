@@ -174,6 +174,35 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
+    def _current_offset(self):
+        """Retourne la position courante du playhead en pas flottants."""
+        if not (self.playing or self.clicking or self._note_repeat_active):
+            return self._resume_offset or 0.0
+        now          = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref = self._measure_start if self._measure_start is not None else now
+        return ((now - ref) % measure_secs) / self.step_duration
+
+    #--------------------------------------------------------------------------
+
+    def move_by_ticks(self, ticks):
+        """Déplace le playhead de ±ticks pas (wrapping cyclique)."""
+        total   = self._pattern._num_bars * self._pattern._num_steps
+        new_off = (self._current_offset() + ticks) % total
+        self._go_to_offset(new_off)
+
+    def move_by_beats(self, beats):
+        """Déplace le playhead de ±beats battements."""
+        steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
+        self.move_by_ticks(beats * steps_per_beat)
+
+    def move_by_bars(self, bars):
+        """Déplace le playhead de ±bars mesures."""
+        self.move_by_ticks(bars * self._pattern._num_steps)
+
+    #--------------------------------------------------------------------------
+
     def play_click(self):
         self.clicking = True
         if not (self._play_thread and self._play_thread.is_alive()):
