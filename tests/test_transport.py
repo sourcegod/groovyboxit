@@ -1,0 +1,249 @@
+#python3
+"""
+    File: tests/test_transport.py
+    Tests unitaires du transport : pause_pattern, goto_start, goto_end.
+    Date: Sat, 07/06/2026
+    Author: Coolbrother
+"""
+import sys
+import os
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from pattern import Pattern
+from drum_player import DrumPlayer
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+class _FakeSoundManager:
+    def stop_all(self):       pass
+    def play_sound(self, *a): pass
+    def play_metronome(self, *a): pass
+    def play_note(self, *a):  pass
+
+
+def _make_player():
+    p = DrumPlayer(_FakeSoundManager())
+    p._quant_in_recording = False
+    return p
+
+
+# ---------------------------------------------------------------------------
+# pause_pattern — machine d'états
+# ---------------------------------------------------------------------------
+
+def test_pause_when_not_playing_does_nothing():
+    p = _make_player()
+    p._resume_offset = None
+    p.pause_pattern()
+    assert p._resume_offset is None
+    print("  pause quand arrêté : ne modifie pas _resume_offset : OK")
+
+
+def test_pause_clears_playing():
+    p = _make_player()
+    p.playing = True
+    p._measure_start = time.perf_counter()
+    p.pause_pattern()
+    assert p.playing is False
+    print("  pause_pattern : playing passe à False : OK")
+
+
+def test_pause_saves_resume_offset():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p.playing = True
+    # Simuler une position au milieu du pattern
+    p._measure_start = time.perf_counter() - (total // 2) * p.step_duration
+    p.pause_pattern()
+    assert p._resume_offset is not None
+    assert 0.0 <= p._resume_offset < total
+    print(f"  pause_pattern : _resume_offset sauvegardé ({p._resume_offset:.2f} pas) : OK")
+
+
+def test_pause_resume_offset_near_middle():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    half  = total / 2.0
+    p.playing = True
+    p._measure_start = time.perf_counter() - half * p.step_duration
+    p.pause_pattern()
+    # Tolérance de ±1 pas (latence mesure)
+    assert abs(p._resume_offset - half) <= 1.0
+    print(f"  pause au milieu : offset ≈ {half:.1f}, obtenu {p._resume_offset:.2f} : OK")
+
+
+def test_pause_clears_count_in():
+    p = _make_player()
+    p.playing    = True
+    p._count_in  = 2
+    p._measure_start = time.perf_counter()
+    p.pause_pattern()
+    assert p._count_in == 0
+    print("  pause_pattern : _count_in remis à 0 : OK")
+
+
+def test_pause_preserves_recording_state():
+    p = _make_player()
+    p.playing   = True
+    p.recording = True
+    p._measure_start = time.perf_counter()
+    p.pause_pattern()
+    assert p.recording is True
+    print("  pause_pattern : recording préservé : OK")
+
+
+# ---------------------------------------------------------------------------
+# stop_pattern — efface _resume_offset
+# ---------------------------------------------------------------------------
+
+def test_stop_pattern_clears_resume_offset():
+    p = _make_player()
+    p._resume_offset = 8.0
+    p.stop_pattern()
+    assert p._resume_offset is None
+    print("  stop_pattern : _resume_offset effacé : OK")
+
+
+def test_stop_pattern_clears_playing():
+    p = _make_player()
+    p.playing = True
+    p._resume_offset = 4.0
+    p.stop_pattern()
+    assert p.playing is False
+    assert p._resume_offset is None
+    print("  stop_pattern : playing=False + _resume_offset=None : OK")
+
+
+# ---------------------------------------------------------------------------
+# goto_start
+# ---------------------------------------------------------------------------
+
+def test_goto_start_while_stopped_clears_resume_offset():
+    p = _make_player()
+    p._resume_offset = 8.0
+    p.goto_start()
+    assert p._resume_offset is None
+    print("  goto_start (arrêté) : _resume_offset → None : OK")
+
+
+def test_goto_start_while_playing_preserves_playing_state():
+    p = _make_player()
+    p.playing = True
+    p.start_thread()
+    time.sleep(0.02)
+    p.goto_start()
+    assert p.playing is True
+    assert p._resume_offset is None
+    p.stop_all()
+    print("  goto_start (lecture) : playing préservé, offset = None : OK")
+
+
+def test_goto_start_while_clicking_preserves_clicking():
+    p = _make_player()
+    p.clicking = True
+    p.start_thread()
+    time.sleep(0.02)
+    p.goto_start()
+    assert p.clicking is True
+    assert p._resume_offset is None
+    p.stop_all()
+    print("  goto_start (click) : clicking préservé, offset = None : OK")
+
+
+# ---------------------------------------------------------------------------
+# goto_end
+# ---------------------------------------------------------------------------
+
+def test_goto_end_while_stopped_sets_resume_offset_to_last():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p.goto_end()
+    assert p._resume_offset == float(total - 1)
+    print(f"  goto_end (arrêté) : _resume_offset = {total - 1} : OK")
+
+
+def test_goto_end_while_playing_sets_resume_offset_to_last():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p.playing = True
+    p.start_thread()
+    time.sleep(0.02)
+    p.goto_end()
+    assert p.playing is True
+    assert p._resume_offset is None   # consommé par le thread redémarré
+    p.stop_all()
+    print(f"  goto_end (lecture) : playing préservé, offset consommé : OK")
+
+
+def test_goto_end_reflects_num_bars():
+    p = _make_player()
+    p._pattern.double_bars()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p.goto_end()
+    assert p._resume_offset == float(total - 1)
+    print(f"  goto_end après double : last_step = {total - 1} : OK")
+
+
+# ---------------------------------------------------------------------------
+# _run_thread — utilise _resume_offset au démarrage
+# ---------------------------------------------------------------------------
+
+def test_run_thread_consumes_resume_offset():
+    """_run_thread démarre et efface _resume_offset."""
+    p = _make_player()
+    p._resume_offset = 4.0
+    p.clicking = True       # thread tourne pour le click
+    p.start_thread()
+    time.sleep(0.05)
+    assert p._resume_offset is None, "_resume_offset doit être consommé par _run_thread"
+    p.stop_all()
+    print("  _run_thread : _resume_offset consommé au démarrage : OK")
+
+
+def test_goto_start_thread_restarts_and_runs():
+    """goto_start pendant la lecture : thread redémarre effectivement."""
+    p = _make_player()
+    p.playing = True
+    p.start_thread()
+    time.sleep(0.02)
+    p.goto_start()
+    time.sleep(0.02)
+    assert p._play_thread is not None and p._play_thread.is_alive()
+    p.stop_all()
+    print("  goto_start : thread redémarré et vivant : OK")
+
+
+# ---------------------------------------------------------------------------
+# etype_discriminates (régression Phase 4)
+# ---------------------------------------------------------------------------
+
+def test_etype_discriminates_k_vs_p():
+    from pattern import TapeEvent
+    ev_k = TapeEvent("K", 36, 100, 0, 0)
+    ev_p = TapeEvent("P", 36, 100, 200, 0)
+    assert ev_k.etype == "K"
+    assert ev_p.etype == "P"
+    assert ev_k != ev_p
+    print("  TapeEvent etype K≠P pour même note : OK")
+
+
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    ok = fail = 0
+    for fn in tests:
+        try:
+            print(f"\n[{fn.__name__}]")
+            fn()
+            ok += 1
+        except Exception as exc:
+            print(f"  ECHEC : {exc}")
+            fail += 1
+    print(f"\n{'='*50}")
+    print(f"Résultat : {ok} OK, {fail} ECHEC sur {ok + fail} tests")

@@ -71,6 +71,7 @@ class DrumPlayer:
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
+        self._resume_offset       = None  # float (pas) pour reprendre depuis une pause ; None = début
 
     #--------------------------------------------------------------------------
 
@@ -122,10 +123,54 @@ class DrumPlayer:
         self._count_in         = 0
         self.recording         = False
         self.replace_recording = False
+        self._resume_offset    = None
         if not self._note_repeat_active:
             self.stop_thread()
         else:
             self._wakeup.set()
+
+    #--------------------------------------------------------------------------
+
+    def pause_pattern(self):
+        """Arrête la lecture à la position courante (reprise via play_pattern)."""
+        if not self.playing:
+            return
+        now = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref = self._measure_start if self._measure_start is not None else now
+        self._resume_offset = ((now - ref) % measure_secs) / self.step_duration
+        self.playing   = False
+        self._count_in = 0
+        if not self._note_repeat_active and not self.clicking:
+            self.stop_thread()
+        else:
+            self._wakeup.set()
+
+    #--------------------------------------------------------------------------
+
+    def goto_start(self):
+        """Positionne le playhead au début du pattern."""
+        self._go_to_offset(None)
+
+    #--------------------------------------------------------------------------
+
+    def goto_end(self):
+        """Positionne le playhead à la fin du pattern (dernier pas)."""
+        total_steps = self._pattern._num_bars * self._pattern._num_steps
+        self._go_to_offset(float(total_steps - 1))
+
+    #--------------------------------------------------------------------------
+
+    def _go_to_offset(self, offset):
+        """Déplace le playhead à offset (pas flottants ; None = début).
+        Stoppe et redémarre le thread si nécessaire pour garantir la prise en compte."""
+        active = self.playing or self.clicking or self._note_repeat_active
+        if active:
+            self.stop_thread()
+        self._resume_offset = offset
+        if active:
+            self.start_thread()
 
     #--------------------------------------------------------------------------
 
@@ -163,7 +208,11 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def _run_thread(self):
-        measure_start = time.perf_counter()
+        if self._resume_offset is not None:
+            measure_start = time.perf_counter() - self._resume_offset * self.step_duration
+            self._resume_offset = None
+        else:
+            measure_start = time.perf_counter()
 
         while (self.playing or self.clicking or self._note_repeat_active) \
                 and not self.stop_event.is_set():

@@ -703,16 +703,12 @@ class KeyManager:
             win._show_status("Pattern aléatoire généré")
             return True
 
-        # Space / P : play/stop
+        # Space / P : play/pause
         if ukey in (ord(' '), ord('p')) or (not ctrl and key in (wx.WXK_SPACE, ord('P'))):
             if win._player.playing:
-                was_recording = win._player.recording
-                win._player.stop_pattern()
+                win._player.pause_pattern()
                 win._router.stop_all_synth_voices()
-                if was_recording:
-                    win._refresh_grid()
-                    win._refresh_track_list()
-                win._show_status("Pattern: Stop")
+                win._show_status("Pattern: Pause")
             else:
                 win._player.play_pattern()
                 win._show_status("Pattern: Play")
@@ -779,6 +775,20 @@ class KeyManager:
                 win._nr_rate_idx = win.NR_BINARY[digit - 1]
                 win._player.update_nr_rate(win._nr_rate_idx)
                 win._show_status(f"NR: {Pattern.QUANT_LIST[win._nr_rate_idx]}")
+            return True
+
+        # g : GotoStart — G : GotoEnd
+        if not ctrl and not shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('g') or key == ord('G')):
+            win._player.goto_start()
+            win._show_status("Transport: Début")
+            return True
+        if not ctrl and shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('g') or key == ord('G')):
+            win._player.goto_end()
+            win._show_status("Transport: Fin")
             return True
 
         # BPM / Volume
