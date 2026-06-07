@@ -74,6 +74,8 @@ class TrackRouter:
         self._kb_notes_play  = []   # notes de lecture (gamme du pattern courant — figée)
         self.kb_last_midi    = None
 
+        self._load_threads   = []   # threads de chargement/precompute en cours
+
     # ------------------------------------------------------------------
     # Propriétés (accès lecture seule aux moteurs)
     # ------------------------------------------------------------------
@@ -175,7 +177,15 @@ class TrackRouter:
             except Exception as e:
                 self._slot_synths.pop(slot_idx, None)
                 self._status_cb(f"Erreur slot {slot_idx + 1:02d}: {e}")
-        threading.Thread(target=run, daemon=True).start()
+        t = threading.Thread(target=run, daemon=True)
+        self._load_threads.append(t)
+        t.start()
+
+    def wait_loaded(self):
+        """Attend la fin de tous les threads de chargement/precompute en cours."""
+        for t in self._load_threads:
+            t.join()
+        self._load_threads.clear()
 
     def clear_slot_synths(self):
         """Invalide tous les moteurs SYNTH en cache (force rechargement au prochain assign)."""
@@ -228,7 +238,9 @@ class TrackRouter:
                 )
             except Exception as e:
                 self._status_cb(f"Erreur chargement patch: {e}")
-        threading.Thread(target=run, daemon=True).start()
+        t = threading.Thread(target=run, daemon=True)
+        self._load_threads.append(t)
+        t.start()
 
     def reset_kit_pad(self):
         """Force le rechargement du sample Kit pitché au prochain play_kit_pitched."""

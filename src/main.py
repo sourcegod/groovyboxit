@@ -10,6 +10,7 @@ from ui.main_window import MainWindow
 def main():
     app = wx.App(False)
     frame = MainWindow()
+    frame.wait_loaded()   # patches + precompute terminés avant d'afficher la fenêtre
     frame.Show()
     app.MainLoop()
 

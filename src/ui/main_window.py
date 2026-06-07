@@ -26,6 +26,29 @@ from ui.midi_handler import MidiHandler
 from midi_manager import MidiManager
 
 
+class _LoadingDialog(wx.Dialog):
+    """Fenêtre modale 'Chargement…' affichée pendant le préchargement des sons."""
+
+    def __init__(self, parent, router):
+        super().__init__(parent, title="GroovyboxIt",
+                         style=wx.CAPTION | wx.STAY_ON_TOP)
+        self._router = router
+        label = wx.StaticText(self, label="Chargement, veuillez patienter…")
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER, 24)
+        self.SetSizer(sizer)
+        self.Fit()
+        self.Centre()
+        self._timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._on_tick, self._timer)
+        self._timer.Start(100)
+
+    def _on_tick(self, _event):
+        if all(not t.is_alive() for t in self._router._load_threads):
+            self._timer.Stop()
+            self.EndModal(wx.ID_OK)
+
+
 class MainWindow(wx.Frame):
     ROWS = 16
     COLS = 16
@@ -111,6 +134,14 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Centre()
+
+    def wait_loaded(self):
+        """Affiche 'Chargement…' et bloque jusqu'à ce que tous les sons soient prêts."""
+        if any(t.is_alive() for t in self._router._load_threads):
+            dlg = _LoadingDialog(self, self._router)
+            dlg.ShowModal()
+            dlg.Destroy()
+        self._router.wait_loaded()   # join final (instantané à ce stade)
 
     def _init_sound(self):
         ui_dir = os.path.dirname(os.path.abspath(__file__))
