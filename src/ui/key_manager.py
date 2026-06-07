@@ -298,7 +298,7 @@ class KeyManager:
                 win._player.move_by_ticks(direction)
                 win._show_status(f"Transport: {sign}1 tick")
             else:
-                win._player.move_by_bars(direction)
+                win._player.navigate_bar(direction)
                 win._show_status(f"Transport: {sign}1 mesure")
             return True
 

@@ -72,6 +72,7 @@ class DrumPlayer:
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
         self._resume_offset       = None  # float (pas) pour reprendre depuis une pause ; None = début
+        self._last_nav_time       = 0.0   # timestamp du dernier navigate_bar (fenêtre 100 ms)
 
     #--------------------------------------------------------------------------
 
@@ -187,19 +188,61 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def move_by_ticks(self, ticks):
-        """Déplace le playhead de ±ticks pas (wrapping cyclique)."""
+        """Déplace le playhead de ±ticks pas (clamp, sans wrap)."""
         total   = self._pattern._num_bars * self._pattern._num_steps
-        new_off = (self._current_offset() + ticks) % total
+        new_off = max(0.0, min(float(total - 1), self._current_offset() + ticks))
         self._go_to_offset(new_off)
 
     def move_by_beats(self, beats):
-        """Déplace le playhead de ±beats battements."""
+        """Déplace le playhead de ±beats battements (clamp via move_by_ticks)."""
         steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
         self.move_by_ticks(beats * steps_per_beat)
 
     def move_by_bars(self, bars):
-        """Déplace le playhead de ±bars mesures."""
-        self.move_by_ticks(bars * self._pattern._num_steps)
+        """Déplace le playhead de ±bars mesures (wrapping cyclique, usage interne)."""
+        total   = self._pattern._num_bars * self._pattern._num_steps
+        new_off = (self._current_offset() + bars * self._pattern._num_steps) % total
+        self._go_to_offset(new_off)
+
+    def navigate_bar(self, direction):
+        """Navigation par mesure style DAW (sans wrap).
+
+        direction = -1 (PageUp) :
+          - en cours de mesure → début de la mesure courante
+          - au début de mesure → début de la mesure précédente
+          - mesure 0           → reste à 0
+        direction = +1 (PageDown) :
+          - toujours           → début de la mesure suivante
+          - dernière mesure    → dernier tick du pattern (total - 1)
+        """
+        num_steps = self._pattern._num_steps
+        num_bars  = self._pattern._num_bars
+        total     = num_bars * num_steps
+        cur_off   = self._current_offset()
+        cur_bar   = int(cur_off) // num_steps
+        bar_start = cur_bar * num_steps
+        now       = time.perf_counter()
+
+        if direction < 0:
+            # Fenêtre 100 ms : si navigate_bar a été appelé récemment, on
+            # considère le playhead « au début de la mesure » même s'il a
+            # légèrement avancé depuis.
+            in_window = (now - self._last_nav_time < 0.1)
+            if cur_off - bar_start > 0.01 and not in_window:
+                target = float(bar_start)
+            elif cur_bar > 0:
+                target = float((cur_bar - 1) * num_steps)
+            else:
+                target = 0.0
+        else:
+            next_bar = cur_bar + 1
+            if next_bar >= num_bars:
+                target = float(total - 1)
+            else:
+                target = float(next_bar * num_steps)
+
+        self._last_nav_time = now
+        self._go_to_offset(target)
 
     #--------------------------------------------------------------------------
 
