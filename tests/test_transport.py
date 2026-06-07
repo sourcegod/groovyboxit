@@ -404,6 +404,46 @@ def test_navigate_bar_up_after_window_goes_to_bar_start():
 
 
 # ---------------------------------------------------------------------------
+# move_by_seconds
+# ---------------------------------------------------------------------------
+
+def test_move_by_seconds_forward():
+    p = _make_player()
+    # 100 BPM → step_duration = 0.15 s → 1 s ≈ 6.667 pas
+    p._resume_offset = 0.0
+    p.move_by_seconds(1)
+    expected = 1.0 / p.step_duration
+    assert abs(p._resume_offset - expected) < 0.01
+    print(f"  move_by_seconds(+1) depuis 0 → {p._resume_offset:.3f} pas : OK")
+
+
+def test_move_by_seconds_backward():
+    p = _make_player()
+    p._resume_offset = 10.0
+    p.move_by_seconds(-1)
+    expected = 10.0 - 1.0 / p.step_duration
+    assert abs(p._resume_offset - expected) < 0.01
+    print(f"  move_by_seconds(-1) depuis 10 → {p._resume_offset:.3f} pas : OK")
+
+
+def test_move_by_seconds_clamp_backward():
+    p = _make_player()
+    p._resume_offset = 0.0
+    p.move_by_seconds(-1)
+    assert p._resume_offset == 0.0
+    print("  move_by_seconds(-1) depuis 0 → clamp 0 : OK")
+
+
+def test_move_by_seconds_clamp_forward():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p._resume_offset = float(total - 1)
+    p.move_by_seconds(1)
+    assert p._resume_offset == float(total - 1)
+    print(f"  move_by_seconds(+1) depuis {total - 1} → clamp {total - 1} : OK")
+
+
+# ---------------------------------------------------------------------------
 # move_by_bars
 # ---------------------------------------------------------------------------
 
