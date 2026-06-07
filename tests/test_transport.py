@@ -543,6 +543,77 @@ def test_position_str_playing():
 
 
 # ---------------------------------------------------------------------------
+# GotoDialog.to_offset — conversions unité → step_idx
+# ---------------------------------------------------------------------------
+
+def test_goto_to_offset_mesures():
+    from ui.dialogs import GotoDialog as GD
+    # bar 1 → step 0  (début)
+    assert GD.to_offset(0, 1, 4, 4, 16, 0.1) == 0.0
+    # bar 2 → step 16
+    assert GD.to_offset(0, 2, 4, 4, 16, 0.1) == 16.0
+    # bar 4 (dernier) → step 48
+    assert GD.to_offset(0, 4, 4, 4, 16, 0.1) == 48.0
+    # dépassement → clamp total-1 = 63
+    assert GD.to_offset(0, 5, 4, 4, 16, 0.1) == 63.0
+    print("  to_offset Mesures : OK")
+
+
+def test_goto_to_offset_battements():
+    from ui.dialogs import GotoDialog as GD
+    # beat 1 → step 0  (steps_per_beat=4)
+    assert GD.to_offset(1, 1, 4, 4, 16, 0.1) == 0.0
+    # beat 5 → step 16  (bar 2 beat 1)
+    assert GD.to_offset(1, 5, 4, 4, 16, 0.1) == 16.0
+    # beat 16 (dernier) → step 60
+    assert GD.to_offset(1, 16, 4, 4, 16, 0.1) == 60.0
+    # dépassement → clamp 63
+    assert GD.to_offset(1, 99, 4, 4, 16, 0.1) == 63.0
+    print("  to_offset Battements : OK")
+
+
+def test_goto_to_offset_ticks():
+    from ui.dialogs import GotoDialog as GD
+    # tick 1 → step 0
+    assert GD.to_offset(2, 1, 4, 4, 16, 0.1) == 0.0
+    # tick 17 → step 16
+    assert GD.to_offset(2, 17, 4, 4, 16, 0.1) == 16.0
+    # tick 64 (dernier) → step 63
+    assert GD.to_offset(2, 64, 4, 4, 16, 0.1) == 63.0
+    # dépassement → clamp 63
+    assert GD.to_offset(2, 100, 4, 4, 16, 0.1) == 63.0
+    print("  to_offset Ticks : OK")
+
+
+def test_goto_to_offset_temps():
+    from ui.dialogs import GotoDialog as GD
+    # 0 s → step 0
+    assert GD.to_offset(3, 0, 4, 4, 16, 0.1) == 0.0
+    # step_duration=0.1 → 1 s = 10 steps
+    assert GD.to_offset(3, 1, 4, 4, 16, 0.1) == 10.0
+    # dépassement → clamp 63
+    assert GD.to_offset(3, 999, 4, 4, 16, 0.1) == 63.0
+    print("  to_offset Temps : OK")
+
+
+def test_goto_to_offset_clamp_bas():
+    from ui.dialogs import GotoDialog as GD
+    # valeur 0 (invalide 1-based) → clamp 0
+    assert GD.to_offset(0, 0, 4, 4, 16, 0.1) == 0.0
+    assert GD.to_offset(2, 0, 4, 4, 16, 0.1) == 0.0
+    print("  to_offset clamp bas : OK")
+
+
+def test_goto_to_offset_un_bar():
+    from ui.dialogs import GotoDialog as GD
+    # pattern 1 mesure : seule valeur valide = bar 1 → step 0
+    assert GD.to_offset(0, 1, 1, 4, 16, 0.15) == 0.0
+    # bar 2 → clamp total-1 = 15
+    assert GD.to_offset(0, 2, 1, 4, 16, 0.15) == 15.0
+    print("  to_offset 1 mesure : OK")
+
+
+# ---------------------------------------------------------------------------
 # etype_discriminates (régression Phase 4)
 # ---------------------------------------------------------------------------
 
