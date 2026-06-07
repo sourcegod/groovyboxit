@@ -267,22 +267,21 @@ def test_move_by_ticks_backward():
     print("  move_by_ticks(-1) depuis 4 → 3 : OK")
 
 
-def test_move_by_ticks_wrap_forward():
+def test_move_by_ticks_clamp_forward():
     p = _make_player()
     total = p._pattern._num_bars * p._pattern._num_steps
     p._resume_offset = float(total - 1)
     p.move_by_ticks(1)
-    assert p._resume_offset == 0.0
-    print(f"  move_by_ticks(+1) depuis {total - 1} → 0 (wrap) : OK")
+    assert p._resume_offset == float(total - 1)
+    print(f"  move_by_ticks(+1) depuis {total - 1} → clamp {total - 1} : OK")
 
 
-def test_move_by_ticks_wrap_backward():
+def test_move_by_ticks_clamp_backward():
     p = _make_player()
-    total = p._pattern._num_bars * p._pattern._num_steps
     p._resume_offset = 0.0
     p.move_by_ticks(-1)
-    assert p._resume_offset == float(total - 1)
-    print(f"  move_by_ticks(-1) depuis 0 → {total - 1} (wrap) : OK")
+    assert p._resume_offset == 0.0
+    print("  move_by_ticks(-1) depuis 0 → clamp 0 : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -306,14 +305,102 @@ def test_move_by_beats_backward():
     print("  move_by_beats(-1) depuis 4 → 0 : OK")
 
 
-def test_move_by_beats_wrap_backward():
+def test_move_by_beats_clamp_backward():
     p = _make_player()
-    total = p._pattern._num_bars * p._pattern._num_steps  # 16
-    steps_per_beat = p._pattern._num_steps // p._pattern._num_beats  # 4
     p._resume_offset = 0.0
     p.move_by_beats(-1)
-    assert p._resume_offset == float(total - steps_per_beat)
-    print(f"  move_by_beats(-1) depuis 0 → {total - steps_per_beat} (wrap) : OK")
+    assert p._resume_offset == 0.0
+    print("  move_by_beats(-1) depuis 0 → clamp 0 : OK")
+
+
+# ---------------------------------------------------------------------------
+# navigate_bar — style DAW, sans wrap
+# ---------------------------------------------------------------------------
+
+def test_navigate_bar_up_from_middle_goes_to_bar_start():
+    p = _make_player()
+    p._resume_offset = 6.0          # milieu de la mesure 0 (steps 0-15)
+    p.navigate_bar(-1)
+    assert p._resume_offset == 0.0
+    print("  navigate_bar(-1) depuis 6 → début mesure 0 : OK")
+
+
+def test_navigate_bar_up_from_bar_start_goes_to_previous():
+    p = _make_player()
+    p._pattern.double_bars()        # 2 mesures, num_steps=16
+    p._resume_offset = 16.0         # début exact de la mesure 1
+    p.navigate_bar(-1)
+    assert p._resume_offset == 0.0
+    print("  navigate_bar(-1) depuis début mesure 1 → début mesure 0 : OK")
+
+
+def test_navigate_bar_up_from_bar0_stays_at_zero():
+    p = _make_player()
+    p._resume_offset = 0.0
+    p.navigate_bar(-1)
+    assert p._resume_offset == 0.0
+    print("  navigate_bar(-1) depuis 0 → reste à 0 (pas de wrap) : OK")
+
+
+def test_navigate_bar_down_from_middle_goes_to_next_bar():
+    p = _make_player()
+    p._pattern.double_bars()        # 2 mesures
+    p._resume_offset = 6.0          # milieu de la mesure 0
+    p.navigate_bar(+1)
+    assert p._resume_offset == 16.0
+    print("  navigate_bar(+1) depuis 6 → début mesure 1 : OK")
+
+
+def test_navigate_bar_down_from_last_bar_goes_to_last_tick():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps   # 16
+    p._resume_offset = 0.0          # mesure 0 = seule mesure = dernière mesure
+    p.navigate_bar(+1)
+    assert p._resume_offset == float(total - 1)
+    print(f"  navigate_bar(+1) depuis dernière mesure → dernier tick {total - 1} : OK")
+
+
+def test_navigate_bar_down_from_last_tick_stays():
+    p = _make_player()
+    total = p._pattern._num_bars * p._pattern._num_steps
+    p._resume_offset = float(total - 1)
+    p.navigate_bar(+1)
+    assert p._resume_offset == float(total - 1)
+    print(f"  navigate_bar(+1) depuis dernier tick → reste {total - 1} : OK")
+
+
+def test_navigate_bar_up_from_middle_of_bar1():
+    p = _make_player()
+    p._pattern.double_bars()        # mesure 0: 0-15, mesure 1: 16-31
+    p._resume_offset = 20.0         # milieu de la mesure 1
+    p.navigate_bar(-1)
+    assert p._resume_offset == 16.0
+    print("  navigate_bar(-1) depuis 20 → début mesure 1 (pas mesure 0) : OK")
+
+
+def test_navigate_bar_up_twice_quick_skips_bar_start():
+    """Deux PageUp rapides : le second passe directement à la mesure précédente."""
+    p = _make_player()
+    p._pattern.double_bars()        # mesures 0 et 1
+    p._resume_offset = 20.0         # milieu mesure 1
+    p.navigate_bar(-1)              # → début mesure 1 (16.0)
+    # Simuler un 2e appui immédiat : _last_nav_time vient d'être mis à jour,
+    # et le playhead a légèrement avancé (simulé par un offset légèrement > 16)
+    p._resume_offset = 16.05        # playhead avancé de 0.05 pas en < 100 ms
+    p.navigate_bar(-1)              # fenêtre active → doit aller en mesure 0
+    assert p._resume_offset == 0.0
+    print("  2e PageUp rapide depuis 16.05 → mesure 0 grâce à la fenêtre : OK")
+
+
+def test_navigate_bar_up_after_window_goes_to_bar_start():
+    """PageUp hors fenêtre (> 100 ms) : revient au début de la mesure courante."""
+    p = _make_player()
+    p._pattern.double_bars()
+    p._resume_offset = 16.05        # légèrement dans la mesure 1
+    p._last_nav_time = time.perf_counter() - 0.2   # fenêtre expirée
+    p.navigate_bar(-1)              # hors fenêtre → doit aller au début mesure 1
+    assert p._resume_offset == 16.0
+    print("  PageUp hors fenêtre depuis 16.05 → début mesure 1 : OK")
 
 
 # ---------------------------------------------------------------------------
