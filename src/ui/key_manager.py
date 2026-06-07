@@ -791,6 +791,20 @@ class KeyManager:
                 win._show_status(f"NR: {Pattern.QUANT_LIST[win._nr_rate_idx]}")
             return True
 
+        # b / w : ±1 seconde
+        if not ctrl and not shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('b') or key == ord('B')):
+            win._player.move_by_seconds(-1)
+            win._show_status("Transport: −1 seconde")
+            return True
+        if not ctrl and not shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('w') or key == ord('W')):
+            win._player.move_by_seconds(+1)
+            win._show_status("Transport: +1 seconde")
+            return True
+
         # l : toggle boucle
         if not ctrl and not shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \

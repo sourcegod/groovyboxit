@@ -198,6 +198,10 @@ class DrumPlayer:
         steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
         self.move_by_ticks(beats * steps_per_beat)
 
+    def move_by_seconds(self, seconds):
+        """Déplace le playhead de ±seconds secondes (clamp via move_by_ticks)."""
+        self.move_by_ticks(seconds / self.step_duration)
+
     def move_by_bars(self, bars):
         """Déplace le playhead de ±bars mesures (wrapping cyclique, usage interne)."""
         total   = self._pattern._num_bars * self._pattern._num_steps

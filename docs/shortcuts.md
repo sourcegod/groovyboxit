@@ -34,6 +34,8 @@ Ctrl+PageDown    Transport : +1 battement
 Ctrl+PageUp      Transport : −1 battement
 Shift+PageDown   Transport : +1 tick (pas)
 Shift+PageUp     Transport : −1 tick (pas)
+w                Transport : +1 seconde
+b                Transport : −1 seconde
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Mute / Solo (Pads — focus grille) ---
