@@ -187,6 +187,28 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
+    def position_str(self):
+        """Retourne 'bar:beat:tick / Bar:Beat:Tick' (1-based) pour la barre de statut."""
+        num_steps      = self._pattern._num_steps
+        num_beats      = self._pattern._num_beats
+        num_bars       = self._pattern._num_bars
+        steps_per_beat = max(1, num_steps // num_beats)
+        total_steps    = num_bars * num_steps
+
+        def _fmt(step_idx):
+            step_idx = max(0, min(step_idx, total_steps - 1))
+            bar  = step_idx // num_steps
+            rem  = step_idx % num_steps
+            beat = rem // steps_per_beat
+            tick = rem % steps_per_beat
+            return f"{bar + 1}:{beat + 1}:{tick + 1}"
+
+        cur = int(self._current_offset())
+        last = total_steps - 1
+        return f"{_fmt(cur)} / {_fmt(last)}"
+
+    #--------------------------------------------------------------------------
+
     def move_by_ticks(self, ticks):
         """Déplace le playhead de ±ticks pas (clamp, sans wrap)."""
         total   = self._pattern._num_bars * self._pattern._num_steps
