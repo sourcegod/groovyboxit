@@ -37,6 +37,7 @@ Shift+PageUp     Transport : −1 tick (pas)
 w                Transport : +1 seconde
 b                Transport : −1 seconde
 Ctrl+G           Afficher l'état du player et la position (Lecture|Pause|Arrêt, Pos: bar:beat:tick / total)
+Ctrl+Shift+G     Transport : Aller à une position (boîte de dialogue Unité + Valeur + bar:beat:tick)
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Mute / Solo (Pads — focus grille) ---

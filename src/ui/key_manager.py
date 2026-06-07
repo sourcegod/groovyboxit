@@ -260,6 +260,9 @@ class KeyManager:
             win._router.panic()
             win._show_status("Panic: All Sounds Off + Reset All Controllers")
             return True
+        if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Aller à
+            win._goto_dialog()
+            return True
         if not shift and not alt and key == ord('G'):     # Ctrl+G : état + position
             p = win._player
             if p.playing and getattr(p, 'recording', False):

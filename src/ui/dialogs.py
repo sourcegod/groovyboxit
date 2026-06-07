@@ -515,3 +515,184 @@ class ExplorerDialog(wx.Dialog):
 
     def get_selection(self):
         return self._listbox.GetStringSelection()
+
+
+class GotoDialog(wx.Dialog):
+    """Boîte de dialogue 'Aller à' — unité + SpinCtrl + TextCtrl (bar:beat:tick)."""
+
+    UNITS = ["Mesures", "Battements", "Ticks", "Temps (s)"]
+
+    def __init__(self, parent, step_idx, num_bars, num_beats, num_steps, step_duration):
+        super().__init__(parent, title="Aller à")
+        self._num_bars       = num_bars
+        self._num_beats      = num_beats
+        self._num_steps      = num_steps
+        self._step_duration  = step_duration
+        self._steps_per_beat = max(1, num_steps // num_beats)
+        self._total_steps    = num_bars * num_steps
+        self._cur_unit       = 0
+        self._cur_step       = max(0, min(int(step_idx), self._total_steps - 1))
+
+        unit_label = wx.StaticText(self, label="Unité :")
+        self._unit_list = wx.ListBox(self, choices=self.UNITS, style=wx.LB_SINGLE)
+        self._unit_list.SetSelection(0)
+
+        spin_label     = wx.StaticText(self, label="Valeur :")
+        self._spin     = wx.SpinCtrl(self, min=1, max=max(1, num_bars), size=(90, -1))
+
+        self._hint_label = wx.StaticText(self, label="bar:beat:tick :")
+        self._text       = wx.TextCtrl(self, size=(110, -1), style=wx.TE_PROCESS_ENTER)
+
+        ok_btn     = wx.Button(self, wx.ID_OK, "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        spin_row = wx.BoxSizer(wx.HORIZONTAL)
+        spin_row.Add(spin_label,  0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        spin_row.Add(self._spin, 0)
+
+        text_row = wx.BoxSizer(wx.HORIZONTAL)
+        text_row.Add(self._hint_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        text_row.Add(self._text,       1, wx.EXPAND)
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(unit_label,       0, wx.ALL, 6)
+        vbox.Add(self._unit_list,  1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(spin_row,         0, wx.ALL, 6)
+        vbox.Add(text_row,         0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,        0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+
+        self._unit_list.Bind(wx.EVT_LISTBOX,        self._on_unit_change)
+        self._unit_list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+        self._spin.Bind(wx.EVT_SPINCTRL,            self._on_spin_change)
+        self._spin.Bind(wx.EVT_KEY_DOWN,            self._on_spin_key)
+        self._text.Bind(wx.EVT_TEXT_ENTER,          self._on_text_enter)
+
+        self.Fit()
+        # GTK réinitialise SpinCtrl au layout : reposer range + valeurs après Fit()
+        self._refresh_unit(0)
+        self._unit_list.SetFocus()
+
+    # ------------------------------------------------------------------
+    # Helpers internes
+    # ------------------------------------------------------------------
+
+    def _step_to_spin(self, unit, step):
+        """step (0-based) → valeur SpinCtrl pour l'unité."""
+        if unit == 0:   return step // self._num_steps + 1
+        elif unit == 1: return step // self._steps_per_beat + 1
+        elif unit == 2: return step + 1
+        else:           return int(step * self._step_duration)
+
+    def _step_to_text(self, unit, step):
+        """step (0-based) → chaîne affichée dans le TextCtrl."""
+        step = max(0, min(step, self._total_steps - 1))
+        bar  = step // self._num_steps
+        rem  = step % self._num_steps
+        beat = rem // self._steps_per_beat
+        tick = rem % self._steps_per_beat
+        if unit == 3:
+            return f"{step * self._step_duration:.1f}"
+        return f"{bar + 1}:{beat + 1}:{tick + 1}"
+
+    def _spin_range(self, unit):
+        if unit == 0:   return (1, max(1, self._num_bars))
+        elif unit == 1: return (1, max(1, self._num_bars * self._num_beats))
+        elif unit == 2: return (1, max(1, self._total_steps))
+        else:           return (0, max(0, int((self._total_steps - 1) * self._step_duration)))
+
+    def _refresh_unit(self, unit):
+        """Met à jour range SpinCtrl, sa valeur et le TextCtrl depuis _cur_step."""
+        mn, mx = self._spin_range(unit)
+        self._spin.SetRange(mn, mx)
+        self._spin.SetValue(self._step_to_spin(unit, self._cur_step))
+        self._text.ChangeValue(self._step_to_text(unit, self._cur_step))
+        hint = "secondes :" if unit == 3 else "bar:beat:tick :"
+        self._hint_label.SetLabel(hint)
+
+    def _parse_text(self, unit, s):
+        """Parse la saisie libre → step_idx (0-based) ou None si invalide."""
+        s = s.strip()
+        parts = s.split(":")
+        try:
+            if unit == 3:
+                off = float(s) / max(self._step_duration, 1e-9)
+            elif len(parts) == 3:
+                bar, beat, tick = int(parts[0]) - 1, int(parts[1]) - 1, int(parts[2]) - 1
+                off = bar * self._num_steps + beat * self._steps_per_beat + tick
+            elif len(parts) == 2:
+                bar, beat = int(parts[0]) - 1, int(parts[1]) - 1
+                off = bar * self._num_steps + beat * self._steps_per_beat
+            else:
+                val = int(s)
+                off = self.to_offset(unit, val, self._num_bars, self._num_beats,
+                                     self._num_steps, self._step_duration)
+            return int(max(0, min(self._total_steps - 1, off)))
+        except (ValueError, IndexError):
+            return None
+
+    # ------------------------------------------------------------------
+    # Handlers événements
+    # ------------------------------------------------------------------
+
+    def _on_unit_change(self, event):
+        new_unit = self._unit_list.GetSelection()
+        if new_unit == wx.NOT_FOUND or new_unit == self._cur_unit:
+            return
+        self._cur_unit = new_unit
+        self._refresh_unit(new_unit)
+
+    def _on_spin_change(self, event):
+        val = self._spin.GetValue()
+        off = self.to_offset(self._cur_unit, val, self._num_bars, self._num_beats,
+                             self._num_steps, self._step_duration)
+        self._cur_step = int(max(0, min(self._total_steps - 1, off)))
+        self._text.ChangeValue(self._step_to_text(self._cur_unit, self._cur_step))
+
+    def _on_spin_key(self, event):
+        """Flèche Bas → augmente, Flèche Haut → diminue (inverse du comportement standard)."""
+        key = event.GetKeyCode()
+        mn, mx = self._spin_range(self._cur_unit)
+        val = self._spin.GetValue()
+        if key == wx.WXK_DOWN:
+            self._spin.SetValue(min(mx, val + 1))
+            self._on_spin_change(None)
+        elif key == wx.WXK_UP:
+            self._spin.SetValue(max(mn, val - 1))
+            self._on_spin_change(None)
+        else:
+            event.Skip()
+
+    def _on_text_enter(self, event):
+        step = self._parse_text(self._cur_unit, self._text.GetValue())
+        if step is not None:
+            self._cur_step = step
+            mn, mx = self._spin_range(self._cur_unit)
+            self._spin.SetValue(
+                max(mn, min(mx, self._step_to_spin(self._cur_unit, step)))
+            )
+        self.EndModal(wx.ID_OK)
+
+    # ------------------------------------------------------------------
+    # API publique
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def to_offset(unit_idx, value, num_bars, num_beats, num_steps, step_duration):
+        """Convertit (unité, valeur) → offset flottant 0-based, clampé à [0, total-1]."""
+        total          = num_bars * num_steps
+        steps_per_beat = max(1, num_steps // num_beats)
+        if unit_idx == 0:    off = (value - 1) * num_steps
+        elif unit_idx == 1:  off = (value - 1) * steps_per_beat
+        elif unit_idx == 2:  off = value - 1
+        else:                off = value / max(step_duration, 1e-9)
+        return float(max(0, min(total - 1, off)))
+
+    def get_offset(self):
+        """Retourne l'offset courant en pas (float, 0-based)."""
+        return float(self._cur_step)

@@ -13,6 +13,7 @@ from app_config import AppConfig
 from ui.dialogs import (
     KeyboardHelpDialog,
     GenRowDialog,
+    GotoDialog,
     QuantizeDialog,
     SavePatternDialog,
     TrackPropertiesDialog,
@@ -582,6 +583,21 @@ class MainWindow(wx.Frame):
                 self._show_status(
                     f"Défaut: ligne {row + 1}, quant {Pattern.QUANT_LIST[quant_idx]}"
                 )
+        dlg.Destroy()
+
+    def _goto_dialog(self):
+        p   = self._player
+        pat = p._pattern
+        dlg = GotoDialog(
+            self,
+            step_idx      = int(p._current_offset()),
+            num_bars      = pat._num_bars,
+            num_beats     = pat._num_beats,
+            num_steps     = pat._num_steps,
+            step_duration = p.step_duration,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            p._go_to_offset(dlg.get_offset())
         dlg.Destroy()
 
     def _show_keyboard_help(self):
