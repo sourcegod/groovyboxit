@@ -8,6 +8,8 @@
 """
 import sys
 import os
+import threading
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -57,6 +59,12 @@ class FakeSynthEngine:
     def reset_all_controls(self):
         self.reset_all_controls_called += 1
 
+    def has_full_range(self):
+        return True
+
+    def stop(self, midi_note):
+        pass
+
     def release_sustain(self):
         self.release_sustain_called += 1
         self._sustained_notes.clear()
@@ -92,6 +100,7 @@ def _make_router():
     statuses = []
     router   = TrackRouter(rack, "/fake/synths", snd, lambda msg: statuses.append(msg))
     router.update_kb_notes("major", 48)
+    router.set_playback_kb("major", 48)   # initialise _kb_notes_play (requis par on_play SYNTH)
     return router, snd, statuses
 
 
@@ -280,6 +289,81 @@ def test_load_slot_preview_replaces_stale_committed_synth():
     # _synth doit être un nouveau moteur, pas celui du slot 1
     assert router._synth is not router._slot_synths[1]
     print("  load_slot_preview remplace _synth commis par preview fraîche : OK")
+
+
+# ---------------------------------------------------------------------------
+# Préchargement — wait_loaded / _load_threads
+# ---------------------------------------------------------------------------
+
+def test_wait_loaded_empty_no_op():
+    """wait_loaded sur liste vide ne doit pas lever."""
+    router, _, _ = _make_router()
+    assert router._load_threads == []
+    router.wait_loaded()
+    assert router._load_threads == []
+    print("  wait_loaded (liste vide) : OK")
+
+
+def test_wait_loaded_clears_finished_threads():
+    """wait_loaded sur threads déjà terminés vide la liste."""
+    router, _, _ = _make_router()
+    t = threading.Thread(target=lambda: None, daemon=True)
+    t.start()
+    t.join()
+    router._load_threads = [t]
+    router.wait_loaded()
+    assert router._load_threads == []
+    print("  wait_loaded (threads terminés) : OK")
+
+
+def test_wait_loaded_waits_for_running_thread():
+    """wait_loaded doit attendre la fin d'un thread encore actif."""
+    router, _, _ = _make_router()
+    done = []
+    def slow():
+        time.sleep(0.08)
+        done.append(1)
+    t = threading.Thread(target=slow, daemon=True)
+    router._load_threads = [t]
+    t.start()
+    router.wait_loaded()
+    assert done == [1], "wait_loaded n'a pas attendu la fin du thread"
+    assert router._load_threads == []
+    print("  wait_loaded (thread en cours) : OK")
+
+
+@patch("track_router.SynthEngine", FakeSynthEngine)
+def test_ensure_slot_synth_appends_load_thread():
+    """assign_slot SYNTH doit enregistrer son thread dans _load_threads."""
+    router, _, _ = _make_router()
+    router.assign_slot(0, 1)   # slot 1 = SYNTH → _ensure_slot_synth
+    assert len(router._load_threads) == 1
+    router.wait_loaded()
+    assert router._load_threads == []
+    print("  _ensure_slot_synth enregistre thread dans _load_threads : OK")
+
+
+@patch("track_router.SynthEngine", FakeSynthEngine)
+def test_load_slot_preview_appends_load_thread():
+    """load_slot_preview doit enregistrer son thread dans _load_threads."""
+    router, _, _ = _make_router()
+    router.load_slot_preview(1)   # slot 1 = SYNTH non commis → nouveau thread
+    assert len(router._load_threads) == 1
+    router.wait_loaded()
+    assert router._load_threads == []
+    print("  load_slot_preview enregistre thread dans _load_threads : OK")
+
+
+@patch("track_router.SynthEngine", FakeSynthEngine)
+def test_multiple_load_threads_all_tracked():
+    """Plusieurs assign_slot SYNTH → tous les threads sont trackés et attendus."""
+    router, _, _ = _make_router()
+    router.assign_slot(0, 1)   # slot 1 → thread 1
+    router.assign_slot(1, 2)   # slot 2 → thread 2
+    assert len(router._load_threads) == 2
+    router.wait_loaded()
+    assert router._load_threads == []
+    print("  plusieurs slots → threads tous trackés et attendus : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -1151,5 +1235,14 @@ if __name__ == "__main__":
     test_reset_all_controls_noop_when_empty()
     test_panic_calls_reset_all_controls()
     print("Tests reset_all_controls + panic complet : OK")
+
+    # Tests préchargement / wait_loaded
+    test_wait_loaded_empty_no_op()
+    test_wait_loaded_clears_finished_threads()
+    test_wait_loaded_waits_for_running_thread()
+    test_ensure_slot_synth_appends_load_thread()
+    test_load_slot_preview_appends_load_thread()
+    test_multiple_load_threads_all_tracked()
+    print("Tests wait_loaded / _load_threads : OK")
 
     print("Tous les tests : OK")
