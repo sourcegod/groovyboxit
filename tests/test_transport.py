@@ -32,6 +32,14 @@ def _make_player():
     return p
 
 
+def _make_player_cfg(num_bars=8, num_steps=16, num_beats=4):
+    p = _make_player()
+    p._pattern._num_bars  = num_bars
+    p._pattern._num_steps = num_steps
+    p._pattern._num_beats = num_beats
+    return p
+
+
 # ---------------------------------------------------------------------------
 # pause_pattern — machine d'états
 # ---------------------------------------------------------------------------
@@ -481,6 +489,57 @@ def test_move_by_bars_single_bar_wraps():
     p.move_by_bars(1)
     assert p._resume_offset == 0.0    # 16 % 16 = 0
     print("  move_by_bars(+1) sur 1 seule mesure → wrap 0 : OK")
+
+
+# ---------------------------------------------------------------------------
+# position_str
+# ---------------------------------------------------------------------------
+
+def test_position_str_start():
+    p = _make_player_cfg(num_bars=8, num_steps=16, num_beats=4)
+    p._resume_offset = 0.0
+    s = p.position_str()
+    assert s == "1:1:1 / 8:4:4", f"attendu '1:1:1 / 8:4:4', obtenu '{s}'"
+    print(f"  position_str début : {s} OK")
+
+
+def test_position_str_end():
+    p = _make_player_cfg(num_bars=8, num_steps=16, num_beats=4)
+    p._resume_offset = float(8 * 16 - 1)   # 127
+    s = p.position_str()
+    assert s == "8:4:4 / 8:4:4", f"attendu '8:4:4 / 8:4:4', obtenu '{s}'"
+    print(f"  position_str fin : {s} OK")
+
+
+def test_position_str_middle():
+    # Step 20 : bar=1 (0-based) → 2, rem=4, beat=1 (0-based) → 2, tick=0 → 1
+    p = _make_player_cfg(num_bars=8, num_steps=16, num_beats=4)
+    p._resume_offset = 20.0
+    s = p.position_str()
+    assert s == "2:2:1 / 8:4:4", f"attendu '2:2:1 / 8:4:4', obtenu '{s}'"
+    print(f"  position_str milieu (step 20) : {s} OK")
+
+
+def test_position_str_one_bar():
+    # 1 bar, 4 steps, 4 beats → steps_per_beat=1 → total "1:4:1"
+    p = _make_player_cfg(num_bars=1, num_steps=4, num_beats=4)
+    p._resume_offset = 3.0   # last step
+    s = p.position_str()
+    assert s == "1:4:1 / 1:4:1", f"attendu '1:4:1 / 1:4:1', obtenu '{s}'"
+    print(f"  position_str 1 bar 4 steps : {s} OK")
+
+
+def test_position_str_playing():
+    p = _make_player_cfg(num_bars=2, num_steps=16, num_beats=4)
+    p.playing = True
+    step_dur = p.step_duration
+    # _measure_start tel que le playhead soit à step 16 (début bar 2)
+    p._measure_start = time.perf_counter() - 16 * step_dur
+    s = p.position_str()
+    # bar 2 (1-based), beat 1, tick 1 → "2:1:1 / 2:4:4"
+    assert s.startswith("2:1:"), f"attendu début '2:1:', obtenu '{s}'"
+    print(f"  position_str en lecture (step~16) : {s} OK")
+    p.playing = False
 
 
 # ---------------------------------------------------------------------------
