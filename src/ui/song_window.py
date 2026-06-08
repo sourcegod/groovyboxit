@@ -56,6 +56,12 @@ class SongWindow(wx.Frame):
 
         panel.SetSizer(main_vbox)
 
+        # Tab order explicite (GTK ne garantit pas l'ordre de création)
+        self._avail_lb.MoveAfterInTabOrder(self._song_lb)
+        self._seq_lb.MoveAfterInTabOrder(self._avail_lb)
+        self._btn_empty.MoveAfterInTabOrder(self._seq_lb)
+        self._btn_play.MoveAfterInTabOrder(self._btn_empty)
+
         # Bindings
         # GTK : Enter sur ListBox génère EVT_LISTBOX_DCLICK (pas EVT_KEY_DOWN)
         self._song_lb.Bind(wx.EVT_LISTBOX,        self._on_song_select)
@@ -69,6 +75,7 @@ class SongWindow(wx.Frame):
         self._refresh_song_lb()
         self._refresh_avail_lb()
         self._refresh_seq_lb()
+        self._song_lb.SetFocus()
 
     # ------------------------------------------------------------------
 

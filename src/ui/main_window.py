@@ -1305,5 +1305,9 @@ class MainWindow(wx.Frame):
         target.SetFocus()
 
     def _on_char_hook(self, event):
+        focused = wx.Window.FindFocus()
+        if focused and focused.GetTopLevelParent() is not self:
+            event.Skip()
+            return
         self._key_manager.handle(event)
 
