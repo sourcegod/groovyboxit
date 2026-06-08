@@ -124,16 +124,34 @@ class SongWindow(wx.Frame):
         idx = self._avail_lb.GetSelection()
         if idx == wx.NOT_FOUND:
             return
-        song = self._parent._song_list[self._cur_song_idx]
-        song._sequence.append(idx)
-        new_sel = len(song._sequence) - 1
-        self._refresh_song_lb()
-        self._refresh_seq_lb(new_sel)
-        self._set_status(f"Pat_{idx+1:02d} ajouté")
+        self._insert_avail_pattern(idx, before=wx.GetKeyState(wx.WXK_CONTROL))
 
     def _on_seq_activate(self, evt):
-        # Enter ou double-clic sur la séquence : ne fait rien de spécial
-        evt.Skip()
+        # Ctrl+Enter depuis la séquence : insère le pattern avail sélectionné avant la pos courante
+        if wx.GetKeyState(wx.WXK_CONTROL):
+            avail_idx = self._avail_lb.GetSelection()
+            if avail_idx != wx.NOT_FOUND:
+                self._insert_avail_pattern(avail_idx, before=True)
+        # Enter simple / double-clic sans Ctrl : rien de spécial
+        else:
+            evt.Skip()
+
+    def _insert_avail_pattern(self, pat_idx, before=False):
+        """Ajoute pat_idx à la séquence : avant la sélection courante si before=True, sinon en fin."""
+        song = self._parent._song_list[self._cur_song_idx]
+        seq  = song._sequence
+        sel  = self._seq_lb.GetSelection()
+        if before and sel != wx.NOT_FOUND:
+            seq.insert(sel, pat_idx)
+            new_sel = sel
+            verb = "inséré"
+        else:
+            seq.append(pat_idx)
+            new_sel = len(seq) - 1
+            verb = "ajouté"
+        self._refresh_song_lb()
+        self._refresh_seq_lb(new_sel)
+        self._set_status(f"Pat_{pat_idx+1:02d} {verb}")
 
     def _on_seq_key(self, evt):
         key = evt.GetKeyCode()
