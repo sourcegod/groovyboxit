@@ -191,10 +191,30 @@ class SongWindow(wx.Frame):
         self._parent._play_song(self._cur_song_idx)
 
     def _on_key(self, evt):
-        if evt.GetKeyCode() == wx.WXK_ESCAPE:
+        key   = evt.GetKeyCode()
+        ukey  = evt.GetUnicodeKey()
+        ctrl  = evt.ControlDown()
+        shift = evt.ShiftDown()
+
+        if key == wx.WXK_ESCAPE:
             self.Close()
-        else:
-            evt.Skip()
+            return
+
+        # Overrides song-specific : Play/Pause, GotoStart, GotoEnd
+        if not ctrl:
+            if not shift and (ukey in (ord(' '), ord('p')) or key in (wx.WXK_SPACE, ord('P'))):
+                self._parent._song_play_pause(self._cur_song_idx)
+                return
+            if not shift and (ukey == ord('g') or key == ord('G')):
+                self._parent._song_goto_start(self._cur_song_idx)
+                return
+            if shift and (ukey == ord('g') or key == ord('G')):
+                self._parent._song_goto_end(self._cur_song_idx)
+                return
+
+        if self._parent._key_manager.handle_transport(evt):
+            return
+        evt.Skip()
 
     def _on_close(self, evt):
         self._parent._song_window = None

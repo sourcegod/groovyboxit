@@ -480,6 +480,60 @@ class MainWindow(wx.Frame):
         n = len(song._sequence)
         self._show_status(f"Song {song_idx+1:02d} → Pat_{first_idx+1:02d} ({n} patterns)")
 
+    def _song_play_pause(self, song_idx):
+        """Play/Pause depuis SongWindow : play=song, pause=pause, resumé=reprend en song mode."""
+        p = self._player
+        if p.playing:
+            p.pause_pattern()
+            self._router.stop_all_synth_voices()
+            self._show_status("Song: Pause")
+        elif p._song_mode:
+            p.play_pattern()
+            self._show_status("Song: Reprise")
+        else:
+            self._play_song(song_idx)
+
+    def _song_goto_start(self, song_idx):
+        """Charge le 1er pattern du song, position 0, arme song mode."""
+        song = self._song_list[song_idx]
+        if not song._sequence:
+            self._show_status("Song vide")
+            return
+        first_idx = song._sequence[0]
+        self._song_load_pattern(song, first_idx, song_pos=0)
+        self._player.goto_start()
+        self._show_status(f"Song: Début → Pat_{first_idx+1:02d}")
+
+    def _song_goto_end(self, song_idx):
+        """Charge le dernier pattern du song, dernière position, arme song mode."""
+        song = self._song_list[song_idx]
+        if not song._sequence:
+            self._show_status("Song vide")
+            return
+        last_idx = song._sequence[-1]
+        last_pos = len(song._sequence) - 1
+        self._song_load_pattern(song, last_idx, song_pos=last_pos)
+        self._player.goto_end()
+        self._show_status(f"Song: Fin → Pat_{last_idx+1:02d}")
+
+    def _song_load_pattern(self, song, pat_idx, song_pos):
+        """Charge pat_idx dans le player et arme le song mode à song_pos."""
+        p   = self._player
+        was_playing = p.playing
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices = p.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
+        self._cur_pattern_idx = pat_idx
+        new = self._pattern_list[pat_idx]
+        self._apply_pattern_from_store(new)
+        p._pattern._looping  = False
+        p._song_sequence     = list(song._sequence)
+        p._pattern_list_ref  = self._pattern_list
+        p._song_pos          = song_pos
+        p._song_mode         = was_playing     # song mode actif seulement si déjà en lecture
+        p._compute_offsets()
+        self._pattern_listbox.SetSelection(pat_idx)
+
     def _on_song_advance(self, next_pat_idx):
         if next_pat_idx < 0:
             self._show_status("Song terminé")
