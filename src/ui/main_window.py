@@ -7,6 +7,7 @@ from sound_device_driver import SoundDeviceDriver
 from drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
+from song import Song
 from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
 from app_config import AppConfig
@@ -23,6 +24,7 @@ from ui.dialogs import (
 )
 from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
+from ui.song_window import SongWindow
 from midi_manager import MidiManager
 
 
@@ -117,6 +119,10 @@ class MainWindow(wx.Frame):
         self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
+        self._song_list = [Song(i) for i in range(Song.MAX_SONGS)]
+        self._song_window = None
+        self._player._pattern_list_ref   = self._pattern_list
+        self._player._on_song_advance_cb = lambda idx: wx.CallAfter(self._on_song_advance, idx)
         self._preset_path = os.path.join(self._presets_dir, "preset_01.json")
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
@@ -444,6 +450,59 @@ class MainWindow(wx.Frame):
         else:
             self._player.play_pattern()
 
+    # ------------------------------------------------------------------
+    # Song mode
+    # ------------------------------------------------------------------
+
+    def _open_song_window(self):
+        if self._song_window is None:
+            self._song_window = SongWindow(self)
+        self._song_window.Show()
+        self._song_window.Raise()
+
+    def _play_song(self, song_idx):
+        song = self._song_list[song_idx]
+        if not song._sequence:
+            self._show_status("Song vide — ajoutez des patterns dans la fenêtre Songs")
+            return
+        if self._player.playing:
+            self._player.stop_pattern()
+        first_idx = song._sequence[0]
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices = self._player.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
+        self._cur_pattern_idx = first_idx
+        new = self._pattern_list[first_idx]
+        self._apply_pattern_from_store(new)
+        self._player._compute_offsets()
+        self._pattern_listbox.SetSelection(first_idx)
+        self._player.play_song(song._sequence, self._pattern_list)
+        n = len(song._sequence)
+        self._show_status(f"Song {song_idx+1:02d} → Pat_{first_idx+1:02d} ({n} patterns)")
+
+    def _on_song_advance(self, next_pat_idx):
+        if next_pat_idx < 0:
+            self._show_status("Song terminé")
+            if self._song_window:
+                self._song_window.on_song_advance(-1)
+            return
+        new = self._pattern_list[next_pat_idx]
+        self._cur_pattern_idx = next_pat_idx
+        self._pattern_listbox.SetSelection(next_pat_idx)
+        self._player.voice_manager.from_list(new._voices)
+        self._router._track_slots[:]   = new._track_slots
+        self._router._track_mutes[:]   = new._track_mutes
+        self._router._track_solos[:]   = new._track_solos
+        self._router._track_volumes[:] = new._track_volumes
+        self._router._track_pans[:]    = new._track_pans
+        self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
+        self._bpm_ctrl.SetValue(int(new._bpm))
+        self._show_status(f"Song → Pat_{next_pat_idx+1:02d}")
+        if self._song_window:
+            self._song_window.on_song_advance(next_pat_idx)
+
+    # ------------------------------------------------------------------
+
     def _switch_pattern(self, idx):
         cur = self._pattern_list[self._cur_pattern_idx]
         cur._voices = self._player.voice_manager.to_list()
@@ -489,6 +548,7 @@ class MainWindow(wx.Frame):
                 "version":  1,
                 "rack":     self._rack.to_dict(),
                 "patterns": [pat.to_dict() for pat in self._pattern_list],
+                "songs":    [s.to_dict() for s in self._song_list],
             }
             with open(self._preset_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, separators=(',', ':'))
@@ -541,6 +601,9 @@ class MainWindow(wx.Frame):
             if i >= len(self._pattern_list):
                 break
             self._pattern_list[i].from_dict(p)
+        for i, s in enumerate(data.get("songs", [])):
+            if i < len(self._song_list):
+                self._song_list[i].from_dict(s)
         self._refresh_pattern_listbox()
         self._cur_pattern_idx = 0
         new = self._pattern_list[0]

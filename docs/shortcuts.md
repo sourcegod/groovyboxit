@@ -111,6 +111,7 @@ NumPad -         ShiftPad vers pads 1-8
 Ctrl+1           Passer en mode Pad
 Ctrl+2           Passer en mode Keyboard
 Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
+Alt+5            Ouvrir la fenêtre Songs (Mode Song)
 
   -- Slot SYNTH (instrument mélodique) --
   NumPad 1-8     Jouer les 8 premières notes de la gamme courante

@@ -73,6 +73,12 @@ class DrumPlayer:
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
         self._resume_offset       = None  # float (pas) pour reprendre depuis une pause ; None = début
         self._last_nav_time       = 0.0   # timestamp du dernier navigate_bar (fenêtre 100 ms)
+        # Song mode
+        self._song_mode          = False
+        self._song_sequence      = []    # liste d'indices 0-based dans _pattern_list
+        self._song_pos           = 0    # position courante dans _song_sequence
+        self._pattern_list_ref   = None  # référence à la liste de patterns (set par main_window)
+        self._on_song_advance_cb = None  # callback(next_pat_idx) — -1 = song terminé
 
     #--------------------------------------------------------------------------
 
@@ -125,10 +131,24 @@ class DrumPlayer:
         self.recording         = False
         self.replace_recording = False
         self._resume_offset    = None
+        self._song_mode        = False
         if not self._note_repeat_active:
             self.stop_thread()
         else:
             self._wakeup.set()
+
+    #--------------------------------------------------------------------------
+
+    def play_song(self, sequence, pattern_list_ref):
+        """Lance la lecture d'un song (liste ordonnée d'indices de patterns)."""
+        if not sequence:
+            return
+        self._song_sequence    = list(sequence)
+        self._pattern_list_ref = pattern_list_ref
+        self._song_pos         = 0
+        self._song_mode        = True
+        self._pattern._looping = False
+        self.play_pattern()
 
     #--------------------------------------------------------------------------
 
@@ -497,7 +517,30 @@ class DrumPlayer:
                                 self._on_count_in_done_cb()
                 elif not self._wakeup.is_set() and not self.stop_event.is_set():
                     if not self._pattern._looping and self.playing:
-                        self.playing = False
+                        if (self._song_mode and self._pattern_list_ref
+                                and self._song_pos + 1 < len(self._song_sequence)):
+                            self._song_pos += 1
+                            next_idx = self._song_sequence[self._song_pos]
+                            next_pat = self._pattern_list_ref[next_idx]
+                            self._pattern.load_pattern(next_pat._curpattern)
+                            self._pattern._looping = False
+                            with self._pattern._lock:
+                                self._pattern._tape = dict(next_pat._tape)
+                            self._pattern._bend_tape = [list(t) for t in next_pat._bend_tape]
+                            self._pattern._mod_tape  = [list(t) for t in next_pat._mod_tape]
+                            if next_pat._bpm != self.bpm:
+                                self.bpm           = next_pat._bpm
+                                self.step_duration = 60.0 / self.bpm / 4
+                            self._compute_offsets()
+                            measure_start = next_measure_start
+                            if self._on_song_advance_cb:
+                                self._on_song_advance_cb(next_idx)
+                        else:
+                            self.playing = False
+                            if self._song_mode:
+                                self._song_mode = False
+                                if self._on_song_advance_cb:
+                                    self._on_song_advance_cb(-1)
 
     #--------------------------------------------------------------------------
 
