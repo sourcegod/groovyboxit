@@ -560,7 +560,7 @@ class MainWindow(wx.Frame):
         p._song_sequence     = list(song._sequence)
         p._pattern_list_ref  = self._pattern_list
         p._song_pos          = song_pos
-        p._song_mode         = was_playing     # song mode actif seulement si déjà en lecture
+        p._song_mode         = True            # toujours armé : appelé depuis SongWindow
         p._compute_offsets()
         self._pattern_listbox.SetSelection(pat_idx)
 

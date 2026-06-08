@@ -550,6 +550,10 @@ class DrumPlayer:
                             if self._on_song_advance_cb:
                                 self._on_song_advance_cb(next_idx)
                         else:
+                            # Pause à la fin (dernier tick) plutôt qu'arrêt complet :
+                            # _resume_offset conserve la position → navigate_bar fonctionne.
+                            total_steps = self._pattern._num_bars * self._pattern._num_steps
+                            self._resume_offset = float(total_steps - 1)
                             self.playing = False
                             if self._song_mode:
                                 self._song_mode = False
