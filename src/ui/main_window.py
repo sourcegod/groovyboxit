@@ -121,8 +121,9 @@ class MainWindow(wx.Frame):
         self._cur_pattern_idx = 0
         self._song_list = [Song(i) for i in range(Song.MAX_SONGS)]
         self._song_window = None
-        self._player._pattern_list_ref   = self._pattern_list
-        self._player._on_song_advance_cb = lambda idx: wx.CallAfter(self._on_song_advance, idx)
+        self._player._pattern_list_ref     = self._pattern_list
+        self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)
+        self._player._on_song_cross_nav_cb = self._on_song_cross_nav
         self._preset_path = os.path.join(self._presets_dir, "preset_01.json")
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
@@ -515,6 +516,35 @@ class MainWindow(wx.Frame):
         self._song_load_pattern(song, last_idx, song_pos=last_pos)
         self._player.goto_end()
         self._show_status(f"Song: Fin → Pat_{last_idx+1:02d}")
+
+    def _on_song_cross_nav(self, direction):
+        """Navigation inter-patterns en song mode (PageUp/Down aux bornes du pattern).
+        Appelé depuis navigate_bar dans le thread UI — synchrone."""
+        p       = self._player
+        new_pos = p._song_pos + direction
+        if not (0 <= new_pos < len(p._song_sequence)):
+            return
+        pat_idx = p._song_sequence[new_pos]
+        new     = self._pattern_list[pat_idx]
+        cur     = self._pattern_list[self._cur_pattern_idx]
+        cur._voices = p.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
+        self._cur_pattern_idx = pat_idx
+        self._apply_pattern_from_store(new)
+        p._pattern._looping = False          # song mode : jamais en boucle
+        p._song_pos         = new_pos
+        p._compute_offsets()
+        self._pattern_listbox.SetSelection(pat_idx)
+        # Positionner au début de la dernière mesure (retour) ou début (avance)
+        if direction < 0:
+            last_bar_start = float((new._num_bars - 1) * new._num_steps)
+            p._go_to_offset(last_bar_start)
+        else:
+            p.goto_start()
+        arrow = "←" if direction < 0 else "→"
+        self._show_status(f"Song {arrow} Pat_{pat_idx+1:02d}")
+        if self._song_window:
+            self._song_window.on_song_advance(pat_idx)
 
     def _song_load_pattern(self, song, pat_idx, song_pos):
         """Charge pat_idx dans le player et arme le song mode à song_pos."""

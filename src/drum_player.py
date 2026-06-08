@@ -79,6 +79,7 @@ class DrumPlayer:
         self._song_pos           = 0    # position courante dans _song_sequence
         self._pattern_list_ref   = None  # référence à la liste de patterns (set par main_window)
         self._on_song_advance_cb = None  # callback(next_pat_idx) — -1 = song terminé
+        self._on_song_cross_nav_cb = None  # callback(direction) — navigation inter-patterns
 
     #--------------------------------------------------------------------------
 
@@ -279,10 +280,23 @@ class DrumPlayer:
             elif cur_bar > 0:
                 target = float((cur_bar - 1) * num_steps)
             else:
+                # Début du pattern : en song mode, passer au pattern précédent
+                if (self._song_mode and self._song_pos > 0
+                        and self._on_song_cross_nav_cb):
+                    self._last_nav_time = now
+                    self._on_song_cross_nav_cb(-1)
+                    return
                 target = 0.0
         else:
             next_bar = cur_bar + 1
             if next_bar >= num_bars:
+                # Dernière mesure : en song mode, passer au pattern suivant
+                if (self._song_mode
+                        and self._song_pos + 1 < len(self._song_sequence)
+                        and self._on_song_cross_nav_cb):
+                    self._last_nav_time = now
+                    self._on_song_cross_nav_cb(+1)
+                    return
                 target = float(total - 1)
             else:
                 target = float(next_bar * num_steps)
