@@ -121,6 +121,7 @@ class MainWindow(wx.Frame):
         self._cur_pattern_idx = 0
         self._song_list = [Song(i) for i in range(Song.MAX_SONGS)]
         self._song_window = None
+        self._pre_song_pattern_idx = 0   # pattern actif avant l'entrée en mode Song
         self._player._pattern_list_ref     = self._pattern_list
         self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)
         self._player._on_song_cross_nav_cb = self._on_song_cross_nav
@@ -457,9 +458,33 @@ class MainWindow(wx.Frame):
 
     def _open_song_window(self):
         if self._song_window is None:
+            # Mémoriser le pattern courant avant d'entrer en mode Song
+            self._pre_song_pattern_idx = self._cur_pattern_idx
+            if self._player.playing:
+                self._player.stop_pattern()
+                self._router.stop_all_synth_voices()
             self._song_window = SongWindow(self)
         self._song_window.Show()
         self._song_window.Raise()
+
+    def _exit_song_mode(self):
+        """Quitte le mode Song : arrête la lecture, réinitialise song mode,
+        restaure le pattern actif avant l'entrée en mode Song."""
+        if self._player.playing:
+            self._player.stop_pattern()
+            self._router.stop_all_synth_voices()
+        # Réinitialiser l'état song dans le player
+        p = self._player
+        p._song_mode     = False
+        p._song_looping  = False
+        p._song_sequence = []
+        p._song_pos      = 0
+        # Revenir au pattern d'avant le mode Song
+        pre = self._pre_song_pattern_idx
+        self._switch_pattern(pre)
+        self._pattern_listbox.SetSelection(pre)
+        p.goto_start()
+        self._show_status(f"Mode Song quitté → Pat_{pre+1:02d}")
 
     def _play_song(self, song_idx):
         song = self._song_list[song_idx]
@@ -477,9 +502,10 @@ class MainWindow(wx.Frame):
         self._apply_pattern_from_store(new)
         self._player._compute_offsets()
         self._pattern_listbox.SetSelection(first_idx)
-        self._player.play_song(song._sequence, self._pattern_list)
+        self._player.play_song(song._sequence, self._pattern_list, song._looping)
         n = len(song._sequence)
-        self._show_status(f"Song {song_idx+1:02d} → Pat_{first_idx+1:02d} ({n} patterns)")
+        loop_str = " [Boucle]" if song._looping else ""
+        self._show_status(f"Song {song_idx+1:02d} → Pat_{first_idx+1:02d} ({n} patterns){loop_str}")
 
     def _song_play_pause(self, song_idx):
         """Play/Pause depuis SongWindow : play=song, pause=pause, resumé=reprend en song mode."""
@@ -561,6 +587,7 @@ class MainWindow(wx.Frame):
         p._pattern_list_ref  = self._pattern_list
         p._song_pos          = song_pos
         p._song_mode         = True            # toujours armé : appelé depuis SongWindow
+        p._song_looping      = song._looping
         p._compute_offsets()
         self._pattern_listbox.SetSelection(pat_idx)
 

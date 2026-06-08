@@ -78,8 +78,9 @@ class DrumPlayer:
         self._song_sequence      = []    # liste d'indices 0-based dans _pattern_list
         self._song_pos           = 0    # position courante dans _song_sequence
         self._pattern_list_ref   = None  # référence à la liste de patterns (set par main_window)
-        self._on_song_advance_cb = None  # callback(next_pat_idx) — -1 = song terminé
+        self._on_song_advance_cb   = None  # callback(next_pat_idx) — -1 = song terminé
         self._on_song_cross_nav_cb = None  # callback(direction) — navigation inter-patterns
+        self._song_looping         = False  # boucler le song entier
 
     #--------------------------------------------------------------------------
 
@@ -140,7 +141,7 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def play_song(self, sequence, pattern_list_ref):
+    def play_song(self, sequence, pattern_list_ref, looping=False):
         """Lance la lecture d'un song (liste ordonnée d'indices de patterns)."""
         if not sequence:
             return
@@ -148,6 +149,7 @@ class DrumPlayer:
         self._pattern_list_ref = pattern_list_ref
         self._song_pos         = 0
         self._song_mode        = True
+        self._song_looping     = looping
         self._pattern._looping = False
         self.play_pattern()
 
@@ -550,15 +552,34 @@ class DrumPlayer:
                             if self._on_song_advance_cb:
                                 self._on_song_advance_cb(next_idx)
                         else:
-                            # Pause à la fin (dernier tick) plutôt qu'arrêt complet :
-                            # _resume_offset conserve la position → navigate_bar fonctionne.
-                            total_steps = self._pattern._num_bars * self._pattern._num_steps
-                            self._resume_offset = float(total_steps - 1)
-                            self.playing = False
-                            if self._song_mode:
-                                self._song_mode = False
+                            if self._song_mode and self._song_looping and self._pattern_list_ref:
+                                # Boucle : repart du 1er pattern sans interruption
+                                self._song_pos = 0
+                                first_idx = self._song_sequence[0]
+                                first_pat = self._pattern_list_ref[first_idx]
+                                self._pattern.load_pattern(first_pat._curpattern)
+                                self._pattern._looping = False
+                                with self._pattern._lock:
+                                    self._pattern._tape = dict(first_pat._tape)
+                                self._pattern._bend_tape = [list(t) for t in first_pat._bend_tape]
+                                self._pattern._mod_tape  = [list(t) for t in first_pat._mod_tape]
+                                if first_pat._bpm != self.bpm:
+                                    self.bpm           = first_pat._bpm
+                                    self.step_duration = 60.0 / self.bpm / 4
+                                self._compute_offsets()
+                                measure_start = next_measure_start
                                 if self._on_song_advance_cb:
-                                    self._on_song_advance_cb(-1)
+                                    self._on_song_advance_cb(first_idx)
+                            else:
+                                # Pause à la fin (dernier tick) plutôt qu'arrêt complet :
+                                # _resume_offset conserve la position → navigate_bar fonctionne.
+                                total_steps = self._pattern._num_bars * self._pattern._num_steps
+                                self._resume_offset = float(total_steps - 1)
+                                self.playing = False
+                                if self._song_mode:
+                                    self._song_mode = False
+                                    if self._on_song_advance_cb:
+                                        self._on_song_advance_cb(-1)
 
     #--------------------------------------------------------------------------
 

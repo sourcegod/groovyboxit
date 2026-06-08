@@ -47,9 +47,11 @@ class SongWindow(wx.Frame):
         # Boutons
         btn_box = wx.BoxSizer(wx.HORIZONTAL)
         self._btn_empty = wx.Button(panel, label="Vider")
+        self._chk_loop  = wx.CheckBox(panel, label="Boucler")
         self._btn_play  = wx.Button(panel, label="Jouer le song")
         self._status    = wx.StaticText(panel, label="")
         btn_box.Add(self._btn_empty, 0, wx.RIGHT, 8)
+        btn_box.Add(self._chk_loop,  0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         btn_box.Add(self._status, 1, wx.ALIGN_CENTER_VERTICAL)
         btn_box.Add(self._btn_play, 0)
         main_vbox.Add(btn_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
@@ -69,12 +71,14 @@ class SongWindow(wx.Frame):
         self._avail_lb.Bind(wx.EVT_LISTBOX_DCLICK, self._on_avail_activate)
         self._seq_lb.Bind(wx.EVT_KEY_DOWN, self._on_seq_key)
         self._seq_lb.Bind(wx.EVT_LISTBOX_DCLICK, self._on_seq_activate)
-        self._btn_empty.Bind(wx.EVT_BUTTON, self._on_empty)
-        self._btn_play.Bind(wx.EVT_BUTTON,  self._on_play)
+        self._btn_empty.Bind(wx.EVT_BUTTON,   self._on_empty)
+        self._btn_play.Bind(wx.EVT_BUTTON,    self._on_play)
+        self._chk_loop.Bind(wx.EVT_CHECKBOX,  self._on_loop_toggle)
 
         self._refresh_song_lb()
         self._refresh_avail_lb()
         self._refresh_seq_lb()
+        self._chk_loop.SetValue(self._parent._song_list[0]._looping)
         self._song_lb.SetFocus()
 
     # ------------------------------------------------------------------
@@ -115,6 +119,8 @@ class SongWindow(wx.Frame):
         idx = self._song_lb.GetSelection()
         if idx != wx.NOT_FOUND:
             self._cur_song_idx = idx
+            song = self._parent._song_list[idx]
+            self._chk_loop.SetValue(song._looping)
             self._refresh_seq_lb()
 
     def _on_song_activate(self, evt):
@@ -180,6 +186,12 @@ class SongWindow(wx.Frame):
 
         evt.Skip()
 
+    def _on_loop_toggle(self, evt):
+        song = self._parent._song_list[self._cur_song_idx]
+        song._looping = self._chk_loop.GetValue()
+        # Propagation live si le song est en cours de lecture
+        self._parent._player._song_looping = song._looping
+
     def _on_empty(self, evt):
         song = self._parent._song_list[self._cur_song_idx]
         song._sequence.clear()
@@ -217,6 +229,7 @@ class SongWindow(wx.Frame):
         evt.Skip()
 
     def _on_close(self, evt):
+        self._parent._exit_song_mode()
         self._parent._song_window = None
         evt.Skip()
 

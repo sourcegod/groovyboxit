@@ -5,6 +5,7 @@ class Song:
         self._idx      = idx
         self._name     = ""
         self._sequence = []  # liste d'indices 0-based dans _pattern_list (0..98)
+        self._looping  = False
 
     def label(self):
         base = self._name if self._name else f"Song_{self._idx + 1:02d}"
@@ -12,8 +13,9 @@ class Song:
         return f"{base} ({n})" if n else base
 
     def to_dict(self):
-        return {"name": self._name, "sequence": self._sequence[:]}
+        return {"name": self._name, "sequence": self._sequence[:], "looping": self._looping}
 
     def from_dict(self, d):
         self._name     = d.get("name", "")
         self._sequence = [int(i) for i in d.get("sequence", [])]
+        self._looping  = bool(d.get("looping", False))

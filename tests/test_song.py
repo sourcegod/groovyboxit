@@ -189,6 +189,60 @@ def test_song_three_patterns_all_advances():
 
 
 # ---------------------------------------------------------------------------
+# Song — bouclage
+# ---------------------------------------------------------------------------
+
+def test_song_looping_default_false():
+    s = Song(0)
+    assert s._looping is False
+
+def test_song_looping_to_dict():
+    s = Song(0)
+    s._looping = True
+    assert s.to_dict()["looping"] is True
+
+def test_song_looping_from_dict():
+    s = Song(0)
+    s.from_dict({"looping": True})
+    assert s._looping is True
+
+def test_song_looping_from_dict_default():
+    s = Song(0)
+    s.from_dict({})
+    assert s._looping is False
+
+def test_play_song_sets_looping_flag():
+    pats = [make_pattern()]
+    player = FakePlayer(pats)
+    player.load_pattern(pats[0]._curpattern)
+    player.play_song([0], pats, looping=True)
+    assert player._song_looping is True
+    player.stop_pattern()
+
+def test_song_looping_loops_back():
+    """Avec looping=True, le callback reçoit l'indice du 1er pattern au lieu de -1."""
+    pats = [make_pattern(bpm=600) for _ in range(2)]
+    for p in pats:
+        p._looping = False
+    advances = []
+    player = FakePlayer(pats)
+    player._on_song_advance_cb = lambda idx: advances.append(idx)
+    player.load_pattern(pats[0]._curpattern)
+    player.play_song([0, 1], pats, looping=True)
+
+    # Attendre 2 cycles complets (chaque pattern = ~0.1 s à 600 BPM)
+    deadline = time.perf_counter() + 3.0
+    while len(advances) < 4 and time.perf_counter() < deadline:
+        time.sleep(0.05)
+    player.stop_pattern()
+
+    # On doit voir la séquence : 1, 0, 1, 0, ... (jamais -1)
+    assert -1 not in advances[:4], f"Got -1 (stop) in looping song: {advances}"
+    assert 1 in advances, "Premier avancement vers pat 1 manquant"
+    assert advances.count(0) >= 1, "Retour au pat 0 manquant (boucle)"
+
+
+# ---------------------------------------------------------------------------
 
 def _run(name, fn):
     try:
@@ -219,6 +273,12 @@ if __name__ == "__main__":
         ("song_single_ends",             test_song_single_pattern_ends),
         ("song_two_advance_end",         test_song_two_patterns_advance_then_end),
         ("song_three_all_advances",      test_song_three_patterns_all_advances),
+        ("song_looping_default_false",   test_song_looping_default_false),
+        ("song_looping_to_dict",         test_song_looping_to_dict),
+        ("song_looping_from_dict",       test_song_looping_from_dict),
+        ("song_looping_from_dict_default", test_song_looping_from_dict_default),
+        ("play_song_sets_looping_flag",  test_play_song_sets_looping_flag),
+        ("song_looping_loops_back",      test_song_looping_loops_back),
     ]
 
     ok = sum(1 for name, fn in tests if _run(name, fn))
