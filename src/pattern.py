@@ -2,8 +2,8 @@ import random
 import threading
 from collections import namedtuple
 
-# Événement MIDI brut enregistré dans _tape.
-# etype: "K" = kit (note MIDI brute), "P" = patch synth (note + bend)
+# Événement enregistré dans _tape.
+# etype: "G" = grille (_curpattern), "K" = kit (note MIDI brute), "P" = patch synth (note + bend)
 TapeEvent = namedtuple("TapeEvent", ["etype", "note", "vel", "dur", "bend"])
 
 

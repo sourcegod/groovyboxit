@@ -19,6 +19,7 @@ def _bend_log(msg):
 
 class DrumPlayer:
     NR_EVENT         = -100  # marqueur interne pour les événements Note Repeat dans la liste
+    GRID_EVENT       = -6   # marqueur interne pour les événements grille (_curpattern)
     KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
     BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
@@ -372,19 +373,6 @@ class DrumPlayer:
             events = []
             if self.playing:
                 num_steps = self._pattern._num_steps
-                for track_idx, track_offsets in enumerate(self._all_offsets):
-                    for pad_idx, pad_off in enumerate(track_offsets):
-                        for offset in pad_off:
-                            t_sec = offset * self.step_duration
-                            if t_sec > elapsed - 0.002:
-                                step     = int(round(offset)) % total_steps
-                                bar_idx  = step // num_steps
-                                step_idx = step % num_steps
-                                raw      = self._pattern._curpattern[track_idx][pad_idx][bar_idx][step_idx]
-                                velocity = 100 if isinstance(raw, bool) and raw else int(raw)
-                                events.append((t_sec, track_idx, pad_idx, velocity))
-            if self.playing:
-                num_steps = self._pattern._num_steps
                 # Snapshot atomique sous verrou — immunise contre les modifications
                 # concurrentes (record_*, erase_*) pendant l'itération.
                 with self._pattern._lock:
@@ -394,7 +382,10 @@ class DrumPlayer:
                     t_sec = float_off * self.step_duration
                     if t_sec > elapsed - 0.002:
                         for ev in note_list:
-                            if ev.etype == "K":
+                            if ev.etype == "G":
+                                events.append((t_sec, self.GRID_EVENT,
+                                               (t_idx, ev.note), ev.vel))
+                            elif ev.etype == "K":
                                 events.append((t_sec, self.KIT_TAPE_EVENT,
                                                (t_idx, ev.note, ev.dur), ev.vel))
                             else:
@@ -443,10 +434,9 @@ class DrumPlayer:
                     return
                 if self._wakeup.is_set():
                     break
-                if track_or_type >= 0:
-                    track_idx = track_or_type
-                    pad_idx   = evt_data
-                    if track_idx == self._cur_track \
+                if track_or_type == self.GRID_EVENT:
+                    t_idx, pad_idx = evt_data
+                    if t_idx == self._cur_track \
                             and pad_idx in self._erase_active_pads:
                         self._clear_offset(pad_idx, t_sec / self.step_duration)
                     elif self.voice_manager.is_audible(pad_idx):
@@ -455,10 +445,10 @@ class DrumPlayer:
                         pan = self._mix_pan(self.voice_manager.get_pan(pad_idx))
                         dur = self.voice_manager.get_duration_ms(pad_idx)
                         if self._on_track_play_cb:
-                            self._on_track_play_cb(track_idx, pad_idx, vol, pan, dur)
+                            self._on_track_play_cb(t_idx, pad_idx, vol, pan, dur)
                         else:
                             self.sound_man.play_sound(pad_idx, vol, pan)
-                        if track_idx == self._cur_track and self.replace_recording:
+                        if t_idx == self._cur_track and self.replace_recording:
                             self._clear_offset(pad_idx, t_sec / self.step_duration)
                 elif track_or_type == self.KIT_TAPE_EVENT:
                     t_idx, midi_note, dur = evt_data
@@ -670,19 +660,33 @@ class DrumPlayer:
     def _compute_offsets(self):
         num_tracks = self._pattern._num_tracks
         all_offsets = []
+        new_grid = {}   # (track, bar, step) -> [TapeEvent("G", ...)]
         for track_idx in range(num_tracks):
             track_offsets = []
-            for pad in self._pattern._curpattern[track_idx]:
+            for pad_idx, pad in enumerate(self._pattern._curpattern[track_idx]):
                 offsets = []
                 base = 0
-                for bar in pad:
+                for bar_idx, bar in enumerate(pad):
                     for step_idx, active in enumerate(bar):
                         if active:
                             offsets.append(float(base + step_idx))
+                            vel = 100 if isinstance(active, bool) else int(active)
+                            key = (track_idx, bar_idx, step_idx)
+                            new_grid.setdefault(key, []).append(
+                                TapeEvent(etype="G", note=pad_idx, vel=vel, dur=0, bend=0)
+                            )
                     base += len(bar)
                 track_offsets.append(offsets)
             all_offsets.append(track_offsets)
         self._all_offsets = all_offsets   # assignation atomique
+        with self._pattern._lock:
+            for key in list(self._pattern._tape.keys()):
+                self._pattern._tape[key] = [ev for ev in self._pattern._tape[key]
+                                            if ev.etype != "G"]
+                if not self._pattern._tape[key]:
+                    del self._pattern._tape[key]
+            for key, evs in new_grid.items():
+                self._pattern._tape.setdefault(key, []).extend(evs)
         if self.playing or self.clicking or self._note_repeat_active:
             self._wakeup.set()
 
@@ -841,6 +845,14 @@ class DrumPlayer:
 
         if not any(min(round(f), total_steps - 1) == step for f in self.float_offsets[pad_idx]):
             self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
+            key = (self._cur_track, bar_idx, step_idx)
+            with self._pattern._lock:
+                evs = self._pattern._tape.get(key)
+                if evs:
+                    evs[:] = [ev for ev in evs
+                              if not (ev.etype == "G" and ev.note == pad_idx)]
+                    if not evs:
+                        del self._pattern._tape[key]
 
         return bar_idx, step_idx
 
@@ -902,6 +914,13 @@ class DrumPlayer:
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
 
+        key    = (self._cur_track, bar_idx, step_idx)
+        new_ev = TapeEvent(etype="G", note=pad_idx, vel=100, dur=0, bend=0)
+        with self._pattern._lock:
+            evs = self._pattern._tape.setdefault(key, [])
+            evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad_idx)]
+            evs.append(new_ev)
+
         if self._on_recorded_cb:
             self._on_recorded_cb(pad_idx, bar_idx, step_idx)
 
@@ -920,6 +939,14 @@ class DrumPlayer:
         step_idx = step % num_steps
         if not any(round(f) % total_steps == step for f in self.float_offsets[pad_idx]):
             self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = 0
+            key = (self._cur_track, bar_idx, step_idx)
+            with self._pattern._lock:
+                evs = self._pattern._tape.get(key)
+                if evs:
+                    evs[:] = [ev for ev in evs
+                              if not (ev.etype == "G" and ev.note == pad_idx)]
+                    if not evs:
+                        del self._pattern._tape[key]
         if self._on_replaced_cb:
             self._on_replaced_cb(pad_idx, bar_idx, step_idx)
 
@@ -952,11 +979,17 @@ class DrumPlayer:
 
     def record_hit(self, pad_idx, velocity=100):
         float_offset, bar_idx, step_idx = self._compute_record_offset()
-        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = \
-            max(1, min(127, int(velocity)))
+        vel = max(1, min(127, int(velocity)))
+        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = vel
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
+        key    = (self._cur_track, bar_idx, step_idx)
+        new_ev = TapeEvent(etype="G", note=pad_idx, vel=vel, dur=0, bend=0)
+        with self._pattern._lock:
+            evs = self._pattern._tape.setdefault(key, [])
+            evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad_idx)]
+            evs.append(new_ev)
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
