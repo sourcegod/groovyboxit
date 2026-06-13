@@ -111,7 +111,6 @@ NumPad -         ShiftPad vers pads 1-8
 Ctrl+1           Passer en mode Pad
 Ctrl+2           Passer en mode Keyboard
 Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
-Alt+5            Ouvrir la fenêtre Songs (Mode Song)
 
   -- Slot SYNTH (instrument mélodique) --
   NumPad 1-8     Jouer les 8 premières notes de la gamme courante
@@ -153,6 +152,27 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
 Alt+M            Connecter / déconnecter le port MIDI sélectionné
 Alt+Shift+M      Actualiser la liste des ports MIDI
 Double-clic      Connecter le port MIDI sélectionné (liste des ports)
+
+--- Fenêtre Songs (Alt+5) ---
+Alt+5            Ouvrir la fenêtre Songs
+Espace / P       Play / Pause du song courant
+g                Aller au début du song (Goto Start)
+Shift+G          Aller à la fin du song (Goto End)
+Ctrl+W           Enregistrer le song courant
+Ctrl+Shift+W     Enregistrer le song sous...
+Échap            Fermer la fenêtre Songs
+Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
+      fonctionnent aussi depuis la fenêtre Songs
+
+  -- Liste Patterns disponibles (focus) --
+  Entrée / Double-clic             Ajouter le pattern à la séquence du song
+  Ctrl+Entrée / Ctrl+Double-clic   Insérer le pattern avant la position courante dans la séquence
+
+  -- Séquence (focus) --
+  Ctrl+Entrée           Insérer le pattern (Patterns disponibles) avant la position courante
+  Suppr / Retour arr.   Supprimer l'entrée sélectionnée
+  Alt+↑                 Monter l'entrée sélectionnée
+  Alt+↓                 Descendre l'entrée sélectionnée
 
 --- Aide ---
 F1               Afficher cette aide
