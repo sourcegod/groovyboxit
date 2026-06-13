@@ -213,6 +213,13 @@ class SongWindow(wx.Frame):
             self.Close()
             return
 
+        if ctrl and shift and key == ord('W'):
+            self._parent._save_song_as()
+            return
+        if ctrl and not shift and key == ord('W'):
+            self._parent._save_song()
+            return
+
         # Overrides song-specific : Play/Pause, GotoStart, GotoEnd
         if not ctrl:
             if not shift and (ukey in (ord(' '), ord('p')) or key in (wx.WXK_SPACE, ord('P'))):

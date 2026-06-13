@@ -139,6 +139,45 @@ class QuantizeDialog(wx.Dialog):
         return self._quant_in_rec_cb.GetValue()
 
 
+class SaveSongDialog(wx.Dialog):
+    def __init__(self, parent, cur_idx, cur_name=""):
+        super().__init__(parent, title="Enregistrer le song")
+
+        list_label = wx.StaticText(self, label="Numéro de song :")
+        self._list = wx.ListBox(
+            self,
+            choices=[f"{i:02d}" for i in range(1, 17)],
+            style=wx.LB_SINGLE,
+        )
+        self._list.SetSelection(cur_idx)
+
+        name_label = wx.StaticText(self, label="Nom (optionnel) :")
+        self._name_ctrl = wx.TextCtrl(self, value=cur_name)
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        ok_btn = wx.Button(self, wx.ID_OK, "Ok")
+        ok_btn.SetDefault()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(list_label,      0, wx.ALL, 6)
+        vbox.Add(self._list,      1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(name_label,      0, wx.LEFT | wx.RIGHT, 6)
+        vbox.Add(self._name_ctrl, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,       0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._list.SetFocus()
+
+    def get_selection(self):
+        return self._list.GetSelection()
+
+    def get_name(self):
+        return self._name_ctrl.GetValue().strip()
+
+
 class SavePatternDialog(wx.Dialog):
     def __init__(self, parent, cur_idx, cur_name=""):
         super().__init__(parent, title="Enregistrer le pattern")

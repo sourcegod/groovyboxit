@@ -17,6 +17,7 @@ from ui.dialogs import (
     GotoDialog,
     QuantizeDialog,
     SavePatternDialog,
+    SaveSongDialog,
     TrackPropertiesDialog,
     PatternPropertiesDialog,
     PadPropertiesDialog,
@@ -648,6 +649,27 @@ class MainWindow(wx.Frame):
             self._flush_pattern_to_store(pat)
             self._refresh_pattern_listbox()
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
+        dlg.Destroy()
+
+    def _save_song(self):
+        self._save_preset()
+        self._show_status(f"Song {self._cur_song_idx + 1:02d} sauvegardé")
+
+    def _save_song_as(self):
+        src  = self._song_list[self._cur_song_idx]
+        dlg  = SaveSongDialog(self, self._cur_song_idx, src._name)
+        if dlg.ShowModal() == wx.ID_OK:
+            idx  = dlg.get_selection()
+            name = dlg.get_name()
+            dst  = self._song_list[idx]
+            dst._sequence = src._sequence[:]
+            dst._looping  = src._looping
+            dst._name     = name
+            self._cur_song_idx = idx
+            if self._song_window:
+                self._song_window.set_cur_song(idx)
+            self._save_preset()
+            self._show_status(f"Song {idx + 1:02d} sauvegardé")
         dlg.Destroy()
 
     def _save_preset(self):
