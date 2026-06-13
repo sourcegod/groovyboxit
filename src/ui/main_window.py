@@ -120,6 +120,7 @@ class MainWindow(wx.Frame):
         self._pattern_list = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._song_list = [Song(i) for i in range(Song.MAX_SONGS)]
+        self._cur_song_idx = 0
         self._song_window = None
         self._pre_song_pattern_idx = 0   # pattern actif avant l'entrée en mode Song
         self._player._pattern_list_ref     = self._pattern_list
@@ -660,6 +661,7 @@ class MainWindow(wx.Frame):
                 "rack":     self._rack.to_dict(),
                 "patterns": [pat.to_dict() for pat in self._pattern_list],
                 "songs":    [s.to_dict() for s in self._song_list],
+                "cur_song": self._cur_song_idx,
             }
             with open(self._preset_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, separators=(',', ':'))
@@ -715,6 +717,9 @@ class MainWindow(wx.Frame):
         for i, s in enumerate(data.get("songs", [])):
             if i < len(self._song_list):
                 self._song_list[i].from_dict(s)
+        self._cur_song_idx = max(0, min(data.get("cur_song", 0), len(self._song_list) - 1))
+        if self._song_window:
+            self._song_window.set_cur_song(self._cur_song_idx)
         self._refresh_pattern_listbox()
         self._cur_pattern_idx = 0
         new = self._pattern_list[0]

@@ -7,7 +7,7 @@ class SongWindow(wx.Frame):
         super().__init__(parent, title="Songs", size=(820, 420),
                          style=wx.DEFAULT_FRAME_STYLE | wx.FRAME_FLOAT_ON_PARENT)
         self._parent = parent
-        self._cur_song_idx = 0
+        self._cur_song_idx = parent._cur_song_idx
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE, self._on_close)
@@ -119,6 +119,7 @@ class SongWindow(wx.Frame):
         idx = self._song_lb.GetSelection()
         if idx != wx.NOT_FOUND:
             self._cur_song_idx = idx
+            self._parent._cur_song_idx = idx
             song = self._parent._song_list[idx]
             self._chk_loop.SetValue(song._looping)
             self._refresh_seq_lb()
@@ -237,6 +238,13 @@ class SongWindow(wx.Frame):
         self._status.SetLabel(msg)
 
     # ------------------------------------------------------------------
+
+    def set_cur_song(self, idx):
+        self._cur_song_idx = idx
+        self._song_lb.SetSelection(idx)
+        song = self._parent._song_list[idx]
+        self._chk_loop.SetValue(song._looping)
+        self._refresh_seq_lb()
 
     def refresh(self):
         """Rafraîchit tous les labels (à appeler depuis main_window si besoin)."""
