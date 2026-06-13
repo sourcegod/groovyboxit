@@ -1480,6 +1480,172 @@ def test_integration_record_json_reload_with_mod():
 
 
 # ---------------------------------------------------------------------------
+# Etype "G" — unification grille (_curpattern) dans _tape (GRID_EVENT)
+# ---------------------------------------------------------------------------
+
+def test_grid_event_constant_value():
+    """GRID_EVENT vaut -6."""
+    from drum_player import DrumPlayer
+    assert DrumPlayer.GRID_EVENT == -6
+    print("  DrumPlayer.GRID_EVENT == -6 : OK")
+
+
+def test_compute_offsets_syncs_G_entry():
+    """_compute_offsets crée un TapeEvent 'G' dans _tape pour chaque step actif."""
+    pl = _make_player()
+    pl._pattern._curpattern[0][3][0][7] = 90   # track 0, pad 3, bar 0, step 7
+    pl._compute_offsets()
+    key = (0, 0, 7)
+    assert key in pl._pattern._tape, "clé (0,0,7) absente de _tape"
+    g_events = [ev for ev in pl._pattern._tape[key]
+                if ev.etype == "G" and ev.note == 3]
+    assert len(g_events) == 1, f"attendu 1 event 'G', obtenu {len(g_events)}"
+    assert g_events[0].vel == 90
+    print("  _compute_offsets crée TapeEvent('G') pour step actif : OK")
+
+
+def test_compute_offsets_removes_stale_G():
+    """_compute_offsets supprime les 'G' périmés quand _curpattern est vide."""
+    pl = _make_player()
+    pl._pattern._tape[(0, 0, 5)] = [TapeEvent("G", 2, 100, 0, 0)]
+    pl._compute_offsets()   # _curpattern tout à zéro → aucun "G" légitime
+    assert (0, 0, 5) not in pl._pattern._tape, "'G' périmé doit être supprimé"
+    print("  _compute_offsets supprime les 'G' périmés : OK")
+
+
+def test_compute_offsets_preserves_K_and_P():
+    """_compute_offsets ne touche pas les événements K et P existants."""
+    pl = _make_player()
+    pl._pattern._tape[(0, 0, 3)] = [TapeEvent("K", 36, 100, 0, 0),
+                                     TapeEvent("P", 60, 90, 400, 0)]
+    pl._compute_offsets()   # _curpattern vide → aucun "G"
+    assert (0, 0, 3) in pl._pattern._tape, "clé (0,0,3) ne doit pas disparaître"
+    etypes = [ev.etype for ev in pl._pattern._tape[(0, 0, 3)]]
+    assert "K" in etypes, "K doit rester"
+    assert "P" in etypes, "P doit rester"
+    print("  _compute_offsets préserve les événements K et P : OK")
+
+
+def test_record_hit_adds_G_to_tape():
+    """record_hit ajoute un TapeEvent 'G' dans _tape."""
+    pl = _make_player()
+    bar_idx, step_idx = pl.record_hit(5, 90)
+    key = (0, bar_idx, step_idx)
+    assert key in pl._pattern._tape, "clé absente de _tape après record_hit"
+    g_events = [ev for ev in pl._pattern._tape[key]
+                if ev.etype == "G" and ev.note == 5]
+    assert len(g_events) == 1, f"attendu 1 'G' pour pad 5, obtenu {len(g_events)}"
+    assert g_events[0].vel == 90
+    print("  record_hit ajoute TapeEvent('G') dans _tape : OK")
+
+
+def test_record_hit_G_velocity_clamped():
+    """record_hit clamp la vélocité à 127 pour le TapeEvent 'G'."""
+    pl = _make_player()
+    bar_idx, step_idx = pl.record_hit(0, 200)
+    key = (0, bar_idx, step_idx)
+    g_events = [ev for ev in pl._pattern._tape[key] if ev.etype == "G"]
+    assert g_events[0].vel == 127
+    print("  record_hit clamp vélocité 'G' à 127 : OK")
+
+
+def test_record_hit_replaces_existing_G():
+    """record_hit au même step remplace le 'G' existant sans doublon."""
+    pl = _make_player()
+    pl.record_hit(2, 80)
+    pl.record_hit(2, 120)   # même position (_measure_start=None → step 0)
+    key = (0, 0, 0)
+    g_events = [ev for ev in pl._pattern._tape[key]
+                if ev.etype == "G" and ev.note == 2]
+    assert len(g_events) == 1, f"doublon 'G' interdit, obtenu {len(g_events)}"
+    assert g_events[0].vel == 120, "vélocité doit être mise à jour"
+    print("  record_hit remplace 'G' existant au même step sans doublon : OK")
+
+
+def test_record_nr_hit_adds_G_to_tape():
+    """_record_nr_hit ajoute un TapeEvent 'G' dans _tape."""
+    pl = _make_player()
+    pl._record_nr_hit(7, 4.0)   # pad 7, offset flottant 4.0 → step 4
+    key = (0, 0, 4)
+    assert key in pl._pattern._tape, "clé (0,0,4) absente après _record_nr_hit"
+    g_events = [ev for ev in pl._pattern._tape[key]
+                if ev.etype == "G" and ev.note == 7]
+    assert len(g_events) == 1
+    assert g_events[0].vel == 100
+    print("  _record_nr_hit ajoute TapeEvent('G') dans _tape : OK")
+
+
+def test_erase_hit_removes_G_from_tape():
+    """erase_hit supprime le TapeEvent 'G' de _tape."""
+    pl = _make_player()
+    bar_idx, step_idx = pl.record_hit(3, 100)
+    key = (0, bar_idx, step_idx)
+    assert key in pl._pattern._tape, "précondition : 'G' présent"
+    pl.erase_hit(3)
+    g_after = [ev for ev in pl._pattern._tape.get(key, [])
+               if ev.etype == "G" and ev.note == 3]
+    assert len(g_after) == 0, "'G' doit être supprimé après erase_hit"
+    print("  erase_hit supprime TapeEvent('G') de _tape : OK")
+
+
+def test_clear_offset_removes_G_from_tape():
+    """_clear_offset supprime le TapeEvent 'G' de _tape."""
+    pl = _make_player()
+    pl._record_nr_hit(6, 2.0)   # pad 6, step 2
+    key = (0, 0, 2)
+    assert key in pl._pattern._tape, "précondition : 'G' présent"
+    pl._clear_offset(6, 2.0)
+    g_after = [ev for ev in pl._pattern._tape.get(key, [])
+               if ev.etype == "G" and ev.note == 6]
+    assert len(g_after) == 0, "'G' doit être supprimé après _clear_offset"
+    print("  _clear_offset supprime TapeEvent('G') de _tape : OK")
+
+
+def test_to_dict_excludes_G_entries():
+    """to_dict ne sérialise pas les TapeEvent 'G' (dérivés de _curpattern)."""
+    pl = _make_player()
+    pl.record_hit(4, 100)   # crée un "G" dans _tape
+    d = pl._pattern.to_dict()
+    assert d["kit_tape"]   == [], f"kit_tape doit être vide, obtenu {d['kit_tape']}"
+    assert d["patch_tape"] == [], f"patch_tape doit être vide, obtenu {d['patch_tape']}"
+    print("  to_dict exclut les entrées 'G' de la sérialisation : OK")
+
+
+def test_G_and_K_coexist_at_same_step():
+    """Un event 'G' et un event 'K' peuvent cohabiter au même (track, bar, step)."""
+    pl = _make_player()
+    pl.record_hit(0, 100)          # 'G' note=0 → key = (0, 0, 0)
+    pl.record_kit_note(36, 100)    # 'K' note=36 → même key = (0, 0, 0)
+    key = (0, 0, 0)
+    etypes = [ev.etype for ev in pl._pattern._tape.get(key, [])]
+    assert "G" in etypes, "'G' doit être présent"
+    assert "K" in etypes, "'K' doit être présent"
+    print("  'G' et 'K' cohabitent au même (track, bar, step) : OK")
+
+
+def test_run_thread_GRID_EVENT_dispatch():
+    """Simule la logique _run_thread : GRID_EVENT dispatch (track, pad, vel)."""
+    pl = _make_player()
+    pl.record_hit(5, 90)
+    key = (0, 0, 0)
+    note_list = pl._pattern._tape.get(key, [])
+
+    events = []
+    for ev in note_list:
+        if ev.etype == "G":
+            events.append((0.0, pl.GRID_EVENT, (0, ev.note), ev.vel))
+
+    assert len(events) == 1, f"attendu 1 GRID_EVENT, obtenu {len(events)}"
+    t_sec, etype, evt_data, vel = events[0]
+    assert etype == pl.GRID_EVENT, f"etype attendu GRID_EVENT, obtenu {etype}"
+    t_idx, pad_idx = evt_data
+    assert t_idx   == 0
+    assert pad_idx == 5
+    assert vel     == 90
+    print("  _run_thread dispatch GRID_EVENT : (track=0, pad=5, vel=90) : OK")
+
+
+# ---------------------------------------------------------------------------
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
@@ -1621,4 +1787,18 @@ if __name__ == "__main__":
     test_flush_and_apply_roundtrip_mod_tape_via_todict()
     test_to_dict_does_not_raise_after_record_mod()
     test_integration_record_json_reload_with_mod()
+    # Etype "G" — unification grille (_curpattern) dans _tape (GRID_EVENT)
+    test_grid_event_constant_value()
+    test_compute_offsets_syncs_G_entry()
+    test_compute_offsets_removes_stale_G()
+    test_compute_offsets_preserves_K_and_P()
+    test_record_hit_adds_G_to_tape()
+    test_record_hit_G_velocity_clamped()
+    test_record_hit_replaces_existing_G()
+    test_record_nr_hit_adds_G_to_tape()
+    test_erase_hit_removes_G_from_tape()
+    test_clear_offset_removes_G_from_tape()
+    test_to_dict_excludes_G_entries()
+    test_G_and_K_coexist_at_same_step()
+    test_run_thread_GRID_EVENT_dispatch()
     print("Tous les tests : OK")
