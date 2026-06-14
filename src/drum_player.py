@@ -2,6 +2,7 @@ import time
 import threading
 import os
 
+from metronome import Metronome
 from pattern import Pattern, TapeEvent
 from voice_manager import VoiceManager
 
@@ -31,7 +32,7 @@ class DrumPlayer:
         self._wakeup = threading.Event()   # réveil mid-mesure si clicking/playing change
         self.sound_man = sound_manager
         self.playing = False
-        self.clicking = False
+        self._metro  = Metronome()
         self.bpm = 100
         self.volume = 80
         self.pan = 0
@@ -58,9 +59,7 @@ class DrumPlayer:
         self._erase_active_midi_notes = set()   # notes MIDI tenues en Erase (patch_tape)
         self._erase_was_recording = False
         self._erase_was_replace   = False
-        self.click_in_recording   = True
         self.count_in_bars        = 1     # 0, 1, 2, 4 ou 8 mesures
-        self._click_before_rec    = False  # état du click avant d'entrer en Rec
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
@@ -93,6 +92,24 @@ class DrumPlayer:
     @float_offsets.setter
     def float_offsets(self, value):
         self._all_offsets[self._cur_track] = value
+
+    #--------------------------------------------------------------------------
+
+    @property
+    def clicking(self):
+        return self._metro.active
+
+    @clicking.setter
+    def clicking(self, value):
+        self._metro.active = value
+
+    @property
+    def click_in_recording(self):
+        return self._metro.click_in_recording
+
+    @click_in_recording.setter
+    def click_in_recording(self, value):
+        self._metro.click_in_recording = value
 
     #--------------------------------------------------------------------------
 
@@ -401,13 +418,9 @@ class DrumPlayer:
                         t_sec = float_off * self.step_duration
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, self.MOD_TAPE_EVENT, (t_idx, mod_val), 0))
-            if self.clicking:
-                steps_per_beat = self._pattern._num_steps // self._pattern._num_beats
-                for bar_idx in range(loop_bars):
-                    for beat in range(self._pattern._num_beats):
-                        t_sec = (bar_idx * self._pattern._num_steps + beat * steps_per_beat) * self.step_duration
-                        if t_sec > elapsed - 0.002:
-                            events.append((t_sec, -1, beat, 0))
+            events.extend(self._metro.build_events(
+                loop_bars, self._pattern._num_steps, self._pattern._num_beats,
+                self.step_duration, elapsed))
             if self._note_repeat_active:
                 denom    = Pattern.QUANT_STEPS[self._nr_quant_idx]
                 nr_step  = 0.0
@@ -487,7 +500,7 @@ class DrumPlayer:
                             )
                         if self.recording:
                             self._record_nr_hit(pad, t_sec / self.step_duration)
-                else:
+                elif track_or_type == Metronome.METRO_EVENT:
                     self.sound_man.play_metronome(evt_data)
             else:
                 # Pré-armer l'enregistrement sur le DERNIER bar de count-in
@@ -741,7 +754,7 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def record_pattern(self):
-        self._click_before_rec = self.clicking
+        self._metro.save_rec_state()
         self.recording = True
         if self.click_in_recording and not self.clicking:
             self.play_click()
@@ -755,7 +768,7 @@ class DrumPlayer:
         if bars == 0:
             self.record_pattern()
             return
-        self._click_before_rec = self.clicking
+        self._metro.save_rec_state()
         self.recording = False
         self.playing   = False
         self._count_in = bars
@@ -769,13 +782,13 @@ class DrumPlayer:
         self.recording         = False
         self.replace_recording = False
         self._count_in         = 0
-        if self.click_in_recording and not self._click_before_rec:
+        if self._metro.should_stop_after_rec():
             self.stop_click()
 
     #--------------------------------------------------------------------------
 
     def start_replace_recording(self):
-        self._click_before_rec = self.clicking
+        self._metro.save_rec_state()
         self.replace_recording = True
         self.recording         = True
         if self.click_in_recording and not self.clicking:
