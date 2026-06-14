@@ -71,7 +71,8 @@ class DrumPlayer:
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
-        self._resume_offset       = None  # float (pas) pour reprendre depuis une pause ; None = début
+        self._resume_offset          = None  # float (pas) pour reprendre depuis une pause ; None = début
+        self._count_in_resume_offset = None  # position de départ après count-in
         self._last_nav_time       = 0.0   # timestamp du dernier navigate_bar (fenêtre 100 ms)
         # Song mode
         self._song_mode          = False
@@ -511,9 +512,10 @@ class DrumPlayer:
                 was_last_count_in  = (self._count_in == 1)
                 next_measure_start = measure_start + measure_secs
                 if was_last_count_in:
-                    self.playing        = True
-                    self.recording      = True
-                    self._measure_start = next_measure_start
+                    self.playing   = True
+                    self.recording = True
+                    offset_secs    = (self._count_in_resume_offset or 0.0) * self.step_duration
+                    self._measure_start = next_measure_start - offset_secs
                     if self._on_count_in_done_cb:
                         self._on_count_in_done_cb()
 
@@ -526,12 +528,14 @@ class DrumPlayer:
                 if self._count_in > 0 and not self._wakeup.is_set() and not self.stop_event.is_set():
                     self._count_in -= 1
                     if self._count_in == 0:
+                        offset_secs = (self._count_in_resume_offset or 0.0) * self.step_duration
+                        self._count_in_resume_offset = None
                         if was_last_count_in:
-                            measure_start = next_measure_start
+                            measure_start = next_measure_start - offset_secs
                         else:
                             self.playing   = True
                             self.recording = True
-                            measure_start  = time.perf_counter()
+                            measure_start  = time.perf_counter() - offset_secs
                             if self._on_count_in_done_cb:
                                 self._on_count_in_done_cb()
                 elif not self._wakeup.is_set() and not self.stop_event.is_set():
@@ -769,6 +773,8 @@ class DrumPlayer:
             self.record_pattern()
             return
         self._metro.save_rec_state()
+        self._count_in_resume_offset = self._current_offset()
+        self._resume_offset = None   # count-in repart toujours du beat 0
         self.recording = False
         self.playing   = False
         self._count_in = bars
