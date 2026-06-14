@@ -22,8 +22,10 @@ class SoundManager(object):
 
         self._driver     = driver
         self.media_lst   = media_lst
-        self.drum_sounds = []
-        self.note_map    = {}   # {midi_note: sound} — tous les sons du kit
+        self.drum_sounds      = []
+        self.note_map         = {}   # {midi_note: sound} — tous les sons du kit
+        self.mute_groups      = [0] * 16  # mute_group par pad (0 = aucun)
+        self.note_mute_groups = {}   # {midi_note: group} — mute exclusif via note MIDI
         self.kit_base    = 36  # première note du kit (note MIDI)
         self.kit_offset  = 0   # décalage courant en demi-tons (multiples de 8)
 
@@ -80,9 +82,10 @@ class SoundManager(object):
         pad_map = {p["pad"]: p for p in meta.get("pads", []) if "pad" in p}
 
         # ── Pads Numpad (1-16) ──────────────────────────────────────────
-        labels     = []
-        wav_paths  = []
-        new_sounds = []
+        labels      = []
+        wav_paths   = []
+        new_sounds  = []
+        mute_groups = []
         for i in range(1, 17):
             entry    = pad_map.get(i, {})
             label    = entry.get("label", f"Pad {i:02d}")
@@ -90,13 +93,16 @@ class SoundManager(object):
             labels.append(label)
             wav_paths.append(wav_path)
             new_sounds.append(sound if sound else self._silent_sound())
+            mute_groups.append(max(0, int(entry.get("mute_group", 0))))
 
         self.drum_sounds = new_sounds
         self.media_lst   = wav_paths
+        self.mute_groups = mute_groups
 
-        # ── note_map + note_labels : tous les sons avec "note" (MIDI) ────
-        self.note_map    = {}
-        self.note_labels = {}
+        # ── note_map + note_labels + note_mute_groups ────────────────────
+        self.note_map         = {}
+        self.note_labels      = {}
+        self.note_mute_groups = {}
         for entry in meta.get("pads", []):
             note = entry.get("note")
             if note is None:
@@ -106,6 +112,9 @@ class SoundManager(object):
             if sound:
                 self.note_map[note]    = sound
                 self.note_labels[note] = label
+            group = max(0, int(entry.get("mute_group", 0)))
+            if group:
+                self.note_mute_groups[note] = group
 
         self._kit_name  = meta.get("name", "")
         self.kit_base   = meta.get("base_note", 36)
@@ -146,11 +155,23 @@ class SoundManager(object):
     # ------------------------------------------------------------------
 
     def play_note(self, midi_note, volume_factor=1.0, pan=0):
-        """Joue un son par note MIDI (utilise note_map)."""
+        """Joue un son par note MIDI (utilise note_map).
+        Applique le mute exclusif si la note appartient à un groupe non-nul."""
+        group = self.note_mute_groups.get(midi_note, 0)
+        if group:
+            for other_note, g in self.note_mute_groups.items():
+                if g == group and other_note != midi_note:
+                    self._stop_note(other_note)
         sound = self.note_map.get(midi_note)
         if sound is None:
             return
         self._driver.play(sound, volume_factor, pan)
+
+    def _stop_note(self, midi_note):
+        """Stoppe le son actuellement en lecture pour note_map[midi_note]."""
+        sound = self.note_map.get(midi_note)
+        if sound is not None:
+            self._driver.stop_sound(sound)
 
     def play_sound(self, index, volume_factor=1.0, pan=0):
         """Joue drum_sounds[index]."""

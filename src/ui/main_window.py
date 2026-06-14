@@ -1253,6 +1253,8 @@ class MainWindow(wx.Frame):
                 labels, wav_paths = self._snd.load_kit(kit_path)
                 for i, label in enumerate(labels):
                     self._player.voice_manager.set_name(i, label)
+                for i, group in enumerate(self._snd.mute_groups):
+                    self._player.voice_manager.set_mute_group(i, group)
                 self._refresh_pad_list()
                 self._show_status(self._kit_status())
                 return
