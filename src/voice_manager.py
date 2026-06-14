@@ -7,6 +7,7 @@ class Voice:
         self.mute        = False
         self.solo        = False
         self.duration_ms = 500   # durée de note en ms (0 = fin du WAV)
+        self.mute_group  = 0     # groupe mute exclusif (0 = aucun)
 
 
 class VoiceManager:
@@ -42,6 +43,9 @@ class VoiceManager:
     def get_duration_ms(self, pad_idx):
         return self._voices[pad_idx].duration_ms
 
+    def get_mute_group(self, pad_idx):
+        return self._voices[pad_idx].mute_group
+
     def get_voice(self, pad_idx):
         return self._voices[pad_idx]
 
@@ -59,6 +63,9 @@ class VoiceManager:
 
     def set_duration_ms(self, pad_idx, value):
         self._voices[pad_idx].duration_ms = max(0, int(value))
+
+    def set_mute_group(self, pad_idx, value):
+        self._voices[pad_idx].mute_group = max(0, int(value))
 
     def set_pan(self, pad_idx, value):
         self._voices[pad_idx].pan = max(-100, min(100, int(value)))
@@ -89,6 +96,7 @@ class VoiceManager:
             v.mute        = False
             v.solo        = False
             v.duration_ms = 500
+            v.mute_group  = 0
 
     def reset_pad(self, pad_idx):
         v = self._voices[pad_idx]
@@ -99,6 +107,7 @@ class VoiceManager:
         v.mute        = False
         v.solo        = False
         v.duration_ms = 500
+        v.mute_group  = 0
 
     def set_mute_all(self, value):
         for v in self._voices:
@@ -123,7 +132,8 @@ class VoiceManager:
     def to_list(self):
         return [
             {"name": v.name, "volume": v.volume, "pan": v.pan,
-             "mute": v.mute, "solo": v.solo, "duration_ms": v.duration_ms}
+             "mute": v.mute, "solo": v.solo, "duration_ms": v.duration_ms,
+             "mute_group": v.mute_group}
             for v in self._voices
         ]
 
@@ -138,3 +148,4 @@ class VoiceManager:
             v.mute        = bool(d.get("mute",  False))
             v.solo        = bool(d.get("solo",  False))
             v.duration_ms = max(0, int(d.get("duration_ms", 500)))
+            v.mute_group  = max(0, int(d.get("mute_group", 0)))

@@ -171,6 +171,11 @@ class SoundManager(object):
     # Contrôle
     # ------------------------------------------------------------------
 
+    def stop_sound_by_pad(self, pad_idx):
+        """Stoppe le son actuellement en lecture pour drum_sounds[pad_idx]."""
+        if pad_idx < len(self.drum_sounds):
+            self._driver.stop_sound(self.drum_sounds[pad_idx])
+
     def stop_all(self):
         self._driver.stop_all()
 
