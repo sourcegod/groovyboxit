@@ -149,8 +149,8 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
   -- Sélection multi-pistes --
   Ctrl+A           Sélectionner toutes les pistes
   Ctrl+Shift+A     Désélectionner tout
-  Shift+↑          Étendre la sélection vers la piste du dessus
-  Shift+↓          Étendre la sélection vers la piste du dessous
+  Shift+↑          Étendre la sélection vers la piste du dessus (pistes adjacentes)
+  Shift+↓          Étendre la sélection vers la piste du dessous (pistes adjacentes)
   ↑ / ↓           Navigation simple (efface la sélection multi-pistes)
 
   -- Édition des pistes sélectionnées --

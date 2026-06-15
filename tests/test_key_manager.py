@@ -833,6 +833,8 @@ def test_shift_d_does_not_reset_full_pattern():
     print("  Shift+D n'appelle pas reset_pattern() : OK")
 
 
+
+
 # ---------------------------------------------------------------------------
 # Enter sur la grille — joue aussi la ligne
 # ---------------------------------------------------------------------------

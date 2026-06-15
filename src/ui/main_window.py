@@ -985,15 +985,14 @@ class MainWindow(wx.Frame):
     def _track_label(self, idx):
         slot_idx  = self._router.slot_for_track(idx)
         slot_name = self._router.slot_name(idx)
-        label = f"Track_{idx + 1:02d} - Slot_{slot_idx + 1:02d} - {slot_name}"
+        prefix = "* " if self._track_editor.is_selected(idx) else "  "
+        label = f"{prefix}Track_{idx + 1:02d} - Slot_{slot_idx + 1:02d} - {slot_name}"
         if self._player._cur_track == idx and self._player.recording:
             label += " [REC]"
         if self._router._track_mutes[idx]:
             label += " [M]"
         if self._router._track_solos[idx]:
             label += " [S]"
-        if self._track_editor.is_selected(idx):
-            label += " [*]"
         return label
 
     def _refresh_track_list(self):
