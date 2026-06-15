@@ -281,6 +281,17 @@ class KeyManager:
         shift = ctx.shift
         alt   = ctx.alt
 
+        if shift and not alt and key == ord('A'):
+            win._track_editor.clear_selection()
+            win._refresh_track_list()
+            win._show_status("Sélection effacée")
+            return True
+        if not shift and not alt and key == ord('A'):
+            n = win._player._pattern._num_tracks
+            win._track_editor.select_all(n)
+            win._refresh_track_list()
+            win._show_status(f"Toutes les pistes sélectionnées ({n})")
+            return True
         if not shift and not alt and key == ord('C'):
             te = win._track_editor
             cur = win._player._cur_track

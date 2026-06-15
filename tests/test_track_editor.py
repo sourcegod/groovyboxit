@@ -57,6 +57,19 @@ def _track_sum(pattern, track_idx):
 # Tests sélection
 # ---------------------------------------------------------------------------
 
+def test_select_all():
+    te = TrackEditor()
+    te.select_all(4)
+    assert te._sel_tracks == {0, 1, 2, 3}
+
+
+def test_select_all_then_clear():
+    te = TrackEditor()
+    te.select_all(3)
+    te.clear_selection()
+    assert te._sel_tracks == set()
+
+
 def test_select_one():
     te = TrackEditor()
     te.select_one(2)

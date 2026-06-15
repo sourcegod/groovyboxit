@@ -38,6 +38,10 @@ class TrackEditor:
         """Réinitialise la sélection sur une seule piste."""
         self._sel_tracks = {track_idx}
 
+    def select_all(self, num_tracks):
+        """Sélectionne toutes les pistes (0..num_tracks-1)."""
+        self._sel_tracks = set(range(num_tracks))
+
     def clear_selection(self):
         """Efface la sélection multi-pistes."""
         self._sel_tracks.clear()
