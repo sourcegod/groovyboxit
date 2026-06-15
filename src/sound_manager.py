@@ -22,10 +22,11 @@ class SoundManager(object):
 
         self._driver     = driver
         self.media_lst   = media_lst
-        self.drum_sounds      = []
-        self.note_map         = {}   # {midi_note: sound} — tous les sons du kit
-        self.mute_groups      = [0] * 16  # mute_group par pad (0 = aucun)
-        self.note_mute_groups = {}   # {midi_note: group} — mute exclusif via note MIDI
+        self.drum_sounds = []
+        self.note_map    = {}   # {midi_note: sound} — tous les sons du kit
+        self.mute_groups = [0] * 16  # mute_group par pad — pour sync VoiceManager au chargement
+        self._sound_group  = {}  # {id(sound): group_id} — index audio unifié
+        self._group_sounds = {}  # {group_id: set(sounds)} — pairs à stopper
         self.kit_base    = 36  # première note du kit (note MIDI)
         self.kit_offset  = 0   # décalage courant en demi-tons (multiples de 8)
 
@@ -54,12 +55,14 @@ class SoundManager(object):
         """Charge un kit depuis un fichier JSON.
 
         Chaque entrée peut avoir :
-          "pad"      (1-16) → son assigné au Numpad
-          "note"     (MIDI) → son déclenché par note MIDI (note_map)
+          "pad"        (1-16)  → son assigné au Numpad
+          "note"       (MIDI)  → son déclenché par note MIDI (note_map)
+          "mute_group" (int)   → groupe mute exclusif (0 = aucun)
           "filename" et "label"
 
         Retourne (labels, wav_paths) — deux listes de 16 éléments (pads Numpad).
-        Construit aussi self.note_map {midi_note: sound} pour le routage MIDI.
+        Construit aussi self.note_map {midi_note: sound} pour le routage MIDI
+        et self._sound_group / self._group_sounds pour le mute exclusif.
         """
         json_path = os.path.abspath(json_path)
         json_dir  = os.path.dirname(json_path)
@@ -97,12 +100,11 @@ class SoundManager(object):
 
         self.drum_sounds = new_sounds
         self.media_lst   = wav_paths
-        self.mute_groups = mute_groups
+        self.mute_groups = mute_groups   # conservé pour sync VoiceManager
 
-        # ── note_map + note_labels + note_mute_groups ────────────────────
-        self.note_map         = {}
-        self.note_labels      = {}
-        self.note_mute_groups = {}
+        # ── note_map + note_labels ───────────────────────────────────────
+        self.note_map    = {}
+        self.note_labels = {}
         for entry in meta.get("pads", []):
             note = entry.get("note")
             if note is None:
@@ -112,9 +114,24 @@ class SoundManager(object):
             if sound:
                 self.note_map[note]    = sound
                 self.note_labels[note] = label
-            group = max(0, int(entry.get("mute_group", 0)))
-            if group:
-                self.note_mute_groups[note] = group
+
+        # ── Index mute exclusif — un seul point de vérité ───────────────
+        # Les sons drum_sounds et note_map partagent les objets via sound_cache ;
+        # on indexe par identité d'objet → mute group unifié quel que soit
+        # le chemin de déclenchement (pad numpad, séquenceur, note MIDI live).
+        self._sound_group  = {}
+        self._group_sounds = {}
+        for entry in meta.get("pads", []):
+            group    = max(0, int(entry.get("mute_group", 0)))
+            filename = entry.get("filename", "")
+            if not group or not filename:
+                continue
+            wav_path = os.path.normpath(os.path.join(json_dir, filename))
+            sound    = sound_cache.get(wav_path)
+            if sound is None:
+                continue
+            self._sound_group[id(sound)] = group
+            self._group_sounds.setdefault(group, set()).add(sound)
 
         self._kit_name  = meta.get("name", "")
         self.kit_base   = meta.get("base_note", 36)
@@ -151,31 +168,60 @@ class SoundManager(object):
         return labels
 
     # ------------------------------------------------------------------
+    # Mute exclusif — point central
+    # ------------------------------------------------------------------
+
+    def _apply_mute_group(self, sound):
+        """Stoppe les peers actifs du même groupe avant de jouer sound.
+        No-op si sound est None ou n'appartient à aucun groupe."""
+        if sound is None:
+            return
+        group = self._sound_group.get(id(sound), 0)
+        if group:
+            for peer in self._group_sounds.get(group, ()):
+                if peer is not sound:
+                    self._driver.stop_sound(peer)
+
+    def set_pad_mute_group(self, pad_idx, group):
+        """Met à jour le groupe mute d'un pad dans l'index audio.
+        Hook pour l'UI (PadPropertiesDialog) — à appeler avec
+        VoiceManager.set_mute_group() pour garder les deux en sync."""
+        if pad_idx >= len(self.drum_sounds):
+            return
+        sound     = self.drum_sounds[pad_idx]
+        old_group = self._sound_group.pop(id(sound), 0)
+        if old_group:
+            peers = self._group_sounds.get(old_group)
+            if peers:
+                peers.discard(sound)
+                if not peers:
+                    del self._group_sounds[old_group]
+        group = max(0, int(group))
+        if group:
+            self._sound_group[id(sound)] = group
+            self._group_sounds.setdefault(group, set()).add(sound)
+        if pad_idx < len(self.mute_groups):
+            self.mute_groups[pad_idx] = group
+
+    # ------------------------------------------------------------------
     # Lecture
     # ------------------------------------------------------------------
 
     def play_note(self, midi_note, volume_factor=1.0, pan=0):
         """Joue un son par note MIDI (utilise note_map).
-        Applique le mute exclusif si la note appartient à un groupe non-nul."""
-        group = self.note_mute_groups.get(midi_note, 0)
-        if group:
-            for other_note, g in self.note_mute_groups.items():
-                if g == group and other_note != midi_note:
-                    self._stop_note(other_note)
+        Applique automatiquement le mute exclusif de groupe."""
         sound = self.note_map.get(midi_note)
         if sound is None:
             return
+        self._apply_mute_group(sound)
         self._driver.play(sound, volume_factor, pan)
 
-    def _stop_note(self, midi_note):
-        """Stoppe le son actuellement en lecture pour note_map[midi_note]."""
-        sound = self.note_map.get(midi_note)
-        if sound is not None:
-            self._driver.stop_sound(sound)
-
     def play_sound(self, index, volume_factor=1.0, pan=0):
-        """Joue drum_sounds[index]."""
-        self._driver.play(self.drum_sounds[index], volume_factor, pan)
+        """Joue drum_sounds[index].
+        Applique automatiquement le mute exclusif de groupe."""
+        sound = self.drum_sounds[index]
+        self._apply_mute_group(sound)
+        self._driver.play(sound, volume_factor, pan)
 
     def preview_sound(self, sound_name):
         if sound_name in self.drum_sounds:
@@ -191,11 +237,6 @@ class SoundManager(object):
     # ------------------------------------------------------------------
     # Contrôle
     # ------------------------------------------------------------------
-
-    def stop_sound_by_pad(self, pad_idx):
-        """Stoppe le son actuellement en lecture pour drum_sounds[pad_idx]."""
-        if pad_idx < len(self.drum_sounds):
-            self._driver.stop_sound(self.drum_sounds[pad_idx])
 
     def stop_all(self):
         self._driver.stop_all()

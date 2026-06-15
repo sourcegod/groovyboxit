@@ -461,7 +461,7 @@ class DrumPlayer:
                         if self._on_track_play_cb:
                             self._on_track_play_cb(t_idx, pad_idx, vol, pan, dur)
                         else:
-                            self._play_kit_sound(pad_idx, vol, pan)
+                            self.sound_man.play_sound(pad_idx, vol, pan)
                         if t_idx == self._cur_track and self.replace_recording:
                             self._clear_offset(pad_idx, t_sec / self.step_duration)
                 elif track_or_type == self.KIT_TAPE_EVENT:
@@ -494,7 +494,7 @@ class DrumPlayer:
                         if self._nr_play_cb:
                             self._nr_play_cb(pad)
                         else:
-                            self._play_kit_sound(
+                            self.sound_man.play_sound(
                                 pad,
                                 self.voice_manager.get_volume_factor(pad),
                                 self._mix_pan(self.voice_manager.get_pan(pad)),
@@ -715,22 +715,11 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def _play_kit_sound(self, pad_idx, vol, pan):
-        """Joue drum_sounds[pad_idx] en appliquant le mute exclusif de groupe."""
-        group = self.voice_manager.get_mute_group(pad_idx)
-        if group != 0:
-            for j in range(self.voice_manager._num_pads):
-                if j != pad_idx and self.voice_manager.get_mute_group(j) == group:
-                    self.sound_man.stop_sound_by_pad(j)
-        self.sound_man.play_sound(pad_idx, vol, pan)
-
-    #--------------------------------------------------------------------------
-
     def play_sound(self, index, velocity=100):
         self.last_played_pad = index
         if self.voice_manager.is_audible(index):
             vol = min(1.0, self.voice_manager.get_volume_factor(index) * velocity / 100.0)
-            self._play_kit_sound(
+            self.sound_man.play_sound(
                 index,
                 vol,
                 self._mix_pan(self.voice_manager.get_pan(index)),

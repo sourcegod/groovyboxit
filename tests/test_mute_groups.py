@@ -3,7 +3,7 @@
     File: tests/test_mute_groups.py
     Tests unitaires — groupes mute exclusif (Phase 5 étape 4)
     Couvre : Voice.mute_group, VoiceManager get/set/reset/sérialisation,
-             DrumPlayer._play_kit_sound (logique d'exclusion de groupe).
+             SoundManager._apply_mute_group (play_sound et play_note).
     Date: Mon, 15/06/2026
     Author: Coolbrother
 """
@@ -13,36 +13,64 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from voice_manager import Voice, VoiceManager
-from drum_player import DrumPlayer
+from sound_manager import SoundManager
 
 
 # ---------------------------------------------------------------------------
-# Mock SoundManager
+# MockDriver et helpers SoundManager
 # ---------------------------------------------------------------------------
 
-class MockSoundManager:
-    """Enregistre les appels play_sound / stop_sound_by_pad pour assertions."""
+class _S:
+    """Sentinelle imitant un SdSound sans audio réel."""
+    pass
 
-    def __init__(self, num_pads=16):
-        self.played   = []   # liste de pad_idx joués
-        self.stopped  = []   # liste de pad_idx stoppés
-        self.drum_sounds = [object() for _ in range(num_pads)]
 
-    def play_sound(self, pad_idx, vol=1.0, pan=0):
-        self.played.append(pad_idx)
+class MockDriver:
+    def __init__(self):
+        self.played  = []   # objets son joués
+        self.stopped = []   # objets son stoppés
 
-    def stop_sound_by_pad(self, pad_idx):
-        self.stopped.append(pad_idx)
+    def load(self, path):           return _S()
+    def make_silent(self):          return _S()
+    def play(self, sound, vol=1.0, pan=0, **kw):
+        self.played.append(sound)
+    def stop_sound(self, sound):
+        self.stopped.append(sound)
+    def stop_all(self):             pass
+    def set_master_volume(self, v): pass
+    def set_sound_volume(self, s, v): pass
 
     def reset(self):
         self.played.clear()
         self.stopped.clear()
 
 
-def make_player(num_pads=16):
-    snd = MockSoundManager(num_pads)
-    dp  = DrumPlayer(sound_manager=snd)
-    return dp, snd
+def make_sm(group_map=None):
+    """Crée un SoundManager minimal avec groupes pré-configurés (sans kit JSON).
+
+    group_map : {pad_idx: group_id} pour les drum_sounds
+    Retourne (sm, driver, sounds[16]).
+    """
+    driver = MockDriver()
+    sm = SoundManager.__new__(SoundManager)
+    sm._driver        = driver
+    sm._sound_group   = {}
+    sm._group_sounds  = {}
+    sm.mute_groups    = [0] * 16
+    sm.note_map       = {}
+    sm.note_labels    = {}
+    sm._kit_name      = ""
+    sm.kit_base       = 36
+    sm.kit_offset     = 0
+    sm.media_lst      = []
+    sounds = [_S() for _ in range(16)]
+    sm.drum_sounds = sounds
+    for pad_idx, group in (group_map or {}).items():
+        sound = sounds[pad_idx]
+        sm._sound_group[id(sound)]  = group
+        sm._group_sounds.setdefault(group, set()).add(sound)
+        sm.mute_groups[pad_idx]     = group
+    return sm, driver, sounds
 
 
 def ok(msg):
@@ -182,58 +210,87 @@ def test_roundtrip_mute_group():
 
 
 # ---------------------------------------------------------------------------
-# DrumPlayer._play_kit_sound — logique mute exclusif
+# SoundManager._apply_mute_group — via play_sound (pads)
 # ---------------------------------------------------------------------------
 
-def test_play_kit_sound_no_group_no_stop():
-    dp, snd = make_player()
-    dp._play_kit_sound(0, 1.0, 0)
-    assert 0 in snd.played
-    assert snd.stopped == []
-    ok("_play_kit_sound sans groupe → aucun stop")
+def test_play_sound_no_group_no_stop():
+    sm, drv, sounds = make_sm()
+    sm.play_sound(0, 1.0, 0)
+    assert sounds[0] in drv.played
+    assert drv.stopped == []
+    ok("play_sound sans groupe → aucun stop")
 
-def test_play_kit_sound_group_stops_peer():
-    dp, snd = make_player()
-    dp.voice_manager.set_mute_group(0, 1)
-    dp.voice_manager.set_mute_group(1, 1)
-    dp._play_kit_sound(0, 1.0, 0)
-    assert 1 in snd.stopped
-    assert 0 not in snd.stopped   # ne se stoppe pas lui-même
-    ok("_play_kit_sound groupe 1 → stoppe le pair (pad 1)")
+def test_play_sound_group_stops_peer():
+    sm, drv, sounds = make_sm({0: 1, 1: 1})
+    sm.play_sound(0, 1.0, 0)
+    assert sounds[1] in drv.stopped
+    assert sounds[0] not in drv.stopped
+    ok("play_sound groupe 1 → stoppe le pair (pad 1)")
 
-def test_play_kit_sound_group_plays_after_stop():
-    dp, snd = make_player()
-    dp.voice_manager.set_mute_group(2, 2)
-    dp.voice_manager.set_mute_group(3, 2)
-    dp._play_kit_sound(2, 0.8, 0)
-    assert snd.stopped == [3]
-    assert snd.played  == [2]
-    ok("_play_kit_sound : stop peer avant play (ordre correct)")
+def test_play_sound_group_plays_after_stop():
+    sm, drv, sounds = make_sm({2: 2, 3: 2})
+    sm.play_sound(2, 0.8, 0)
+    assert drv.stopped == [sounds[3]]
+    assert drv.played  == [sounds[2]]
+    ok("play_sound : stop peer avant play (ordre correct)")
 
-def test_play_kit_sound_group_stops_all_peers():
-    dp, snd = make_player()
-    for i in [0, 1, 2, 3]:
-        dp.voice_manager.set_mute_group(i, 1)
-    dp._play_kit_sound(0, 1.0, 0)
-    assert set(snd.stopped) == {1, 2, 3}
-    assert 0 not in snd.stopped
-    ok("_play_kit_sound groupe 1 avec 4 pads → stoppe les 3 pairs")
+def test_play_sound_group_stops_all_peers():
+    sm, drv, sounds = make_sm({0: 1, 1: 1, 2: 1, 3: 1})
+    sm.play_sound(0, 1.0, 0)
+    assert set(drv.stopped) == {sounds[1], sounds[2], sounds[3]}
+    assert sounds[0] not in drv.stopped
+    ok("play_sound groupe 1 avec 4 pads → stoppe les 3 pairs")
 
-def test_play_kit_sound_different_groups_not_stopped():
-    dp, snd = make_player()
-    dp.voice_manager.set_mute_group(0, 1)
-    dp.voice_manager.set_mute_group(1, 2)   # groupe différent
-    dp._play_kit_sound(0, 1.0, 0)
-    assert snd.stopped == []   # pad 1 (groupe 2) ne doit pas être stoppé
-    ok("_play_kit_sound : groupes différents → pas d'exclusion")
+def test_play_sound_different_groups_not_stopped():
+    sm, drv, sounds = make_sm({0: 1, 1: 2})
+    sm.play_sound(0, 1.0, 0)
+    assert drv.stopped == []
+    ok("play_sound : groupes différents → pas d'exclusion")
 
-def test_play_kit_sound_group_zero_no_stop():
-    dp, snd = make_player()
-    dp.voice_manager.set_mute_group(0, 0)
-    dp.voice_manager.set_mute_group(1, 0)
-    dp._play_kit_sound(0, 1.0, 0)
-    assert snd.stopped == []
-    ok("_play_kit_sound groupe 0 → aucun stop (groupe neutre)")
+def test_play_sound_group_zero_no_stop():
+    sm, drv, sounds = make_sm({0: 0, 1: 0})
+    sm.play_sound(0, 1.0, 0)
+    assert drv.stopped == []
+    ok("play_sound groupe 0 → aucun stop (groupe neutre)")
+
+
+# ---------------------------------------------------------------------------
+# SoundManager._apply_mute_group — via play_note (MIDI live)
+# ---------------------------------------------------------------------------
+
+def test_play_note_no_group_no_stop():
+    sm, drv, sounds = make_sm()
+    note_sound = _S()
+    sm.note_map[42] = note_sound
+    sm.play_note(42, 1.0)
+    assert note_sound in drv.played
+    assert drv.stopped == []
+    ok("play_note sans groupe → aucun stop")
+
+def test_play_note_group_stops_peer():
+    sm, drv, sounds = make_sm()
+    s42, s44 = _S(), _S()
+    sm.note_map = {42: s42, 44: s44}
+    sm._sound_group  = {id(s42): 1, id(s44): 1}
+    sm._group_sounds = {1: {s42, s44}}
+    sm.play_note(42, 1.0)
+    assert s44 in drv.stopped
+    assert s42 not in drv.stopped
+    ok("play_note groupe 1 → stoppe le pair (note 44)")
+
+def test_play_note_shared_sound_stops_pad_voice():
+    """Un même SdSound partagé entre note_map et drum_sounds :
+    play_note doit stopper la voix quelle que soit son origine."""
+    sm, drv, sounds = make_sm()
+    shared = sounds[7]               # pad 7 et note 42 partagent le même objet
+    sm.note_map[42] = shared
+    sm.note_map[44] = sounds[9]
+    sm._sound_group  = {id(shared): 1, id(sounds[9]): 1}
+    sm._group_sounds = {1: {shared, sounds[9]}}
+    sm.play_note(42, 1.0)            # déclenche note 42 → doit stopper note 44 (sons[9])
+    assert sounds[9] in drv.stopped
+    assert shared not in drv.stopped
+    ok("play_note : son partagé pad/note → peer stoppé correctement")
 
 
 # ---------------------------------------------------------------------------
@@ -261,13 +318,17 @@ if __name__ == "__main__":
         test_from_list_restores_mute_group,
         test_from_list_missing_mute_group_defaults_zero,
         test_roundtrip_mute_group,
-        # DrumPlayer._play_kit_sound
-        test_play_kit_sound_no_group_no_stop,
-        test_play_kit_sound_group_stops_peer,
-        test_play_kit_sound_group_plays_after_stop,
-        test_play_kit_sound_group_stops_all_peers,
-        test_play_kit_sound_different_groups_not_stopped,
-        test_play_kit_sound_group_zero_no_stop,
+        # SoundManager.play_sound
+        test_play_sound_no_group_no_stop,
+        test_play_sound_group_stops_peer,
+        test_play_sound_group_plays_after_stop,
+        test_play_sound_group_stops_all_peers,
+        test_play_sound_different_groups_not_stopped,
+        test_play_sound_group_zero_no_stop,
+        # SoundManager.play_note
+        test_play_note_no_group_no_stop,
+        test_play_note_group_stops_peer,
+        test_play_note_shared_sound_stops_pad_voice,
     ]
 
     print("=== test_mute_groups ===")
