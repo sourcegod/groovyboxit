@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import wx
 from unittest.mock import patch
 from ui.key_manager import KeyManager
+from track_editor import TrackEditor
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +100,8 @@ class FakePlayer:
 
     def play_pattern(self):
         self.calls.append('play_pattern');    self.playing = True
+    def pause_pattern(self):
+        self.calls.append('pause_pattern');   self.playing = False
     def stop_pattern(self):
         self.calls.append('stop_pattern');    self.playing = False
     def stop_all(self):
@@ -153,6 +156,7 @@ class FakeRouter:
     def slot_name(self, i):      return f"Slot_{i + 1}"
     def update_kb_notes(self, scale, root): self.calls.append(('update_kb_notes', scale, root))
     def update_input_kb(self, root):        self.calls.append(('update_input_kb', root))
+    def stop_all_synth_voices(self):        self.calls.append('stop_all_synth_voices')
 
 
 class _FakeSlot:
@@ -215,11 +219,12 @@ class FakeWindow:
         self._kb_scale      = "major"
         self._cur_slot      = 0
         # Données
-        self._player       = FakePlayer()
-        self._router       = FakeRouter()
-        self._rack         = FakeRack()
-        self._snd          = FakeSnd()
-        self._midi_handler = FakeMidiHandler(self)
+        self._player        = FakePlayer()
+        self._router        = FakeRouter()
+        self._rack          = FakeRack()
+        self._snd           = FakeSnd()
+        self._midi_handler  = FakeMidiHandler(self)
+        self._track_editor  = TrackEditor()
         # Journal des appels sur FakeWindow elle-même
         self.calls = []
 
@@ -599,9 +604,9 @@ def test_space_stops_playing_pattern():
     app, win, km = make_km()
     win._player.playing = True
     km.handle(FakeEvent(key=wx.WXK_SPACE))
-    assert 'stop_pattern' in win._player.calls
+    assert 'pause_pattern' in win._player.calls
     teardown(app)
-    print("  Space → stop_pattern() (si en lecture) : OK")
+    print("  Space → pause_pattern() (si en lecture) : OK")
 
 def test_p_plays_pattern():
     app, win, km = make_km()

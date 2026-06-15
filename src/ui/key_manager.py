@@ -281,6 +281,36 @@ class KeyManager:
         shift = ctx.shift
         alt   = ctx.alt
 
+        if not shift and not alt and key == ord('C'):
+            te = win._track_editor
+            cur = win._player._cur_track
+            te.copy(win._player._pattern, cur)
+            tracks = te.get_effective_tracks(cur)
+            win._show_status(
+                f"Copié: Piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
+            return True
+        if not shift and not alt and key == ord('X'):
+            te = win._track_editor
+            cur = win._player._cur_track
+            tracks = te.get_effective_tracks(cur)
+            te.cut(win._player._pattern, cur)
+            win._refresh_grid()
+            win._show_status(
+                f"Coupé: Piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
+            return True
+        if not shift and not alt and key == ord('V'):
+            te = win._track_editor
+            cur = win._player._cur_track
+            if te.paste(win._player._pattern, cur):
+                win._refresh_grid()
+                win._show_status(f"Collé à partir de la Piste {cur + 1}")
+            else:
+                win._show_status("Presse-papier vide")
+            return True
         if shift and key == ord('W'):
             win._save_pattern_as()
             return True
@@ -425,6 +455,26 @@ class KeyManager:
             return True
 
         if key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
+            if on_track_list and shift and key in (wx.WXK_UP, wx.WXK_DOWN):
+                cur = win._player._cur_track
+                n   = win._track_list.GetCount()
+                te  = win._track_editor
+                if key == wx.WXK_UP:
+                    new_track = te.extend_up(cur)
+                else:
+                    new_track = te.extend_down(cur, n)
+                if new_track == cur:
+                    wx.Bell()
+                else:
+                    win._player._cur_track = new_track
+                    win._track_list.SetSelection(new_track)
+                    win._refresh_track_list()
+                    sel = sorted(te._sel_tracks)
+                    win._show_status(
+                        f"Sélection: Piste{'s' if len(sel) > 1 else ''} "
+                        f"{', '.join(str(i + 1) for i in sel)}"
+                    )
+                return True
             if on_track_list and key in (wx.WXK_UP, wx.WXK_DOWN):
                 cur = win._track_list.GetSelection()
                 n   = win._track_list.GetCount()
@@ -492,6 +542,18 @@ class KeyManager:
                 new_val = False if shift else not win._cells[r][c].GetValue()
                 win._set_cell(r, c, new_val)
                 win._play(r)
+            return True
+
+        if key == wx.WXK_DELETE and on_track_list:
+            te  = win._track_editor
+            cur = win._player._cur_track
+            tracks = te.get_effective_tracks(cur)
+            te.erase(win._player._pattern, cur)
+            win._refresh_grid()
+            win._show_status(
+                f"Effacé: Piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
             return True
 
         return False

@@ -27,6 +27,7 @@ from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
 from ui.song_window import SongWindow
 from midi_manager import MidiManager
+from track_editor import TrackEditor
 
 
 class _LoadingDialog(wx.Dialog):
@@ -136,6 +137,7 @@ class MainWindow(wx.Frame):
             on_cc         = lambda cc, v, c: wx.CallAfter(self._midi_handler.on_cc, cc, v, c),
             on_pitch_bend = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
         )
+        self._track_editor = TrackEditor()
         self._build_ui()
         self._load_kit_slot(0)
         self._load_preset()
@@ -990,6 +992,8 @@ class MainWindow(wx.Frame):
             label += " [M]"
         if self._router._track_solos[idx]:
             label += " [S]"
+        if self._track_editor.is_selected(idx):
+            label += " [*]"
         return label
 
     def _refresh_track_list(self):
@@ -1176,6 +1180,7 @@ class MainWindow(wx.Frame):
             self._track_list.SetSelection(self._player._cur_track)
             self._show_status("Changement de piste interdit pendant l'enregistrement")
             return
+        self._track_editor.clear_selection()
         self._player._cur_track = idx
         self._cur_slot = self._router.slot_for_track(idx)
         self._slot_choice.SetSelection(self._cur_slot)

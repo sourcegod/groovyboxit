@@ -55,9 +55,12 @@ class FakePlayer:
 class FakeSnd:
     def __init__(self):
         self.load_pad_calls = []
+        self.media_lst      = [""] * 16
 
     def load_pad_sound(self, pad_idx, wav_path):
         self.load_pad_calls.append((pad_idx, wav_path))
+        if pad_idx < len(self.media_lst):
+            self.media_lst[pad_idx] = wav_path
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +286,8 @@ def test_sound_ok_updates_media_lst():
         path = os.path.join(tmp, "kick.wav")
         with patch.object(wx, 'FileDialog', return_value=dlg_ok(path)):
             MainWindow._explorer_sound(win)
-        assert win._media_lst[3] == path
-        print("  sound OK → _media_lst[cur_row] mis à jour : OK")
+        assert win._snd.media_lst[3] == path
+        print("  sound OK → snd.media_lst[cur_row] mis à jour : OK")
 
 
 def test_sound_ok_calls_refresh_pad_list():
