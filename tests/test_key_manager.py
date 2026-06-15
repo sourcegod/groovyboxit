@@ -10,6 +10,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import threading
 import wx
 from unittest.mock import patch
 from ui.key_manager import KeyManager
@@ -69,10 +70,21 @@ class FakeVoiceManager:
 
 
 class FakePattern:
+    NUM_TRACKS = 8
+    NUM_PADS   = 16
+
     def __init__(self):
-        self._num_bars  = 2
-        self._num_steps = 16
-        self.calls      = []
+        self._num_tracks = self.NUM_TRACKS
+        self._num_pads   = self.NUM_PADS
+        self._num_bars   = 2
+        self._num_steps  = 16
+        self._lock       = threading.RLock()
+        self._curpattern = [
+            [[[0] * 16 for _ in range(2)] for _ in range(self.NUM_PADS)]
+            for _ in range(self.NUM_TRACKS)
+        ]
+        self._tape = {}
+        self.calls = []
 
     def reset_pattern(self):            self.calls.append('reset_pattern')
     def build_pattern_01(self):         self.calls.append('build_pattern_01')
@@ -400,13 +412,22 @@ def test_ctrl_shift_w_saves_pattern_as():
     teardown(app)
     print("  Ctrl+Shift+W → _save_pattern_as() : OK")
 
-def test_ctrl_d_resets_pattern():
+def test_ctrl_d_deletes_to_clipboard():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('D'), ctrl=True))
+    assert ('clear_track', 0) in win._player._pattern.calls
+    assert '_refresh_grid' in win.calls
+    assert win._track_editor.has_clipboard()
+    teardown(app)
+    print("  Ctrl+D → cut (presse-papier + clear_track) + _refresh_grid() : OK")
+
+def test_shift_delete_resets_pattern():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=wx.WXK_DELETE, shift=True))
     assert 'reset_pattern' in win._player._pattern.calls
     assert '_refresh_grid' in win.calls
     teardown(app)
-    print("  Ctrl+D → reset_pattern() + _refresh_grid() : OK")
+    print("  Shift+Suppr → reset_pattern() + _refresh_grid() : OK")
 
 def test_ctrl_p_loads_demo_pattern():
     app, win, km = make_km()
@@ -882,7 +903,8 @@ if __name__ == "__main__":
     # Ctrl
     test_ctrl_w_saves_pattern()
     test_ctrl_shift_w_saves_pattern_as()
-    test_ctrl_d_resets_pattern()
+    test_ctrl_d_deletes_to_clipboard()
+    test_shift_delete_resets_pattern()
     test_ctrl_p_loads_demo_pattern()
     test_ctrl_f_doubles_pattern()
     test_ctrl_e_applies_quant()

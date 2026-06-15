@@ -306,10 +306,10 @@ class KeyManager:
             te = win._track_editor
             cur = win._player._cur_track
             tracks = te.get_effective_tracks(cur)
-            te.cut(win._player._pattern, cur)
+            te.erase_grid(win._player._pattern, cur)
             win._refresh_grid()
             win._show_status(
-                f"Coupé: Piste{'s' if len(tracks) > 1 else ''} "
+                f"Effacé (grille): Piste{'s' if len(tracks) > 1 else ''} "
                 f"{', '.join(str(i + 1) for i in tracks)}"
             )
             return True
@@ -334,10 +334,16 @@ class KeyManager:
         if key == ord('W'):
             win._save_pattern()
             return True
-        if key == ord('D'):
-            win._player._pattern.reset_pattern()
+        if not shift and not alt and key == ord('D'):
+            te = win._track_editor
+            cur = win._player._cur_track
+            tracks = te.get_effective_tracks(cur)
+            te.cut(win._player._pattern, cur)
             win._refresh_grid()
-            win._show_status("Pattern réinitialisé")
+            win._show_status(
+                f"Supprimé: Piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
             return True
         if key == ord('P'):
             win._player._pattern.build_pattern_01()
@@ -407,6 +413,17 @@ class KeyManager:
             win._player.stop_all()
             win._router.panic()
             win._show_status("Panic: All Sounds Off + Reset All Controllers")
+            return True
+        if not shift and not alt and key == wx.WXK_DELETE:
+            te = win._track_editor
+            cur = win._player._cur_track
+            tracks = te.get_effective_tracks(cur)
+            te.erase(win._player._pattern, cur)
+            win._refresh_grid()
+            win._show_status(
+                f"Supprimé sans copie: Piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
             return True
         if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Aller à
             win._goto_dialog()
@@ -553,6 +570,12 @@ class KeyManager:
                 new_val = False if shift else not win._cells[r][c].GetValue()
                 win._set_cell(r, c, new_val)
                 win._play(r)
+            return True
+
+        if shift and key == wx.WXK_DELETE:
+            win._player._pattern.reset_pattern()
+            win._refresh_grid()
+            win._show_status("Pattern réinitialisé")
             return True
 
         if key == wx.WXK_DELETE and on_track_list:

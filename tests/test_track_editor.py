@@ -251,6 +251,31 @@ def test_paste_restores_tape_events():
 # Tests couper / effacer
 # ---------------------------------------------------------------------------
 
+def test_erase_grid_fills_clipboard_zeros_steps():
+    te = TrackEditor()
+    p  = _make_pattern()
+    _fill_track(p, 0, 44)
+    ev = TapeEvent("K", 36, 100, 0, 0)
+    p._tape[(0, 0, 3)] = [ev]
+
+    te.erase_grid(p, 0)
+
+    assert te.has_clipboard()
+    assert _track_sum(p, 0) == 0          # grille effacée
+    assert (0, 0, 3) in p._tape           # tape préservé
+
+
+def test_erase_grid_preserves_tape():
+    te = TrackEditor()
+    p  = _make_pattern()
+    _fill_track(p, 0, 10)
+    p._tape[(0, 1, 7)] = [TapeEvent("K", 42, 80, 0, 0)]
+
+    te.erase_grid(p, 0)
+
+    assert p._tape  # tape non vidé
+
+
 def test_cut_fills_clipboard_and_clears():
     te = TrackEditor()
     p  = _make_pattern()

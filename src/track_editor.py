@@ -148,8 +148,25 @@ class TrackEditor:
 
         return True
 
+    def erase_grid(self, pattern, cur_track):
+        """Copie dans le presse-papier, puis efface seulement la grille de pas.
+
+        Les événements _tape / _bend_tape / _mod_tape sont préservés.
+        Raccourci DAW : Ctrl+X (Erase).
+        """
+        tracks = self.get_effective_tracks(cur_track)
+        self._clipboard = self._extract(pattern, tracks)
+        for t in tracks:
+            for pad in pattern._curpattern[t]:
+                for bar in pad:
+                    bar[:] = [0] * len(bar)
+        return True
+
     def erase(self, pattern, cur_track):
-        """Efface la sélection sans toucher au presse-papier."""
+        """Efface la sélection (grille + tape) sans toucher au presse-papier.
+
+        Raccourci DAW : Ctrl+Suppr.
+        """
         self._erase_tracks(pattern, self.get_effective_tracks(cur_track))
         return True
 
