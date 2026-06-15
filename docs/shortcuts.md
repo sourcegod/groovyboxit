@@ -7,7 +7,6 @@ Alt+Shift+W      Enregistrer le preset sous...
 --- Pattern ---
 Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Enregistrer le pattern sous...
-Ctrl+D           Réinitialiser le pattern (tout effacer)
 Ctrl+P           Charger le pattern de démonstration
 Shift+P          Générer un pattern aléatoire
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)
@@ -137,7 +136,6 @@ Double-clic      Assigner le slot sélectionné à la piste courante (≡ Ctrl+T
 
 --- Pistes (focus liste des pistes) ---
 Ctrl+T           Assigner le slot courant à la piste courante
-Shift+D          Effacer la piste courante
 Entrée           Ouvrir les propriétés de la piste sélectionnée
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée
 Double-clic      Jouer le pad courant
@@ -147,6 +145,22 @@ S / Shift+S      Solo piste / Désolo toutes
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
 Alt+← / Alt+→   Pan piste ±10 (-100..+100)
 Alt+0            Recentrer le pan de la piste (Pan 0)
+
+  -- Sélection multi-pistes --
+  Ctrl+A           Sélectionner toutes les pistes
+  Ctrl+Shift+A     Désélectionner tout
+  Shift+↑          Étendre la sélection vers la piste du dessus
+  Shift+↓          Étendre la sélection vers la piste du dessous
+  ↑ / ↓           Navigation simple (efface la sélection multi-pistes)
+
+  -- Édition des pistes sélectionnées --
+  Ctrl+C           Copier les pistes sélectionnées → presse-papier
+  Ctrl+X           Erase : copie → presse-papier + efface la grille (tape préservé)
+  Ctrl+D           Delete : copie → presse-papier + efface grille et tape
+  Ctrl+V           Coller le presse-papier sur la piste courante
+  Ctrl+Suppr       Effacer grille et tape sans presse-papier
+  Shift+Suppr      Réinitialiser le pattern entier
+  Suppr            Effacer piste(s) sélectionnée(s) sans presse-papier
 
 --- MIDI ---
 Alt+M            Connecter / déconnecter le port MIDI sélectionné
