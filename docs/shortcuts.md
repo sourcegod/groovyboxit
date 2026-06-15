@@ -149,9 +149,11 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
   -- Sélection multi-pistes --
   Ctrl+A           Sélectionner toutes les pistes
   Ctrl+Shift+A     Désélectionner tout
+  Shift+Espace     Ajouter / retirer la piste courante de la sélection (bip à l'ajout)
+                   Permet la sélection non-adjacente (ex. pistes 1, 3, 7)
   Shift+↑          Étendre la sélection vers la piste du dessus (pistes adjacentes)
   Shift+↓          Étendre la sélection vers la piste du dessous (pistes adjacentes)
-  ↑ / ↓           Navigation simple (efface la sélection multi-pistes)
+  ↑ / ↓           Naviguer entre les pistes (la sélection multi-pistes est préservée)
 
   -- Édition des pistes sélectionnées --
   Ctrl+C           Copier les pistes sélectionnées → presse-papier
