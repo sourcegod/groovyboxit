@@ -511,8 +511,10 @@ class KeyManager:
                 if at_limit:
                     wx.Bell()
                 else:
-                    event.Skip()
-                    wx.CallAfter(win._on_track_select, None)
+                    new_idx = cur - 1 if key == wx.WXK_UP else cur + 1
+                    win._go_to_track(new_idx)          # mise à jour état + grille
+                    win._skip_next_track_select = True  # bloque EVT_LISTBOX GTK
+                    event.Skip()                        # lecteur d'écran
             elif on_pad_list and key in (wx.WXK_UP, wx.WXK_DOWN):
                 cur = win._pad_list.GetSelection()
                 n   = win._pad_list.GetCount()
@@ -588,6 +590,26 @@ class KeyManager:
                 f"Effacé: Piste{'s' if len(tracks) > 1 else ''} "
                 f"{', '.join(str(i + 1) for i in tracks)}"
             )
+            return True
+
+        # Shift+Espace : toggle la piste courante dans/hors sélection (non-adjacent)
+        if shift and not ctx.ctrl and key == wx.WXK_SPACE and on_track_list:
+            cur = win._player._cur_track
+            te  = win._track_editor
+            if te.is_selected(cur):
+                te.toggle_track(cur)
+            else:
+                te.toggle_track(cur)
+                wx.Bell()
+            win._refresh_track_list()
+            sel = sorted(te._sel_tracks)
+            if sel:
+                win._show_status(
+                    f"Sélection: Piste{'s' if len(sel) > 1 else ''} "
+                    f"{', '.join(str(i + 1) for i in sel)}"
+                )
+            else:
+                win._show_status(f"Piste {cur + 1}: désélectionnée")
             return True
 
         return False

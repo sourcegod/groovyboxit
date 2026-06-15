@@ -519,6 +519,35 @@ La quantisation s'applique à l'enregistrement (caler les hits sur la grille) et
 
 Sur Linux/GTK, la touche Entrée sur une `wx.ListBox` est interceptée par GTK et transformée en `EVT_LISTBOX_DCLICK` **avant** qu'elle n'atteigne `EVT_CHAR_HOOK`. Solution utilisée : handler `EVT_LISTBOX_DCLICK` avec `wx.GetKeyState(wx.WXK_RETURN)` pour distinguer Entrée d'un vrai double-clic.
 
+### Astuces d'accessibilité (Orca / AT-SPI)
+
+#### ListBox : mettre à jour un label sans casser AT-SPI
+
+Utiliser `SetString(i, label)` plutôt que `Set([...])` pour mettre à jour les labels d'une `wx.ListBox` déjà construite.
+
+- `Set([...])` détruit et recrée tous les objets ATK → Orca perd le contexte, aucune annonce.
+- `SetString(i, label)` met à jour le texte **in-place** → AT-SPI émet `NAME_CHANGE` sur l'objet conservé → Orca annonce immédiatement le nouveau label de l'item sélectionné.
+
+```python
+# À éviter (casse AT-SPI) :
+self._track_list.Set([self._label(i) for i in range(n)])
+self._track_list.SetSelection(sel)
+
+# À privilégier :
+for i in range(self._track_list.GetCount()):
+    self._track_list.SetString(i, self._label(i))
+```
+
+S'applique à toute `wx.ListBox` ou `wx.CheckListBox` dont le contenu est mis à jour dynamiquement (liste des pistes, liste des patterns, liste des songs, etc.).
+
+#### SpinCtrl : seul widget annoncé en temps réel
+
+`wx.SpinCtrl` est le seul widget wxPython/GTK annoncé par Orca lors de chaque changement de valeur, même par programme. À préférer pour tout paramètre numérique éditable (BPM, volume, pan…).
+
+#### Barre de statut (`wx.TextCtrl` en lecture seule)
+
+`wx.TextCtrl(style=wx.TE_READONLY)` utilisé comme barre de statut : les mises à jour via `SetValue()` ne sont **pas** annoncées par Orca automatiquement. Pour que le lecteur d'écran lise un message de statut, il faut forcer le focus sur ce widget, ou passer par une autre stratégie (ex. `wx.lib.agw.infobar`, ou `EVT_SET_FOCUS` + lecture forcée).
+
 ---
 
 ## Boîtes de dialogue

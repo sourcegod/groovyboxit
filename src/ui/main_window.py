@@ -138,6 +138,7 @@ class MainWindow(wx.Frame):
             on_pitch_bend = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
         )
         self._track_editor = TrackEditor()
+        self._skip_next_track_select = False  # bloque EVT_LISTBOX après navigation clavier
         self._build_ui()
         self._load_kit_slot(0)
         self._load_preset()
@@ -996,9 +997,9 @@ class MainWindow(wx.Frame):
         return label
 
     def _refresh_track_list(self):
-        sel = self._track_list.GetSelection()
-        self._track_list.Set([self._track_label(i) for i in range(8)])
-        self._track_list.SetSelection(sel if sel != wx.NOT_FOUND else 0)
+        # SetString au lieu de Set() : préserve les objets ATK/AT-SPI pour Orca
+        for i in range(self._track_list.GetCount()):
+            self._track_list.SetString(i, self._track_label(i))
 
     def _on_track_list_activate(self, event):
         """Entrée ou double-clic sur la liste des pistes.
@@ -1175,11 +1176,23 @@ class MainWindow(wx.Frame):
         idx = self._track_list.GetSelection()
         if idx < 0:   # EVT_LISTBOX peut se déclencher avec NO_SELECTION sur GTK
             return
+        if self._skip_next_track_select:
+            self._skip_next_track_select = False
+            return
         if self._player.recording or self._player._count_in > 0:
             self._track_list.SetSelection(self._player._cur_track)
             self._show_status("Changement de piste interdit pendant l'enregistrement")
             return
         self._track_editor.clear_selection()
+        self._refresh_track_list()   # sync les labels * après effacement (clic souris)
+        self._go_to_track(idx)
+
+    def _go_to_track(self, idx):
+        """Change de piste courante sans effacer la sélection multi-pistes."""
+        if self._player.recording or self._player._count_in > 0:
+            self._track_list.SetSelection(self._player._cur_track)
+            self._show_status("Changement de piste interdit pendant l'enregistrement")
+            return
         self._player._cur_track = idx
         self._cur_slot = self._router.slot_for_track(idx)
         self._slot_choice.SetSelection(self._cur_slot)
