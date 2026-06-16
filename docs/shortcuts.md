@@ -136,6 +136,7 @@ Double-clic      Assigner le slot sélectionné à la piste courante (≡ Ctrl+T
 
 --- Pistes (focus liste des pistes) ---
 Ctrl+T           Assigner le slot courant à la piste courante
+Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
 Entrée           Ouvrir les propriétés de la piste sélectionnée
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée
 Double-clic      Jouer le pad courant
