@@ -19,6 +19,7 @@ from ui.dialogs import (
     SavePatternDialog,
     SaveSongDialog,
     TrackPropertiesDialog,
+    TrackSelectDialog,
     PatternPropertiesDialog,
     PadPropertiesDialog,
     ExplorerDialog,
@@ -835,6 +836,40 @@ class MainWindow(wx.Frame):
             p._go_to_offset(dlg.get_offset())
         dlg.Destroy()
 
+    def _track_select_dialog(self):
+        """Ouvre la boîte de dialogue de sélection de pistes + plage temporelle."""
+        p   = self._player
+        pat = p._pattern
+        track_labels = [
+            f"Track {i + 1:02d} — {self._router.slot_name(i)}"
+            for i in range(pat._num_tracks)
+        ]
+        dlg = TrackSelectDialog(
+            self,
+            num_tracks   = pat._num_tracks,
+            sel_tracks   = self._track_editor._sel_tracks,
+            track_labels = track_labels,
+            num_bars     = pat._num_bars,
+            num_beats    = pat._num_beats,
+            num_steps    = pat._num_steps,
+            cur_step     = int(p._current_offset()),
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            new_sel = dlg.get_sel_tracks()
+            self._track_editor._sel_tracks = new_sel
+            self._refresh_track_list()
+            start = dlg.get_start_step()
+            end   = dlg.get_end_step()
+            if start > end:
+                start, end = end, start
+            sel = sorted(new_sel)
+            msg_tracks = (
+                f"Piste{'s' if len(sel) > 1 else ''} {', '.join(str(i+1) for i in sel)}"
+                if sel else "Aucune piste"
+            )
+            self._show_status(f"Sélection : {msg_tracks} | {dlg._fmt_bbt(start)} → {dlg._fmt_bbt(end)}")
+        dlg.Destroy()
+
     def _show_keyboard_help(self):
         dlg = KeyboardHelpDialog(self)
         dlg.ShowModal()
@@ -1003,8 +1038,10 @@ class MainWindow(wx.Frame):
 
     def _on_track_list_activate(self, event):
         """Entrée ou double-clic sur la liste des pistes.
-        Enter ou Alt → propriétés ; double-clic seul → joue le pad courant."""
-        if wx.GetKeyState(wx.WXK_RETURN) or wx.GetKeyState(wx.WXK_ALT):
+        Ctrl+Enter → sélection de pistes ; Enter/Alt → propriétés ; double-clic → joue."""
+        if wx.GetKeyState(wx.WXK_RETURN) and wx.GetKeyState(wx.WXK_CONTROL):
+            self._track_select_dialog()
+        elif wx.GetKeyState(wx.WXK_RETURN) or wx.GetKeyState(wx.WXK_ALT):
             self._track_properties_dialog()
         else:
             self._play(self._cur_row)

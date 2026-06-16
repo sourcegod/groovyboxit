@@ -735,3 +735,140 @@ class GotoDialog(wx.Dialog):
     def get_offset(self):
         """Retourne l'offset courant en pas (float, 0-based)."""
         return float(self._cur_step)
+
+
+class TrackSelectDialog(wx.Dialog):
+    """Sélection de pistes (checkboxes) + plage temporelle (bar:beat:tick)."""
+
+    def __init__(self, parent, num_tracks, sel_tracks, track_labels,
+                 num_bars, num_beats, num_steps, cur_step):
+        super().__init__(parent, title="Sélection de pistes")
+
+        self._num_steps      = num_steps
+        self._steps_per_beat = max(1, num_steps // num_beats)
+        self._total_steps    = num_bars * num_steps
+
+        # --- Checkboxes pistes ---
+        checks_box   = wx.StaticBox(self, label="Pistes")
+        checks_sizer = wx.StaticBoxSizer(checks_box, wx.VERTICAL)
+        self._checks = []
+        for i in range(num_tracks):
+            lbl = track_labels[i] if i < len(track_labels) else f"Track {i + 1:02d}"
+            cb  = wx.CheckBox(self, label=lbl)
+            cb.SetValue(i in sel_tracks)
+            self._checks.append(cb)
+            checks_sizer.Add(cb, 0, wx.LEFT | wx.TOP, 4)
+        checks_sizer.AddSpacer(4)
+
+        # --- Champs BBT ---
+        start_label = wx.StaticText(self, label="Début sélection :")
+        self._start = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
+        self._start.SetValue(self._fmt_bbt(cur_step))
+
+        end_label = wx.StaticText(self, label="Fin sélection :")
+        self._end  = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
+        self._end.SetValue(self._fmt_bbt(self._total_steps - 1))
+
+        range_grid = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
+        range_grid.AddGrowableCol(1)
+        range_grid.Add(start_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        range_grid.Add(self._start, 1, wx.EXPAND)
+        range_grid.Add(end_label,   0, wx.ALIGN_CENTER_VERTICAL)
+        range_grid.Add(self._end,   1, wx.EXPAND)
+
+        # --- Boutons ---
+        self._ok_btn     = wx.Button(self, wx.ID_OK, "Ok")
+        self._cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        self._ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(self._ok_btn)
+        btn_sizer.AddButton(self._cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(checks_sizer, 0, wx.EXPAND | wx.ALL, 8)
+        vbox.Add(range_grid,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(btn_sizer,    0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+
+        # Ordre Tab manuel (même technique que MainWindow._tab_order)
+        self._tab_order = self._checks + [self._start, self._end,
+                                          self._ok_btn, self._cancel_btn]
+
+        self._start.Bind(wx.EVT_TEXT_ENTER, lambda e: self.EndModal(wx.ID_OK))
+        self._end.Bind(wx.EVT_TEXT_ENTER,   lambda e: self.EndModal(wx.ID_OK))
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
+        if self._checks:
+            self._checks[0].SetFocus()
+
+    # ------------------------------------------------------------------
+    # Helpers BBT
+    # ------------------------------------------------------------------
+
+    def _fmt_bbt(self, step):
+        """step 0-based → 'bar:beat:tick' 1-based."""
+        step = max(0, min(step, self._total_steps - 1))
+        bar  = step // self._num_steps
+        rem  = step % self._num_steps
+        beat = rem // self._steps_per_beat
+        tick = rem % self._steps_per_beat
+        return f"{bar + 1}:{beat + 1}:{tick + 1}"
+
+    def _parse_bbt(self, s):
+        """'bar:beat:tick' | 'bar:beat' | 'bar' → step 0-based, ou None si invalide."""
+        parts = s.strip().split(":")
+        try:
+            if len(parts) >= 3:
+                off = ((int(parts[0]) - 1) * self._num_steps
+                       + (int(parts[1]) - 1) * self._steps_per_beat
+                       + (int(parts[2]) - 1))
+            elif len(parts) == 2:
+                off = ((int(parts[0]) - 1) * self._num_steps
+                       + (int(parts[1]) - 1) * self._steps_per_beat)
+            else:
+                off = (int(parts[0]) - 1) * self._num_steps
+            return int(max(0, min(self._total_steps - 1, off)))
+        except (ValueError, IndexError):
+            return None
+
+    # ------------------------------------------------------------------
+    # Événements
+    # ------------------------------------------------------------------
+
+    def _on_key(self, event):
+        key   = event.GetKeyCode()
+        shift = event.ShiftDown()
+        if key == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        if key == wx.WXK_TAB:
+            focused = wx.Window.FindFocus()
+            order   = self._tab_order
+            if focused in order:
+                idx    = order.index(focused)
+                target = order[idx - 1] if shift else order[(idx + 1) % len(order)]
+            else:
+                target = order[-1] if shift else order[0]
+            wx.CallAfter(target.SetFocus)
+            return
+        event.Skip()
+
+    # ------------------------------------------------------------------
+    # API publique
+    # ------------------------------------------------------------------
+
+    def get_sel_tracks(self):
+        """Ensemble des indices de pistes cochées (0-based)."""
+        return {i for i, cb in enumerate(self._checks) if cb.GetValue()}
+
+    def get_start_step(self):
+        """Step de début (0-based) ; 0 si saisie invalide."""
+        v = self._parse_bbt(self._start.GetValue())
+        return v if v is not None else 0
+
+    def get_end_step(self):
+        """Step de fin (0-based) ; total_steps-1 si saisie invalide."""
+        v = self._parse_bbt(self._end.GetValue())
+        return v if v is not None else self._total_steps - 1
