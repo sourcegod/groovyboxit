@@ -1038,11 +1038,14 @@ class MainWindow(wx.Frame):
 
     def _on_track_list_activate(self, event):
         """Entrée ou double-clic sur la liste des pistes.
-        Ctrl+Enter → sélection de pistes ; Enter/Alt → propriétés ; double-clic → joue."""
+        Ctrl+Entrée → sélection pistes ; Alt+Entrée → propriétés ;
+        Entrée seul → assigner slot (≡ Ctrl+T) ; double-clic → joue."""
         if wx.GetKeyState(wx.WXK_RETURN) and wx.GetKeyState(wx.WXK_CONTROL):
             self._track_select_dialog()
-        elif wx.GetKeyState(wx.WXK_RETURN) or wx.GetKeyState(wx.WXK_ALT):
+        elif wx.GetKeyState(wx.WXK_RETURN) and wx.GetKeyState(wx.WXK_ALT):
             self._track_properties_dialog()
+        elif wx.GetKeyState(wx.WXK_RETURN):
+            self._assign_track_slot()
         else:
             self._play(self._cur_row)
 
