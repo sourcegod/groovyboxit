@@ -844,24 +844,29 @@ class MainWindow(wx.Frame):
             f"Track {i + 1:02d} — {self._router.slot_name(i)}"
             for i in range(pat._num_tracks)
         ]
+        te  = self._track_editor
         dlg = TrackSelectDialog(
             self,
             num_tracks   = pat._num_tracks,
-            sel_tracks   = self._track_editor._sel_tracks,
+            sel_tracks   = te._sel_tracks,
             track_labels = track_labels,
             num_bars     = pat._num_bars,
             num_beats    = pat._num_beats,
             num_steps    = pat._num_steps,
             cur_step     = int(p._current_offset()),
+            lim_left     = te._lim_left,
+            lim_right    = te._lim_right,
         )
         if dlg.ShowModal() == wx.ID_OK:
             new_sel = dlg.get_sel_tracks()
-            self._track_editor._sel_tracks = new_sel
+            te._sel_tracks = new_sel
             self._refresh_track_list()
             start = dlg.get_start_step()
             end   = dlg.get_end_step()
             if start > end:
                 start, end = end, start
+            te._lim_left  = start
+            te._lim_right = end
             sel = sorted(new_sel)
             msg_tracks = (
                 f"Piste{'s' if len(sel) > 1 else ''} {', '.join(str(i+1) for i in sel)}"

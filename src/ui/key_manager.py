@@ -283,14 +283,17 @@ class KeyManager:
 
         if shift and not alt and key == ord('A'):
             win._track_editor.clear_selection()
+            win._track_editor.reset_lims()
             win._refresh_track_list()
-            win._show_status("Sélection effacée")
+            win._show_status("Sélection effacée | Limiteurs réinitialisés")
             return True
         if not shift and not alt and key == ord('A'):
-            n = win._player._pattern._num_tracks
+            pat = win._player._pattern
+            n   = pat._num_tracks
             win._track_editor.select_all(n)
+            win._track_editor.set_full_range(pat._num_bars * pat._num_steps)
             win._refresh_track_list()
-            win._show_status(f"Toutes les pistes sélectionnées ({n})")
+            win._show_status(f"Toutes les pistes sélectionnées ({n}) | Plage complète")
             return True
         if not shift and not alt and key == ord('C'):
             te = win._track_editor
@@ -1086,6 +1089,30 @@ class KeyManager:
             win._player.set_volume(win._player.volume - 1)
             win._volume_ctrl.SetValue(win._player.volume)
             win._show_status(f"Volume: {win._player.volume}")
+            return True
+
+        # i : poser le limiteur gauche (In) à la position courante du playhead
+        if not ctrl and not alt and not shift \
+                and (ukey in (ord('i'), ord('I')) or key == ord('I')):
+            pat  = win._player._pattern
+            step = int(win._player._current_offset())
+            win._track_editor.set_lim_left(step)
+            bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
+                       max(1, pat._num_steps // pat._num_beats),
+                       pat._num_bars * pat._num_steps)
+            win._show_status(f"Limiteur gauche (In) : {bbt} (step {step})")
+            return True
+
+        # o : poser le limiteur droit (Out) à la position courante du playhead
+        if not ctrl and not alt and not shift \
+                and (ukey in (ord('o'), ord('O')) or key == ord('O')):
+            pat  = win._player._pattern
+            step = int(win._player._current_offset())
+            win._track_editor.set_lim_right(step)
+            bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
+                       max(1, pat._num_steps // pat._num_beats),
+                       pat._num_bars * pat._num_steps)
+            win._show_status(f"Limiteur droit (Out) : {bbt} (step {step})")
             return True
 
         return False

@@ -30,7 +30,7 @@ LAST_STEP   = TOTAL_STEPS - 1        # 63 → "4:4:4"
 LABELS = [f"Track {i + 1:02d} — Slot_{i + 1:02d}" for i in range(NUM_TRACKS)]
 
 
-def make_dlg(sel_tracks=None, cur_step=CUR_STEP):
+def make_dlg(sel_tracks=None, cur_step=CUR_STEP, lim_left=None, lim_right=None):
     if sel_tracks is None:
         sel_tracks = {0, 2, 5}
     app   = wx.App(False)
@@ -44,6 +44,8 @@ def make_dlg(sel_tracks=None, cur_step=CUR_STEP):
         num_beats    = NUM_BEATS,
         num_steps    = NUM_STEPS,
         cur_step     = cur_step,
+        lim_left     = lim_left,
+        lim_right    = lim_right,
     )
     return app, frame, dlg
 
@@ -328,6 +330,60 @@ def test_get_end_step_fallback_on_invalid():
 
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Pré-remplissage depuis les limiteurs (lim_left / lim_right)
+# ---------------------------------------------------------------------------
+
+def test_lim_left_overrides_cur_step():
+    app, frame, dlg = make_dlg(cur_step=8, lim_left=16)
+    assert dlg._start.GetValue() == "2:1:1"   # step 16, pas cur_step 8
+    teardown(app, frame, dlg)
+    print("  lim_left remplace cur_step dans Début sélection : OK")
+
+
+def test_lim_right_overrides_default_end():
+    app, frame, dlg = make_dlg(lim_right=16)
+    assert dlg._end.GetValue() == "2:1:1"     # step 16, pas LAST_STEP
+    teardown(app, frame, dlg)
+    print("  lim_right remplace fin du pattern dans Fin sélection : OK")
+
+
+def test_lim_left_none_uses_cur_step():
+    app, frame, dlg = make_dlg(cur_step=8, lim_left=None)
+    assert dlg._start.GetValue() == "1:3:1"   # cur_step=8 utilisé
+    teardown(app, frame, dlg)
+    print("  lim_left=None → Début sélection depuis cur_step : OK")
+
+
+def test_lim_right_none_uses_last_step():
+    app, frame, dlg = make_dlg(lim_right=None)
+    assert dlg._end.GetValue() == "4:4:4"     # LAST_STEP utilisé
+    teardown(app, frame, dlg)
+    print("  lim_right=None → Fin sélection depuis LAST_STEP : OK")
+
+
+def test_both_lims_set():
+    app, frame, dlg = make_dlg(cur_step=0, lim_left=8, lim_right=32)
+    assert dlg._start.GetValue() == "1:3:1"   # step 8
+    assert dlg._end.GetValue()   == "3:1:1"   # step 32
+    teardown(app, frame, dlg)
+    print("  lim_left=8 lim_right=32 → champs BBT corrects : OK")
+
+
+def test_get_start_step_from_lim_left():
+    app, frame, dlg = make_dlg(cur_step=0, lim_left=16)
+    assert dlg.get_start_step() == 16
+    teardown(app, frame, dlg)
+    print("  get_start_step() == lim_left quand défini : OK")
+
+
+def test_get_end_step_from_lim_right():
+    app, frame, dlg = make_dlg(lim_right=32)
+    assert dlg.get_end_step() == 32
+    teardown(app, frame, dlg)
+    print("  get_end_step() == lim_right quand défini : OK")
+
+
 if __name__ == "__main__":
     print("=== test_track_select_dialog ===")
     # Checkboxes initiales
@@ -369,4 +425,12 @@ if __name__ == "__main__":
     test_get_end_step_after_edit()
     test_get_start_step_fallback_on_invalid()
     test_get_end_step_fallback_on_invalid()
+    # Pré-remplissage depuis limiteurs
+    test_lim_left_overrides_cur_step()
+    test_lim_right_overrides_default_end()
+    test_lim_left_none_uses_cur_step()
+    test_lim_right_none_uses_last_step()
+    test_both_lims_set()
+    test_get_start_step_from_lim_left()
+    test_get_end_step_from_lim_right()
     print("Tous les tests : OK")

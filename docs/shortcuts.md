@@ -147,17 +147,24 @@ Alt+← / Alt+→   Pan piste ±10 (-100..+100)
 Alt+0            Recentrer le pan de la piste (Pan 0)
 
   -- Sélection multi-pistes --
-  Ctrl+A           Sélectionner toutes les pistes
-  Ctrl+Shift+A     Désélectionner tout
+  Ctrl+A           Sélectionner toutes les pistes + limiteurs sur plage complète
+  Ctrl+Shift+A     Désélectionner tout + réinitialiser les limiteurs
   Shift+Espace     Ajouter / retirer la piste courante de la sélection (bip à l'ajout)
                    Permet la sélection non-adjacente (ex. pistes 1, 3, 7)
   Shift+↑          Étendre la sélection vers la piste du dessus (pistes adjacentes)
   Shift+↓          Étendre la sélection vers la piste du dessous (pistes adjacentes)
   ↑ / ↓           Naviguer entre les pistes (la sélection multi-pistes est préservée)
 
+  -- Limiteurs temporels (in/out points) --
+  i                Poser le limiteur gauche (In)  à la position courante du playhead
+  o                Poser le limiteur droit  (Out) à la position courante du playhead
+                   Affichés dans la barre de statut en BBT + step
+                   Ctrl+Entrée pré-remplit le dialog avec les limiteurs courants
+                   Ctrl+A / Ctrl+Shift+A gèrent aussi les limiteurs
+
   -- Édition des pistes sélectionnées --
   Ctrl+C           Copier les pistes sélectionnées → presse-papier
-  Ctrl+X           Erase : copie → presse-papier + efface la grille (tape préservé)
+  Ctrl+X           Erase : copie → presse-papier + efface grille (+ tape si limiteurs)
   Ctrl+D           Delete : copie → presse-papier + efface grille et tape
   Ctrl+V           Coller le presse-papier sur la piste courante
   Ctrl+Suppr       Effacer grille et tape sans presse-papier

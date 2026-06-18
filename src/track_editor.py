@@ -29,6 +29,8 @@ class TrackEditor:
     def __init__(self):
         self._sel_tracks = set()            # indices des pistes sélectionnées
         self._clipboard  = None             # _ClipboardData ou None
+        self._lim_left   = None             # limiteur gauche (step 0-based, ou None)
+        self._lim_right  = None             # limiteur droit  (step 0-based, ou None)
 
     # ------------------------------------------------------------------
     # Sélection de pistes
@@ -96,6 +98,38 @@ class TrackEditor:
         return [cur_track]
 
     # ------------------------------------------------------------------
+    # Limiteurs temporels (in/out points)
+    # ------------------------------------------------------------------
+
+    def set_lim_left(self, step):
+        """Pose le limiteur gauche au step donné (0-based)."""
+        self._lim_left = step
+
+    def set_lim_right(self, step):
+        """Pose le limiteur droit au step donné (0-based)."""
+        self._lim_right = step
+
+    def set_full_range(self, total_steps):
+        """Étend les limiteurs à la plage complète du pattern."""
+        self._lim_left  = 0
+        self._lim_right = max(0, total_steps - 1)
+
+    def reset_lims(self):
+        """Réinitialise les deux limiteurs (état non défini)."""
+        self._lim_left  = None
+        self._lim_right = None
+
+    @staticmethod
+    def fmt_bbt(step, num_steps, steps_per_beat, total_steps):
+        """Formate un step 0-based en 'bar:beat:tick' 1-based."""
+        step = max(0, min(step, total_steps - 1))
+        bar  = step // num_steps
+        rem  = step % num_steps
+        beat = rem // steps_per_beat
+        tick = rem % steps_per_beat
+        return f"{bar + 1}:{beat + 1}:{tick + 1}"
+
+    # ------------------------------------------------------------------
     # Opérations presse-papier
     # ------------------------------------------------------------------
 
@@ -149,17 +183,28 @@ class TrackEditor:
         return True
 
     def erase_grid(self, pattern, cur_track):
-        """Copie dans le presse-papier, puis efface seulement la grille de pas.
+        """Copie dans le presse-papier, puis efface la grille et (si limiteurs) la tape.
 
-        Les événements _tape / _bend_tape / _mod_tape sont préservés.
+        Sans limiteurs : efface toute la grille, tape préservée (comportement d'origine).
+        Avec limiteurs : efface grille + _tape + _bend_tape + _mod_tape dans la plage.
         Raccourci DAW : Ctrl+X (Erase).
         """
         tracks = self.get_effective_tracks(cur_track)
         self._clipboard = self._extract(pattern, tracks)
+        lim_l = self._lim_left
+        lim_r = self._lim_right
         for t in tracks:
             for pad in pattern._curpattern[t]:
-                for bar in pad:
-                    bar[:] = [0] * len(bar)
+                for bar_idx, bar in enumerate(pad):
+                    if lim_l is None or lim_r is None:
+                        bar[:] = [0] * len(bar)
+                    else:
+                        for step_idx in range(len(bar)):
+                            g = bar_idx * pattern._num_steps + step_idx
+                            if lim_l <= g <= lim_r:
+                                bar[step_idx] = 0
+            if lim_l is not None and lim_r is not None:
+                self._erase_tape_range(pattern, t, lim_l, lim_r)
         return True
 
     def erase(self, pattern, cur_track):
@@ -194,5 +239,38 @@ class TrackEditor:
         )
 
     def _erase_tracks(self, pattern, tracks):
-        for t in tracks:
-            pattern.clear_track(t)
+        lim_l = self._lim_left
+        lim_r = self._lim_right
+        if lim_l is None or lim_r is None:
+            for t in tracks:
+                pattern.clear_track(t)
+        else:
+            for t in tracks:
+                for pad in pattern._curpattern[t]:
+                    for bar_idx, bar in enumerate(pad):
+                        for step_idx in range(len(bar)):
+                            g = bar_idx * pattern._num_steps + step_idx
+                            if lim_l <= g <= lim_r:
+                                bar[step_idx] = 0
+                self._erase_tape_range(pattern, t, lim_l, lim_r)
+
+    def _erase_tape_range(self, pattern, track, lim_l, lim_r):
+        """Efface _tape, _bend_tape, _mod_tape pour `track` dans [lim_l, lim_r]."""
+        with pattern._lock:
+            to_del = [
+                k for k in pattern._tape
+                if k[0] == track
+                and lim_l <= k[1] * pattern._num_steps + k[2] <= lim_r
+            ]
+            for k in to_del:
+                del pattern._tape[k]
+        if track < len(pattern._bend_tape):
+            pattern._bend_tape[track] = [
+                (off, b) for off, b in pattern._bend_tape[track]
+                if not (lim_l <= off <= lim_r)
+            ]
+        if track < len(pattern._mod_tape):
+            pattern._mod_tape[track] = [
+                (off, m) for off, m in pattern._mod_tape[track]
+                if not (lim_l <= off <= lim_r)
+            ]

@@ -331,6 +331,182 @@ def test_clipboard_survives_pattern_change():
     assert _track_sum(dst, 0) > 0
 
 
+# ---------------------------------------------------------------------------
+# Limiteurs temporels
+# ---------------------------------------------------------------------------
+
+def test_lims_initially_none():
+    te = TrackEditor()
+    assert te._lim_left  is None
+    assert te._lim_right is None
+
+
+def test_set_lim_left():
+    te = TrackEditor()
+    te.set_lim_left(8)
+    assert te._lim_left == 8
+    assert te._lim_right is None
+
+
+def test_set_lim_right():
+    te = TrackEditor()
+    te.set_lim_right(31)
+    assert te._lim_right == 31
+    assert te._lim_left is None
+
+
+def test_set_full_range():
+    te = TrackEditor()
+    te.set_full_range(64)
+    assert te._lim_left  == 0
+    assert te._lim_right == 63
+
+
+def test_set_full_range_one_step():
+    te = TrackEditor()
+    te.set_full_range(1)
+    assert te._lim_left  == 0
+    assert te._lim_right == 0
+
+
+def test_reset_lims():
+    te = TrackEditor()
+    te.set_lim_left(4)
+    te.set_lim_right(20)
+    te.reset_lims()
+    assert te._lim_left  is None
+    assert te._lim_right is None
+
+
+def test_reset_lims_already_none():
+    te = TrackEditor()
+    te.reset_lims()
+    assert te._lim_left  is None
+    assert te._lim_right is None
+
+
+# ---------------------------------------------------------------------------
+# fmt_bbt()
+# ---------------------------------------------------------------------------
+
+# Paramètres : 4 mesures × 16 steps, 4 beats/mesure → steps_per_beat=4, total=64
+
+NUM_STEPS      = 16
+NUM_BEATS      = 4
+STEPS_PER_BEAT = NUM_STEPS // NUM_BEATS   # 4
+TOTAL_STEPS    = 4 * NUM_STEPS            # 64
+
+
+def test_fmt_bbt_origin():
+    assert TrackEditor.fmt_bbt(0, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "1:1:1"
+
+
+def test_fmt_bbt_last():
+    assert TrackEditor.fmt_bbt(63, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "4:4:4"
+
+
+def test_fmt_bbt_step8():
+    assert TrackEditor.fmt_bbt(8, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "1:3:1"
+
+
+def test_fmt_bbt_start_bar2():
+    assert TrackEditor.fmt_bbt(NUM_STEPS, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "2:1:1"
+
+
+def test_fmt_bbt_clamps_below_zero():
+    assert TrackEditor.fmt_bbt(-5, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "1:1:1"
+
+
+def test_fmt_bbt_clamps_above_total():
+    assert TrackEditor.fmt_bbt(TOTAL_STEPS + 10, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "4:4:4"
+
+
+# ---------------------------------------------------------------------------
+# erase_grid et _erase_tracks — respect des limiteurs
+# ---------------------------------------------------------------------------
+# Pattern : 2 mesures × 16 steps = 32 steps au total (0..31)
+
+def test_erase_grid_no_lims_clears_all():
+    """Sans limiteurs, erase_grid efface toute la grille (comportement existant)."""
+    te = TrackEditor()
+    p  = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    _fill_track(p, 0, 1)
+    te.erase_grid(p, 0)
+    assert _track_sum(p, 0) == 0
+
+
+def test_erase_grid_with_lims_clears_only_range():
+    """Avec limiteurs, erase_grid n'efface que les steps dans [lim_left, lim_right]."""
+    te = TrackEditor()
+    p  = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    _fill_track(p, 0, 1)
+    total_before = _track_sum(p, 0)
+
+    # Limite sur la 2e mesure (steps 16..31)
+    te.set_lim_left(16)
+    te.set_lim_right(31)
+    te.erase_grid(p, 0)
+
+    # 1re mesure (steps 0..15) doit rester intacte
+    sum_bar0 = sum(
+        p._curpattern[0][pad][0][step]
+        for pad in range(p._num_pads)
+        for step in range(16)
+    )
+    sum_bar1 = sum(
+        p._curpattern[0][pad][1][step]
+        for pad in range(p._num_pads)
+        for step in range(16)
+    )
+    assert sum_bar0 > 0, "La 1re mesure ne devrait pas être effacée"
+    assert sum_bar1 == 0, "La 2e mesure devrait être effacée"
+
+
+def test_erase_grid_with_lims_preserves_clipboard():
+    """Le clipboard contient tout le track même avec limiteurs."""
+    te = TrackEditor()
+    p  = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    _fill_track(p, 0, 5)
+    te.set_lim_left(0)
+    te.set_lim_right(7)
+    te.erase_grid(p, 0)
+    assert te.has_clipboard()
+
+
+def test_erase_tracks_no_lims_clears_all():
+    """Sans limiteurs, cut efface tout le track."""
+    te = TrackEditor()
+    p  = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    _fill_track(p, 0, 1)
+    te.erase(p, 0)
+    assert _track_sum(p, 0) == 0
+
+
+def test_erase_tracks_with_lims_clears_only_range():
+    """Avec limiteurs, cut n'efface que les steps dans [lim_left, lim_right]."""
+    te = TrackEditor()
+    p  = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    _fill_track(p, 0, 1)
+
+    # Limite sur la 1re mesure uniquement (steps 0..15)
+    te.set_lim_left(0)
+    te.set_lim_right(15)
+    te.erase(p, 0)
+
+    sum_bar0 = sum(
+        p._curpattern[0][pad][0][step]
+        for pad in range(p._num_pads)
+        for step in range(16)
+    )
+    sum_bar1 = sum(
+        p._curpattern[0][pad][1][step]
+        for pad in range(p._num_pads)
+        for step in range(16)
+    )
+    assert sum_bar0 == 0, "La 1re mesure devrait être effacée"
+    assert sum_bar1 > 0, "La 2e mesure ne devrait pas être effacée"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = failed = 0

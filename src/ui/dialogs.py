@@ -741,7 +741,8 @@ class TrackSelectDialog(wx.Dialog):
     """Sélection de pistes (checkboxes) + plage temporelle (bar:beat:tick)."""
 
     def __init__(self, parent, num_tracks, sel_tracks, track_labels,
-                 num_bars, num_beats, num_steps, cur_step):
+                 num_bars, num_beats, num_steps, cur_step,
+                 lim_left=None, lim_right=None):
         super().__init__(parent, title="Sélection de pistes")
 
         self._num_steps      = num_steps
@@ -760,14 +761,17 @@ class TrackSelectDialog(wx.Dialog):
             checks_sizer.Add(cb, 0, wx.LEFT | wx.TOP, 4)
         checks_sizer.AddSpacer(4)
 
+        start_step = lim_left  if lim_left  is not None else cur_step
+        end_step   = lim_right if lim_right is not None else (self._total_steps - 1)
+
         # --- Champs BBT ---
         start_label = wx.StaticText(self, label="Début sélection :")
         self._start = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
-        self._start.SetValue(self._fmt_bbt(cur_step))
+        self._start.SetValue(self._fmt_bbt(start_step))
 
         end_label = wx.StaticText(self, label="Fin sélection :")
         self._end  = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
-        self._end.SetValue(self._fmt_bbt(self._total_steps - 1))
+        self._end.SetValue(self._fmt_bbt(end_step))
 
         range_grid = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
         range_grid.AddGrowableCol(1)
