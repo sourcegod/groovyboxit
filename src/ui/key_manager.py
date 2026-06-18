@@ -428,6 +428,14 @@ class KeyManager:
                 f"{', '.join(str(i + 1) for i in tracks)}"
             )
             return True
+        if not shift and not alt and key == wx.WXK_HOME:   # Ctrl+Début : début absolu
+            win._player.goto_start()
+            win._show_status(f"Début du pattern: {win._player.position_str()}")
+            return True
+        if not shift and not alt and key == wx.WXK_END:    # Ctrl+Fin : fin absolue
+            win._player.goto_end()
+            win._show_status(f"Fin du pattern: {win._player.position_str()}")
+            return True
         if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Aller à
             win._goto_dialog()
             return True
@@ -593,6 +601,26 @@ class KeyManager:
                 f"Effacé: Piste{'s' if len(tracks) > 1 else ''} "
                 f"{', '.join(str(i + 1) for i in tracks)}"
             )
+            return True
+
+        if not ctx.ctrl and not shift and key == wx.WXK_HOME:
+            te  = win._track_editor
+            lim = te._lim_left
+            if lim is not None:
+                win._player._go_to_offset(float(lim))
+            else:
+                win._player.goto_start()
+            win._show_status(f"Position: {win._player.position_str()}")
+            return True
+
+        if not ctx.ctrl and not shift and key == wx.WXK_END:
+            te  = win._track_editor
+            lim = te._lim_right
+            if lim is not None:
+                win._player._go_to_offset(float(lim))
+            else:
+                win._player.goto_end()
+            win._show_status(f"Position: {win._player.position_str()}")
             return True
 
         # Shift+Espace : toggle la piste courante dans/hors sélection (non-adjacent)
@@ -1089,6 +1117,27 @@ class KeyManager:
             win._player.set_volume(win._player.volume - 1)
             win._volume_ctrl.SetValue(win._player.volume)
             win._show_status(f"Volume: {win._player.volume}")
+            return True
+
+        # Shift+I : poser le limiteur gauche (In) au début du pattern
+        if not ctrl and not alt and shift and key == ord('I'):
+            pat         = win._player._pattern
+            total_steps = pat._num_bars * pat._num_steps
+            win._track_editor.set_lim_left(0)
+            bbt = win._track_editor.fmt_bbt(0, pat._num_steps,
+                      max(1, pat._num_steps // pat._num_beats), total_steps)
+            win._show_status(f"Limiteur gauche (In) : {bbt} (début pattern)")
+            return True
+
+        # Shift+O : poser le limiteur droit (Out) à la fin du pattern
+        if not ctrl and not alt and shift and key == ord('O'):
+            pat         = win._player._pattern
+            total_steps = pat._num_bars * pat._num_steps
+            step        = total_steps - 1
+            win._track_editor.set_lim_right(step)
+            bbt = win._track_editor.fmt_bbt(step, pat._num_steps,
+                      max(1, pat._num_steps // pat._num_beats), total_steps)
+            win._show_status(f"Limiteur droit (Out) : {bbt} (fin pattern)")
             return True
 
         # i : poser le limiteur gauche (In) à la position courante du playhead
