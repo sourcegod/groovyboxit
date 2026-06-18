@@ -158,9 +158,17 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
   -- Limiteurs temporels (in/out points) --
   i                Poser le limiteur gauche (In)  à la position courante du playhead
   o                Poser le limiteur droit  (Out) à la position courante du playhead
+  Shift+I          Poser le limiteur gauche (In)  au début du pattern (step 0)
+  Shift+O          Poser le limiteur droit  (Out) à la fin du pattern (dernier step)
                    Affichés dans la barre de statut en BBT + step
                    Ctrl+Entrée pré-remplit le dialog avec les limiteurs courants
                    Ctrl+A / Ctrl+Shift+A gèrent aussi les limiteurs
+
+  -- Navigation par les limiteurs --
+  Début (Home)     Aller au limiteur gauche (ou début du pattern si non défini)
+  Fin   (End)      Aller au limiteur droit  (ou fin du pattern si non défini)
+  Ctrl+Début       Aller au début absolu du pattern (step 0)
+  Ctrl+Fin         Aller à la fin absolue du pattern (dernier step)
 
   -- Édition des pistes sélectionnées --
   Ctrl+C           Copier les pistes sélectionnées → presse-papier
