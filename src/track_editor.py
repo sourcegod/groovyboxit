@@ -149,36 +149,43 @@ class TrackEditor:
         self._erase_tracks(pattern, tracks)
         return True
 
-    def paste(self, pattern, cur_track):
-        """Colle le presse-papier à partir de cur_track (toutes mesures).
+    def paste(self, pattern, cur_track, dest_bar=0):
+        """Colle le presse-papier à partir de cur_track et dest_bar.
 
-        Ajuste silencieusement si le clipboard est plus grand que le pattern
-        de destination.  Retourne False si le presse-papier est vide.
+        Étend le pattern si la zone de collage dépasse sa longueur actuelle.
+        Retourne False si le presse-papier est vide.
         """
         if self._clipboard is None:
             return False
         cb = self._clipboard
         n_paste   = min(cb.num_tracks, pattern._num_tracks - cur_track)
-        num_bars  = min(cb.num_bars,  pattern._num_bars)
         num_steps = min(cb.num_steps, pattern._num_steps)
+
+        needed_bars = dest_bar + cb.num_bars
+        if needed_bars > pattern._num_bars:
+            pattern.resize(needed_bars, pattern._num_steps)
 
         for rel in range(n_paste):
             abs_t = cur_track + rel
             for pad in range(min(pattern._num_pads, len(cb.grid[rel]))):
-                for bar in range(min(num_bars, len(cb.grid[rel][pad]))):
-                    src = cb.grid[rel][pad][bar]
-                    dst = pattern._curpattern[abs_t][pad][bar]
+                for rel_bar in range(min(cb.num_bars, len(cb.grid[rel][pad]))):
+                    dst_bar = dest_bar + rel_bar
+                    if dst_bar >= pattern._num_bars:
+                        break
+                    src = cb.grid[rel][pad][rel_bar]
+                    dst = pattern._curpattern[abs_t][pad][dst_bar]
                     for step in range(min(num_steps, len(src), len(dst))):
                         dst[step] = src[step]
 
         with pattern._lock:
-            for (rel_t, bar, step), events in cb.tape.items():
+            for (rel_t, rel_bar, step), events in cb.tape.items():
                 if rel_t >= n_paste:
                     continue
-                if bar >= pattern._num_bars or step >= pattern._num_steps:
+                dst_bar = dest_bar + rel_bar
+                if dst_bar >= pattern._num_bars or step >= pattern._num_steps:
                     continue
                 abs_t = cur_track + rel_t
-                pattern._tape[(abs_t, bar, step)] = list(events)
+                pattern._tape[(abs_t, dst_bar, step)] = list(events)
 
         return True
 
@@ -187,12 +194,13 @@ class TrackEditor:
 
         Sans limiteurs : efface toute la grille, tape préservée (comportement d'origine).
         Avec limiteurs : efface grille + _tape + _bend_tape + _mod_tape dans la plage.
+        Le clipboard ne contient que la plage limitée (barres relatives à l'origine).
         Raccourci DAW : Ctrl+X (Erase).
         """
         tracks = self.get_effective_tracks(cur_track)
-        self._clipboard = self._extract(pattern, tracks)
         lim_l = self._lim_left
         lim_r = self._lim_right
+        self._clipboard = self._extract(pattern, tracks, lim_l, lim_r)
         for t in tracks:
             for pad in pattern._curpattern[t]:
                 for bar_idx, bar in enumerate(pad):
@@ -222,18 +230,50 @@ class TrackEditor:
     # Privé
     # ------------------------------------------------------------------
 
-    def _extract(self, pattern, tracks):
-        grid = [copy.deepcopy(pattern._curpattern[t]) for t in tracks]
-        tape = {}
-        with pattern._lock:
-            for (t, bar, step), events in pattern._tape.items():
-                if t in tracks:
-                    rel = tracks.index(t)
-                    tape[(rel, bar, step)] = list(events)
+    def _extract(self, pattern, tracks, lim_l=None, lim_r=None):
+        """Extrait les pistes dans le clipboard.
+
+        Sans limiteurs : copie tout le pattern (barres absolues).
+        Avec limiteurs : copie seulement la plage [lim_l, lim_r]; les indices
+        de barre dans le clipboard sont relatifs au début de la plage (0-based).
+        """
+        ns = pattern._num_steps
+        if lim_l is not None and lim_r is not None:
+            start_bar = lim_l // ns
+            end_bar   = min(lim_r // ns, pattern._num_bars - 1)
+            num_bars  = max(1, end_bar - start_bar + 1)
+            grid = []
+            for t in tracks:
+                track_grid = []
+                for pad_data in pattern._curpattern[t]:
+                    pad_bars = []
+                    for rel_bar in range(num_bars):
+                        src_bar = start_bar + rel_bar
+                        if src_bar < len(pad_data):
+                            pad_bars.append(list(pad_data[src_bar]))
+                        else:
+                            pad_bars.append([0] * ns)
+                    track_grid.append(pad_bars)
+                grid.append(track_grid)
+            tape = {}
+            with pattern._lock:
+                for (t, bar, step), events in pattern._tape.items():
+                    if t in tracks and start_bar <= bar <= end_bar:
+                        rel = tracks.index(t)
+                        tape[(rel, bar - start_bar, step)] = list(events)
+        else:
+            grid = [copy.deepcopy(pattern._curpattern[t]) for t in tracks]
+            num_bars = pattern._num_bars
+            tape = {}
+            with pattern._lock:
+                for (t, bar, step), events in pattern._tape.items():
+                    if t in tracks:
+                        rel = tracks.index(t)
+                        tape[(rel, bar, step)] = list(events)
         return _ClipboardData(
             num_tracks = len(tracks),
-            num_bars   = pattern._num_bars,
-            num_steps  = pattern._num_steps,
+            num_bars   = num_bars,
+            num_steps  = ns,
             grid       = grid,
             tape       = tape,
         )

@@ -316,11 +316,15 @@ class KeyManager:
             )
             return True
         if not shift and not alt and key == ord('V'):
-            te = win._track_editor
+            te  = win._track_editor
             cur = win._player._cur_track
-            if te.paste(win._player._pattern, cur):
+            pat = win._player._pattern
+            dest_bar = int(win._player._current_offset()) // pat._num_steps
+            if te.paste(pat, cur, dest_bar=dest_bar):
                 win._refresh_grid()
-                win._show_status(f"Collé à partir de la Piste {cur + 1}")
+                win._show_status(
+                    f"Collé à partir de la Piste {cur + 1}, Mesure {dest_bar + 1}"
+                )
             else:
                 win._show_status("Presse-papier vide")
             return True

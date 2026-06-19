@@ -462,15 +462,17 @@ def test_erase_grid_with_lims_clears_only_range():
     assert sum_bar1 == 0, "La 2e mesure devrait être effacée"
 
 
-def test_erase_grid_with_lims_preserves_clipboard():
-    """Le clipboard contient tout le track même avec limiteurs."""
+def test_erase_grid_with_lims_fills_clipboard_limited_range():
+    """Avec limiteurs, le clipboard ne contient que la plage limitée."""
     te = TrackEditor()
     p  = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
     _fill_track(p, 0, 5)
+    # Limite sur la 1re mesure seulement (steps 0..15 = bar 0)
     te.set_lim_left(0)
-    te.set_lim_right(7)
+    te.set_lim_right(15)
     te.erase_grid(p, 0)
     assert te.has_clipboard()
+    assert te._clipboard.num_bars == 1   # une seule mesure copiée, pas deux
 
 
 def test_erase_tracks_no_lims_clears_all():
@@ -505,6 +507,72 @@ def test_erase_tracks_with_lims_clears_only_range():
     )
     assert sum_bar0 == 0, "La 1re mesure devrait être effacée"
     assert sum_bar1 > 0, "La 2e mesure ne devrait pas être effacée"
+
+
+def test_paste_at_dest_bar():
+    """paste(dest_bar=2) colle à partir de la mesure 2 sans écraser les premières."""
+    te  = TrackEditor()
+    src = _make_pattern(num_bars=2, num_steps=16)
+    dst = _make_pattern(num_bars=4, num_steps=16)
+    _fill_track(src, 0, 7)
+
+    te.copy(src, 0)
+    te.paste(dst, 0, dest_bar=2)
+
+    # Mesures 0-1 de dst intactes (vides)
+    sum_bar0 = sum(
+        dst._curpattern[0][pad][0][s]
+        for pad in range(dst._num_pads)
+        for s in range(16)
+    )
+    sum_bar2 = sum(
+        dst._curpattern[0][pad][2][s]
+        for pad in range(dst._num_pads)
+        for s in range(16)
+    )
+    assert sum_bar0 == 0, "Mesure 0 ne doit pas être modifiée"
+    assert sum_bar2 > 0,  "Mesure 2 doit contenir les données collées"
+
+
+def test_erase_grid_then_paste_at_bar5():
+    """Scénario complet : erase_grid sur 4 mesures, coller à partir de la mesure 4 (0-based)."""
+    te  = TrackEditor()
+    # Pattern 4 mesures, rempli
+    p = _make_pattern(num_bars=4, num_steps=16)
+    _fill_track(p, 0, 9)
+
+    # Ctrl+X : on efface toute la plage (mesures 0-3, steps 0-63)
+    te.set_lim_left(0)
+    te.set_lim_right(63)
+    te.erase_grid(p, 0)
+
+    assert _track_sum(p, 0) == 0, "Grille doit être vide après erase_grid"
+    assert te._clipboard.num_bars == 4
+
+    # On déplace le limiteur gauche à la mesure 4 (step 64)
+    te.set_lim_left(64)
+    te.set_lim_right(127)
+    dest_bar = te._lim_left // p._num_steps   # 64 // 16 = 4
+
+    te.paste(p, 0, dest_bar=dest_bar)
+
+    assert p._num_bars == 8, "Pattern doit être étendu à 8 mesures"
+
+    # Mesures 0-3 vides, mesures 4-7 remplies
+    sum_bars_0_3 = sum(
+        p._curpattern[0][pad][b][s]
+        for pad in range(p._num_pads)
+        for b in range(4)
+        for s in range(16)
+    )
+    sum_bars_4_7 = sum(
+        p._curpattern[0][pad][b][s]
+        for pad in range(p._num_pads)
+        for b in range(4, 8)
+        for s in range(16)
+    )
+    assert sum_bars_0_3 == 0, "Mesures 0-3 doivent rester vides"
+    assert sum_bars_4_7 > 0,  "Mesures 4-7 doivent contenir les données collées"
 
 
 if __name__ == "__main__":
