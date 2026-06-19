@@ -166,6 +166,18 @@ class KeyManager:
         if not ctrl and not shift and (ukey in (ord('m'), ord('M')) or key == ord('M')):
             win._midi_handler.toggle()
             return True
+        if not ctrl and not shift and key == ord('L'):   # Alt+L : réinitialiser loop points
+            p   = win._player
+            pat = p._pattern
+            pat._loop_start = None
+            pat._loop_end   = None
+            saved = win._pattern_list[win._cur_pattern_idx]
+            saved._loop_start = None
+            saved._loop_end   = None
+            if p.playing or p.clicking or p._note_repeat_active:
+                p._wakeup.set()
+            win._show_status("Points de boucle réinitialisés")
+            return True
         return False
 
     # ------------------------------------------------------------------
@@ -644,6 +656,23 @@ class KeyManager:
             else:
                 win._player.goto_end()
             win._show_status(f"Mesure: {win._player.position_str()}")
+            return True
+
+        if not ctx.ctrl and shift and key == wx.WXK_HOME:   # Shift+Début : début de boucle
+            p   = win._player
+            pat = p._pattern
+            step = pat._loop_start if pat._loop_start is not None else 0
+            p._go_to_offset(float(step))
+            win._show_status(f"Début boucle: {p.position_str()}")
+            return True
+
+        if not ctx.ctrl and shift and key == wx.WXK_END:    # Shift+Fin : fin de boucle
+            p   = win._player
+            pat = p._pattern
+            total = pat._num_bars * pat._num_steps
+            step = pat._loop_end if pat._loop_end is not None else total - 1
+            p._go_to_offset(float(step))
+            win._show_status(f"Fin boucle: {p.position_str()}")
             return True
 
         # Shift+Espace : toggle la piste courante dans/hors sélection (non-adjacent)

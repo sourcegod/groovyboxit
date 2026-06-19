@@ -30,6 +30,7 @@ l                Boucle On / Off (le pattern redémarre ou s'arrête en fin de c
 Ctrl+L           Poser le point de début de boucle à la position courante du playhead
 Shift+L          Poser le point de fin de boucle à la position courante du playhead
 Ctrl+Shift+L     Ouvrir le dialog de points de boucle (début, fin, répétitions)
+Alt+L            Réinitialiser les points de boucle (début et fin) à la longueur du pattern
 PageDown         Transport : +1 mesure
 PageUp           Transport : −1 mesure
 Ctrl+PageDown    Transport : +1 battement
@@ -170,6 +171,8 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
   -- Navigation par les limiteurs --
   Début (Home)     Aller au limiteur gauche (ou début du pattern si non défini)
   Fin   (End)      Aller au limiteur droit  (ou fin du pattern si non défini)
+  Shift+Début      Aller au début de la boucle (ou step 0 si non défini)
+  Shift+Fin        Aller à la fin de la boucle  (ou dernier step si non défini)
   Ctrl+Début       Aller au début absolu du pattern (step 0)
   Ctrl+Fin         Aller à la fin absolue du pattern (dernier step)
 
