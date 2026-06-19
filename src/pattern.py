@@ -48,6 +48,9 @@ class Pattern:
         self._denumerator = 4     # dénominateur de la signature rythmique
         self._looping     = True
         self._start_bar   = 0     # mesure de départ (0-indexed, 0 = mesure 1)
+        self._loop_start  = None  # step de début de boucle (None = début du pattern)
+        self._loop_end    = None  # step de fin de boucle   (None = fin du pattern)
+        self._loop_count  = 0     # répétitions (0 = infini)
 
         self._tracks = [Track(i) for i in range(self._num_tracks)]
 
@@ -297,6 +300,9 @@ class Pattern:
             "num_steps":     self._num_steps,
             "start_bar":     self._start_bar,
             "looping":       self._looping,
+            "loop_start":    self._loop_start,
+            "loop_end":      self._loop_end,
+            "loop_count":    self._loop_count,
             "track_slots":   self._track_slots,
             "track_mutes":   self._track_mutes,
             "track_solos":   self._track_solos,
@@ -328,12 +334,15 @@ class Pattern:
         Lit les clés 'kit_tape' et 'patch_tape' séparées (format historique)
         et les fusionne dans _tape.
         """
-        self._name      = d.get("name", "")
-        self._bpm       = d.get("bpm", 100)
-        self._num_bars  = d.get("num_bars", 1)
-        self._num_steps = d.get("num_steps", 16)
-        self._start_bar = d.get("start_bar", 0)
-        self._looping   = d.get("looping", True)
+        self._name       = d.get("name", "")
+        self._bpm        = d.get("bpm", 100)
+        self._num_bars   = d.get("num_bars", 1)
+        self._num_steps  = d.get("num_steps", 16)
+        self._start_bar  = d.get("start_bar", 0)
+        self._looping    = d.get("looping", True)
+        self._loop_start = d.get("loop_start", None)
+        self._loop_end   = d.get("loop_end", None)
+        self._loop_count = d.get("loop_count", 0)
         self.load_pattern(d["curpattern"])
         if "track_slots"   in d: self._track_slots   = d["track_slots"]
         if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]

@@ -877,3 +877,237 @@ class TrackSelectDialog(wx.Dialog):
         """Step de fin (0-based) ; total_steps-1 si saisie invalide."""
         v = self._parse_bbt(self._end.GetValue())
         return v if v is not None else self._total_steps - 1
+
+
+# ---------------------------------------------------------------------------
+
+_LOOP_SOURCES = [
+    "Position courante",
+    "Début du pattern",
+    "Fin du pattern",
+    "Limiteur gauche",
+    "Limiteur droit",
+    "Personnalisé",
+]
+_SRC_CUR = 0
+_SRC_START = 1
+_SRC_END = 2
+_SRC_LIM_L = 3
+_SRC_LIM_R = 4
+_SRC_CUSTOM = 5
+
+
+class LoopSelectDialog(wx.Dialog):
+    """Définit la fenêtre de boucle du pattern (_loop_start/_loop_end/_loop_count)."""
+
+    def __init__(self, parent,
+                 num_bars, num_beats, num_steps,
+                 cur_step, loop_start, loop_end, loop_count,
+                 lim_left=None, lim_right=None):
+        super().__init__(parent, title="Points de boucle")
+
+        self._num_steps      = num_steps
+        self._steps_per_beat = max(1, num_steps // num_beats)
+        self._total_steps    = num_bars * num_steps
+        self._cur_step       = max(0, min(cur_step, self._total_steps - 1))
+        self._lim_left       = lim_left
+        self._lim_right      = lim_right
+        self._updating       = False   # évite les boucles de MAJ ListBox ↔ TextCtrl
+
+        # --- Fenêtre Début ---
+        start_box    = wx.StaticBox(self, label="Début de boucle")
+        start_sizer  = wx.StaticBoxSizer(start_box, wx.VERTICAL)
+        self._start_list = wx.ListBox(self, choices=_LOOP_SOURCES, style=wx.LB_SINGLE,
+                                      size=(-1, 110))
+        start_label = wx.StaticText(self, label="Position (bar:beat:tick) :")
+        self._start_ctrl = wx.TextCtrl(self, size=(140, -1), style=wx.TE_PROCESS_ENTER)
+        start_sizer.Add(self._start_list,  1, wx.EXPAND | wx.ALL, 4)
+        start_sizer.Add(start_label,       0, wx.LEFT | wx.RIGHT, 4)
+        start_sizer.Add(self._start_ctrl,  0, wx.EXPAND | wx.ALL, 4)
+
+        # --- Fenêtre Fin ---
+        end_box   = wx.StaticBox(self, label="Fin de boucle")
+        end_sizer = wx.StaticBoxSizer(end_box, wx.VERTICAL)
+        self._end_list = wx.ListBox(self, choices=_LOOP_SOURCES, style=wx.LB_SINGLE,
+                                    size=(-1, 110))
+        end_label = wx.StaticText(self, label="Position (bar:beat:tick) :")
+        self._end_ctrl = wx.TextCtrl(self, size=(140, -1), style=wx.TE_PROCESS_ENTER)
+        end_sizer.Add(self._end_list,  1, wx.EXPAND | wx.ALL, 4)
+        end_sizer.Add(end_label,       0, wx.LEFT | wx.RIGHT, 4)
+        end_sizer.Add(self._end_ctrl,  0, wx.EXPAND | wx.ALL, 4)
+
+        panels = wx.BoxSizer(wx.HORIZONTAL)
+        panels.Add(start_sizer, 1, wx.EXPAND | wx.ALL, 6)
+        panels.Add(end_sizer,   1, wx.EXPAND | wx.ALL, 6)
+
+        # --- Répétitions ---
+        rep_label   = wx.StaticText(self, label="Répétitions (0 = infini) :")
+        self._rep_spin = wx.SpinCtrl(self, min=0, max=999, initial=loop_count)
+
+        rep_row = wx.BoxSizer(wx.HORIZONTAL)
+        rep_row.Add(rep_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        rep_row.Add(self._rep_spin, 0)
+
+        # --- Boutons ---
+        self._ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        self._cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        self._ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(self._ok_btn)
+        btn_sizer.AddButton(self._cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(panels,    0, wx.EXPAND)
+        vbox.Add(rep_row,   0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+
+        # Initialiser les valeurs
+        start_val = loop_start if loop_start is not None else 0
+        end_val   = loop_end   if loop_end   is not None else self._total_steps - 1
+        self._start_ctrl.SetValue(self._fmt_bbt(start_val))
+        self._end_ctrl.SetValue(self._fmt_bbt(end_val))
+        self._start_list.SetSelection(self._step_to_source(start_val))
+        self._end_list.SetSelection(self._step_to_source(end_val))
+
+        self.Fit()
+        # GTK réinitialise SpinCtrl au layout ; réappliquer après Fit()
+        self._rep_spin.SetValue(loop_count)
+
+        # Liaisons
+        self._start_list.Bind(wx.EVT_LISTBOX, self._on_start_source)
+        self._end_list.Bind(wx.EVT_LISTBOX,   self._on_end_source)
+        self._start_ctrl.Bind(wx.EVT_TEXT_ENTER, self._on_start_text)
+        self._end_ctrl.Bind(wx.EVT_TEXT_ENTER,   self._on_end_text)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
+        self._start_list.SetFocus()
+
+    # ------------------------------------------------------------------
+    # Helpers BBT (identiques à TrackSelectDialog)
+    # ------------------------------------------------------------------
+
+    def _fmt_bbt(self, step):
+        step = max(0, min(step, self._total_steps - 1))
+        bar  = step // self._num_steps
+        rem  = step % self._num_steps
+        beat = rem // self._steps_per_beat
+        tick = rem % self._steps_per_beat
+        return f"{bar + 1}:{beat + 1}:{tick + 1}"
+
+    def _parse_bbt(self, s):
+        parts = s.strip().split(":")
+        try:
+            if len(parts) >= 3:
+                off = ((int(parts[0]) - 1) * self._num_steps
+                       + (int(parts[1]) - 1) * self._steps_per_beat
+                       + (int(parts[2]) - 1))
+            elif len(parts) == 2:
+                off = ((int(parts[0]) - 1) * self._num_steps
+                       + (int(parts[1]) - 1) * self._steps_per_beat)
+            else:
+                off = (int(parts[0]) - 1) * self._num_steps
+            return int(max(0, min(self._total_steps - 1, off)))
+        except (ValueError, IndexError):
+            return None
+
+    def _step_to_source(self, step):
+        """Trouve l'indice de source correspondant à step, ou _SRC_CUSTOM."""
+        if step == self._cur_step:
+            return _SRC_CUR
+        if step == 0:
+            return _SRC_START
+        if step == self._total_steps - 1:
+            return _SRC_END
+        if self._lim_left is not None and step == self._lim_left:
+            return _SRC_LIM_L
+        if self._lim_right is not None and step == self._lim_right:
+            return _SRC_LIM_R
+        return _SRC_CUSTOM
+
+    def _source_to_step(self, src_idx):
+        """Retourne la valeur de step pour une source, ou None si Personnalisé."""
+        if src_idx == _SRC_CUR:
+            return self._cur_step
+        if src_idx == _SRC_START:
+            return 0
+        if src_idx == _SRC_END:
+            return self._total_steps - 1
+        if src_idx == _SRC_LIM_L:
+            return self._lim_left if self._lim_left is not None else 0
+        if src_idx == _SRC_LIM_R:
+            return self._lim_right if self._lim_right is not None else self._total_steps - 1
+        return None  # Personnalisé
+
+    # ------------------------------------------------------------------
+    # Événements
+    # ------------------------------------------------------------------
+
+    def _on_start_source(self, event):
+        src = self._start_list.GetSelection()
+        if src == wx.NOT_FOUND or src == _SRC_CUSTOM or self._updating:
+            return
+        step = self._source_to_step(src)
+        if step is not None:
+            self._updating = True
+            self._start_ctrl.SetValue(self._fmt_bbt(step))
+            self._updating = False
+
+    def _on_end_source(self, event):
+        src = self._end_list.GetSelection()
+        if src == wx.NOT_FOUND or src == _SRC_CUSTOM or self._updating:
+            return
+        step = self._source_to_step(src)
+        if step is not None:
+            self._updating = True
+            self._end_ctrl.SetValue(self._fmt_bbt(step))
+            self._updating = False
+
+    def _on_start_text(self, event):
+        if self._updating:
+            return
+        self._updating = True
+        self._start_list.SetSelection(_SRC_CUSTOM)
+        self._updating = False
+
+    def _on_end_text(self, event):
+        if self._updating:
+            return
+        self._updating = True
+        self._end_list.SetSelection(_SRC_CUSTOM)
+        self._updating = False
+
+    def _on_key(self, event):
+        key = event.GetKeyCode()
+        if key == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            focused = wx.Window.FindFocus()
+            if focused in (self._start_ctrl, self._end_ctrl):
+                # Valider la saisie BBT puis passer à OK
+                self._on_start_text(None)
+                self._on_end_text(None)
+            self.EndModal(wx.ID_OK)
+            return
+        event.Skip()
+
+    # ------------------------------------------------------------------
+    # API publique
+    # ------------------------------------------------------------------
+
+    def get_loop_start(self):
+        """None si début du pattern, sinon step 0-based."""
+        v = self._parse_bbt(self._start_ctrl.GetValue())
+        step = v if v is not None else 0
+        return None if step == 0 else step
+
+    def get_loop_end(self):
+        """None si fin du pattern, sinon step 0-based."""
+        v = self._parse_bbt(self._end_ctrl.GetValue())
+        step = v if v is not None else self._total_steps - 1
+        return None if step == self._total_steps - 1 else step
+
+    def get_loop_count(self):
+        return self._rep_spin.GetValue()

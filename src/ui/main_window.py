@@ -23,6 +23,7 @@ from ui.dialogs import (
     PatternPropertiesDialog,
     PadPropertiesDialog,
     ExplorerDialog,
+    LoopSelectDialog,
 )
 from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
@@ -834,6 +835,46 @@ class MainWindow(wx.Frame):
         )
         if dlg.ShowModal() == wx.ID_OK:
             p._go_to_offset(dlg.get_offset())
+        dlg.Destroy()
+
+    def _loop_select_dialog(self):
+        p   = self._player
+        pat = p._pattern
+        te  = self._track_editor
+        dlg = LoopSelectDialog(
+            self,
+            num_bars   = pat._num_bars,
+            num_beats  = pat._num_beats,
+            num_steps  = pat._num_steps,
+            cur_step   = int(p._current_offset()),
+            loop_start = pat._loop_start,
+            loop_end   = pat._loop_end,
+            loop_count = pat._loop_count,
+            lim_left   = te._lim_left,
+            lim_right  = te._lim_right,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            ls = dlg.get_loop_start()
+            le = dlg.get_loop_end()
+            lc = dlg.get_loop_count()
+            pat._loop_start  = ls
+            pat._loop_end    = le
+            pat._loop_count  = lc
+            p._loop_remaining = lc
+            # Synchro dans le pattern sauvegardé
+            saved = self._pattern_list[self._cur_pattern_idx]
+            saved._loop_start = ls
+            saved._loop_end   = le
+            saved._loop_count = lc
+            # Réveiller le thread pour qu'il recalcule la fenêtre
+            if p.playing or p.clicking or p._note_repeat_active:
+                p._wakeup.set()
+            # Message de statut
+            total = pat._num_bars * pat._num_steps
+            start_str = dlg._fmt_bbt(ls if ls is not None else 0)
+            end_str   = dlg._fmt_bbt(le if le is not None else total - 1)
+            rep_str   = f"{lc} fois" if lc else "infini"
+            self._show_status(f"Boucle: {start_str} → {end_str} | {rep_str}")
         dlg.Destroy()
 
     def _track_select_dialog(self):

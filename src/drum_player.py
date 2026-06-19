@@ -83,6 +83,10 @@ class DrumPlayer:
         self._on_song_advance_cb   = None  # callback(next_pat_idx) — -1 = song terminé
         self._on_song_cross_nav_cb = None  # callback(direction) — navigation inter-patterns
         self._song_looping         = False  # boucler le song entier
+        # Loop window (plage de boucle définie sur le pattern)
+        self._loop_remaining  = 0   # répétitions restantes (0 = infini)
+        self._cur_lp_start    = 0   # lp_start actuel (mis à jour par _run_thread)
+        self._cur_loop_steps  = 0   # longueur de la fenêtre (0 = pas de fenêtre)
 
     #--------------------------------------------------------------------------
 
@@ -140,6 +144,7 @@ class DrumPlayer:
             self.stop_click()
             clicked = 1
         self.playing = True
+        self._loop_remaining = self._pattern._loop_count
         if clicked:
             self.play_click()
         self.start_thread()
@@ -180,10 +185,12 @@ class DrumPlayer:
         if not self.playing:
             return
         now = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
+        if self._cur_loop_steps > 0:
+            measure_secs = self._cur_loop_steps * self.step_duration
+        else:
+            measure_secs = self._pattern._num_bars * self._pattern._num_steps * self.step_duration
         ref = self._measure_start if self._measure_start is not None else now
-        self._resume_offset = ((now - ref) % measure_secs) / self.step_duration
+        self._resume_offset = self._cur_lp_start + ((now - ref) % measure_secs) / self.step_duration
         self.playing   = False
         self._count_in = 0
         if not self._note_repeat_active and not self.clicking:
@@ -222,11 +229,13 @@ class DrumPlayer:
         """Retourne la position courante du playhead en pas flottants."""
         if not (self.playing or self.clicking or self._note_repeat_active):
             return self._resume_offset or 0.0
-        now          = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
+        now = time.perf_counter()
+        if self._cur_loop_steps > 0:
+            measure_secs = self._cur_loop_steps * self.step_duration
+        else:
+            measure_secs = self._pattern._num_bars * self._pattern._num_steps * self.step_duration
         ref = self._measure_start if self._measure_start is not None else now
-        return ((now - ref) % measure_secs) / self.step_duration
+        return self._cur_lp_start + ((now - ref) % measure_secs) / self.step_duration
 
     #--------------------------------------------------------------------------
 
@@ -394,13 +403,34 @@ class DrumPlayer:
         while (self.playing or self.clicking or self._note_repeat_active) \
                 and not self.stop_event.is_set():
             self._wakeup.clear()
+            num_steps = self._pattern._num_steps
             # Pendant le count-in, on boucle par mesure unitaire (1 bar)
             # pour déclencher l'enregistrement exactement après 1 mesure musicale.
             if self._count_in > 0:
-                loop_bars = 1
+                lp_start    = 0
+                lp_end      = num_steps - 1
+                total_steps = num_steps
+                loop_bars   = 1
+                self._cur_lp_start   = 0
+                self._cur_loop_steps = 0
             else:
-                loop_bars = self._pattern._num_bars
-            total_steps  = loop_bars * self._pattern._num_steps
+                total_pat_steps = self._pattern._num_bars * num_steps
+                if self._pattern._loop_start is not None or self._pattern._loop_end is not None:
+                    lp_start = self._pattern._loop_start if self._pattern._loop_start is not None else 0
+                    lp_end   = self._pattern._loop_end   if self._pattern._loop_end   is not None else total_pat_steps - 1
+                    lp_start = max(0, min(lp_start, total_pat_steps - 1))
+                    lp_end   = max(lp_start, min(lp_end, total_pat_steps - 1))
+                    total_steps = lp_end - lp_start + 1
+                    loop_bars   = max(1, -(-total_steps // num_steps))  # ceiling division
+                    self._cur_lp_start   = lp_start
+                    self._cur_loop_steps = total_steps
+                else:
+                    lp_start    = 0
+                    lp_end      = total_pat_steps - 1
+                    total_steps = total_pat_steps
+                    loop_bars   = self._pattern._num_bars
+                    self._cur_lp_start   = 0
+                    self._cur_loop_steps = 0
             measure_secs = total_steps * self.step_duration
             now = time.perf_counter()
 
@@ -414,14 +444,15 @@ class DrumPlayer:
             # (on exclut ceux déjà passés avec une petite tolérance)
             events = []
             if self.playing:
-                num_steps = self._pattern._num_steps
                 # Snapshot atomique sous verrou — immunise contre les modifications
                 # concurrentes (record_*, erase_*) pendant l'itération.
                 with self._pattern._lock:
                     tape_snap = {k: list(v) for k, v in self._pattern._tape.items()}
                 for (t_idx, bar_idx, step_idx), note_list in tape_snap.items():
                     float_off = bar_idx * num_steps + step_idx
-                    t_sec = float_off * self.step_duration
+                    if not (lp_start <= float_off <= lp_end):
+                        continue
+                    t_sec = (float_off - lp_start) * self.step_duration
                     if t_sec > elapsed - 0.002:
                         for ev in note_list:
                             if ev.etype == "G":
@@ -435,12 +466,16 @@ class DrumPlayer:
                                                (t_idx, ev.note, ev.dur, ev.bend), ev.vel))
                 for t_idx, track_bends in enumerate(self._pattern._bend_tape):
                     for float_off, bend_val in list(track_bends):
-                        t_sec = float_off * self.step_duration
+                        if not (lp_start <= float_off <= lp_end):
+                            continue
+                        t_sec = (float_off - lp_start) * self.step_duration
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, self.BEND_TAPE_EVENT, (t_idx, bend_val), 0))
                 for t_idx, track_mods in enumerate(self._pattern._mod_tape):
                     for float_off, mod_val in list(track_mods):
-                        t_sec = float_off * self.step_duration
+                        if not (lp_start <= float_off <= lp_end):
+                            continue
+                        t_sec = (float_off - lp_start) * self.step_duration
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, self.MOD_TAPE_EVENT, (t_idx, mod_val), 0))
             events.extend(self._metro.build_events(
@@ -563,7 +598,17 @@ class DrumPlayer:
                             if self._on_count_in_done_cb:
                                 self._on_count_in_done_cb()
                 elif not self._wakeup.is_set() and not self.stop_event.is_set():
-                    if not self._pattern._looping and self.playing:
+                    # Décrémenter le compteur de boucle si actif (loop_count > 0)
+                    if self._loop_remaining > 0 and self.playing:
+                        self._loop_remaining -= 1
+                        if self._loop_remaining == 0:
+                            self._resume_offset = float(lp_start)
+                            self.playing = False
+                            if self._song_mode:
+                                self._song_mode = False
+                                if self._on_song_advance_cb:
+                                    self._on_song_advance_cb(-1)
+                    elif not self._pattern._looping and self.playing:
                         if (self._song_mode and self._pattern_list_ref
                                 and self._song_pos + 1 < len(self._song_sequence)):
                             self._song_pos += 1

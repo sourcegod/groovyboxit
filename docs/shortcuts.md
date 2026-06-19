@@ -27,6 +27,9 @@ Q                Activer / désactiver le mode Note Repeat
 g                Transport : Aller au début du pattern (Goto Start)
 Shift+G          Transport : Aller à la fin du pattern (Goto End)
 l                Boucle On / Off (le pattern redémarre ou s'arrête en fin de cycle)
+Ctrl+L           Poser le point de début de boucle à la position courante du playhead
+Shift+L          Poser le point de fin de boucle à la position courante du playhead
+Ctrl+Shift+L     Ouvrir le dialog de points de boucle (début, fin, répétitions)
 PageDown         Transport : +1 mesure
 PageUp           Transport : −1 mesure
 Ctrl+PageDown    Transport : +1 battement

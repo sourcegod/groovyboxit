@@ -261,11 +261,18 @@ class KeyManager:
             win._show_status(f"Temps: {win._player.time_str()}")
             return True
 
-        # l : toggle boucle
+        # l : toggle boucle  /  Shift+L : boucle fin
         if ukey == ord('l') or key == ord('L'):
-            pat = win._player._pattern
-            pat._looping = not pat._looping
-            win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
+            p   = win._player
+            pat = p._pattern
+            if shift:
+                step  = int(p._current_offset())
+                total = pat._num_bars * pat._num_steps
+                pat._loop_end = None if step == total - 1 else step
+                win._show_status(f"Boucle fin: {p.position_str()}")
+            else:
+                pat._looping = not pat._looping
+                win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
             return True
 
         return False
@@ -441,6 +448,19 @@ class KeyManager:
             return True
         if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Aller à
             win._goto_dialog()
+            return True
+        if shift and not alt and key == ord('L'):         # Ctrl+Shift+L : dialog loop points
+            win._loop_select_dialog()
+            return True
+        if not shift and not alt and key == ord('L'):     # Ctrl+L : loop start à la position courante
+            p   = win._player
+            pat = p._pattern
+            step = int(p._current_offset())
+            pat._loop_start = None if step == 0 else step
+            win._pattern_list[win._cur_pattern_idx]._loop_start = pat._loop_start
+            if p.playing or p.clicking or p._note_repeat_active:
+                p._wakeup.set()
+            win._show_status(f"Boucle début: {win._player.position_str()}")
             return True
         if not shift and not alt and key == ord('G'):     # Ctrl+G : état + position
             p = win._player
@@ -1092,6 +1112,21 @@ class KeyManager:
                 and (ukey == ord('w') or key == ord('W')):
             win._player.move_by_seconds(+1)
             win._show_status(f"Temps: {win._player.time_str()}")
+            return True
+
+        # Shift+L : poser loop end à la position courante
+        if not ctrl and shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('l') or key == ord('L')):
+            p    = win._player
+            pat  = p._pattern
+            step = int(p._current_offset())
+            total = pat._num_bars * pat._num_steps
+            pat._loop_end = None if step == total - 1 else step
+            win._pattern_list[win._cur_pattern_idx]._loop_end = pat._loop_end
+            if p.playing or p.clicking or p._note_repeat_active:
+                p._wakeup.set()
+            win._show_status(f"Boucle fin: {p.position_str()}")
             return True
 
         # l : toggle boucle
