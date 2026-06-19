@@ -1,3 +1,4 @@
+import math
 import time
 import threading
 import os
@@ -249,6 +250,19 @@ class DrumPlayer:
         last = total_steps - 1
         return f"{_fmt(cur)} / {_fmt(last)}"
 
+    def time_str(self):
+        """Retourne 'cur.msec / total.msec' pour la barre de statut."""
+        def _fmt(t):
+            t    = round(max(0.0, t), 3)
+            secs = int(t)
+            msec = int(round((t - secs) * 1000))
+            return f"{secs}.{msec:03d}"
+
+        total_steps = self._pattern._num_bars * self._pattern._num_steps
+        cur   = self._current_offset() * self.step_duration
+        total = total_steps * self.step_duration
+        return f"{_fmt(cur)} / {_fmt(total)}"
+
     #--------------------------------------------------------------------------
 
     def move_by_ticks(self, ticks):
@@ -262,8 +276,19 @@ class DrumPlayer:
         self.move_by_ticks(beats * steps_per_beat)
 
     def move_by_seconds(self, seconds):
-        """Déplace le playhead de ±seconds secondes (clamp via move_by_ticks)."""
-        self.move_by_ticks(seconds / self.step_duration)
+        """Déplace le playhead en se calant sur les frontières entières de secondes.
+
+        W (seconds>0) : floor(position courante) + n secondes.
+        B (seconds<0) : ceil(position courante)  - n secondes.
+        Garantit un affichage toujours en valeur entière (0.000, 1.000, 2.000…).
+        """
+        cur_secs = round(self._current_offset() * self.step_duration, 9)
+        if seconds >= 0:
+            base = math.floor(cur_secs)
+        else:
+            base = math.ceil(cur_secs)
+        new_secs = max(0.0, base + seconds)
+        self._go_to_offset(new_secs / self.step_duration)
 
     def move_by_bars(self, bars):
         """Déplace le playhead de ±bars mesures (wrapping cyclique, usage interne)."""

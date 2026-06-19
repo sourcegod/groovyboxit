@@ -276,12 +276,13 @@ def test_move_by_ticks_backward():
 
 
 def test_move_by_ticks_clamp_forward():
+    """Phase 8d : plus de clamp supérieur — on peut dépasser la fin."""
     p = _make_player()
     total = p._pattern._num_bars * p._pattern._num_steps
     p._resume_offset = float(total - 1)
     p.move_by_ticks(1)
-    assert p._resume_offset == float(total - 1)
-    print(f"  move_by_ticks(+1) depuis {total - 1} → clamp {total - 1} : OK")
+    assert p._resume_offset == float(total)
+    print(f"  move_by_ticks(+1) depuis {total - 1} → {total} (sans clamp) : OK")
 
 
 def test_move_by_ticks_clamp_backward():
@@ -359,22 +360,24 @@ def test_navigate_bar_down_from_middle_goes_to_next_bar():
     print("  navigate_bar(+1) depuis 6 → début mesure 1 : OK")
 
 
-def test_navigate_bar_down_from_last_bar_goes_to_last_tick():
+def test_navigate_bar_down_from_last_bar_goes_beyond():
+    """Phase 8d : navigate_bar(+1) depuis la dernière mesure va au-delà du pattern."""
     p = _make_player()
     total = p._pattern._num_bars * p._pattern._num_steps   # 16
     p._resume_offset = 0.0          # mesure 0 = seule mesure = dernière mesure
     p.navigate_bar(+1)
-    assert p._resume_offset == float(total - 1)
-    print(f"  navigate_bar(+1) depuis dernière mesure → dernier tick {total - 1} : OK")
+    assert p._resume_offset == float(total)
+    print(f"  navigate_bar(+1) depuis dernière mesure → {total} (au-delà) : OK")
 
 
-def test_navigate_bar_down_from_last_tick_stays():
+def test_navigate_bar_down_from_last_tick_goes_beyond():
+    """Phase 8d : navigate_bar(+1) depuis le dernier tick va au-delà du pattern."""
     p = _make_player()
     total = p._pattern._num_bars * p._pattern._num_steps
     p._resume_offset = float(total - 1)
     p.navigate_bar(+1)
-    assert p._resume_offset == float(total - 1)
-    print(f"  navigate_bar(+1) depuis dernier tick → reste {total - 1} : OK")
+    assert p._resume_offset == float(total)
+    print(f"  navigate_bar(+1) depuis dernier tick → {total} (au-delà) : OK")
 
 
 def test_navigate_bar_up_from_middle_of_bar1():
@@ -426,10 +429,13 @@ def test_move_by_seconds_forward():
 
 
 def test_move_by_seconds_backward():
+    """Phase 8e : B depuis step 10 (1.5 s) → ceil(1.5)=2, new=1 s, step≈6.667."""
     p = _make_player()
+    # BPM=100, step_duration=0.15 → step 10 = 1.5 s
     p._resume_offset = 10.0
     p.move_by_seconds(-1)
-    expected = 10.0 - 1.0 / p.step_duration
+    # ceil(1.5)-1 = 1 s → 1.0/0.15 ≈ 6.667
+    expected = 1.0 / p.step_duration
     assert abs(p._resume_offset - expected) < 0.01
     print(f"  move_by_seconds(-1) depuis 10 → {p._resume_offset:.3f} pas : OK")
 
@@ -443,12 +449,15 @@ def test_move_by_seconds_clamp_backward():
 
 
 def test_move_by_seconds_clamp_forward():
+    """Phase 8d+e : plus de clamp supérieur — W depuis la fin avance au-delà."""
     p = _make_player()
-    total = p._pattern._num_bars * p._pattern._num_steps
-    p._resume_offset = float(total - 1)
+    total = p._pattern._num_bars * p._pattern._num_steps   # 16
+    p._resume_offset = float(total - 1)   # step 15 = 2.25 s (BPM=100)
     p.move_by_seconds(1)
-    assert p._resume_offset == float(total - 1)
-    print(f"  move_by_seconds(+1) depuis {total - 1} → clamp {total - 1} : OK")
+    # floor(2.25)+1 = 3 s → 3.0/0.15 = 20.0 pas
+    expected = 3.0 / p.step_duration
+    assert abs(p._resume_offset - expected) < 0.01
+    print(f"  move_by_seconds(+1) depuis {total - 1} → {p._resume_offset:.3f} (sans clamp) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -554,8 +563,8 @@ def test_goto_to_offset_mesures():
     assert GD.to_offset(0, 2, 4, 4, 16, 0.1) == 16.0
     # bar 4 (dernier) → step 48
     assert GD.to_offset(0, 4, 4, 4, 16, 0.1) == 48.0
-    # dépassement → clamp total-1 = 63
-    assert GD.to_offset(0, 5, 4, 4, 16, 0.1) == 63.0
+    # Phase 8d : dépassement autorisé, pas de clamp supérieur → step 64
+    assert GD.to_offset(0, 5, 4, 4, 16, 0.1) == 64.0
     print("  to_offset Mesures : OK")
 
 
@@ -567,8 +576,8 @@ def test_goto_to_offset_battements():
     assert GD.to_offset(1, 5, 4, 4, 16, 0.1) == 16.0
     # beat 16 (dernier) → step 60
     assert GD.to_offset(1, 16, 4, 4, 16, 0.1) == 60.0
-    # dépassement → clamp 63
-    assert GD.to_offset(1, 99, 4, 4, 16, 0.1) == 63.0
+    # Phase 8d : dépassement autorisé → (99-1)*4 = 392
+    assert GD.to_offset(1, 99, 4, 4, 16, 0.1) == 392.0
     print("  to_offset Battements : OK")
 
 
@@ -580,8 +589,8 @@ def test_goto_to_offset_ticks():
     assert GD.to_offset(2, 17, 4, 4, 16, 0.1) == 16.0
     # tick 64 (dernier) → step 63
     assert GD.to_offset(2, 64, 4, 4, 16, 0.1) == 63.0
-    # dépassement → clamp 63
-    assert GD.to_offset(2, 100, 4, 4, 16, 0.1) == 63.0
+    # Phase 8d : dépassement autorisé → step 99
+    assert GD.to_offset(2, 100, 4, 4, 16, 0.1) == 99.0
     print("  to_offset Ticks : OK")
 
 
@@ -591,8 +600,8 @@ def test_goto_to_offset_temps():
     assert GD.to_offset(3, 0, 4, 4, 16, 0.1) == 0.0
     # step_duration=0.1 → 1 s = 10 steps
     assert GD.to_offset(3, 1, 4, 4, 16, 0.1) == 10.0
-    # dépassement → clamp 63
-    assert GD.to_offset(3, 999, 4, 4, 16, 0.1) == 63.0
+    # Phase 8d : dépassement autorisé → 999/0.1 = 9990 steps
+    assert GD.to_offset(3, 999, 4, 4, 16, 0.1) == 9990.0
     print("  to_offset Temps : OK")
 
 
@@ -606,10 +615,10 @@ def test_goto_to_offset_clamp_bas():
 
 def test_goto_to_offset_un_bar():
     from ui.dialogs import GotoDialog as GD
-    # pattern 1 mesure : seule valeur valide = bar 1 → step 0
+    # pattern 1 mesure : bar 1 → step 0
     assert GD.to_offset(0, 1, 1, 4, 16, 0.15) == 0.0
-    # bar 2 → clamp total-1 = 15
-    assert GD.to_offset(0, 2, 1, 4, 16, 0.15) == 15.0
+    # Phase 8d : bar 2 → step 16 (au-delà autorisé, pas de clamp)
+    assert GD.to_offset(0, 2, 1, 4, 16, 0.15) == 16.0
     print("  to_offset 1 mesure : OK")
 
 
