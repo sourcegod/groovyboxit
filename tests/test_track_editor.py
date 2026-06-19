@@ -162,6 +162,22 @@ def test_copy_single_track():
     assert te._clipboard.grid[0][0][0][0] == 99
 
 
+def test_copy_with_lims_extracts_limited_range():
+    """Ctrl+C avec limiteurs : clipboard limité à la plage, barres relatives."""
+    te = TrackEditor()
+    p  = _make_pattern(num_bars=4, num_steps=16)
+    _fill_track(p, 0, 3)
+
+    # Limite sur les mesures 1-2 (steps 16..47, bars 1-2)
+    te.set_lim_left(16)
+    te.set_lim_right(47)
+    te.copy(p, 0)
+
+    assert te._clipboard.num_bars == 2        # 2 mesures copiées
+    assert te._clipboard.grid[0][0][0][0] == 3  # 1re mesure relative (bar 1 source)
+    assert _track_sum(p, 0) > 0              # pattern non modifié
+
+
 def test_copy_does_not_modify_pattern():
     te = TrackEditor()
     p  = _make_pattern()

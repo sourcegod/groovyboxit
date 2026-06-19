@@ -136,10 +136,11 @@ class TrackEditor:
     def copy(self, pattern, cur_track):
         """Copie les pistes sélectionnées dans le presse-papier.
 
-        Copie toutes les mesures du pattern.
+        Si des limiteurs sont posés, copie uniquement la plage limitée.
+        Sans limiteurs, copie toutes les mesures du pattern.
         """
         tracks = self.get_effective_tracks(cur_track)
-        self._clipboard = self._extract(pattern, tracks)
+        self._clipboard = self._extract(pattern, tracks, self._lim_left, self._lim_right)
         return True
 
     def cut(self, pattern, cur_track):
