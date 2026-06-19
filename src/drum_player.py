@@ -415,7 +415,10 @@ class DrumPlayer:
                 self._cur_loop_steps = 0
             else:
                 total_pat_steps = self._pattern._num_bars * num_steps
-                if self._pattern._loop_start is not None or self._pattern._loop_end is not None:
+                use_window = (self._pattern._looping
+                              and (self._pattern._loop_start is not None
+                                   or self._pattern._loop_end is not None))
+                if use_window:
                     lp_start = self._pattern._loop_start if self._pattern._loop_start is not None else 0
                     lp_end   = self._pattern._loop_end   if self._pattern._loop_end   is not None else total_pat_steps - 1
                     lp_start = max(0, min(lp_start, total_pat_steps - 1))

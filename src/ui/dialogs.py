@@ -903,8 +903,10 @@ class LoopSelectDialog(wx.Dialog):
     def __init__(self, parent,
                  num_bars, num_beats, num_steps,
                  cur_step, loop_start, loop_end, loop_count,
-                 lim_left=None, lim_right=None):
+                 looping=True, lim_left=None, lim_right=None,
+                 on_play_toggle=None):
         super().__init__(parent, title="Points de boucle")
+        self._on_play_toggle = on_play_toggle
 
         self._num_steps      = num_steps
         self._steps_per_beat = max(1, num_steps // num_beats)
@@ -940,6 +942,10 @@ class LoopSelectDialog(wx.Dialog):
         panels.Add(start_sizer, 1, wx.EXPAND | wx.ALL, 6)
         panels.Add(end_sizer,   1, wx.EXPAND | wx.ALL, 6)
 
+        # --- Boucle Active ---
+        self._looping_cb = wx.CheckBox(self, label="Boucle Active")
+        self._looping_cb.SetValue(looping)
+
         # --- Répétitions ---
         rep_label   = wx.StaticText(self, label="Répétitions (0 = infini) :")
         self._rep_spin = wx.SpinCtrl(self, min=0, max=999, initial=loop_count)
@@ -958,9 +964,10 @@ class LoopSelectDialog(wx.Dialog):
         btn_sizer.Realize()
 
         vbox = wx.BoxSizer(wx.VERTICAL)
-        vbox.Add(panels,    0, wx.EXPAND)
-        vbox.Add(rep_row,   0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
-        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(panels,           0, wx.EXPAND)
+        vbox.Add(self._looping_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(rep_row,          0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(btn_sizer,        0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
 
         # Initialiser les valeurs
@@ -1079,14 +1086,18 @@ class LoopSelectDialog(wx.Dialog):
         self._updating = False
 
     def _on_key(self, event):
-        key = event.GetKeyCode()
+        key  = event.GetKeyCode()
+        ctrl = event.ControlDown()
         if key == wx.WXK_ESCAPE:
             self.EndModal(wx.ID_CANCEL)
+            return
+        if ctrl and key == ord('P'):
+            if self._on_play_toggle:
+                self._on_play_toggle()
             return
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             focused = wx.Window.FindFocus()
             if focused in (self._start_ctrl, self._end_ctrl):
-                # Valider la saisie BBT puis passer à OK
                 self._on_start_text(None)
                 self._on_end_text(None)
             self.EndModal(wx.ID_OK)
@@ -1096,6 +1107,9 @@ class LoopSelectDialog(wx.Dialog):
     # ------------------------------------------------------------------
     # API publique
     # ------------------------------------------------------------------
+
+    def get_looping(self):
+        return self._looping_cb.GetValue()
 
     def get_loop_start(self):
         """None si début du pattern, sinon step 0-based."""
