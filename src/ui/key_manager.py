@@ -49,6 +49,7 @@ class KeyManager:
             on_pad_list          = focused == win._pad_list,
             on_vel_list          = focused == win._vel_list,
             on_midi_port_list    = focused == win._midi_port_list,
+            on_status_ctrl       = focused == win._status_ctrl,
         )
 
         if key == wx.WXK_F1:
@@ -494,6 +495,8 @@ class KeyManager:
             return True
 
         if key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
+            if ctx.on_status_ctrl:
+                return True
             if on_track_list and shift and key in (wx.WXK_UP, wx.WXK_DOWN):
                 cur = win._player._cur_track
                 n   = win._track_list.GetCount()

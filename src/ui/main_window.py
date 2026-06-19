@@ -181,11 +181,11 @@ class MainWindow(wx.Frame):
     def _build_ui(self):
         panel = wx.Panel(self)
 
-        self._status_ctrl = wx.TextCtrl(
+        self._status_ctrl = wx.ListBox(
             panel,
-            style=wx.TE_READONLY | wx.TE_LEFT | wx.BORDER_SIMPLE,
+            choices=["ShiftPad: 1/8"],
+            style=wx.LB_SINGLE,
         )
-        self._status_ctrl.SetValue("ShiftPad: 1/8")
 
         bpm_label = wx.StaticText(panel, label="BPM:")
         self._bpm_ctrl = wx.SpinCtrl(panel, min=5, max=600, initial=self._player.bpm, size=(80, -1))
@@ -1436,10 +1436,7 @@ class MainWindow(wx.Frame):
         self._show_status(f"Pad {pad_idx + 1}: Solo {'On' if soloed else 'Off'}")
 
     def _show_status(self, msg):
-        focused = wx.Window.FindFocus()
-        self._status_ctrl.SetValue(msg)
-        if focused:
-            wx.CallAfter(focused.SetFocus)
+        self._status_ctrl.SetString(0, msg)
 
     def _move(self, dr, dc):
         r = max(0, min(self.ROWS - 1, self._cur_row + dr))
