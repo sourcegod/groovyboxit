@@ -121,8 +121,12 @@ class TrackEditor:
 
     @staticmethod
     def fmt_bbt(step, num_steps, steps_per_beat, total_steps):
-        """Formate un step 0-based en 'bar:beat:tick' 1-based."""
-        step = max(0, min(step, total_steps - 1))
+        """Formate un step 0-based en 'bar:beat:tick' 1-based.
+
+        Pas de borne supérieure : un step au-delà de total_steps s'affiche
+        normalement (ex. step 64 dans un pattern de 64 → '5:1:1').
+        """
+        step = max(0, step)
         bar  = step // num_steps
         rem  = step % num_steps
         beat = rem // steps_per_beat
@@ -150,9 +154,11 @@ class TrackEditor:
         self._erase_tracks(pattern, tracks)
         return True
 
-    def paste(self, pattern, cur_track, dest_bar=0):
+    def paste(self, pattern, cur_track, dest_bar=0, merge=False):
         """Colle le presse-papier à partir de cur_track et dest_bar.
 
+        merge=False (défaut) : remplace les données existantes.
+        merge=True  (Shift+V): mélange — max() sur la grille, union sur la tape.
         Étend le pattern si la zone de collage dépasse sa longueur actuelle.
         Retourne False si le presse-papier est vide.
         """
@@ -175,8 +181,13 @@ class TrackEditor:
                         break
                     src = cb.grid[rel][pad][rel_bar]
                     dst = pattern._curpattern[abs_t][pad][dst_bar]
-                    for step in range(min(num_steps, len(src), len(dst))):
-                        dst[step] = src[step]
+                    n = min(num_steps, len(src), len(dst))
+                    if merge:
+                        for step in range(n):
+                            dst[step] = max(dst[step], src[step])
+                    else:
+                        for step in range(n):
+                            dst[step] = src[step]
 
         with pattern._lock:
             for (rel_t, rel_bar, step), events in cb.tape.items():
@@ -186,7 +197,11 @@ class TrackEditor:
                 if dst_bar >= pattern._num_bars or step >= pattern._num_steps:
                     continue
                 abs_t = cur_track + rel_t
-                pattern._tape[(abs_t, dst_bar, step)] = list(events)
+                key = (abs_t, dst_bar, step)
+                if merge and key in pattern._tape:
+                    pattern._tape[key] = pattern._tape[key] + list(events)
+                else:
+                    pattern._tape[key] = list(events)
 
         return True
 

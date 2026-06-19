@@ -433,8 +433,10 @@ def test_fmt_bbt_clamps_below_zero():
     assert TrackEditor.fmt_bbt(-5, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "1:1:1"
 
 
-def test_fmt_bbt_clamps_above_total():
-    assert TrackEditor.fmt_bbt(TOTAL_STEPS + 10, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "4:4:4"
+def test_fmt_bbt_beyond_total():
+    """Un step au-delà de total_steps s'affiche normalement (navigation après la fin)."""
+    # TOTAL_STEPS=64 → step 64 = 5:1:1, step 74 = 5:3:3 (rem=10, beat=2, tick=2)
+    assert TrackEditor.fmt_bbt(TOTAL_STEPS, NUM_STEPS, STEPS_PER_BEAT, TOTAL_STEPS) == "5:1:1"
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +525,76 @@ def test_erase_tracks_with_lims_clears_only_range():
     )
     assert sum_bar0 == 0, "La 1re mesure devrait être effacée"
     assert sum_bar1 > 0, "La 2e mesure ne devrait pas être effacée"
+
+
+def test_paste_merge_grid():
+    """Shift+V : max() sur la grille — les notes existantes ne sont pas écrasées."""
+    te  = TrackEditor()
+    src = _make_pattern(num_bars=1, num_steps=16)
+    dst = _make_pattern(num_bars=1, num_steps=16)
+
+    # dst : step 0 vaut 80, step 1 vaut 0
+    dst._curpattern[0][0][0][0] = 80
+    dst._curpattern[0][0][0][1] = 0
+    # src : step 0 vaut 50, step 1 vaut 90
+    src._curpattern[0][0][0][0] = 50
+    src._curpattern[0][0][0][1] = 90
+
+    te.copy(src, 0)
+    te.paste(dst, 0, merge=True)
+
+    assert dst._curpattern[0][0][0][0] == 80   # max(80, 50) = 80 (dst conservé)
+    assert dst._curpattern[0][0][0][1] == 90   # max(0, 90)  = 90 (src ajouté)
+
+
+def test_paste_merge_tape():
+    """Shift+V : les événements tape sont fusionnés, non remplacés."""
+    te  = TrackEditor()
+    src = _make_pattern(num_bars=1, num_steps=16)
+    dst = _make_pattern(num_bars=1, num_steps=16)
+    ev_dst = TapeEvent("K", 36, 100, 0, 0)
+    ev_src = TapeEvent("K", 42,  80, 0, 0)
+    dst._tape[(0, 0, 3)] = [ev_dst]
+    src._tape[(0, 0, 3)] = [ev_src]
+
+    te.copy(src, 0)
+    te.paste(dst, 0, merge=True)
+
+    assert len(dst._tape[(0, 0, 3)]) == 2   # les deux événements coexistent
+
+
+def test_paste_no_extension_when_fits():
+    """Règle 1 : si source ≤ place restante, paste ne rallonge pas le pattern."""
+    te  = TrackEditor()
+    src = _make_pattern(num_bars=2, num_steps=16)
+    dst = _make_pattern(num_bars=4, num_steps=16)
+    _fill_track(src, 0, 1)
+
+    te.copy(src, 0)
+    te.paste(dst, 0, dest_bar=2)   # 2 + 2 = 4 == num_bars → pas d'extension
+
+    assert dst._num_bars == 4, "Le pattern ne doit pas être étendu"
+
+
+def test_paste_extends_when_overflow():
+    """Règle 2 : si source dépasse la fin, le pattern est rallongé avec des mesures vides."""
+    te  = TrackEditor()
+    src = _make_pattern(num_bars=3, num_steps=16)
+    dst = _make_pattern(num_bars=4, num_steps=16)
+    _fill_track(src, 0, 1)
+
+    te.copy(src, 0)
+    te.paste(dst, 0, dest_bar=3)   # 3 + 3 = 6 > 4 → extension
+
+    assert dst._num_bars == 6, "Le pattern doit être étendu à 6 mesures"
+    # Les 3 premières mesures restent vides (mesures 0-2)
+    sum_bars_0_2 = sum(
+        dst._curpattern[0][pad][b][s]
+        for pad in range(dst._num_pads)
+        for b in range(3)
+        for s in range(16)
+    )
+    assert sum_bars_0_2 == 0, "Mesures 0-2 doivent rester vides"
 
 
 def test_paste_at_dest_bar():

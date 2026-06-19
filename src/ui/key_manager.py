@@ -864,6 +864,21 @@ class KeyManager:
         on_pattern_list = ctx.on_pattern_list
         on_track_list   = ctx.on_track_list
 
+        # Shift+V : coller en mélangeant (merge) à partir de la position courante
+        if not ctrl and shift and not alt and key == ord('V'):
+            te  = win._track_editor
+            cur = win._player._cur_track
+            pat = win._player._pattern
+            dest_bar = int(win._player._current_offset()) // pat._num_steps
+            if te.paste(pat, cur, dest_bar=dest_bar, merge=True):
+                win._refresh_grid()
+                win._show_status(
+                    f"Mélangé à partir de la Piste {cur + 1}, Mesure {dest_bar + 1}"
+                )
+            else:
+                win._show_status("Presse-papier vide")
+            return True
+
         # Shift+D : effacer la piste courante
         if not ctrl and shift and not alt and key == ord('D'):
             tidx = win._player._cur_track

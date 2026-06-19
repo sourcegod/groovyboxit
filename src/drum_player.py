@@ -238,7 +238,7 @@ class DrumPlayer:
         total_steps    = num_bars * num_steps
 
         def _fmt(step_idx):
-            step_idx = max(0, min(step_idx, total_steps - 1))
+            step_idx = max(0, step_idx)   # pas de borne supérieure : on peut dépasser la fin
             bar  = step_idx // num_steps
             rem  = step_idx % num_steps
             beat = rem // steps_per_beat
@@ -311,16 +311,16 @@ class DrumPlayer:
         else:
             next_bar = cur_bar + 1
             if next_bar >= num_bars:
-                # Dernière mesure : en song mode, passer au pattern suivant
+                # En song mode : passer au pattern suivant s'il existe
                 if (self._song_mode
                         and self._song_pos + 1 < len(self._song_sequence)
                         and self._on_song_cross_nav_cb):
                     self._last_nav_time = now
                     self._on_song_cross_nav_cb(+1)
                     return
-                target = float(total - 1)
-            else:
-                target = float(next_bar * num_steps)
+                # Hors song mode : autoriser le dépassement (ex. 4:4:4 → 5:1:1)
+                # afin de permettre un collage après la fin du pattern.
+            target = float(next_bar * num_steps)
 
         self._last_nav_time = now
         self._go_to_offset(target)
