@@ -144,6 +144,24 @@ class FakePlayer:
         self.calls.append(('set_volume', v)); self.volume = v
     def _compute_offsets(self):
         self.calls.append('_compute_offsets')
+    def position_str(self):
+        return "1:1:1"
+    def goto_start(self):
+        self.calls.append('goto_start')
+    def goto_end(self):
+        self.calls.append('goto_end')
+    def _go_to_offset(self, offset):
+        self.calls.append(('_go_to_offset', offset))
+    def _current_offset(self):
+        return 0.0
+    def navigate_bar(self, d):
+        self.calls.append(('navigate_bar', d))
+    def move_by_beats(self, d):
+        self.calls.append(('move_by_beats', d))
+    def move_by_ticks(self, d):
+        self.calls.append(('move_by_ticks', d))
+    def move_by_seconds(self, d):
+        self.calls.append(('move_by_seconds', d))
 
 
 class FakeRouter:

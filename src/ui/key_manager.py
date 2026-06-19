@@ -213,13 +213,11 @@ class KeyManager:
             sign      = "−" if direction < 0 else "+"
             if ctrl:
                 win._player.move_by_beats(direction)
-                win._show_status(f"Transport: {sign}1 battement")
             elif shift:
                 win._player.move_by_ticks(direction)
-                win._show_status(f"Transport: {sign}1 tick")
             else:
                 win._player.navigate_bar(direction)
-                win._show_status(f"Transport: {sign}1 mesure")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
         if ctrl:
@@ -230,10 +228,10 @@ class KeyManager:
             if win._player.playing:
                 win._player.pause_pattern()
                 win._router.stop_all_synth_voices()
-                win._show_status("Pause")
+                win._show_status(f"Pause: {win._player.position_str()}")
             else:
                 win._player.play_pattern()
-                win._show_status("Play")
+                win._show_status(f"Play: {win._player.position_str()}")
             return True
 
         # V : stop all
@@ -246,21 +244,21 @@ class KeyManager:
         # g : GotoStart  /  Shift+G : GotoEnd
         if not shift and (ukey == ord('g') or key == ord('G')):
             win._player.goto_start()
-            win._show_status("Transport: Début")
+            win._show_status(f"Début: {win._player.position_str()}")
             return True
         if shift and (ukey == ord('g') or key == ord('G')):
             win._player.goto_end()
-            win._show_status("Transport: Fin")
+            win._show_status(f"Fin: {win._player.position_str()}")
             return True
 
         # b : −1 s  /  w : +1 s
         if ukey == ord('b') or key == ord('B'):
             win._player.move_by_seconds(-1)
-            win._show_status("Transport: −1 s")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
         if ukey == ord('w') or key == ord('W'):
             win._player.move_by_seconds(+1)
-            win._show_status("Transport: +1 s")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
         # l : toggle boucle
@@ -431,11 +429,11 @@ class KeyManager:
             return True
         if not shift and not alt and key == wx.WXK_HOME:   # Ctrl+Début : début absolu
             win._player.goto_start()
-            win._show_status(f"Début du pattern: {win._player.position_str()}")
+            win._show_status(f"Début: {win._player.position_str()}")
             return True
         if not shift and not alt and key == wx.WXK_END:    # Ctrl+Fin : fin absolue
             win._player.goto_end()
-            win._show_status(f"Fin du pattern: {win._player.position_str()}")
+            win._show_status(f"Fin: {win._player.position_str()}")
             return True
         if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Aller à
             win._goto_dialog()
@@ -485,13 +483,11 @@ class KeyManager:
             sign      = "−" if direction < 0 else "+"
             if ctx.ctrl:
                 win._player.move_by_beats(direction)
-                win._show_status(f"Transport: {sign}1 battement")
             elif shift:
                 win._player.move_by_ticks(direction)
-                win._show_status(f"Transport: {sign}1 tick")
             else:
                 win._player.navigate_bar(direction)
-                win._show_status(f"Transport: {sign}1 mesure")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
         if key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
@@ -613,7 +609,7 @@ class KeyManager:
                 win._player._go_to_offset(float(lim))
             else:
                 win._player.goto_start()
-            win._show_status(f"Position: {win._player.position_str()}")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
         if not ctx.ctrl and not shift and key == wx.WXK_END:
@@ -623,7 +619,7 @@ class KeyManager:
                 win._player._go_to_offset(float(lim))
             else:
                 win._player.goto_end()
-            win._show_status(f"Position: {win._player.position_str()}")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
         # Shift+Espace : toggle la piste courante dans/hors sélection (non-adjacent)
@@ -996,10 +992,10 @@ class KeyManager:
             if win._player.playing:
                 win._player.pause_pattern()
                 win._router.stop_all_synth_voices()
-                win._show_status("Pattern: Pause")
+                win._show_status(f"Pause: {win._player.position_str()}")
             else:
                 win._player.play_pattern()
-                win._show_status("Pattern: Play")
+                win._show_status(f"Play: {win._player.position_str()}")
             return True
 
         # V : stop all
@@ -1070,13 +1066,13 @@ class KeyManager:
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('b') or key == ord('B')):
             win._player.move_by_seconds(-1)
-            win._show_status("Transport: −1 seconde")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
         if not ctrl and not shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('w') or key == ord('W')):
             win._player.move_by_seconds(+1)
-            win._show_status("Transport: +1 seconde")
+            win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
         # l : toggle boucle
@@ -1093,13 +1089,13 @@ class KeyManager:
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('g') or key == ord('G')):
             win._player.goto_start()
-            win._show_status("Transport: Début")
+            win._show_status(f"Début: {win._player.position_str()}")
             return True
         if not ctrl and shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('g') or key == ord('G')):
             win._player.goto_end()
-            win._show_status("Transport: Fin")
+            win._show_status(f"Fin: {win._player.position_str()}")
             return True
 
         # BPM / Volume
@@ -1129,7 +1125,7 @@ class KeyManager:
             win._track_editor.set_lim_left(0)
             bbt = win._track_editor.fmt_bbt(0, pat._num_steps,
                       max(1, pat._num_steps // pat._num_beats), total_steps)
-            win._show_status(f"Limiteur gauche (In) : {bbt} (début pattern)")
+            win._show_status(f"Limiteur Gauche: {bbt}")
             return True
 
         # Shift+O : poser le limiteur droit (Out) à la fin du pattern
@@ -1140,7 +1136,7 @@ class KeyManager:
             win._track_editor.set_lim_right(step)
             bbt = win._track_editor.fmt_bbt(step, pat._num_steps,
                       max(1, pat._num_steps // pat._num_beats), total_steps)
-            win._show_status(f"Limiteur droit (Out) : {bbt} (fin pattern)")
+            win._show_status(f"Limiteur Droit: {bbt}")
             return True
 
         # i : poser le limiteur gauche (In) à la position courante du playhead
@@ -1152,7 +1148,7 @@ class KeyManager:
             bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
                        max(1, pat._num_steps // pat._num_beats),
                        pat._num_bars * pat._num_steps)
-            win._show_status(f"Limiteur gauche (In) : {bbt} (step {step})")
+            win._show_status(f"Limiteur Gauche: {bbt}")
             return True
 
         # o : poser le limiteur droit (Out) à la position courante du playhead
@@ -1164,7 +1160,7 @@ class KeyManager:
             bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
                        max(1, pat._num_steps // pat._num_beats),
                        pat._num_bars * pat._num_steps)
-            win._show_status(f"Limiteur droit (Out) : {bbt} (step {step})")
+            win._show_status(f"Limiteur Droit: {bbt}")
             return True
 
         return False
