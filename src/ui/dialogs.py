@@ -570,7 +570,7 @@ class GotoDialog(wx.Dialog):
         self._steps_per_beat = max(1, num_steps // num_beats)
         self._total_steps    = num_bars * num_steps
         self._cur_unit       = 0
-        self._cur_step       = max(0, min(int(step_idx), self._total_steps - 1))
+        self._cur_step       = max(0, int(step_idx))
 
         unit_label = wx.StaticText(self, label="Unité :")
         self._unit_list = wx.ListBox(self, choices=self.UNITS, style=wx.LB_SINGLE)
@@ -630,7 +630,7 @@ class GotoDialog(wx.Dialog):
 
     def _step_to_text(self, unit, step):
         """step (0-based) → chaîne affichée dans le TextCtrl."""
-        step = max(0, min(step, self._total_steps - 1))
+        step = max(0, step)
         bar  = step // self._num_steps
         rem  = step % self._num_steps
         beat = rem // self._steps_per_beat
@@ -640,10 +640,12 @@ class GotoDialog(wx.Dialog):
         return f"{bar + 1}:{beat + 1}:{tick + 1}"
 
     def _spin_range(self, unit):
-        if unit == 0:   return (1, max(1, self._num_bars))
-        elif unit == 1: return (1, max(1, self._num_bars * self._num_beats))
-        elif unit == 2: return (1, max(1, self._total_steps))
-        else:           return (0, max(0, int((self._total_steps - 1) * self._step_duration)))
+        # Pas de borne supérieure liée au pattern : l'utilisateur peut saisir
+        # une mesure au-delà de la fin pour positionner le collage.
+        if unit == 0:   return (1, 9999)
+        elif unit == 1: return (1, 9999 * max(1, self._num_beats))
+        elif unit == 2: return (1, 9999 * max(1, self._num_steps))
+        else:           return (0, 99999)
 
     def _refresh_unit(self, unit):
         """Met à jour range SpinCtrl, sa valeur et le TextCtrl depuis _cur_step."""
@@ -671,7 +673,7 @@ class GotoDialog(wx.Dialog):
                 val = int(s)
                 off = self.to_offset(unit, val, self._num_bars, self._num_beats,
                                      self._num_steps, self._step_duration)
-            return int(max(0, min(self._total_steps - 1, off)))
+            return int(max(0, off))
         except (ValueError, IndexError):
             return None
 
@@ -690,7 +692,7 @@ class GotoDialog(wx.Dialog):
         val = self._spin.GetValue()
         off = self.to_offset(self._cur_unit, val, self._num_bars, self._num_beats,
                              self._num_steps, self._step_duration)
-        self._cur_step = int(max(0, min(self._total_steps - 1, off)))
+        self._cur_step = int(max(0, off))
         self._text.ChangeValue(self._step_to_text(self._cur_unit, self._cur_step))
 
     def _on_spin_key(self, event):
@@ -723,14 +725,13 @@ class GotoDialog(wx.Dialog):
 
     @staticmethod
     def to_offset(unit_idx, value, num_bars, num_beats, num_steps, step_duration):
-        """Convertit (unité, valeur) → offset flottant 0-based, clampé à [0, total-1]."""
-        total          = num_bars * num_steps
+        """Convertit (unité, valeur) → offset flottant 0-based, sans borne supérieure."""
         steps_per_beat = max(1, num_steps // num_beats)
         if unit_idx == 0:    off = (value - 1) * num_steps
         elif unit_idx == 1:  off = (value - 1) * steps_per_beat
         elif unit_idx == 2:  off = value - 1
         else:                off = value / max(step_duration, 1e-9)
-        return float(max(0, min(total - 1, off)))
+        return float(max(0, off))
 
     def get_offset(self):
         """Retourne l'offset courant en pas (float, 0-based)."""

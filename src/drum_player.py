@@ -252,9 +252,8 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def move_by_ticks(self, ticks):
-        """Déplace le playhead de ±ticks pas (clamp, sans wrap)."""
-        total   = self._pattern._num_bars * self._pattern._num_steps
-        new_off = max(0.0, min(float(total - 1), self._current_offset() + ticks))
+        """Déplace le playhead de ±ticks pas (clamp bas à 0, pas de borne supérieure)."""
+        new_off = max(0.0, self._current_offset() + ticks)
         self._go_to_offset(new_off)
 
     def move_by_beats(self, beats):
