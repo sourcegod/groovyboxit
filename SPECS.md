@@ -544,9 +544,26 @@ S'applique à toute `wx.ListBox` ou `wx.CheckListBox` dont le contenu est mis à
 
 `wx.SpinCtrl` est le seul widget wxPython/GTK annoncé par Orca lors de chaque changement de valeur, même par programme. À préférer pour tout paramètre numérique éditable (BPM, volume, pan…).
 
-#### Barre de statut (`wx.TextCtrl` en lecture seule)
+#### Barre de statut — `wx.ListBox` à un item + `SetString`
 
-`wx.TextCtrl(style=wx.TE_READONLY)` utilisé comme barre de statut : les mises à jour via `SetValue()` ne sont **pas** annoncées par Orca automatiquement. Pour que le lecteur d'écran lise un message de statut, il faut forcer le focus sur ce widget, ou passer par une autre stratégie (ex. `wx.lib.agw.infobar`, ou `EVT_SET_FOCUS` + lecture forcée).
+`wx.TextCtrl(style=wx.TE_READONLY)` ne convient **pas** pour une barre de statut accessible : `SetValue()` n'émet aucun événement AT-SPI, Orca n'annonce rien sans déplacer le focus.
+
+**Solution retenue :** remplacer le `TextCtrl` par une `wx.ListBox` à un seul item, et mettre à jour via `SetString(0, msg)`.
+
+- `SetString(0, msg)` émet `NAME_CHANGE` sur l'item ATK existant → Orca annonce le nouveau texte **immédiatement**, sans déplacement de focus.
+- Les touches fléchées doivent être absorbées quand ce widget a le focus (GTK tenterait de naviguer dans la liste, mais il n'y a qu'un item ; le `key_manager` consomme l'événement sans propager).
+
+```python
+# Déclaration
+self._status_ctrl = wx.ListBox(panel, choices=["…"], style=wx.LB_SINGLE)
+
+# Mise à jour (dans _show_status)
+self._status_ctrl.SetString(0, msg)
+
+# Absorption des flèches dans key_manager (_handle_navigation)
+if ctx.on_status_ctrl:
+    return True
+```
 
 ---
 
