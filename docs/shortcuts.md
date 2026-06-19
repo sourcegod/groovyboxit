@@ -175,6 +175,7 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
   Ctrl+X           Erase : copie → presse-papier + efface grille (+ tape si limiteurs)
   Ctrl+D           Delete : copie → presse-papier + efface grille et tape
   Ctrl+V           Coller le presse-papier sur la piste courante
+  Shift+V          Coller par fusion (les événements existants sont conservés)
   Ctrl+Suppr       Effacer grille et tape sans presse-papier
   Shift+Suppr      Réinitialiser le pattern entier
   Suppr            Effacer piste(s) sélectionnée(s) sans presse-papier
