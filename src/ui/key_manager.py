@@ -83,12 +83,6 @@ class KeyManager:
         on_track_list = ctx.on_track_list
         on_pad_list   = ctx.on_pad_list
 
-        if not ctrl and shift and key == ord('W'):
-            win._save_project_as()
-            return True
-        if not ctrl and not shift and key == ord('W'):
-            win._save_project()
-            return True
         if not ctrl and not shift and key == wx.WXK_UP:
             tidx = win._player._cur_track
             if on_track_list:

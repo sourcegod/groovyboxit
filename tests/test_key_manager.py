@@ -353,20 +353,6 @@ def test_unknown_key_skips_event():
 # Groupe Alt
 # ---------------------------------------------------------------------------
 
-def test_alt_w_saves_project():
-    app, win, km = make_km()
-    km.handle(FakeEvent(key=ord('W'), alt=True))
-    assert '_save_project' in win.calls
-    teardown(app)
-    print("  Alt+W → _save_project() : OK")
-
-def test_alt_shift_w_saves_project_as():
-    app, win, km = make_km()
-    km.handle(FakeEvent(key=ord('W'), alt=True, shift=True))
-    assert '_save_project_as' in win.calls
-    teardown(app)
-    print("  Alt+Shift+W → _save_project_as() : OK")
-
 def test_alt_x_opens_explorer():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('X'), alt=True))
@@ -943,8 +929,6 @@ if __name__ == "__main__":
     test_f1_shows_keyboard_help()
     test_unknown_key_skips_event()
     # Alt
-    test_alt_w_saves_project()
-    test_alt_shift_w_saves_project_as()
     test_alt_x_opens_explorer()
     test_alt_up_increments_pad_volume()
     test_alt_down_decrements_pad_volume()

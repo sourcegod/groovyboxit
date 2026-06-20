@@ -773,9 +773,6 @@ class MainWindow(wx.Frame):
         except Exception as e:
             self._show_status(f"ERREUR sauvegarde : {e}")
 
-    # Alias pour compatibilité interne (appelé depuis SongWindow, etc.)
-    _save_preset = _save_project
-
     def _save_project_as(self):
         presets_dir = self._presets_dir
         os.makedirs(presets_dir, exist_ok=True)
@@ -809,9 +806,6 @@ class MainWindow(wx.Frame):
                 return
         self._project_path = path
         self._save_project()
-
-    # Alias pour compatibilité
-    _save_preset_as = _save_project_as
 
     def _open_project(self):
         if self._project_modified:
