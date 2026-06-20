@@ -99,6 +99,7 @@ class MainWindow(wx.Frame):
         self._samples_dir  = cfg.samples_dir
         self._kits_dir     = cfg.kits_dir
         self._presets_dir  = cfg.presets_dir
+        self._projects_dir = cfg.projects_dir
         self._rack = Rack()
         self._rack.set_slot(0, InstrumentType.KIT, "TR-707",
                             {"kit": os.path.join(self._kits_dir, "tr_707.json")})
@@ -690,7 +691,7 @@ class MainWindow(wx.Frame):
 
     def _resolve_project_path(self):
         """Détermine le chemin projet au démarrage (migration preset_01.json incluse)."""
-        default = os.path.join(self._presets_dir, ProjectManager.DEFAULT_NAME)
+        default = os.path.join(self._projects_dir, ProjectManager.DEFAULT_NAME)
         legacy  = os.path.join(self._presets_dir, "preset_01.json")
         if os.path.exists(default):
             return default
@@ -699,14 +700,14 @@ class MainWindow(wx.Frame):
         return default
 
     def _find_free_project_path(self):
-        """Retourne le premier chemin noname_NNN.gvp disponible dans presets_dir."""
-        presets_dir = self._presets_dir
-        os.makedirs(presets_dir, exist_ok=True)
+        """Retourne le premier chemin noname_NNN.gvp disponible dans projects_dir."""
+        projects_dir = self._projects_dir
+        os.makedirs(projects_dir, exist_ok=True)
         for i in range(1, 1000):
-            path = os.path.join(presets_dir, f"noname_{i:03d}.gvp")
+            path = os.path.join(projects_dir, f"noname_{i:03d}.gvp")
             if not os.path.exists(path):
                 return path
-        return os.path.join(presets_dir, ProjectManager.DEFAULT_NAME)
+        return os.path.join(projects_dir, ProjectManager.DEFAULT_NAME)
 
     def _new_project(self):
         if self._project_modified:
@@ -774,14 +775,14 @@ class MainWindow(wx.Frame):
             self._show_status(f"ERREUR sauvegarde : {e}")
 
     def _save_project_as(self):
-        presets_dir = self._presets_dir
-        os.makedirs(presets_dir, exist_ok=True)
+        projects_dir = self._projects_dir
+        os.makedirs(projects_dir, exist_ok=True)
         # FD_OVERWRITE_PROMPT évité : sur GTK le dialog natif a "Non" comme bouton
         # par défaut (Enter = annuler). On gère la confirmation nous-mêmes.
         dlg = wx.FileDialog(
             self,
             message="Enregistrer le projet sous…",
-            defaultDir=presets_dir,
+            defaultDir=projects_dir,
             defaultFile=os.path.splitext(os.path.basename(self._project_path))[0] + ".gvp",
             wildcard=ProjectManager.WILDCARD,
             style=wx.FD_SAVE,
@@ -821,11 +822,11 @@ class MainWindow(wx.Frame):
                 return
             if resp == wx.ID_YES:
                 self._save_project()
-        presets_dir = self._presets_dir
-        os.makedirs(presets_dir, exist_ok=True)
+        projects_dir = self._projects_dir
+        os.makedirs(projects_dir, exist_ok=True)
         dlg = wx.FileDialog(
             self, "Ouvrir un projet…",
-            defaultDir=presets_dir,
+            defaultDir=projects_dir,
             wildcard=ProjectManager.WILDCARD,
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         )
@@ -1516,7 +1517,9 @@ class MainWindow(wx.Frame):
             return
         choice = dlg.get_selection()
         dlg.Destroy()
-        if choice == "Preset":
+        if choice == "Projects":
+            self._explorer_projects()
+        elif choice == "Preset":
             self._explorer_preset()
         elif choice == "Kit":
             self._explorer_kit()
@@ -1524,6 +1527,19 @@ class MainWindow(wx.Frame):
             self._explorer_patch()
         elif choice == "Sound":
             self._explorer_sound()
+
+    def _explorer_projects(self):
+        projects_dir = self._projects_dir
+        os.makedirs(projects_dir, exist_ok=True)
+        dlg = wx.FileDialog(self, "Ouvrir un projet…",
+                            defaultDir=projects_dir,
+                            wildcard=ProjectManager.WILDCARD,
+                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            self._project_path = dlg.GetPath()
+            self._load_project()
+            self._show_status(f"Projet chargé : {os.path.basename(self._project_path)}")
+        dlg.Destroy()
 
     def _explorer_preset(self):
         self._open_project()

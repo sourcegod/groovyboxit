@@ -75,6 +75,15 @@ class AppConfig:
         return self._get_dir("presets_dir", "presets")
 
     @property
+    def projects_dir(self):
+        value = self._data.get("projects_dir", "").strip()
+        if not value:
+            return "/home/com/groovybox/PROJECTS"
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
+    @property
     def click1_file(self):
         return self._get_file("click1_file")
 

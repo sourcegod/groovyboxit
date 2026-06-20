@@ -528,7 +528,7 @@ class PadPropertiesDialog(wx.Dialog):
 
 class ExplorerDialog(wx.Dialog):
     """Choix du type de fichier à charger : Kit, Patch ou Sound."""
-    ITEMS = ["Preset", "Kit", "Patch", "Sound"]
+    ITEMS = ["Projects", "Preset", "Kit", "Patch", "Sound"]
 
     def __init__(self, parent):
         super().__init__(parent, title="Explorateur")
@@ -546,7 +546,7 @@ class ExplorerDialog(wx.Dialog):
         vbox.Add(self._listbox, 1, wx.EXPAND | wx.ALL, 8)
         vbox.Add(btn_sizer,     0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
-        self.SetSize((220, 160))
+        self.SetSize((220, 185))
         self.Centre()
 
         self._listbox.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))

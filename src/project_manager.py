@@ -13,7 +13,7 @@ class ProjectManager:
     """Utilitaire de sérialisation projet .gvp (JSON sous le capot)."""
 
     VERSION = 1
-    DEFAULT_NAME = "noname_001.gvp"
+    DEFAULT_NAME = "project_01.gvp"
     WILDCARD = "Projets GroovyboxIt (*.gvp)|*.gvp|Preset JSON (*.json)|*.json|Tous les fichiers (*.*)|*.*"
 
     @staticmethod

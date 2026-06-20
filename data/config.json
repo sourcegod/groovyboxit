@@ -4,6 +4,7 @@
   "samples_dir":  "/home/com/groovybox/SAMPLES",
   "kits_dir":     "/home/com/groovybox/KITS",
   "presets_dir":  "/home/com/groovybox/PRESETS",
+  "projects_dir": "/home/com/groovybox/PROJECTS",
   "click1_file":  "media/hi_wood_block_mono.wav",
   "click2_file":  "media/low_wood_block_mono.wav"
 }
