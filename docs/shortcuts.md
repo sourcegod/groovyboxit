@@ -1,8 +1,10 @@
 === Aide clavier — GroovyboxIt ===
 
---- Preset ---
-Alt+W            Enregistrer le preset
-Alt+Shift+W      Enregistrer le preset sous...
+--- Projet ---
+Ctrl+N           Nouveau projet (noname_NNN.gvp, demande si modifié)
+Ctrl+O           Ouvrir un projet (.gvp, .json ou tout fichier)
+Ctrl+S           Enregistrer le projet
+Ctrl+Shift+S     Enregistrer le projet sous...
 
 --- Pattern ---
 Ctrl+W           Enregistrer le pattern courant
@@ -196,8 +198,8 @@ Alt+5            Ouvrir la fenêtre Songs
 Espace / P       Play / Pause du song courant
 g                Aller au début du song (Goto Start)
 Shift+G          Aller à la fin du song (Goto End)
-Ctrl+W           Enregistrer le song courant
-Ctrl+Shift+W     Enregistrer le song sous...
+Ctrl+W           Enregistrer le projet (avec le song courant)
+Ctrl+Shift+W     Enregistrer le projet sous... (avec le song courant)
 Échap            Fermer la fenêtre Songs
 Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
       fonctionnent aussi depuis la fenêtre Songs
