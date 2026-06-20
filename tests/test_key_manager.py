@@ -260,8 +260,10 @@ class FakeWindow:
         self.calls = []
 
     # Méthodes enregistrées
-    def _save_preset(self):               self.calls.append('_save_preset')
-    def _save_preset_as(self):            self.calls.append('_save_preset_as')
+    def _save_project(self):              self.calls.append('_save_project')
+    def _save_project_as(self):           self.calls.append('_save_project_as')
+    def _open_project(self):              self.calls.append('_open_project')
+    def _new_project(self):               self.calls.append('_new_project')
     def _save_pattern(self):              self.calls.append('_save_pattern')
     def _save_pattern_as(self):           self.calls.append('_save_pattern_as')
     def _open_explorer(self):             self.calls.append('_open_explorer')
@@ -351,19 +353,19 @@ def test_unknown_key_skips_event():
 # Groupe Alt
 # ---------------------------------------------------------------------------
 
-def test_alt_w_saves_preset():
+def test_alt_w_saves_project():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('W'), alt=True))
-    assert '_save_preset' in win.calls
+    assert '_save_project' in win.calls
     teardown(app)
-    print("  Alt+W → _save_preset() : OK")
+    print("  Alt+W → _save_project() : OK")
 
-def test_alt_shift_w_saves_preset_as():
+def test_alt_shift_w_saves_project_as():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('W'), alt=True, shift=True))
-    assert '_save_preset_as' in win.calls
+    assert '_save_project_as' in win.calls
     teardown(app)
-    print("  Alt+Shift+W → _save_preset_as() : OK")
+    print("  Alt+Shift+W → _save_project_as() : OK")
 
 def test_alt_x_opens_explorer():
     app, win, km = make_km()
@@ -813,14 +815,42 @@ def test_shift_p_does_not_play():
     teardown(app)
     print("  Shift+P ne déclenche pas play/stop : OK")
 
-def test_ctrl_w_does_not_save_preset():
-    # Ctrl+W → save_pattern, PAS save_preset
+def test_ctrl_w_does_not_save_project():
+    # Ctrl+W → save_pattern, PAS save_project
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('W'), ctrl=True))
-    assert '_save_preset' not in win.calls
+    assert '_save_project' not in win.calls
     assert '_save_pattern' in win.calls
     teardown(app)
-    print("  Ctrl+W → _save_pattern() et non _save_preset() : OK")
+    print("  Ctrl+W → _save_pattern() et non _save_project() : OK")
+
+def test_ctrl_n_creates_new_project():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('N'), ctrl=True))
+    assert '_new_project' in win.calls
+    teardown(app)
+    print("  Ctrl+N → _new_project() : OK")
+
+def test_ctrl_o_opens_project():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('O'), ctrl=True))
+    assert '_open_project' in win.calls
+    teardown(app)
+    print("  Ctrl+O → _open_project() : OK")
+
+def test_ctrl_s_saves_project():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('S'), ctrl=True))
+    assert '_save_project' in win.calls
+    teardown(app)
+    print("  Ctrl+S → _save_project() : OK")
+
+def test_ctrl_shift_s_saves_project_as():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('S'), ctrl=True, shift=True))
+    assert '_save_project_as' in win.calls
+    teardown(app)
+    print("  Ctrl+Shift+S → _save_project_as() : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -913,8 +943,8 @@ if __name__ == "__main__":
     test_f1_shows_keyboard_help()
     test_unknown_key_skips_event()
     # Alt
-    test_alt_w_saves_preset()
-    test_alt_shift_w_saves_preset_as()
+    test_alt_w_saves_project()
+    test_alt_shift_w_saves_project_as()
     test_alt_x_opens_explorer()
     test_alt_up_increments_pad_volume()
     test_alt_down_decrements_pad_volume()
@@ -975,7 +1005,11 @@ if __name__ == "__main__":
     test_bpm_increase_via_key5()
     test_volume_decrease_via_key6()
     test_shift_p_does_not_play()
-    test_ctrl_w_does_not_save_preset()
+    test_ctrl_w_does_not_save_project()
+    test_ctrl_n_creates_new_project()
+    test_ctrl_o_opens_project()
+    test_ctrl_s_saves_project()
+    test_ctrl_shift_s_saves_project_as()
     # Shift+D — effacer la piste courante
     test_shift_d_clears_current_track()
     test_shift_d_clears_correct_track()
