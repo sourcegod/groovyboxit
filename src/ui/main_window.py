@@ -30,6 +30,7 @@ from ui.midi_handler import MidiHandler
 from ui.song_window import SongWindow
 from midi_manager import MidiManager
 from track_editor import TrackEditor
+from project_manager import ProjectManager
 
 
 class _LoadingDialog(wx.Dialog):
@@ -130,7 +131,8 @@ class MainWindow(wx.Frame):
         self._player._pattern_list_ref     = self._pattern_list
         self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)
         self._player._on_song_cross_nav_cb = self._on_song_cross_nav
-        self._preset_path = os.path.join(self._presets_dir, "preset_01.json")
+        self._project_path     = self._resolve_project_path()
+        self._project_modified = False
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
             on_note_on    = lambda n, v, c:  wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
@@ -142,8 +144,9 @@ class MainWindow(wx.Frame):
         self._track_editor = TrackEditor()
         self._skip_next_track_select = False  # bloque EVT_LISTBOX après navigation clavier
         self._build_ui()
+        self._update_title()
         self._load_kit_slot(0)
-        self._load_preset()
+        self._load_project()
         self._router.load_slot_preview(1)   # pré-chargement A440 en arrière-plan
         self._key_manager = KeyManager(self)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
@@ -389,6 +392,7 @@ class MainWindow(wx.Frame):
         self._player.float_offsets[row] = [
             float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
         ]
+        self._mark_modified()
 
     def _on_checkbox(self, row, col):
         self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
@@ -396,6 +400,7 @@ class MainWindow(wx.Frame):
         self._player.float_offsets[row] = [
             float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
         ]
+        self._mark_modified()
 
     def _refresh_grid(self):
         for r in range(self.ROWS):
@@ -640,6 +645,7 @@ class MainWindow(wx.Frame):
         pat.load_pattern(self._player._pattern._curpattern)
         self._flush_pattern_to_store(pat)
         self._refresh_pattern_listbox()
+        self._mark_modified()
         self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
 
     def _save_pattern_as(self):
@@ -653,11 +659,12 @@ class MainWindow(wx.Frame):
             pat._name = name
             self._flush_pattern_to_store(pat)
             self._refresh_pattern_listbox()
+            self._mark_modified()
             self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
         dlg.Destroy()
 
     def _save_song(self):
-        self._save_preset()
+        self._save_project()
         self._show_status(f"Song {self._cur_song_idx + 1:02d} sauvegardé")
 
     def _save_song_as(self):
@@ -673,40 +680,113 @@ class MainWindow(wx.Frame):
             self._cur_song_idx = idx
             if self._song_window:
                 self._song_window.set_cur_song(idx)
-            self._save_preset()
+            self._save_project()
             self._show_status(f"Song {idx + 1:02d} sauvegardé")
         dlg.Destroy()
 
-    def _save_preset(self):
+    # ------------------------------------------------------------------
+    # Gestion du projet (.gvp)
+    # ------------------------------------------------------------------
+
+    def _resolve_project_path(self):
+        """Détermine le chemin projet au démarrage (migration preset_01.json incluse)."""
+        default = os.path.join(self._presets_dir, ProjectManager.DEFAULT_NAME)
+        legacy  = os.path.join(self._presets_dir, "preset_01.json")
+        if os.path.exists(default):
+            return default
+        if os.path.exists(legacy):
+            return legacy
+        return default
+
+    def _find_free_project_path(self):
+        """Retourne le premier chemin noname_NNN.gvp disponible dans presets_dir."""
+        presets_dir = self._presets_dir
+        os.makedirs(presets_dir, exist_ok=True)
+        for i in range(1, 1000):
+            path = os.path.join(presets_dir, f"noname_{i:03d}.gvp")
+            if not os.path.exists(path):
+                return path
+        return os.path.join(presets_dir, ProjectManager.DEFAULT_NAME)
+
+    def _new_project(self):
+        if self._project_modified:
+            dlg = wx.MessageDialog(
+                self,
+                "Le projet a été modifié.\nEnregistrer avant de créer un nouveau projet ?",
+                "Nouveau projet",
+                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
+            )
+            resp = dlg.ShowModal()
+            dlg.Destroy()
+            if resp == wx.ID_CANCEL:
+                return
+            if resp == wx.ID_YES:
+                self._save_project()
+        self._player.stop_all()
+        self._router.stop_all_synth_voices()
+        self._pattern_list     = [Pattern() for _ in range(99)]
+        self._cur_pattern_idx  = 0
+        self._song_list        = [Song(i) for i in range(Song.MAX_SONGS)]
+        self._cur_song_idx     = 0
+        self._player._pattern_list_ref = self._pattern_list
+        new = self._pattern_list[0]
+        self._apply_pattern_from_store(new)
+        self._player._compute_offsets()
+        self._refresh_pattern_listbox()
+        self._refresh_grid()
+        self._refresh_all_voice_display()
+        self._refresh_track_list()
+        self._refresh_pad_list()
+        if self._song_window:
+            self._song_window.set_cur_song(0)
+        self._project_path     = self._find_free_project_path()
+        self._project_modified = False
+        self._update_title()
+        self._show_status(f"Nouveau projet : {os.path.basename(self._project_path)}")
+
+    def _update_title(self):
+        name = os.path.basename(self._project_path)
+        star = "*" if self._project_modified else ""
+        self.SetTitle(f"{name}{star} — GroovyboxIt")
+
+    def _mark_modified(self):
+        if not self._project_modified:
+            self._project_modified = True
+            self._update_title()
+
+    def _save_project(self):
         try:
             cur = self._pattern_list[self._cur_pattern_idx]
             cur._voices = self._player.voice_manager.to_list()
             self._flush_pattern_to_store(cur)
-            os.makedirs(os.path.dirname(self._preset_path), exist_ok=True)
             data = {
-                "version":  1,
+                "version":  ProjectManager.VERSION,
                 "rack":     self._rack.to_dict(),
                 "patterns": [pat.to_dict() for pat in self._pattern_list],
                 "songs":    [s.to_dict() for s in self._song_list],
                 "cur_song": self._cur_song_idx,
             }
-            with open(self._preset_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, separators=(',', ':'))
-            self._show_status(f"Preset sauvegardé : {os.path.basename(self._preset_path)}")
+            ProjectManager.save(self._project_path, data)
+            self._project_modified = False
+            self._update_title()
+            self._show_status(f"Projet sauvegardé : {os.path.basename(self._project_path)}")
         except Exception as e:
             self._show_status(f"ERREUR sauvegarde : {e}")
 
-    def _save_preset_as(self):
+    # Alias pour compatibilité interne (appelé depuis SongWindow, etc.)
+    _save_preset = _save_project
+
+    def _save_project_as(self):
         presets_dir = self._presets_dir
         os.makedirs(presets_dir, exist_ok=True)
         # FD_OVERWRITE_PROMPT évité : sur GTK le dialog natif a "Non" comme bouton
         # par défaut (Enter = annuler). On gère la confirmation nous-mêmes.
         dlg = wx.FileDialog(
             self,
-            message="Enregistrer le preset sous…",
+            message="Enregistrer le projet sous…",
             defaultDir=presets_dir,
-            defaultFile=os.path.basename(self._preset_path),
-            wildcard="Preset JSON (*.json)|*.json",
+            defaultFile=os.path.splitext(os.path.basename(self._project_path))[0] + ".gvp",
+            wildcard=ProjectManager.WILDCARD,
             style=wx.FD_SAVE,
         )
         result = dlg.ShowModal()
@@ -714,6 +794,8 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
         if result != wx.ID_OK or not path:
             return
+        if not os.path.splitext(path)[1]:
+            path += ".gvp"
         if os.path.exists(path):
             msg = wx.MessageDialog(
                 self,
@@ -725,14 +807,53 @@ class MainWindow(wx.Frame):
             msg.Destroy()
             if replace != wx.ID_YES:
                 return
-        self._preset_path = path
-        self._save_preset()
+        self._project_path = path
+        self._save_project()
 
-    def _load_preset(self):
-        if not os.path.exists(self._preset_path):
+    # Alias pour compatibilité
+    _save_preset_as = _save_project_as
+
+    def _open_project(self):
+        if self._project_modified:
+            dlg = wx.MessageDialog(
+                self,
+                "Le projet a été modifié.\nEnregistrer avant d'ouvrir un autre projet ?",
+                "Ouvrir un projet",
+                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
+            )
+            resp = dlg.ShowModal()
+            dlg.Destroy()
+            if resp == wx.ID_CANCEL:
+                return
+            if resp == wx.ID_YES:
+                self._save_project()
+        presets_dir = self._presets_dir
+        os.makedirs(presets_dir, exist_ok=True)
+        dlg = wx.FileDialog(
+            self, "Ouvrir un projet…",
+            defaultDir=presets_dir,
+            wildcard=ProjectManager.WILDCARD,
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        )
+        result = dlg.ShowModal()
+        path   = dlg.GetPath() if result == wx.ID_OK else ""
+        dlg.Destroy()
+        if result != wx.ID_OK or not path:
             return
-        with open(self._preset_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        self._project_path = path
+        self._load_project()
+        self._show_status(f"Projet chargé : {os.path.basename(self._project_path)}")
+
+    def _load_project(self):
+        if not os.path.exists(self._project_path):
+            self._project_modified = False
+            self._update_title()
+            return
+        try:
+            data = ProjectManager.load(self._project_path)
+        except Exception as e:
+            self._show_status(f"ERREUR chargement : {e}")
+            return
         # Restaurer le rack (contenu des slots) si présent
         if "rack" in data:
             self._rack.from_dict(data["rack"])
@@ -780,6 +901,11 @@ class MainWindow(wx.Frame):
         self._refresh_all_voice_display()
         self._refresh_track_list()
         self._refresh_pad_list()
+        self._project_modified = False
+        self._update_title()
+
+    # Alias pour compatibilité
+    _load_preset = _load_project
 
     def _on_quant_select(self, event):
         self._player.quant_idx = self._quant_list.GetSelection()
@@ -966,6 +1092,20 @@ class MainWindow(wx.Frame):
         self._show_status(f"Pan Global: {pan}")
 
     def _on_close(self, event):
+        if self._project_modified:
+            dlg = wx.MessageDialog(
+                self,
+                "Le projet a été modifié.\nEnregistrer avant de quitter ?",
+                "Quitter",
+                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
+            )
+            resp = dlg.ShowModal()
+            dlg.Destroy()
+            if resp == wx.ID_CANCEL:
+                event.Veto()
+                return
+            if resp == wx.ID_YES:
+                self._save_project()
         self._midi.close()
         self._audio_driver.close()
         event.Skip()
@@ -1392,17 +1532,7 @@ class MainWindow(wx.Frame):
             self._explorer_sound()
 
     def _explorer_preset(self):
-        presets_dir = self._presets_dir
-        os.makedirs(presets_dir, exist_ok=True)
-        dlg = wx.FileDialog(self, "Choisir un preset (*.json)",
-                            defaultDir=presets_dir,
-                            wildcard="Preset JSON (*.json)|*.json",
-                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        if dlg.ShowModal() == wx.ID_OK:
-            self._preset_path = dlg.GetPath()
-            self._load_preset()
-            self._show_status(f"Preset chargé : {os.path.basename(self._preset_path)}")
-        dlg.Destroy()
+        self._open_project()
 
     def _explorer_kit(self):
         start = self._kits_dir if os.path.isdir(self._kits_dir) else os.path.expanduser("~")

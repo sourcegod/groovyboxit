@@ -84,10 +84,10 @@ class KeyManager:
         on_pad_list   = ctx.on_pad_list
 
         if not ctrl and shift and key == ord('W'):
-            win._save_preset_as()
+            win._save_project_as()
             return True
         if not ctrl and not shift and key == ord('W'):
-            win._save_preset()
+            win._save_project()
             return True
         if not ctrl and not shift and key == wx.WXK_UP:
             tidx = win._player._cur_track
@@ -299,6 +299,18 @@ class KeyManager:
         shift = ctx.shift
         alt   = ctx.alt
 
+        if not shift and not alt and key == ord('N'):
+            win._new_project()
+            return True
+        if not shift and not alt and key == ord('O'):
+            win._open_project()
+            return True
+        if shift and not alt and key == ord('S'):
+            win._save_project_as()
+            return True
+        if not shift and not alt and key == ord('S'):
+            win._save_project()
+            return True
         if shift and not alt and key == ord('A'):
             win._track_editor.clear_selection()
             win._track_editor.reset_lims()
