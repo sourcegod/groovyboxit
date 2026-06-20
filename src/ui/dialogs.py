@@ -180,7 +180,7 @@ class SaveSongDialog(wx.Dialog):
 
 class SavePatternDialog(wx.Dialog):
     def __init__(self, parent, cur_idx, cur_name=""):
-        super().__init__(parent, title="Enregistrer le pattern")
+        super().__init__(parent, title="Dupliquer le pattern")
 
         list_label = wx.StaticText(self, label="Numéro de pattern :")
         self._list = wx.ListBox(

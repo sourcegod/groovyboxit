@@ -661,7 +661,7 @@ class MainWindow(wx.Frame):
             self._flush_pattern_to_store(pat)
             self._refresh_pattern_listbox()
             self._mark_modified()
-            self._show_status(f"Pattern {idx + 1:02d} sauvegardé")
+            self._show_status(f"Pattern {idx + 1:02d} dupliqué")
         dlg.Destroy()
 
     def _save_song(self):

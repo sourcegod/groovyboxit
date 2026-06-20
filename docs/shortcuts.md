@@ -8,7 +8,7 @@ Ctrl+Shift+S     Enregistrer le projet sous...
 
 --- Pattern ---
 Ctrl+W           Enregistrer le pattern courant
-Ctrl+Shift+W     Enregistrer le pattern sous...
+Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Ctrl+P           Charger le pattern de démonstration
 Shift+P          Générer un pattern aléatoire
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)
