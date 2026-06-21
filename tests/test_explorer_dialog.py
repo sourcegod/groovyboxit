@@ -20,16 +20,14 @@ from ui.dialogs import ExplorerDialog
 # ---------------------------------------------------------------------------
 
 def make_dlg():
-    app   = wx.App(False)
     frame = wx.Frame(None)
     dlg   = ExplorerDialog(frame)
-    return app, frame, dlg
+    return frame, dlg
 
 
-def teardown(app, frame, dlg):
+def teardown(frame, dlg):
     dlg.Destroy()
     frame.Destroy()
-    app.Destroy()
 
 
 # ---------------------------------------------------------------------------
@@ -37,13 +35,13 @@ def teardown(app, frame, dlg):
 # ---------------------------------------------------------------------------
 
 def test_items_constant():
-    assert ExplorerDialog.ITEMS == ["Preset", "Kit", "Patch", "Sound"]
-    print("  ITEMS == ['Preset', 'Kit', 'Patch', 'Sound'] : OK")
+    assert ExplorerDialog.ITEMS == ["Projects", "Preset", "Kit", "Patch", "Sound"]
+    print("  ITEMS == ['Projects', 'Preset', 'Kit', 'Patch', 'Sound'] : OK")
 
 
 def test_items_count():
-    assert len(ExplorerDialog.ITEMS) == 4
-    print("  len(ITEMS) == 4 : OK")
+    assert len(ExplorerDialog.ITEMS) == 5
+    print("  len(ITEMS) == 5 : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -51,24 +49,24 @@ def test_items_count():
 # ---------------------------------------------------------------------------
 
 def test_title():
-    app, frame, dlg = make_dlg()
+    frame, dlg = make_dlg()
     assert dlg.GetTitle() == "Explorateur"
-    teardown(app, frame, dlg)
+    teardown(frame, dlg)
     print("  GetTitle() == 'Explorateur' : OK")
 
 
 def test_listbox_count():
-    app, frame, dlg = make_dlg()
-    assert dlg._listbox.GetCount() == 4
-    teardown(app, frame, dlg)
-    print("  listbox.GetCount() == 4 : OK")
+    frame, dlg = make_dlg()
+    assert dlg._listbox.GetCount() == 5
+    teardown(frame, dlg)
+    print("  listbox.GetCount() == 5 : OK")
 
 
 def test_listbox_items_match_constant():
-    app, frame, dlg = make_dlg()
+    frame, dlg = make_dlg()
     items = [dlg._listbox.GetString(i) for i in range(dlg._listbox.GetCount())]
     assert items == ExplorerDialog.ITEMS
-    teardown(app, frame, dlg)
+    teardown(frame, dlg)
     print("  items dans la listbox == ITEMS : OK")
 
 
@@ -77,53 +75,61 @@ def test_listbox_items_match_constant():
 # ---------------------------------------------------------------------------
 
 def test_initial_selection_index():
-    app, frame, dlg = make_dlg()
+    frame, dlg = make_dlg()
     assert dlg._listbox.GetSelection() == 0
-    teardown(app, frame, dlg)
+    teardown(frame, dlg)
     print("  sélection initiale index == 0 : OK")
 
 
 def test_initial_get_selection_returns_preset():
-    app, frame, dlg = make_dlg()
-    assert dlg.get_selection() == "Preset"
-    teardown(app, frame, dlg)
-    print("  get_selection() == 'Preset' (initial) : OK")
+    frame, dlg = make_dlg()
+    assert dlg.get_selection() == "Projects"
+    teardown(frame, dlg)
+    print("  get_selection() == 'Projects' (initial) : OK")
 
 
 # ---------------------------------------------------------------------------
 # get_selection() pour chaque item
 # ---------------------------------------------------------------------------
 
-def test_get_selection_preset():
-    app, frame, dlg = make_dlg()
+def test_get_selection_projects():
+    frame, dlg = make_dlg()
     dlg._listbox.SetSelection(0)
+    assert dlg.get_selection() == "Projects"
+    teardown(frame, dlg)
+    print("  get_selection() == 'Projects' après SetSelection(0) : OK")
+
+
+def test_get_selection_preset():
+    frame, dlg = make_dlg()
+    dlg._listbox.SetSelection(1)
     assert dlg.get_selection() == "Preset"
-    teardown(app, frame, dlg)
-    print("  get_selection() == 'Preset' après SetSelection(0) : OK")
+    teardown(frame, dlg)
+    print("  get_selection() == 'Preset' après SetSelection(1) : OK")
 
 
 def test_get_selection_kit():
-    app, frame, dlg = make_dlg()
-    dlg._listbox.SetSelection(1)
+    frame, dlg = make_dlg()
+    dlg._listbox.SetSelection(2)
     assert dlg.get_selection() == "Kit"
-    teardown(app, frame, dlg)
-    print("  get_selection() == 'Kit' après SetSelection(1) : OK")
+    teardown(frame, dlg)
+    print("  get_selection() == 'Kit' après SetSelection(2) : OK")
 
 
 def test_get_selection_patch():
-    app, frame, dlg = make_dlg()
-    dlg._listbox.SetSelection(2)
+    frame, dlg = make_dlg()
+    dlg._listbox.SetSelection(3)
     assert dlg.get_selection() == "Patch"
-    teardown(app, frame, dlg)
-    print("  get_selection() == 'Patch' après SetSelection(2) : OK")
+    teardown(frame, dlg)
+    print("  get_selection() == 'Patch' après SetSelection(3) : OK")
 
 
 def test_get_selection_sound():
-    app, frame, dlg = make_dlg()
-    dlg._listbox.SetSelection(3)
+    frame, dlg = make_dlg()
+    dlg._listbox.SetSelection(4)
     assert dlg.get_selection() == "Sound"
-    teardown(app, frame, dlg)
-    print("  get_selection() == 'Sound' après SetSelection(3) : OK")
+    teardown(frame, dlg)
+    print("  get_selection() == 'Sound' après SetSelection(4) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -131,39 +137,39 @@ def test_get_selection_sound():
 # ---------------------------------------------------------------------------
 
 def test_dclick_calls_end_modal_ok():
-    app, frame, dlg = make_dlg()
+    frame, dlg = make_dlg()
     called = []
     dlg.EndModal = lambda rc: called.append(rc)
     evt = wx.CommandEvent(wx.wxEVT_COMMAND_LISTBOX_DOUBLECLICKED,
                           dlg._listbox.GetId())
     dlg._listbox.GetEventHandler().ProcessEvent(evt)
     assert called == [wx.ID_OK]
-    teardown(app, frame, dlg)
+    teardown(frame, dlg)
     print("  double-clic appelle EndModal(wx.ID_OK) : OK")
 
 
 def test_dclick_on_kit_calls_end_modal():
-    app, frame, dlg = make_dlg()
-    dlg._listbox.SetSelection(1)
+    frame, dlg = make_dlg()
+    dlg._listbox.SetSelection(2)
     called = []
     dlg.EndModal = lambda rc: called.append(rc)
     evt = wx.CommandEvent(wx.wxEVT_COMMAND_LISTBOX_DOUBLECLICKED,
                           dlg._listbox.GetId())
     dlg._listbox.GetEventHandler().ProcessEvent(evt)
     assert called == [wx.ID_OK]
-    teardown(app, frame, dlg)
+    teardown(frame, dlg)
     print("  double-clic sur 'Kit' appelle EndModal(wx.ID_OK) : OK")
 
 
 def test_dclick_preserves_selection():
-    app, frame, dlg = make_dlg()
-    dlg._listbox.SetSelection(2)
+    frame, dlg = make_dlg()
+    dlg._listbox.SetSelection(3)
     dlg.EndModal = lambda rc: None
     evt = wx.CommandEvent(wx.wxEVT_COMMAND_LISTBOX_DOUBLECLICKED,
                           dlg._listbox.GetId())
     dlg._listbox.GetEventHandler().ProcessEvent(evt)
     assert dlg.get_selection() == "Patch"
-    teardown(app, frame, dlg)
+    teardown(frame, dlg)
     print("  get_selection() reste 'Patch' après double-clic : OK")
 
 
@@ -182,6 +188,7 @@ if __name__ == "__main__":
     test_initial_selection_index()
     test_initial_get_selection_returns_preset()
     # get_selection() par item
+    test_get_selection_projects()
     test_get_selection_preset()
     test_get_selection_kit()
     test_get_selection_patch()

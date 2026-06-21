@@ -21,8 +21,27 @@ from synth_engine import (
     SynthEngine, scale_midi_notes, midi_to_note_name, note_name_to_midi,
 )
 
+import pytest
+
 WAV_SRC   = "/home/com/audiotest/a440.wav"   # La4 = MIDI 69
 ROOT_NOTE = "A4"                             # note racine du fichier
+
+
+@pytest.fixture(scope="module")
+def patch_dir():
+    if not os.path.exists(WAV_SRC):
+        pytest.skip(f"Fichier WAV introuvable : {WAV_SRC}")
+    pd = _make_temp_patch(WAV_SRC, ROOT_NOTE)
+    yield pd
+    shutil.rmtree(pd, ignore_errors=True)
+
+
+@pytest.fixture(scope="module")
+def engine(patch_dir):
+    drv = SoundDeviceDriver()
+    eng = SynthEngine(os.path.dirname(patch_dir), driver=drv)
+    yield eng
+    drv.close()
 
 
 def _make_temp_patch(wav_src, root_note):

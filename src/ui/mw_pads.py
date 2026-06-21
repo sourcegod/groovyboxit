@@ -162,7 +162,16 @@ class PadMixin:
         dlg.Destroy()
 
     def _explorer_preset(self):
-        self._open_project()
+        start = self._presets_dir if os.path.isdir(self._presets_dir) else os.path.expanduser("~")
+        dlg = wx.FileDialog(self, "Choisir un preset (*.json)",
+                            defaultDir=start,
+                            wildcard="Preset JSON (*.json)|*.json",
+                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            self._preset_path = dlg.GetPath()
+            self._load_preset()
+            self._show_status(f"Preset: {os.path.basename(self._preset_path)}")
+        dlg.Destroy()
 
     def _explorer_kit(self):
         start = self._kits_dir if os.path.isdir(self._kits_dir) else os.path.expanduser("~")
