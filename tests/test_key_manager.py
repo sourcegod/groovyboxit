@@ -287,6 +287,10 @@ class FakeWindow:
     def _nr_arm_release(self):            self.calls.append('_nr_arm_release')
     def _nr_cancel_release(self):         self.calls.append('_nr_cancel_release')
     def _update_bpm_display(self):        self.calls.append('_update_bpm_display')
+    def _add_undo(self, title):           self.calls.append(('_add_undo', title))
+    def _undo_action(self):               self.calls.append('_undo_action')
+    def _redo_action(self):               self.calls.append('_redo_action')
+    def _undo_history_dialog(self):       self.calls.append('_undo_history_dialog')
 
     def _set_input_mode(self, mode):
         self.calls.append(('_set_input_mode', mode))
