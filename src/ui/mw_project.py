@@ -41,6 +41,7 @@ class ProjectMixin:
                 return
             if resp == wx.ID_YES:
                 self._save_project()
+        self._add_undo("Nouveau projet")
         self._player.stop_all()
         self._router.stop_all_synth_voices()
         self._pattern_list    = [Pattern() for _ in range(99)]

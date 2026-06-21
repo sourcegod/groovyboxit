@@ -149,10 +149,12 @@ class SongWindow(wx.Frame):
         seq  = song._sequence
         sel  = self._seq_lb.GetSelection()
         if before and sel != wx.NOT_FOUND:
+            self._parent._add_undo(f"Song {self._cur_song_idx+1:02d}: insérer Pat_{pat_idx+1:02d}")
             seq.insert(sel, pat_idx)
             new_sel = sel
             verb = "inséré"
         else:
+            self._parent._add_undo(f"Song {self._cur_song_idx+1:02d}: ajouter Pat_{pat_idx+1:02d}")
             seq.append(pat_idx)
             new_sel = len(seq) - 1
             verb = "ajouté"
@@ -167,6 +169,9 @@ class SongWindow(wx.Frame):
         seq  = song._sequence
 
         if key in (wx.WXK_DELETE, wx.WXK_BACK) and sel != wx.NOT_FOUND:
+            self._parent._add_undo(
+                f"Song {self._cur_song_idx+1:02d}: supprimer pos {sel+1}"
+            )
             del seq[sel]
             new_sel = min(sel, len(seq) - 1) if seq else wx.NOT_FOUND
             self._refresh_song_lb()
@@ -175,12 +180,18 @@ class SongWindow(wx.Frame):
             return
 
         if key == wx.WXK_UP and evt.AltDown() and sel > 0:
+            self._parent._add_undo(
+                f"Song {self._cur_song_idx+1:02d}: monter pos {sel+1}"
+            )
             seq[sel - 1], seq[sel] = seq[sel], seq[sel - 1]
             self._refresh_seq_lb(sel - 1)
             return
 
         if key == wx.WXK_DOWN and evt.AltDown() \
                 and sel != wx.NOT_FOUND and sel < len(seq) - 1:
+            self._parent._add_undo(
+                f"Song {self._cur_song_idx+1:02d}: descendre pos {sel+1}"
+            )
             seq[sel], seq[sel + 1] = seq[sel + 1], seq[sel]
             self._refresh_seq_lb(sel + 1)
             return
@@ -194,6 +205,7 @@ class SongWindow(wx.Frame):
         self._parent._player._song_looping = song._looping
 
     def _on_empty(self, evt):
+        self._parent._add_undo(f"Song {self._cur_song_idx+1:02d}: vider séquence")
         song = self._parent._song_list[self._cur_song_idx]
         song._sequence.clear()
         self._refresh_song_lb()

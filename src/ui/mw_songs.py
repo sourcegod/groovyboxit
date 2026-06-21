@@ -161,6 +161,7 @@ class SongMixin:
         if dlg.ShowModal() == wx.ID_OK:
             idx  = dlg.get_selection()
             name = dlg.get_name()
+            self._add_undo(f"Dupliquer song → {idx + 1:02d}")
             dst  = self._song_list[idx]
             dst._sequence = src._sequence[:]
             dst._looping  = src._looping

@@ -93,6 +93,7 @@ class PatternMixin:
         self._show_status(f"Pattern {idx + 1:02d}")
 
     def _save_pattern(self):
+        self._add_undo(f"Sauvegarder pattern {self._cur_pattern_idx + 1:02d}")
         pat = self._pattern_list[self._cur_pattern_idx]
         pat.load_pattern(self._player._pattern._curpattern)
         self._flush_pattern_to_store(pat)
@@ -106,6 +107,7 @@ class PatternMixin:
         if dlg.ShowModal() == wx.ID_OK:
             idx  = dlg.get_selection()
             name = dlg.get_name()
+            self._add_undo(f"Dupliquer pattern → {idx + 1:02d}")
             pat  = self._pattern_list[idx]
             pat.load_pattern(self._player._pattern._curpattern)
             pat._name = name
