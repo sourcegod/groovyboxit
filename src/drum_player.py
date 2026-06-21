@@ -97,6 +97,10 @@ class DrumPlayer:
     def _loop_remaining(self):
         return self._lm.remaining
 
+    @_loop_remaining.setter
+    def _loop_remaining(self, value):
+        self._lm._remaining = value
+
     @property
     def float_offsets(self):
         """Offsets du track courant — alias lecture/écriture dans _all_offsets."""

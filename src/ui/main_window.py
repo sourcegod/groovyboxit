@@ -1,4 +1,3 @@
-import json
 import os
 import threading
 import wx
@@ -28,6 +27,11 @@ from ui.dialogs import (
 from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
 from ui.song_window import SongWindow
+from ui.mw_patterns import PatternMixin
+from ui.mw_songs    import SongMixin
+from ui.mw_project  import ProjectMixin
+from ui.mw_tracks   import TrackMixin
+from ui.mw_pads     import PadMixin
 from midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -56,42 +60,40 @@ class _LoadingDialog(wx.Dialog):
             self.EndModal(wx.ID_OK)
 
 
-class MainWindow(wx.Frame):
+class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx.Frame):
     ROWS = 16
     COLS = 16
-    # Indices dans QUANT_LIST pour les touches 1-8 (binaire) et 1-6 (ternaire)
-    NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]   # 1/1,1/2,1/4,1/8,1/16,1/32,1/64,1/128
-    NR_TERNARY = [2, 4, 6,  8, 10, 12]          # 1/3,1/6,1/12,1/24,1/48,1/96
+    NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
+    NR_TERNARY = [2, 4, 6,  8, 10, 12]
 
-    # Niveaux de quantification de vélocité MIDI en entrée
     VEL_LEVEL_LABELS = [
-        "Level_01 - Full Level",   # → 127 fixe
-        "Level_02 - 4 Levels",     # paliers de 32
-        "Level_03 - 8 Levels",     # paliers de 16
-        "Level_04 - 16 Levels",    # paliers de 8
-        "Level_05 - No Level",     # vélocité brute
+        "Level_01 - Full Level",
+        "Level_02 - 4 Levels",
+        "Level_03 - 8 Levels",
+        "Level_04 - 16 Levels",
+        "Level_05 - No Level",
     ]
-    _VEL_STEPS = [None, 32, 16, 8, None]  # None = cas spéciaux (Full / No Level)
+    _VEL_STEPS = [None, 32, 16, 8, None]
 
     def __init__(self):
         super().__init__(None, title="GroovyboxIt")
         self._cur_row = 0
         self._cur_col = 0
         self._cells = []
-        self._shift_pad = 0   # 0 → pads 1-8 (indices 0-7), 8 → pads 9-16 (indices 8-15)
+        self._shift_pad = 0
         self._autoplay  = True
         self._note_repeat      = False
-        self._nr_active_key    = None   # touche NumPad tenue (effacée par timer)
-        self._nr_prev_key      = None   # dernière touche NumPad ayant démarré le NR
+        self._nr_active_key    = None
+        self._nr_prev_key      = None
         self._nr_release_timer = None
-        self._nr_rate_idx      = 7      # indice QUANT_LIST courant (défaut 1/16)
-        self._nr_ternary       = False  # False=binaire, True=ternaire
-        self._nr_midi_note     = None   # note MIDI tenue en mode Note Repeat
+        self._nr_rate_idx      = 7
+        self._nr_ternary       = False
+        self._nr_midi_note     = None
         self._kb_scale     = "chromatic"
-        self._kb_play_root = 48   # C3 — root de lecture, stable (non affectée par Numpad+/-)
-        self._kb_root_midi = 48   # C3 — root d'entrée, transposable avec Numpad+/-
-        self._input_mode       = "pad"   # "pad" | "keyboard"
-        self._vel_level        = 4      # 0=Full,1=4Lev,2=8Lev,3=16Lev,4=No Level
+        self._kb_play_root = 48
+        self._kb_root_midi = 48
+        self._input_mode       = "pad"
+        self._vel_level        = 4
         self._init_sound()
         self._synths_dir  = os.path.join(self._base_dir, "synths")
         cfg = AppConfig(self._base_dir)
@@ -128,7 +130,7 @@ class MainWindow(wx.Frame):
         self._song_list = [Song(i) for i in range(Song.MAX_SONGS)]
         self._cur_song_idx = 0
         self._song_window = None
-        self._pre_song_pattern_idx = 0   # pattern actif avant l'entrée en mode Song
+        self._pre_song_pattern_idx = 0
         self._player._pattern_list_ref     = self._pattern_list
         self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)
         self._player._on_song_cross_nav_cb = self._on_song_cross_nav
@@ -143,12 +145,12 @@ class MainWindow(wx.Frame):
             on_pitch_bend = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
         )
         self._track_editor = TrackEditor()
-        self._skip_next_track_select = False  # bloque EVT_LISTBOX après navigation clavier
+        self._skip_next_track_select = False
         self._build_ui()
         self._update_title()
         self._load_kit_slot(0)
         self._load_project()
-        self._router.load_slot_preview(1)   # pré-chargement A440 en arrière-plan
+        self._router.load_slot_preview(1)
         self._key_manager = KeyManager(self)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Bind(wx.EVT_CLOSE, self._on_close)
@@ -160,7 +162,7 @@ class MainWindow(wx.Frame):
             dlg = _LoadingDialog(self, self._router)
             dlg.ShowModal()
             dlg.Destroy()
-        self._router.wait_loaded()   # join final (instantané à ce stade)
+        self._router.wait_loaded()
 
     def _init_sound(self):
         ui_dir = os.path.dirname(os.path.abspath(__file__))
@@ -172,7 +174,6 @@ class MainWindow(wx.Frame):
         self._audio_driver = SoundDeviceDriver()
         self._snd = SoundManager(media_lst, cfg.click1_file, cfg.click2_file,
                                  driver=self._audio_driver)
-        # Les sons du kit sont chargés plus tard par _load_kit_slot()
         self._player = DrumPlayer(self._snd)
         self._player._on_recorded_cb = lambda pad, bar, step: wx.CallAfter(
             self._on_nr_recorded, pad, bar, step
@@ -181,7 +182,6 @@ class MainWindow(wx.Frame):
             self._on_note_replaced, pad, bar, step
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
-        # _on_track_play_cb est enregistré après la création de _router (voir __init__)
 
     def _build_ui(self):
         panel = wx.Panel(self)
@@ -237,7 +237,6 @@ class MainWindow(wx.Frame):
         hbox.Add(pattern_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox.Add(self._pattern_listbox, 0, wx.EXPAND)
 
-        # --- Barre 2 : Mode / Gamme / Slot ---
         mode_label = wx.StaticText(panel, label="Mode:")
         self._mode_choice = wx.ListBox(panel, choices=["Mode: Pad", "Mode: Keyboard"], style=wx.LB_SINGLE)
         self._mode_choice.SetSelection(0)
@@ -264,7 +263,6 @@ class MainWindow(wx.Frame):
         hbox2.Add(slot_label,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox2.Add(self._slot_choice,  0, wx.EXPAND)
 
-        # --- Barre 3 : Pistes + Pads ---
         track_label = wx.StaticText(panel, label="Piste:")
         self._track_list = wx.ListBox(
             panel,
@@ -314,7 +312,6 @@ class MainWindow(wx.Frame):
         hbox3.Add(midi_label,            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox3.Add(self._midi_port_list,  0, wx.EXPAND)
 
-        # Panneau voix : M / S / SpinVol / SpinPan par ligne
         self._mute_btns = []
         self._solo_btns = []
         self._vol_ctrls = []
@@ -360,8 +357,6 @@ class MainWindow(wx.Frame):
         vbox.Add(content_hbox, 1, wx.EXPAND)
         panel.SetSizer(vbox)
 
-        # Ordre de navigation Tab/Shift+Tab entre les widgets principaux.
-        # La grille (cells) est le point de départ/arrivée implicite aux extrémités.
         self._tab_order = [
             self._status_ctrl,
             self._bpm_ctrl,
@@ -375,7 +370,7 @@ class MainWindow(wx.Frame):
             self._track_list,
             self._pad_list,
             self._vel_list,
-            self._midi_port_list,   # juste avant la grille
+            self._midi_port_list,
         ]
 
         self.Fit()
@@ -391,685 +386,18 @@ class MainWindow(wx.Frame):
         self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
             100 if value else 0
         self._player.float_offsets[row] = [
-            float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
+            float(c) for c in range(self.COLS)
+            if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
         ]
-        self._mark_modified()
 
     def _on_checkbox(self, row, col):
         self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
             100 if self._cells[row][col].GetValue() else 0
         self._player.float_offsets[row] = [
-            float(c) for c in range(self.COLS) if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
+            float(c) for c in range(self.COLS)
+            if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
         ]
         self._mark_modified()
-
-    def _refresh_grid(self):
-        for r in range(self.ROWS):
-            for c in range(self.COLS):
-                self._cells[r][c].SetValue(self._player._pattern._curpattern[self._player._cur_track][r][0][c])
-        self._player._compute_offsets()
-
-    def _on_pattern_select(self, event):
-        self._switch_pattern(self._pattern_listbox.GetSelection())
-
-    def _pattern_label(self, idx):
-        pat = self._pattern_list[idx]
-        if pat._name:
-            return f"Pat_{idx + 1:02d} - {pat._name}"
-        if pat.is_empty():
-            return f"Pat_{idx + 1:02d} (Unused)"
-        return f"Pat_{idx + 1:02d}"
-
-    def _refresh_pattern_listbox(self):
-        sel = self._pattern_listbox.GetSelection()
-        self._pattern_listbox.Set([self._pattern_label(i) for i in range(99)])
-        self._pattern_listbox.SetSelection(sel if sel != wx.NOT_FOUND else 0)
-
-    def _flush_pattern_to_store(self, pat):
-        """Copie l'état courant du player + router dans l'objet Pattern du store."""
-        live = self._player._pattern
-        pat.load_pattern(live._curpattern)        # sync curpattern + num_bars/num_steps
-        pat._bpm           = self._player.bpm     # sync BPM per-pattern
-        pat._track_slots   = self._router._track_slots[:]
-        pat._track_mutes   = self._router._track_mutes[:]
-        pat._track_solos   = self._router._track_solos[:]
-        pat._track_volumes = self._router._track_volumes[:]
-        pat._track_pans    = self._router._track_pans[:]
-        pat._tape      = dict(live._tape)
-        pat._bend_tape = [list(t) for t in live._bend_tape]
-        pat._mod_tape  = [list(t) for t in live._mod_tape]
-
-    def _apply_pattern_from_store(self, new):
-        """Charge un Pattern du store dans le player et le router."""
-        live = self._player._pattern
-        live.load_pattern(new._curpattern)
-        self._player.set_bpm(new._bpm)
-        self._bpm_ctrl.SetValue(int(new._bpm))
-        live._looping    = new._looping
-        live._tape     = dict(new._tape)
-        live._bend_tape = [list(t) for t in new._bend_tape]
-        live._mod_tape  = [list(t) for t in new._mod_tape]
-        self._player.voice_manager.from_list(new._voices)
-        self._router._track_slots[:]   = new._track_slots
-        self._router._track_mutes[:]   = new._track_mutes
-        self._router._track_solos[:]   = new._track_solos
-        self._router._track_volumes[:] = new._track_volumes
-        self._router._track_pans[:]    = new._track_pans
-        # Restaure la gamme de lecture du pattern (indépendante de la gamme UI courante)
-        self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
-
-    def _play_toggle(self):
-        """Bascule lecture / arrêt (utilisé comme callback par les dialogs de propriétés)."""
-        if self._player.playing:
-            self._player.stop_pattern()
-        else:
-            self._player.play_pattern()
-
-    # ------------------------------------------------------------------
-    # Song mode
-    # ------------------------------------------------------------------
-
-    def _open_song_window(self):
-        if self._song_window is None:
-            # Mémoriser le pattern courant avant d'entrer en mode Song
-            self._pre_song_pattern_idx = self._cur_pattern_idx
-            if self._player.playing:
-                self._player.stop_pattern()
-                self._router.stop_all_synth_voices()
-            self._song_window = SongWindow(self)
-        self._song_window.Show()
-        self._song_window.Raise()
-
-    def _exit_song_mode(self):
-        """Quitte le mode Song : arrête la lecture, réinitialise song mode,
-        restaure le pattern actif avant l'entrée en mode Song."""
-        if self._player.playing:
-            self._player.stop_pattern()
-            self._router.stop_all_synth_voices()
-        # Réinitialiser l'état song dans le player
-        p = self._player
-        p._song_mode     = False
-        p._song_looping  = False
-        p._song_sequence = []
-        p._song_pos      = 0
-        # Revenir au pattern d'avant le mode Song
-        pre = self._pre_song_pattern_idx
-        self._switch_pattern(pre)
-        self._pattern_listbox.SetSelection(pre)
-        p.goto_start()
-        self._show_status(f"Mode Song quitté → Pat_{pre+1:02d}")
-
-    def _play_song(self, song_idx):
-        song = self._song_list[song_idx]
-        if not song._sequence:
-            self._show_status("Song vide — ajoutez des patterns dans la fenêtre Songs")
-            return
-        if self._player.playing:
-            self._player.stop_pattern()
-        first_idx = song._sequence[0]
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = self._player.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
-        self._cur_pattern_idx = first_idx
-        new = self._pattern_list[first_idx]
-        self._apply_pattern_from_store(new)
-        self._player._compute_offsets()
-        self._pattern_listbox.SetSelection(first_idx)
-        self._player.play_song(song._sequence, self._pattern_list, song._looping)
-        n = len(song._sequence)
-        loop_str = " [Boucle]" if song._looping else ""
-        self._show_status(f"Song {song_idx+1:02d} → Pat_{first_idx+1:02d} ({n} patterns){loop_str}")
-
-    def _song_play_pause(self, song_idx):
-        """Play/Pause depuis SongWindow : play=song, pause=pause, resumé=reprend en song mode."""
-        p = self._player
-        if p.playing:
-            p.pause_pattern()
-            self._router.stop_all_synth_voices()
-            self._show_status("Song: Pause")
-        elif p._song_mode:
-            p.play_pattern()
-            self._show_status("Song: Reprise")
-        else:
-            self._play_song(song_idx)
-
-    def _song_goto_start(self, song_idx):
-        """Charge le 1er pattern du song, position 0, arme song mode."""
-        song = self._song_list[song_idx]
-        if not song._sequence:
-            self._show_status("Song vide")
-            return
-        first_idx = song._sequence[0]
-        self._song_load_pattern(song, first_idx, song_pos=0)
-        self._player.goto_start()
-        self._show_status(f"Song: Début → Pat_{first_idx+1:02d}")
-
-    def _song_goto_end(self, song_idx):
-        """Charge le dernier pattern du song, dernière position, arme song mode."""
-        song = self._song_list[song_idx]
-        if not song._sequence:
-            self._show_status("Song vide")
-            return
-        last_idx = song._sequence[-1]
-        last_pos = len(song._sequence) - 1
-        self._song_load_pattern(song, last_idx, song_pos=last_pos)
-        self._player.goto_end()
-        self._show_status(f"Song: Fin → Pat_{last_idx+1:02d}")
-
-    def _on_song_cross_nav(self, direction):
-        """Navigation inter-patterns en song mode (PageUp/Down aux bornes du pattern).
-        Appelé depuis navigate_bar dans le thread UI — synchrone."""
-        p       = self._player
-        new_pos = p._song_pos + direction
-        if not (0 <= new_pos < len(p._song_sequence)):
-            return
-        pat_idx = p._song_sequence[new_pos]
-        new     = self._pattern_list[pat_idx]
-        cur     = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = p.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
-        self._cur_pattern_idx = pat_idx
-        self._apply_pattern_from_store(new)
-        p._pattern._looping = False          # song mode : jamais en boucle
-        p._song_pos         = new_pos
-        p._compute_offsets()
-        self._pattern_listbox.SetSelection(pat_idx)
-        # Positionner au début de la dernière mesure (retour) ou début (avance)
-        if direction < 0:
-            last_bar_start = float((new._num_bars - 1) * new._num_steps)
-            p._go_to_offset(last_bar_start)
-        else:
-            p.goto_start()
-        arrow = "←" if direction < 0 else "→"
-        self._show_status(f"Song {arrow} Pat_{pat_idx+1:02d}")
-        if self._song_window:
-            self._song_window.on_song_advance(pat_idx)
-
-    def _song_load_pattern(self, song, pat_idx, song_pos):
-        """Charge pat_idx dans le player et arme le song mode à song_pos."""
-        p   = self._player
-        was_playing = p.playing
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = p.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
-        self._cur_pattern_idx = pat_idx
-        new = self._pattern_list[pat_idx]
-        self._apply_pattern_from_store(new)
-        p._pattern._looping  = False
-        p._song_sequence     = list(song._sequence)
-        p._pattern_list_ref  = self._pattern_list
-        p._song_pos          = song_pos
-        p._song_mode         = True            # toujours armé : appelé depuis SongWindow
-        p._song_looping      = song._looping
-        p._compute_offsets()
-        self._pattern_listbox.SetSelection(pat_idx)
-
-    def _on_song_advance(self, next_pat_idx):
-        if next_pat_idx < 0:
-            self._show_status("Song terminé")
-            if self._song_window:
-                self._song_window.on_song_advance(-1)
-            return
-        new = self._pattern_list[next_pat_idx]
-        self._cur_pattern_idx = next_pat_idx
-        self._pattern_listbox.SetSelection(next_pat_idx)
-        self._player.voice_manager.from_list(new._voices)
-        self._router._track_slots[:]   = new._track_slots
-        self._router._track_mutes[:]   = new._track_mutes
-        self._router._track_solos[:]   = new._track_solos
-        self._router._track_volumes[:] = new._track_volumes
-        self._router._track_pans[:]    = new._track_pans
-        self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
-        self._bpm_ctrl.SetValue(int(new._bpm))
-        self._show_status(f"Song → Pat_{next_pat_idx+1:02d}")
-        if self._song_window:
-            self._song_window.on_song_advance(next_pat_idx)
-
-    # ------------------------------------------------------------------
-
-    def _switch_pattern(self, idx):
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = self._player.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
-        self._cur_pattern_idx = idx
-        new = self._pattern_list[idx]
-        self._apply_pattern_from_store(new)
-        self._player._compute_offsets()
-        self._refresh_grid()
-        self._refresh_all_voice_display()
-        self._refresh_track_list()
-        self._refresh_pad_list()
-        self._show_status(f"Pattern {idx + 1:02d}")
-
-    def _save_pattern(self):
-        pat = self._pattern_list[self._cur_pattern_idx]
-        pat.load_pattern(self._player._pattern._curpattern)
-        self._flush_pattern_to_store(pat)
-        self._refresh_pattern_listbox()
-        self._mark_modified()
-        self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
-
-    def _save_pattern_as(self):
-        cur_name = self._pattern_list[self._cur_pattern_idx]._name
-        dlg = SavePatternDialog(self, self._cur_pattern_idx, cur_name)
-        if dlg.ShowModal() == wx.ID_OK:
-            idx  = dlg.get_selection()
-            name = dlg.get_name()
-            pat  = self._pattern_list[idx]
-            pat.load_pattern(self._player._pattern._curpattern)
-            pat._name = name
-            self._flush_pattern_to_store(pat)
-            self._refresh_pattern_listbox()
-            self._mark_modified()
-            self._show_status(f"Pattern {idx + 1:02d} dupliqué")
-        dlg.Destroy()
-
-    def _save_song(self):
-        self._save_project()
-        self._show_status(f"Song {self._cur_song_idx + 1:02d} sauvegardé")
-
-    def _save_song_as(self):
-        src  = self._song_list[self._cur_song_idx]
-        dlg  = SaveSongDialog(self, self._cur_song_idx, src._name)
-        if dlg.ShowModal() == wx.ID_OK:
-            idx  = dlg.get_selection()
-            name = dlg.get_name()
-            dst  = self._song_list[idx]
-            dst._sequence = src._sequence[:]
-            dst._looping  = src._looping
-            dst._name     = name
-            self._cur_song_idx = idx
-            if self._song_window:
-                self._song_window.set_cur_song(idx)
-            self._save_project()
-            self._show_status(f"Song {idx + 1:02d} sauvegardé")
-        dlg.Destroy()
-
-    # ------------------------------------------------------------------
-    # Gestion du projet (.gvp)
-    # ------------------------------------------------------------------
-
-    def _resolve_project_path(self):
-        """Détermine le chemin projet au démarrage (migration preset_01.json incluse)."""
-        default = os.path.join(self._projects_dir, ProjectManager.DEFAULT_NAME)
-        legacy  = os.path.join(self._presets_dir, "preset_01.json")
-        if os.path.exists(default):
-            return default
-        if os.path.exists(legacy):
-            return legacy
-        return default
-
-    def _find_free_project_path(self):
-        """Retourne le premier chemin noname_NNN.gvp disponible dans projects_dir."""
-        projects_dir = self._projects_dir
-        os.makedirs(projects_dir, exist_ok=True)
-        for i in range(1, 1000):
-            path = os.path.join(projects_dir, f"noname_{i:03d}.gvp")
-            if not os.path.exists(path):
-                return path
-        return os.path.join(projects_dir, ProjectManager.DEFAULT_NAME)
-
-    def _new_project(self):
-        if self._project_modified:
-            dlg = wx.MessageDialog(
-                self,
-                "Le projet a été modifié.\nEnregistrer avant de créer un nouveau projet ?",
-                "Nouveau projet",
-                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
-            )
-            resp = dlg.ShowModal()
-            dlg.Destroy()
-            if resp == wx.ID_CANCEL:
-                return
-            if resp == wx.ID_YES:
-                self._save_project()
-        self._player.stop_all()
-        self._router.stop_all_synth_voices()
-        self._pattern_list     = [Pattern() for _ in range(99)]
-        self._cur_pattern_idx  = 0
-        self._song_list        = [Song(i) for i in range(Song.MAX_SONGS)]
-        self._cur_song_idx     = 0
-        self._player._pattern_list_ref = self._pattern_list
-        new = self._pattern_list[0]
-        self._apply_pattern_from_store(new)
-        self._player._compute_offsets()
-        self._refresh_pattern_listbox()
-        self._refresh_grid()
-        self._refresh_all_voice_display()
-        self._refresh_track_list()
-        self._refresh_pad_list()
-        if self._song_window:
-            self._song_window.set_cur_song(0)
-        self._project_path     = self._find_free_project_path()
-        self._project_modified = False
-        self._update_title()
-        self._show_status(f"Nouveau projet : {os.path.basename(self._project_path)}")
-
-    def _update_title(self):
-        name = os.path.basename(self._project_path)
-        star = "*" if self._project_modified else ""
-        self.SetTitle(f"{name}{star} — GroovyboxIt")
-
-    def _mark_modified(self):
-        if not self._project_modified:
-            self._project_modified = True
-            self._update_title()
-
-    def _save_project(self):
-        try:
-            cur = self._pattern_list[self._cur_pattern_idx]
-            cur._voices = self._player.voice_manager.to_list()
-            self._flush_pattern_to_store(cur)
-            data = {
-                "version":  ProjectManager.VERSION,
-                "rack":     self._rack.to_dict(),
-                "patterns": [pat.to_dict() for pat in self._pattern_list],
-                "songs":    [s.to_dict() for s in self._song_list],
-                "cur_song": self._cur_song_idx,
-            }
-            ProjectManager.save(self._project_path, data)
-            self._project_modified = False
-            self._update_title()
-            self._show_status(f"Projet sauvegardé : {os.path.basename(self._project_path)}")
-        except Exception as e:
-            self._show_status(f"ERREUR sauvegarde : {e}")
-
-    def _save_project_as(self):
-        projects_dir = self._projects_dir
-        os.makedirs(projects_dir, exist_ok=True)
-        # FD_OVERWRITE_PROMPT évité : sur GTK le dialog natif a "Non" comme bouton
-        # par défaut (Enter = annuler). On gère la confirmation nous-mêmes.
-        dlg = wx.FileDialog(
-            self,
-            message="Enregistrer le projet sous…",
-            defaultDir=projects_dir,
-            defaultFile=os.path.splitext(os.path.basename(self._project_path))[0] + ".gvp",
-            wildcard=ProjectManager.WILDCARD,
-            style=wx.FD_SAVE,
-        )
-        result = dlg.ShowModal()
-        path   = dlg.GetPath() if result == wx.ID_OK else ""
-        dlg.Destroy()
-        if result != wx.ID_OK or not path:
-            return
-        if not os.path.splitext(path)[1]:
-            path += ".gvp"
-        if os.path.exists(path):
-            msg = wx.MessageDialog(
-                self,
-                f"'{os.path.basename(path)}' existe déjà.\nRemplacer ?",
-                "Remplacer le fichier",
-                wx.YES_NO | wx.YES_DEFAULT | wx.ICON_WARNING,
-            )
-            replace = msg.ShowModal()
-            msg.Destroy()
-            if replace != wx.ID_YES:
-                return
-        self._project_path = path
-        self._save_project()
-
-    def _open_project(self):
-        if self._project_modified:
-            dlg = wx.MessageDialog(
-                self,
-                "Le projet a été modifié.\nEnregistrer avant d'ouvrir un autre projet ?",
-                "Ouvrir un projet",
-                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
-            )
-            resp = dlg.ShowModal()
-            dlg.Destroy()
-            if resp == wx.ID_CANCEL:
-                return
-            if resp == wx.ID_YES:
-                self._save_project()
-        projects_dir = self._projects_dir
-        os.makedirs(projects_dir, exist_ok=True)
-        dlg = wx.FileDialog(
-            self, "Ouvrir un projet…",
-            defaultDir=projects_dir,
-            wildcard=ProjectManager.WILDCARD,
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
-        )
-        result = dlg.ShowModal()
-        path   = dlg.GetPath() if result == wx.ID_OK else ""
-        dlg.Destroy()
-        if result != wx.ID_OK or not path:
-            return
-        self._project_path = path
-        self._load_project()
-        self._show_status(f"Projet chargé : {os.path.basename(self._project_path)}")
-
-    def _load_project(self):
-        if not os.path.exists(self._project_path):
-            self._project_modified = False
-            self._update_title()
-            return
-        try:
-            data = ProjectManager.load(self._project_path)
-        except Exception as e:
-            self._show_status(f"ERREUR chargement : {e}")
-            return
-        # Restaurer le rack (contenu des slots) si présent
-        if "rack" in data:
-            self._rack.from_dict(data["rack"])
-            self._update_slot_list()
-        for i, p in enumerate(data.get("patterns", [])):
-            if i >= len(self._pattern_list):
-                break
-            self._pattern_list[i].from_dict(p)
-        for i, s in enumerate(data.get("songs", [])):
-            if i < len(self._song_list):
-                self._song_list[i].from_dict(s)
-        self._cur_song_idx = max(0, min(data.get("cur_song", 0), len(self._song_list) - 1))
-        if self._song_window:
-            self._song_window.set_cur_song(self._cur_song_idx)
-        self._refresh_pattern_listbox()
-        self._cur_pattern_idx = 0
-        new = self._pattern_list[0]
-        self._apply_pattern_from_store(new)
-        # Invalider le cache des moteurs SYNTH pour forcer le rechargement
-        self._router.clear_slot_synths()
-        for track_idx, slot_idx in enumerate(new._track_slots):
-            slot = self._rack.get_slot(slot_idx)
-            if slot.type == InstrumentType.SYNTH:
-                self._router.assign_slot(track_idx, slot_idx)
-        # Charger les kits de tous les slots KIT distincts utilisés par les pistes
-        loaded_kit_slots = set()
-        for slot_idx in new._track_slots:
-            if slot_idx not in loaded_kit_slots:
-                slot = self._rack.get_slot(slot_idx)
-                if slot.type == InstrumentType.KIT:
-                    self._load_kit_slot(slot_idx)
-                    loaded_kit_slots.add(slot_idx)
-        # Charger la preview du slot de la piste courante
-        cur_slot = new._track_slots[self._player._cur_track] \
-                   if self._player._cur_track < len(new._track_slots) else 0
-        self._cur_slot = cur_slot
-        self._slot_choice.SetSelection(cur_slot)
-        slot = self._rack.get_slot(cur_slot)
-        if slot.type == InstrumentType.SYNTH:
-            self._router.load_slot_preview(cur_slot)
-        elif slot.type == InstrumentType.KIT and cur_slot not in loaded_kit_slots:
-            self._load_kit_slot(cur_slot)
-        self._player._compute_offsets()
-        self._refresh_grid()
-        self._refresh_all_voice_display()
-        self._refresh_track_list()
-        self._refresh_pad_list()
-        self._project_modified = False
-        self._update_title()
-
-    # Alias pour compatibilité
-    _load_preset = _load_project
-
-    def _on_quant_select(self, event):
-        self._player.quant_idx = self._quant_list.GetSelection()
-        self._apply_quant()
-
-    def _apply_quant(self):
-        row       = self._cur_row
-        quant_idx = self._quant_list.GetSelection()
-        self._player.quant_idx = quant_idx
-        self._player.apply_quant_row(quant_idx, row)
-        pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
-        for c in range(self.COLS):
-            self._cells[row][c].SetValue(bool(pad[c]))
-        self._show_status(f"Ligne {row + 1}: {Pattern.QUANT_LIST[quant_idx]} coché")
-
-    def _quantize_pattern(self):
-        self._player.apply_quant_to_pattern()
-        self._refresh_grid()
-        self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[self._player.quant_idx]}")
-
-    def _gen_row_dialog(self):
-        dlg    = GenRowDialog(self, self._cur_row, self._player.quant_idx, self.ROWS)
-        result = dlg.ShowModal()
-        if result in (wx.ID_OK, wx.ID_APPLY):
-            row       = dlg.get_row()
-            quant_idx = dlg.get_quant_idx()
-            self._player.quant_idx    = quant_idx
-            self._quant_list.SetSelection(quant_idx)
-            if result == wx.ID_APPLY:
-                self._player.apply_quant_row(quant_idx, row)
-                pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
-                for c in range(self.COLS):
-                    self._cells[row][c].SetValue(bool(pad[c]))
-                self._show_status(
-                    f"Ligne {row + 1}: {Pattern.QUANT_LIST[quant_idx]} généré"
-                )
-            else:
-                self._show_status(
-                    f"Défaut: ligne {row + 1}, quant {Pattern.QUANT_LIST[quant_idx]}"
-                )
-        dlg.Destroy()
-
-    def _goto_dialog(self):
-        p   = self._player
-        pat = p._pattern
-        dlg = GotoDialog(
-            self,
-            step_idx      = int(p._current_offset()),
-            num_bars      = pat._num_bars,
-            num_beats     = pat._num_beats,
-            num_steps     = pat._num_steps,
-            step_duration = p.step_duration,
-        )
-        if dlg.ShowModal() == wx.ID_OK:
-            p._go_to_offset(dlg.get_offset())
-        dlg.Destroy()
-
-    def _loop_select_dialog(self):
-        p   = self._player
-        pat = p._pattern
-        te  = self._track_editor
-        dlg = LoopSelectDialog(
-            self,
-            num_bars       = pat._num_bars,
-            num_beats      = pat._num_beats,
-            num_steps      = pat._num_steps,
-            cur_step       = int(p._current_offset()),
-            loop_start     = pat._loop_start,
-            loop_end       = pat._loop_end,
-            loop_count     = pat._loop_count,
-            looping        = pat._looping,
-            lim_left       = te._lim_left,
-            lim_right      = te._lim_right,
-            on_play_toggle = self._play_toggle,
-        )
-        if dlg.ShowModal() == wx.ID_OK:
-            ls      = dlg.get_loop_start()
-            le      = dlg.get_loop_end()
-            lc      = dlg.get_loop_count()
-            looping = dlg.get_looping()
-            pat._loop_start = ls
-            pat._loop_end   = le
-            pat._loop_count = lc
-            pat._looping    = looping
-            p._loop_remaining = lc
-            # Synchro dans le pattern sauvegardé
-            saved = self._pattern_list[self._cur_pattern_idx]
-            saved._loop_start = ls
-            saved._loop_end   = le
-            saved._loop_count = lc
-            saved._looping    = looping
-            # Réveiller le thread pour qu'il recalcule la fenêtre
-            if p.playing or p.clicking or p._note_repeat_active:
-                p._wakeup.set()
-            # Message de statut
-            total = pat._num_bars * pat._num_steps
-            start_str  = dlg._fmt_bbt(ls if ls is not None else 0)
-            end_str    = dlg._fmt_bbt(le if le is not None else total - 1)
-            rep_str    = f"{lc} fois" if lc else "infini"
-            loop_str   = "On" if looping else "Off"
-            self._show_status(
-                f"Boucle [{loop_str}]: {start_str} → {end_str} | {rep_str}"
-            )
-        dlg.Destroy()
-
-    def _track_select_dialog(self):
-        """Ouvre la boîte de dialogue de sélection de pistes + plage temporelle."""
-        p   = self._player
-        pat = p._pattern
-        track_labels = [
-            f"Track {i + 1:02d} — {self._router.slot_name(i)}"
-            for i in range(pat._num_tracks)
-        ]
-        te  = self._track_editor
-        dlg = TrackSelectDialog(
-            self,
-            num_tracks   = pat._num_tracks,
-            sel_tracks   = te._sel_tracks,
-            track_labels = track_labels,
-            num_bars     = pat._num_bars,
-            num_beats    = pat._num_beats,
-            num_steps    = pat._num_steps,
-            cur_step     = int(p._current_offset()),
-            lim_left     = te._lim_left,
-            lim_right    = te._lim_right,
-        )
-        if dlg.ShowModal() == wx.ID_OK:
-            new_sel = dlg.get_sel_tracks()
-            te._sel_tracks = new_sel
-            self._refresh_track_list()
-            start = dlg.get_start_step()
-            end   = dlg.get_end_step()
-            if start > end:
-                start, end = end, start
-            te._lim_left  = start
-            te._lim_right = end
-            sel = sorted(new_sel)
-            msg_tracks = (
-                f"Piste{'s' if len(sel) > 1 else ''} {', '.join(str(i+1) for i in sel)}"
-                if sel else "Aucune piste"
-            )
-            self._show_status(f"Sélection : {msg_tracks} | {dlg._fmt_bbt(start)} → {dlg._fmt_bbt(end)}")
-        dlg.Destroy()
-
-    def _show_keyboard_help(self):
-        dlg = KeyboardHelpDialog(self)
-        dlg.ShowModal()
-        dlg.Destroy()
-
-    def _quantize_pattern_dialog(self):
-        dlg    = QuantizeDialog(self, self._player.quant_idx, self._player._quant_in_recording)
-        result = dlg.ShowModal()
-        if result in (wx.ID_OK, wx.ID_APPLY):
-            idx = dlg.get_selection()   # -1 = None, 0..13 = résolution
-            self._player._quant_in_recording = dlg.get_quant_in_recording()
-            self._player.quant_idx = idx   # -1 (None) ou 0..13
-            if idx >= 0:
-                self._quant_list.SetSelection(idx)
-            else:
-                self._quant_list.SetSelection(wx.NOT_FOUND)
-            if result == wx.ID_APPLY and idx >= 0:
-                self._player.apply_quant_to_pattern()
-                self._refresh_grid()
-                self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[idx]}")
-            elif idx >= 0:
-                self._show_status(f"Quant par défaut: {Pattern.QUANT_LIST[idx]}")
-            else:
-                self._show_status("Quant: désactivée")
-        dlg.Destroy()
 
     def _on_bpm_spin(self, event):
         bpm = self._bpm_ctrl.GetValue()
@@ -1105,8 +433,6 @@ class MainWindow(wx.Frame):
         self._audio_driver.close()
         event.Skip()
 
-    # ------------------------------------------------------------------
-
     def _update_bpm_display(self):
         self._bpm_ctrl.SetValue(self._player.bpm)
 
@@ -1122,10 +448,6 @@ class MainWindow(wx.Frame):
         self._refresh_track_list()
         track_idx = self._player._cur_track
         self._show_status(f"Rec: Piste {track_idx + 1} — {self._router.slot_name(track_idx)}")
-
-    # ------------------------------------------------------------------
-    # Mode Keyboard
-    # ------------------------------------------------------------------
 
     def _set_input_mode(self, mode):
         modes = ["pad", "keyboard"]
@@ -1159,471 +481,6 @@ class MainWindow(wx.Frame):
             f"Gamme: {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
         )
 
-    def _assign_track_slot(self):
-        """Ctrl+T : assigne le slot courant à la piste courante."""
-        track_idx = self._player._cur_track
-        slot_idx  = self._cur_slot
-        self._router.assign_slot(track_idx, slot_idx)
-        self._refresh_track_list()
-        slot = self._rack.get_slot(slot_idx)
-        self._show_status(
-            f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name})"
-        )
-
-    def _track_properties_dialog(self):
-        """Ctrl+Shift+T : propriétés de la piste courante."""
-        tidx = self._player._cur_track
-        orig = dict(
-            slot   = self._router.slot_for_track(tidx),
-            volume = self._router.get_track_volume(tidx),
-            pan    = self._router.get_track_pan(tidx),
-            mute   = self._router._track_mutes[tidx],
-            solo   = self._router._track_solos[tidx],
-        )
-
-        def apply(slot, vol, pan, mute, solo):
-            if slot != self._router.slot_for_track(tidx):
-                self._router.assign_slot(tidx, slot)
-                self._cur_slot = slot
-                self._slot_choice.SetSelection(slot)
-            self._router.set_track_volume(tidx, vol)
-            self._router.set_track_pan(tidx, pan)
-            self._router._track_mutes[tidx] = mute
-            self._router._track_solos[tidx] = solo
-            self._refresh_track_list()
-
-        dlg    = TrackPropertiesDialog(
-            self, tidx, self._rack,
-            orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'],
-            on_change=apply, on_play_toggle=self._play_toggle,
-        )
-        result = dlg.ShowModal()
-        if result == wx.ID_OK:
-            apply(dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
-                  dlg.get_mute(), dlg.get_solo())
-            self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
-        else:
-            apply(orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'])
-            self._show_status(f"Piste {tidx + 1}: modifications annulées")
-        dlg.Destroy()
-
-    def _track_label(self, idx):
-        slot_idx  = self._router.slot_for_track(idx)
-        slot_name = self._router.slot_name(idx)
-        prefix = "* " if self._track_editor.is_selected(idx) else "  "
-        label = f"{prefix}Track_{idx + 1:02d} - Slot_{slot_idx + 1:02d} - {slot_name}"
-        if self._player._cur_track == idx and self._player.recording:
-            label += " [REC]"
-        if self._router._track_mutes[idx]:
-            label += " [M]"
-        if self._router._track_solos[idx]:
-            label += " [S]"
-        return label
-
-    def _refresh_track_list(self):
-        # SetString au lieu de Set() : préserve les objets ATK/AT-SPI pour Orca
-        for i in range(self._track_list.GetCount()):
-            self._track_list.SetString(i, self._track_label(i))
-
-    def _on_track_list_activate(self, event):
-        """Entrée ou double-clic sur la liste des pistes.
-        Ctrl+Entrée → sélection pistes ; Alt+Entrée → propriétés ;
-        Entrée seul → assigner slot (≡ Ctrl+T) ; double-clic → joue."""
-        if wx.GetKeyState(wx.WXK_RETURN) and wx.GetKeyState(wx.WXK_CONTROL):
-            self._track_select_dialog()
-        elif wx.GetKeyState(wx.WXK_RETURN) and wx.GetKeyState(wx.WXK_ALT):
-            self._track_properties_dialog()
-        elif wx.GetKeyState(wx.WXK_RETURN):
-            self._assign_track_slot()
-        else:
-            self._play(self._cur_row)
-
-    def _on_pattern_list_activate(self, event):
-        """Alt+Entrée ou double-clic sur la liste des patterns → propriétés."""
-        if wx.GetKeyState(wx.WXK_ALT):
-            self._pattern_properties_dialog()
-        else:
-            self._play(self._cur_row)
-
-    def _on_listbox_play_activate(self, event):
-        """Enter/double-clic sur une listbox sans handler spécifique → joue le pad courant."""
-        self._play(self._cur_row)
-
-    def _on_slot_list_activate(self, event):
-        """Double-clic sur la liste des Slots → assigne le slot à la piste courante (≡ Ctrl+T)."""
-        self._assign_track_slot()
-
-    def _on_midi_port_activate(self, event):
-        """Double-clic sur la liste des ports MIDI → connecte le port sélectionné."""
-        self._midi_handler.connect()
-
-    def _on_pad_select(self, event):
-        idx = self._pad_list.GetSelection()
-        if idx < 0:
-            return
-        self._cur_row = idx
-
-    def _on_pad_list_key_nav(self, event):
-        """Appelé après navigation clavier dans la liste des Pads (autoplay)."""
-        idx = self._pad_list.GetSelection()
-        if idx < 0:
-            return
-        self._cur_row = idx
-        if self._autoplay:
-            self._play(idx)
-
-    def _on_pad_list_activate(self, event):
-        """Enter/double-clic → joue le pad; Alt+Entrée → PadPropertiesDialog."""
-        if wx.GetKeyState(wx.WXK_ALT):
-            self._pad_properties_dialog()
-        else:
-            self._play(self._cur_row)
-
-    def _pad_label(self, pad_idx):
-        name = self._player.voice_manager.get_name(pad_idx)
-        if name:
-            return f"Pad_{pad_idx + 1:02d} - {name}"
-        return f"Pad_{pad_idx + 1:02d}"
-
-    def _refresh_pad_list(self):
-        sel = self._pad_list.GetSelection()
-        self._pad_list.Set([self._pad_label(i) for i in range(self.ROWS)])
-        self._pad_list.SetSelection(sel if sel != wx.NOT_FOUND else 0)
-
-    def _pad_properties_dialog(self):
-        pad_idx = self._cur_row
-        vm      = self._player.voice_manager
-        v       = vm.get_voice(pad_idx)
-        orig    = dict(
-            volume      = v.volume,
-            pan         = v.pan,
-            mute        = v.mute,
-            solo        = v.solo,
-            duration_ms = v.duration_ms,
-        )
-
-        def apply(vol, pan, mute, solo, dur):
-            vm.set_volume(pad_idx, vol)
-            vm.set_pan(pad_idx, pan)
-            vm.set_mute(pad_idx, mute)
-            vm.set_solo(pad_idx, solo)
-            vm.set_duration_ms(pad_idx, dur)
-            self._refresh_voice_display(pad_idx)
-
-        def play_pad():
-            self._play(pad_idx)
-
-        dlg = PadPropertiesDialog(
-            self, pad_idx,
-            orig['volume'], orig['pan'],
-            orig['mute'], orig['solo'], orig['duration_ms'],
-            on_change=apply, on_play=play_pad, on_play_toggle=self._play_toggle,
-        )
-        result = dlg.ShowModal()
-        if result == wx.ID_OK:
-            apply(dlg.get_volume(), dlg.get_pan(),
-                  dlg.get_mute(), dlg.get_solo(), dlg.get_duration_ms())
-            self._show_status(f"Pad {pad_idx + 1}: propriétés mises à jour")
-        else:
-            apply(orig['volume'], orig['pan'],
-                  orig['mute'], orig['solo'], orig['duration_ms'])
-            self._show_status(f"Pad {pad_idx + 1}: modifications annulées")
-        dlg.Destroy()
-
-    def _pattern_properties_dialog(self):
-        """Alt+Entrée depuis la liste des patterns : propriétés du pattern courant."""
-        pat  = self._pattern_list[self._cur_pattern_idx]
-        live = self._player._pattern
-
-        dlg = PatternPropertiesDialog(
-            self,
-            self._cur_pattern_idx,
-            pat._name,
-            pat._start_bar,
-            live._num_bars,
-            live._num_steps,
-            pat._looping,
-            Pattern.MAX_BARS,
-            Pattern.VALID_NUM_STEPS,
-            on_play_toggle=self._play_toggle,
-        )
-        result = dlg.ShowModal()
-
-        if result == wx.ID_OK:
-            name      = dlg.get_name()
-            start_bar = dlg.get_start_bar()
-            num_bars  = dlg.get_num_bars()
-            num_steps = dlg.get_num_steps()
-            looping   = dlg.get_looping()
-            action    = dlg.get_action()
-
-            pat._name      = name
-            pat._start_bar = start_bar
-            pat._looping   = looping
-            live._looping  = looping
-
-            if action == "Nouveau":
-                pat.new_pattern(num_bars, num_steps)
-                live.new_pattern(num_bars, num_steps)
-                self._player._compute_offsets()
-                self._refresh_grid()
-                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: nouveau")
-            elif action == "Doubler":
-                if self._player.double_pattern():
-                    pat.load_pattern(live._curpattern)
-                    self._refresh_grid()
-                    self._show_status(
-                        f"Pattern {self._cur_pattern_idx + 1:02d}: doublé — {live._num_bars} mesures"
-                    )
-                else:
-                    self._show_status("Impossible de doubler (limite atteinte)")
-            elif action == "Diviser par 2":
-                if self._player.halve_pattern():
-                    pat.load_pattern(live._curpattern)
-                    self._refresh_grid()
-                    self._show_status(
-                        f"Pattern {self._cur_pattern_idx + 1:02d}: divisé — {live._num_bars} mesures"
-                    )
-                else:
-                    self._show_status("Impossible de diviser (1 mesure minimum)")
-            else:  # "Courant"
-                self._resize_live_pattern(num_bars, num_steps)
-                self._refresh_grid()
-                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour")
-
-            self._refresh_pattern_listbox()
-
-        dlg.Destroy()
-
-    def _resize_live_pattern(self, num_bars, num_steps):
-        live = self._player._pattern
-        live.resize(num_bars, num_steps)
-        self._pattern_list[self._cur_pattern_idx].load_pattern(live._curpattern)
-        self._player._compute_offsets()
-
-    def _on_track_select(self, event):
-        idx = self._track_list.GetSelection()
-        if idx < 0:   # EVT_LISTBOX peut se déclencher avec NO_SELECTION sur GTK
-            return
-        if self._skip_next_track_select:
-            self._skip_next_track_select = False
-            return
-        if self._player.recording or self._player._count_in > 0:
-            self._track_list.SetSelection(self._player._cur_track)
-            self._show_status("Changement de piste interdit pendant l'enregistrement")
-            return
-        self._track_editor.clear_selection()
-        self._refresh_track_list()   # sync les labels * après effacement (clic souris)
-        self._go_to_track(idx)
-
-    def _go_to_track(self, idx):
-        """Change de piste courante sans effacer la sélection multi-pistes."""
-        if self._player.recording or self._player._count_in > 0:
-            self._track_list.SetSelection(self._player._cur_track)
-            self._show_status("Changement de piste interdit pendant l'enregistrement")
-            return
-        self._player._cur_track = idx
-        self._cur_slot = self._router.slot_for_track(idx)
-        self._slot_choice.SetSelection(self._cur_slot)
-        self._router.reset_kit_pad()
-        self._refresh_grid()
-        slot = self._rack.get_slot(self._cur_slot)
-        self._show_status(f"Piste {idx + 1} — {slot.name}")
-        if slot.type == InstrumentType.SYNTH:
-            self._router.load_slot_preview(self._cur_slot)
-        elif slot.type == InstrumentType.KIT:
-            self._load_kit_slot(self._cur_slot)
-
-    def _on_slot_choice(self, event):
-        """Changement de slot : preview uniquement, sans modifier l'assignation de la piste.
-        Appuyer Ctrl+T pour confirmer l'assignation."""
-        self._cur_slot = self._slot_choice.GetSelection()
-        slot = self._rack.get_slot(self._cur_slot)
-        if slot.is_empty:
-            self._show_status(f"Slot {self._cur_slot + 1:02d}: vide — Alt+X pour charger")
-        else:
-            self._show_status(f"Slot {self._cur_slot + 1:02d}: {slot.name} (Ctrl+T pour assigner)")
-            if slot.type == InstrumentType.SYNTH:
-                self._router.load_slot_preview(self._cur_slot)
-            elif slot.type == InstrumentType.KIT:
-                self._load_kit_slot(self._cur_slot)
-
-    def _update_slot_list(self):
-        self._slot_choice.Set(self._rack.labels())
-        self._slot_choice.SetSelection(self._cur_slot)
-
-    def _debug_pad_status(self, pad_idx, midi_note_in=None):
-        """Affiche pad, note MIDI et shift dans la barre de status et le terminal."""
-        slot = self._rack.get_slot(self._cur_slot)
-        parts = [f"Pad {pad_idx + 1}"]
-        if midi_note_in is not None:
-            parts.append(f"MIDI in: {midi_note_in}")
-        if slot.type == InstrumentType.KIT and self._snd.note_map:
-            # MIDI in → note kit directe ; numpad → dérivée du pad dans la fenêtre
-            kit_note = midi_note_in if midi_note_in is not None \
-                       else self._snd.kit_base + self._snd.kit_offset + pad_idx
-            parts.append(f"kit_note: {kit_note}")
-        parts.append(f"shift_pad: {self._shift_pad}")
-        msg = " | ".join(parts)
-        print(msg)
-        self._show_status(msg)
-
-    def _kit_status(self):
-        """Retourne la chaîne de status du kit courant."""
-        base   = self._snd.kit_base + self._snd.kit_offset
-        offset = self._snd.kit_offset
-        sign   = f"+{offset}" if offset >= 0 else str(offset)
-        return (f"Kit: {self._snd._kit_name} | "
-                f"Pads 1-16 → notes {base}–{base + 15} | "
-                f"shift: {sign}")
-
-    def _shift_kit(self, delta):
-        """Décale la fenêtre de 16 sons du kit courant de delta demi-tons."""
-        new_labels = self._snd.shift_kit(delta)
-        for i, label in enumerate(new_labels):
-            self._player.voice_manager.set_name(i, label)
-        self._refresh_pad_list()
-        msg = self._kit_status()
-        print(msg)
-        self._show_status(msg)
-
-    def _load_kit_slot(self, slot_idx):
-        """Charge le kit JSON du slot KIT donné et met à jour les sons et les noms de pads.
-        Fallback sur les sons media/ si le JSON est absent ou invalide."""
-        slot = self._rack.get_slot(slot_idx)
-        if slot.type != InstrumentType.KIT:
-            return
-        kit_path = slot.config.get("kit", "")
-        if kit_path and os.path.isfile(kit_path):
-            try:
-                labels, wav_paths = self._snd.load_kit(kit_path)
-                for i, label in enumerate(labels):
-                    self._player.voice_manager.set_name(i, label)
-                for i, group in enumerate(self._snd.mute_groups):
-                    self._player.voice_manager.set_mute_group(i, group)
-                self._refresh_pad_list()
-                self._show_status(self._kit_status())
-                return
-            except Exception as e:
-                self._show_status(f"Erreur kit JSON: {e}")
-        # Fallback : sons media/ numérotés
-        self._snd.load_sounds()
-        self._show_status("Kit: sons media par défaut")
-
-    def _open_explorer(self):
-        dlg = ExplorerDialog(self)
-        if dlg.ShowModal() != wx.ID_OK:
-            dlg.Destroy()
-            return
-        choice = dlg.get_selection()
-        dlg.Destroy()
-        if choice == "Projects":
-            self._explorer_projects()
-        elif choice == "Preset":
-            self._explorer_preset()
-        elif choice == "Kit":
-            self._explorer_kit()
-        elif choice == "Patch":
-            self._explorer_patch()
-        elif choice == "Sound":
-            self._explorer_sound()
-
-    def _explorer_projects(self):
-        projects_dir = self._projects_dir
-        os.makedirs(projects_dir, exist_ok=True)
-        dlg = wx.FileDialog(self, "Ouvrir un projet…",
-                            defaultDir=projects_dir,
-                            wildcard=ProjectManager.WILDCARD,
-                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        if dlg.ShowModal() == wx.ID_OK:
-            self._project_path = dlg.GetPath()
-            self._load_project()
-            self._show_status(f"Projet chargé : {os.path.basename(self._project_path)}")
-        dlg.Destroy()
-
-    def _explorer_preset(self):
-        self._open_project()
-
-    def _explorer_kit(self):
-        start = self._kits_dir if os.path.isdir(self._kits_dir) else os.path.expanduser("~")
-        dlg = wx.FileDialog(self, "Choisir un kit (*.json)",
-                            defaultDir=start,
-                            wildcard="Kit JSON (*.json)|*.json",
-                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        if dlg.ShowModal() == wx.ID_OK:
-            json_path = dlg.GetPath()
-            kit_name  = os.path.splitext(os.path.basename(json_path))[0]
-            self._rack.set_slot(self._cur_slot, InstrumentType.KIT,
-                                kit_name, {"kit": json_path})
-            self._update_slot_list()
-            self._load_kit_slot(self._cur_slot)
-        dlg.Destroy()
-
-    def _explorer_patch(self):
-        start = self._patches_dir if os.path.isdir(self._patches_dir) else os.path.expanduser("~")
-        dlg = wx.FileDialog(self, "Choisir un patch (*.json)",
-                            defaultDir=start,
-                            wildcard="Patch JSON (*.json)|*.json",
-                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        if dlg.ShowModal() == wx.ID_OK:
-            json_path  = dlg.GetPath()
-            patch_name = os.path.splitext(os.path.basename(json_path))[0]
-            self._rack.set_slot(self._cur_slot, InstrumentType.SYNTH,
-                                patch_name, {"patch": json_path})
-            self._update_slot_list()
-            self._router.reload_slot(self._cur_slot)
-        dlg.Destroy()
-
-    def _explorer_sound(self):
-        start = self._samples_dir if os.path.isdir(self._samples_dir) else os.path.expanduser("~")
-        dlg = wx.FileDialog(self, "Choisir un sample (*.wav)",
-                            defaultDir=start,
-                            wildcard="Fichiers WAV (*.wav)|*.wav",
-                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        if dlg.ShowModal() == wx.ID_OK:
-            wav_path  = dlg.GetPath()
-            pad_name  = os.path.splitext(os.path.basename(wav_path))[0]
-            pad_idx   = self._cur_row
-            self._snd.load_pad_sound(pad_idx, wav_path)
-            if pad_idx < len(self._snd.media_lst):
-                self._snd.media_lst[pad_idx] = wav_path
-            self._player.voice_manager.set_name(pad_idx, pad_name)
-            self._refresh_pad_list()
-            self._show_status(f"Pad {pad_idx + 1}: {pad_name}")
-        dlg.Destroy()
-
-    def _refresh_voice_display(self, pad_idx):
-        vm = self._player.voice_manager
-        v  = vm.get_voice(pad_idx)
-        self._mute_btns[pad_idx].SetValue(v.mute)
-        self._solo_btns[pad_idx].SetValue(v.solo)
-        self._vol_ctrls[pad_idx].SetValue(v.volume)
-        self._pan_ctrls[pad_idx].SetValue(v.pan)
-
-    def _on_vol_spin(self, pad_idx):
-        val = self._vol_ctrls[pad_idx].GetValue()
-        self._player.voice_manager.set_volume(pad_idx, val)
-        self._show_status(f"Pad {pad_idx + 1}: Volume {val}")
-
-    def _on_pan_spin(self, pad_idx):
-        val = self._pan_ctrls[pad_idx].GetValue()
-        self._player.voice_manager.set_pan(pad_idx, val)
-        self._show_status(f"Pad {pad_idx + 1}: Pan {val}")
-
-    def _refresh_all_voice_display(self):
-        for r in range(self.ROWS):
-            self._refresh_voice_display(r)
-
-    def _on_mute_btn(self, pad_idx):
-        muted = self._player.voice_manager.toggle_mute(pad_idx)
-        self._mute_btns[pad_idx].SetValue(muted)
-        self._show_status(f"Pad {pad_idx + 1}: Mute {'On' if muted else 'Off'}")
-
-    def _on_solo_btn(self, pad_idx):
-        soloed = self._player.voice_manager.toggle_solo(pad_idx)
-        self._solo_btns[pad_idx].SetValue(soloed)
-        self._show_status(f"Pad {pad_idx + 1}: Solo {'On' if soloed else 'Off'}")
-
     def _show_status(self, msg):
         self._status_ctrl.SetString(0, msg)
 
@@ -1647,14 +504,6 @@ class MainWindow(wx.Frame):
         else:
             self._player.play_sound(idx)
 
-    def _play_kit_pitched(self, note_idx):
-        last    = self._player.last_played_pad
-        pad_idx = last if last is not None else (self._cur_row + self._shift_pad)
-        wav_path = self._snd.media_lst[pad_idx] if pad_idx < len(self._snd.media_lst) else None
-        self._router.play_kit_pitched(
-            note_idx, pad_idx, wav_path, self._player.play_sound
-        )
-
     def _nr_arm_release(self):
         if self._nr_release_timer:
             self._nr_release_timer.cancel()
@@ -1669,15 +518,6 @@ class MainWindow(wx.Frame):
             self._nr_release_timer = None
 
     def _on_tab_order(self, shift):
-        """
-        Navigue vers le widget suivant ou précédent de self._tab_order.
-        Quand le focus est sur la grille (ou un widget hors liste) :
-          Tab       → premier widget de la liste
-          Shift+Tab → dernier widget de la liste
-        Aux extrémités de la liste :
-          Tab depuis le dernier  → grille
-          Shift+Tab depuis le premier → grille
-        """
         focused = wx.Window.FindFocus()
         order   = self._tab_order
         if focused in order:
@@ -1698,4 +538,3 @@ class MainWindow(wx.Frame):
             event.Skip()
             return
         self._key_manager.handle(event)
-
