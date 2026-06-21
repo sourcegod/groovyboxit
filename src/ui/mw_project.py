@@ -213,3 +213,138 @@ class ProjectMixin:
 
     # Alias de compatibilité
     _load_preset = _load_project
+
+    # ------------------------------------------------------------------
+    # Undo / Redo
+    # ------------------------------------------------------------------
+
+    def _capture_state(self):
+        """Sérialise l'état complet de l'application pour l'undo/redo."""
+        import copy
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices = self._player.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
+        live = self._player._pattern
+        cur._loop_start = live._loop_start
+        cur._loop_end   = live._loop_end
+        cur._loop_count = live._loop_count
+        cur._looping    = live._looping
+        return {
+            "cur_pattern_idx": self._cur_pattern_idx,
+            "cur_song_idx":    self._cur_song_idx,
+            "patterns":        [p.to_dict() for p in self._pattern_list],
+            "songs":           [s.to_dict() for s in self._song_list],
+            "rack":            self._rack.to_dict(),
+            "clipboard":       self._clipboard_to_dict(),
+        }
+
+    def _clipboard_to_dict(self):
+        """Sérialise le presse-papier TrackEditor."""
+        cb = self._track_editor._clipboard
+        if cb is None:
+            return None
+        tape_list = []
+        for (t, b, s), events in cb.tape.items():
+            for ev in events:
+                if ev.etype == "K":
+                    tape_list.append(["K", t, b, s, ev.note, ev.vel, ev.dur])
+                else:
+                    tape_list.append(["P", t, b, s, ev.note, ev.vel, ev.dur, ev.bend])
+        import copy
+        return {
+            "num_tracks": cb.num_tracks,
+            "num_bars":   cb.num_bars,
+            "num_steps":  cb.num_steps,
+            "grid":       copy.deepcopy(cb.grid),
+            "tape":       tape_list,
+        }
+
+    def _clipboard_from_dict(self, d):
+        """Restaure le presse-papier TrackEditor depuis un dict."""
+        import copy
+        from track_editor import _ClipboardData
+        from pattern import TapeEvent
+        if d is None:
+            self._track_editor._clipboard = None
+            return
+        tape = {}
+        for rec in d["tape"]:
+            etype, t, b, s, note, vel, dur = (
+                rec[0], rec[1], rec[2], rec[3], rec[4], rec[5], rec[6])
+            bend = rec[7] if len(rec) > 7 else 0
+            tape.setdefault((t, b, s), []).append(TapeEvent(etype, note, vel, dur, bend))
+        self._track_editor._clipboard = _ClipboardData(
+            num_tracks = d["num_tracks"],
+            num_bars   = d["num_bars"],
+            num_steps  = d["num_steps"],
+            grid       = copy.deepcopy(d["grid"]),
+            tape       = tape,
+        )
+
+    def _restore_state(self, state):
+        """Restaure l'état de l'application depuis un snapshot undo/redo."""
+        for i, pd in enumerate(state["patterns"]):
+            self._pattern_list[i].from_dict(pd)
+        for i, sd in enumerate(state["songs"]):
+            self._song_list[i].from_dict(sd)
+        self._rack.from_dict(state["rack"])
+        self._cur_pattern_idx = state["cur_pattern_idx"]
+        self._cur_song_idx    = state["cur_song_idx"]
+        self._clipboard_from_dict(state.get("clipboard"))
+        new = self._pattern_list[self._cur_pattern_idx]
+        self._apply_pattern_from_store(new)
+        live = self._player._pattern
+        live._loop_start = new._loop_start
+        live._loop_end   = new._loop_end
+        live._loop_count = new._loop_count
+        self._player._compute_offsets()
+        self._pattern_listbox.SetSelection(self._cur_pattern_idx)
+        self._refresh_pattern_listbox()
+        self._refresh_grid()
+        self._refresh_all_voice_display()
+        self._refresh_track_list()
+        self._refresh_pad_list()
+        self._update_bpm_display()
+        if self._song_window:
+            self._song_window.set_cur_song(self._cur_song_idx)
+        self._mark_modified()
+
+    def _add_undo(self, title):
+        """Capture l'état courant et l'enregistre dans l'historique undo."""
+        self._undo.add(title, self._capture_state())
+
+    def _undo_action(self):
+        """Ctrl+Z : annule la dernière action."""
+        entry = self._undo.undo()
+        if entry is None:
+            self._show_status("Undo: rien à annuler")
+            return
+        current = self._capture_state()
+        self._undo.push_future(entry.title, current)
+        self._restore_state(entry.state)
+        self._show_status(f"Undo: {entry.title}  ({entry.rel_time()})")
+
+    def _redo_action(self):
+        """Shift+Z : refait la dernière action annulée."""
+        entry = self._undo.redo()
+        if entry is None:
+            self._show_status("Redo: rien à refaire")
+            return
+        current = self._capture_state()
+        self._undo.push_history(entry.title, current)
+        self._restore_state(entry.state)
+        self._show_status(f"Redo: {entry.title}  ({entry.rel_time()})")
+
+    def _undo_history_dialog(self):
+        """Ctrl+Shift+Z : dialog historique undo multi-niveaux."""
+        from ui.dialogs import UndoHistoryDialog
+        entries = self._undo.history_list()
+        if not entries:
+            self._show_status("Historique Undo: vide")
+            return
+        dlg = UndoHistoryDialog(self, entries)
+        if dlg.ShowModal() == wx.ID_OK:
+            steps = dlg.get_steps()
+            for _ in range(steps):
+                self._undo_action()
+        dlg.Destroy()

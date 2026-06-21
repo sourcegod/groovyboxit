@@ -20,12 +20,19 @@ class CharHandler:
         on_pattern_list = ctx.on_pattern_list
         on_track_list   = ctx.on_track_list
 
+        # Shift+Z : Redo
+        if not ctrl and shift and not alt and key == ord('Z'):
+            win._redo_action()
+            return True
+
         # Shift+V : coller en mélangeant (merge) à partir de la position courante
         if not ctrl and shift and not alt and key == ord('V'):
             te  = win._track_editor
             cur = win._player._cur_track
             pat = win._player._pattern
             dest_bar = int(win._player._current_offset()) // pat._num_steps
+            if te.has_clipboard():
+                win._add_undo(f"Mélanger coller piste {cur + 1}, mesure {dest_bar + 1}")
             if te.paste(pat, cur, dest_bar=dest_bar, merge=True):
                 win._refresh_grid()
                 win._show_status(
@@ -38,6 +45,7 @@ class CharHandler:
         # Shift+D : effacer la piste courante
         if not ctrl and shift and not alt and key == ord('D'):
             tidx = win._player._cur_track
+            win._add_undo(f"Effacer piste {tidx + 1}")
             win._player._pattern.clear_track(tidx)
             win._refresh_grid()
             win._show_status(f"Piste {tidx + 1}: effacée")
@@ -45,6 +53,7 @@ class CharHandler:
 
         # Shift+F : diviser le pattern
         if not ctrl and shift and not alt and key == ord('F'):
+            win._add_undo("Diviser pattern")
             if win._player.halve_pattern():
                 win._refresh_grid()
                 win._show_status(f"Pattern divisé: {win._player._pattern._num_bars} mesures")
@@ -52,7 +61,7 @@ class CharHandler:
                 win._show_status("Impossible de diviser (1 mesure minimum)")
             return True
 
-        # Shift+Q : quantiser le pattern
+        # Shift+Q : quantiser le pattern (undo géré dans _quantize_pattern)
         if shift and not ctrl and key == ord('Q'):
             win._quantize_pattern()
             return True
@@ -76,6 +85,7 @@ class CharHandler:
 
         # Shift+E : décocher toute la ligne
         if shift and not ctrl and key == ord('E'):
+            win._add_undo(f"Décocher ligne {win._cur_row + 1}")
             for c in range(win.COLS):
                 win._set_cell(win._cur_row, c, False)
             win._show_status(f"Ligne {win._cur_row + 1}: tout décoché")
@@ -156,6 +166,7 @@ class CharHandler:
 
         # Shift+P : générer un pattern aléatoire
         if shift and not ctrl and (ukey == ord('p') or key == ord('P')):
+            win._add_undo("Pattern aléatoire")
             win._player._pattern.gen_pattern(win._player._cur_track)
             win._player._compute_offsets()
             win._refresh_grid()

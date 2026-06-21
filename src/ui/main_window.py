@@ -35,6 +35,7 @@ from ui.mw_pads     import PadMixin
 from midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
+from undo_manager import UndoManager
 
 
 class _LoadingDialog(wx.Dialog):
@@ -145,6 +146,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx
             on_pitch_bend = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
         )
         self._track_editor = TrackEditor()
+        self._undo = UndoManager()
         self._skip_next_track_select = False
         self._build_ui()
         self._update_title()
@@ -391,6 +393,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx
         ]
 
     def _on_checkbox(self, row, col):
+        self._add_undo(f"Cellule {row + 1}/{col + 1}")
         self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
             100 if self._cells[row][col].GetValue() else 0
         self._player.float_offsets[row] = [

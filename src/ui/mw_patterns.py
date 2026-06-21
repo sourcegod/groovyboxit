@@ -123,6 +123,7 @@ class PatternMixin:
         row       = self._cur_row
         quant_idx = self._quant_list.GetSelection()
         self._player.quant_idx = quant_idx
+        self._add_undo(f"Quant ligne {row + 1}")
         self._player.apply_quant_row(quant_idx, row)
         pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
         for c in range(self.COLS):
@@ -130,6 +131,7 @@ class PatternMixin:
         self._show_status(f"Ligne {row + 1}: {Pattern.QUANT_LIST[quant_idx]} coché")
 
     def _quantize_pattern(self):
+        self._add_undo("Quantiser pattern")
         self._player.apply_quant_to_pattern()
         self._refresh_grid()
         self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[self._player.quant_idx]}")
@@ -143,6 +145,7 @@ class PatternMixin:
             self._player.quant_idx = quant_idx
             self._quant_list.SetSelection(quant_idx)
             if result == wx.ID_APPLY:
+                self._add_undo(f"Générer ligne {row + 1}")
                 self._player.apply_quant_row(quant_idx, row)
                 pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
                 for c in range(self.COLS):
@@ -310,12 +313,14 @@ class PatternMixin:
             pat._looping   = looping
             live._looping  = looping
             if action == "Nouveau":
+                self._add_undo(f"Nouveau pattern {self._cur_pattern_idx + 1:02d}")
                 pat.new_pattern(num_bars, num_steps)
                 live.new_pattern(num_bars, num_steps)
                 self._player._compute_offsets()
                 self._refresh_grid()
                 self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: nouveau")
             elif action == "Doubler":
+                self._add_undo(f"Doubler pattern {self._cur_pattern_idx + 1:02d}")
                 if self._player.double_pattern():
                     pat.load_pattern(live._curpattern)
                     self._refresh_grid()
@@ -325,6 +330,7 @@ class PatternMixin:
                 else:
                     self._show_status("Impossible de doubler (limite atteinte)")
             elif action == "Diviser par 2":
+                self._add_undo(f"Diviser pattern {self._cur_pattern_idx + 1:02d}")
                 if self._player.halve_pattern():
                     pat.load_pattern(live._curpattern)
                     self._refresh_grid()
@@ -334,6 +340,7 @@ class PatternMixin:
                 else:
                     self._show_status("Impossible de diviser (1 mesure minimum)")
             else:
+                self._add_undo(f"Redimensionner pattern {self._cur_pattern_idx + 1:02d}")
                 self._resize_live_pattern(num_bars, num_steps)
                 self._refresh_grid()
                 self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour")

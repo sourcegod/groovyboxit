@@ -244,3 +244,41 @@ class ExplorerDialog(wx.Dialog):
 
     def get_selection(self):
         return self._listbox.GetStringSelection()
+
+
+class UndoHistoryDialog(wx.Dialog):
+    """Affiche l'historique Undo pour permettre un saut multi-niveaux."""
+
+    def __init__(self, parent, entries):
+        super().__init__(parent, title="Historique Undo")
+
+        self._entries = entries  # list[UndoEntry], plus récent en tête
+
+        choices = [f"{e.title}  ({e.rel_time()})" for e in entries]
+        self._listbox = wx.ListBox(self, choices=choices, style=wx.LB_SINGLE,
+                                   size=(320, 220))
+        if choices:
+            self._listbox.SetSelection(0)
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Restaurer")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._listbox, 1, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,     0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._listbox.SetFocus()
+
+        self._listbox.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+
+    def get_steps(self):
+        """Nombre d'annulations à effectuer (1 = premier, 2 = deuxième, etc.)."""
+        sel = self._listbox.GetSelection()
+        return sel + 1 if sel != wx.NOT_FOUND else 0

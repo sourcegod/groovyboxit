@@ -10,6 +10,13 @@ class CtrlHandler:
         shift = ctx.shift
         alt   = ctx.alt
 
+        if not alt and key == ord('Z'):
+            if shift:
+                win._undo_history_dialog()
+            else:
+                win._undo_action()
+            return True
+
         if not shift and not alt and key == ord('N'):
             win._new_project()
             return True
@@ -50,6 +57,10 @@ class CtrlHandler:
             te = win._track_editor
             cur = win._player._cur_track
             tracks = te.get_effective_tracks(cur)
+            win._add_undo(
+                f"Effacer grille piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
             te.erase_grid(win._player._pattern, cur)
             win._refresh_grid()
             win._show_status(
@@ -62,6 +73,8 @@ class CtrlHandler:
             cur = win._player._cur_track
             pat = win._player._pattern
             dest_bar = int(win._player._current_offset()) // pat._num_steps
+            if te.has_clipboard():
+                win._add_undo(f"Coller piste {cur + 1}, mesure {dest_bar + 1}")
             if te.paste(pat, cur, dest_bar=dest_bar):
                 win._refresh_grid()
                 win._show_status(
@@ -86,6 +99,10 @@ class CtrlHandler:
             te = win._track_editor
             cur = win._player._cur_track
             tracks = te.get_effective_tracks(cur)
+            win._add_undo(
+                f"Supprimer piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
             te.cut(win._player._pattern, cur)
             win._refresh_grid()
             win._show_status(
@@ -94,11 +111,13 @@ class CtrlHandler:
             )
             return True
         if key == ord('P'):
+            win._add_undo("Charger pattern initial")
             win._player._pattern.build_pattern_01()
             win._refresh_grid()
             win._show_status("Pattern initial chargé")
             return True
         if not shift and key == ord('F'):
+            win._add_undo("Doubler pattern")
             if win._player.double_pattern():
                 win._refresh_grid()
                 win._show_status(f"Pattern doublé: {win._player._pattern._num_bars} mesures")
@@ -166,6 +185,10 @@ class CtrlHandler:
             te = win._track_editor
             cur = win._player._cur_track
             tracks = te.get_effective_tracks(cur)
+            win._add_undo(
+                f"Effacer piste{'s' if len(tracks) > 1 else ''} "
+                f"{', '.join(str(i + 1) for i in tracks)}"
+            )
             te.erase(win._player._pattern, cur)
             win._refresh_grid()
             win._show_status(
