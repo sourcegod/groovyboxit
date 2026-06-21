@@ -6,6 +6,8 @@ import os
 from metronome import Metronome
 from pattern import Pattern, TapeEvent
 from voice_manager import VoiceManager
+from quantize_manager import QuantizeManager
+from loop_manager import LoopManager, LoopWindow
 
 # Fichier de log pitch bend — activé si GROOVY_BEND_LOG=1
 _BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
@@ -84,11 +86,16 @@ class DrumPlayer:
         self._on_song_cross_nav_cb = None  # callback(direction) — navigation inter-patterns
         self._song_looping         = False  # boucler le song entier
         # Loop window (plage de boucle définie sur le pattern)
-        self._loop_remaining  = 0   # répétitions restantes (0 = infini)
         self._cur_lp_start    = 0   # lp_start actuel (mis à jour par _run_thread)
         self._cur_loop_steps  = 0   # longueur de la fenêtre (0 = pas de fenêtre)
+        self._qm = QuantizeManager(self)
+        self._lm = LoopManager()
 
     #--------------------------------------------------------------------------
+
+    @property
+    def _loop_remaining(self):
+        return self._lm.remaining
 
     @property
     def float_offsets(self):
@@ -144,7 +151,7 @@ class DrumPlayer:
             self.stop_click()
             clicked = 1
         self.playing = True
-        self._loop_remaining = self._pattern._loop_count
+        self._lm.init_from_pattern(self._pattern)
         if clicked:
             self.play_click()
         self.start_thread()
@@ -414,26 +421,11 @@ class DrumPlayer:
                 self._cur_lp_start   = 0
                 self._cur_loop_steps = 0
             else:
-                total_pat_steps = self._pattern._num_bars * num_steps
-                use_window = (self._pattern._looping
-                              and (self._pattern._loop_start is not None
-                                   or self._pattern._loop_end is not None))
-                if use_window:
-                    lp_start = self._pattern._loop_start if self._pattern._loop_start is not None else 0
-                    lp_end   = self._pattern._loop_end   if self._pattern._loop_end   is not None else total_pat_steps - 1
-                    lp_start = max(0, min(lp_start, total_pat_steps - 1))
-                    lp_end   = max(lp_start, min(lp_end, total_pat_steps - 1))
-                    total_steps = lp_end - lp_start + 1
-                    loop_bars   = max(1, -(-total_steps // num_steps))  # ceiling division
-                    self._cur_lp_start   = lp_start
-                    self._cur_loop_steps = total_steps
-                else:
-                    lp_start    = 0
-                    lp_end      = total_pat_steps - 1
-                    total_steps = total_pat_steps
-                    loop_bars   = self._pattern._num_bars
-                    self._cur_lp_start   = 0
-                    self._cur_loop_steps = 0
+                win = self._lm.compute_window(self._pattern)
+                lp_start, lp_end       = win.lp_start, win.lp_end
+                total_steps, loop_bars = win.total_steps, win.loop_bars
+                self._cur_lp_start   = win.cur_lp_start
+                self._cur_loop_steps = win.cur_loop_steps
             measure_secs = total_steps * self.step_duration
             now = time.perf_counter()
 
@@ -602,9 +594,8 @@ class DrumPlayer:
                                 self._on_count_in_done_cb()
                 elif not self._wakeup.is_set() and not self.stop_event.is_set():
                     # Décrémenter le compteur de boucle si actif (loop_count > 0)
-                    if self._loop_remaining > 0 and self.playing:
-                        self._loop_remaining -= 1
-                        if self._loop_remaining == 0:
+                    if self._lm.remaining > 0 and self.playing:
+                        if self._lm.on_measure_end():
                             self._resume_offset = float(lp_start)
                             self.playing = False
                             if self._song_mode:
@@ -663,121 +654,29 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def apply_quant_row(self, quant_idx, row):
-        denom     = Pattern.QUANT_STEPS[quant_idx]
-        num_steps = self._pattern._num_steps
-        grid      = [i * num_steps / denom for i in range(denom)]
-        pad       = self._pattern._curpattern[self._cur_track][row]
-        for c in range(num_steps):
-            pad[0][c] = False
-        for fp in grid:
-            c = min(num_steps - 1, round(fp))
-            pad[0][c] = True
-        self.float_offsets[row] = sorted(grid)
+        self._qm.apply_quant_row(quant_idx, row)
 
     #--------------------------------------------------------------------------
 
     def double_pattern(self):
         """Double les mesures du pattern courant. Retourne False si impossible."""
-        half_steps = self._pattern._num_bars * self._pattern._num_steps
-        if not self._pattern.double_bars():
-            return False
-        for track_offsets in self._all_offsets:
-            for pad_idx in range(len(track_offsets)):
-                orig    = track_offsets[pad_idx]
-                shifted = [f + half_steps for f in orig]
-                track_offsets[pad_idx] = sorted(orig + shifted)
-        self._wakeup.set()
-        return True
+        return self._qm.double_pattern()
 
     #--------------------------------------------------------------------------
 
     def halve_pattern(self):
         """Divise par deux les mesures du pattern. Retourne False si impossible."""
-        if self._pattern._num_bars < 2:
-            return False
-        half_steps = (self._pattern._num_bars // 2) * self._pattern._num_steps
-        self._pattern.halve_bars()
-        for track_offsets in self._all_offsets:
-            for pad_idx in range(len(track_offsets)):
-                track_offsets[pad_idx] = [
-                    f for f in track_offsets[pad_idx] if f < half_steps
-                ]
-        self._wakeup.set()
-        return True
+        return self._qm.halve_pattern()
 
     #--------------------------------------------------------------------------
 
     def apply_quant_to_pattern(self, quant_idx=None):
-        if quant_idx is None:
-            quant_idx = self.quant_idx
-        if quant_idx < 0:
-            return
-        denom     = Pattern.QUANT_STEPS[quant_idx]
-        num_steps = self._pattern._num_steps
-        # grille de quantisation par mesure (positions flottantes)
-        grid_per_bar = [i * num_steps / denom for i in range(denom)]
-        # grille étendue sur toutes les mesures
-        full_grid = [
-            bar_idx * num_steps + gp
-            for bar_idx in range(self._pattern._num_bars)
-            for gp in grid_per_bar
-        ]
-
-        for pad_idx in range(self._pattern._num_pads):
-            pad    = self._pattern._curpattern[self._cur_track][pad_idx]
-            active = self.float_offsets[pad_idx]
-            # effacer
-            for bar in pad:
-                bar[:] = [False] * len(bar)
-            if not active:
-                continue
-            # snap chaque float vers le point de grille le plus proche
-            snapped = set()
-            for pos in active:
-                nearest = min(full_grid, key=lambda p: abs(p - pos))
-                snapped.add(nearest)
-            # écrire dans le pattern
-            for fp in snapped:
-                bar_idx  = int(fp // num_steps)
-                step_idx = round(fp % num_steps) % num_steps
-                if bar_idx < self._pattern._num_bars:
-                    pad[bar_idx][step_idx] = True
-            self.float_offsets[pad_idx] = sorted(snapped)
+        self._qm.apply_quant_to_pattern(quant_idx)
 
     #--------------------------------------------------------------------------
 
     def _compute_offsets(self):
-        num_tracks = self._pattern._num_tracks
-        all_offsets = []
-        new_grid = {}   # (track, bar, step) -> [TapeEvent("G", ...)]
-        for track_idx in range(num_tracks):
-            track_offsets = []
-            for pad_idx, pad in enumerate(self._pattern._curpattern[track_idx]):
-                offsets = []
-                base = 0
-                for bar_idx, bar in enumerate(pad):
-                    for step_idx, active in enumerate(bar):
-                        if active:
-                            offsets.append(float(base + step_idx))
-                            vel = 100 if isinstance(active, bool) else int(active)
-                            key = (track_idx, bar_idx, step_idx)
-                            new_grid.setdefault(key, []).append(
-                                TapeEvent(etype="G", note=pad_idx, vel=vel, dur=0, bend=0)
-                            )
-                    base += len(bar)
-                track_offsets.append(offsets)
-            all_offsets.append(track_offsets)
-        self._all_offsets = all_offsets   # assignation atomique
-        with self._pattern._lock:
-            for key in list(self._pattern._tape.keys()):
-                self._pattern._tape[key] = [ev for ev in self._pattern._tape[key]
-                                            if ev.etype != "G"]
-                if not self._pattern._tape[key]:
-                    del self._pattern._tape[key]
-            for key, evs in new_grid.items():
-                self._pattern._tape.setdefault(key, []).extend(evs)
-        if self.playing or self.clicking or self._note_repeat_active:
-            self._wakeup.set()
+        self._qm.compute_offsets()
 
     #--------------------------------------------------------------------------
 
