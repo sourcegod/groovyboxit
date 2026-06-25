@@ -314,6 +314,10 @@ class ProjectMixin:
         """Capture l'état courant et l'enregistre dans l'historique undo."""
         self._undo.add(title, self._capture_state())
 
+    def _pop_last_undo(self):
+        """Retire la dernière entrée undo (dialog annulé ou aucun changement)."""
+        self._undo.pop_last()
+
     def _undo_action(self):
         """Ctrl+Z : annule la dernière action."""
         entry = self._undo.undo()

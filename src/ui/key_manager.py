@@ -58,6 +58,12 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if key == wx.WXK_F1:
             win._show_keyboard_help()
             return
+        if key == wx.WXK_F2:
+            if ctx.on_track_list:
+                win._rename_track()
+            else:
+                win._rename_pattern()
+            return
         if ctx.alt and self._handle_alt(event, ctx):
             return
         if ctx.ctrl and self._handle_ctrl(event, ctx):

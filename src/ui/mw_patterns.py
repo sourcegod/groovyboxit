@@ -26,6 +26,25 @@ class PatternMixin:
     def _on_pattern_select(self, event):
         self._switch_pattern(self._pattern_listbox.GetSelection())
 
+    def _rename_pattern(self):
+        """F2 : renomme le pattern courant via un TextEntryDialog."""
+        idx = self._cur_pattern_idx
+        old = self._pattern_list[idx]._name
+        self._add_undo(f"Renommer pattern {idx + 1:02d}")
+        dlg = wx.TextEntryDialog(self, f"Nom du pattern {idx + 1:02d}:", "Renommer", old)
+        if dlg.ShowModal() == wx.ID_OK:
+            name = dlg.GetValue().strip()
+            if name == old:
+                self._pop_last_undo()
+            else:
+                self._pattern_list[idx]._name = name
+                self._player._pattern._name   = name
+                self._refresh_pattern_listbox()
+                self._show_status(f"Pattern {idx + 1:02d}: {name or '(sans nom)'}")
+        else:
+            self._pop_last_undo()
+        dlg.Destroy()
+
     def _pattern_label(self, idx):
         pat = self._pattern_list[idx]
         if pat._name:

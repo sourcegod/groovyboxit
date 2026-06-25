@@ -51,11 +51,35 @@ class TrackMixin:
             self._show_status(f"Piste {tidx + 1}: modifications annulées")
         dlg.Destroy()
 
+    def _rename_track(self):
+        """F2 : renomme la piste courante via un TextEntryDialog."""
+        idx = self._player._cur_track
+        old = self._player.voice_manager.get_name(idx)
+        self._add_undo(f"Renommer piste {idx + 1}")
+        dlg = wx.TextEntryDialog(self, f"Nom de la piste {idx + 1}:", "Renommer", old)
+        if dlg.ShowModal() == wx.ID_OK:
+            name = dlg.GetValue().strip()
+            if name == old:
+                self._pop_last_undo()
+            else:
+                self._player.voice_manager.set_name(idx, name)
+                cur = self._pattern_list[self._cur_pattern_idx]
+                cur._voices[idx]["name"] = name
+                self._refresh_track_list()
+                self._show_status(f"Piste {idx + 1}: {name or '(sans nom)'}")
+        else:
+            self._pop_last_undo()
+        dlg.Destroy()
+
     def _track_label(self, idx):
         slot_idx  = self._router.slot_for_track(idx)
         slot_name = self._router.slot_name(idx)
-        prefix = "* " if self._track_editor.is_selected(idx) else "  "
-        label = f"{prefix}Track_{idx + 1:02d} - Slot_{slot_idx + 1:02d} - {slot_name}"
+        prefix    = "* " if self._track_editor.is_selected(idx) else "  "
+        track_name = self._player.voice_manager.get_name(idx)
+        if track_name:
+            label = f"{prefix}Track_{idx + 1:02d} ({track_name}) - Slot_{slot_idx + 1:02d} - {slot_name}"
+        else:
+            label = f"{prefix}Track_{idx + 1:02d} - Slot_{slot_idx + 1:02d} - {slot_name}"
         if self._player._cur_track == idx and self._player.recording:
             label += " [REC]"
         if self._router._track_mutes[idx]:

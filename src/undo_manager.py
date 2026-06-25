@@ -65,6 +65,16 @@ class UndoManager:
             self._history.pop(0)
         self._future.clear()
 
+    def pop_last(self):
+        """Retire silencieusement la dernière entrée de l'historique.
+
+        À utiliser quand un dialog (renommage, etc.) est annulé ou que
+        l'action n'a finalement rien changé, afin d'éviter une entrée
+        undo sans effet.
+        """
+        if self._history:
+            self._history.pop()
+
     def undo(self):
         """Retourne l'entrée la plus récente de l'historique (à restaurer).
         Retourne None si l'historique est vide.

@@ -215,11 +215,34 @@ class SongWindow(wx.Frame):
     def _on_play(self, evt):
         self._parent._play_song(self._cur_song_idx)
 
+    def _rename_song(self):
+        """F2 : renomme le song courant via un TextEntryDialog."""
+        idx  = self._cur_song_idx
+        song = self._parent._song_list[idx]
+        old  = song._name
+        self._parent._add_undo(f"Renommer Song {idx + 1:02d}")
+        dlg  = wx.TextEntryDialog(self, f"Nom du song {idx + 1:02d}:", "Renommer", old)
+        if dlg.ShowModal() == wx.ID_OK:
+            name = dlg.GetValue().strip()
+            if name == old:
+                self._parent._pop_last_undo()
+            else:
+                song._name = name
+                self._refresh_song_lb()
+                self._set_status(f"Song {idx + 1:02d}: {song._name or '(sans nom)'}")
+        else:
+            self._parent._pop_last_undo()
+        dlg.Destroy()
+
     def _on_key(self, evt):
         key   = evt.GetKeyCode()
         ukey  = evt.GetUnicodeKey()
         ctrl  = evt.ControlDown()
         shift = evt.ShiftDown()
+
+        if key == wx.WXK_F2:
+            self._rename_song()
+            return
 
         if key == wx.WXK_ESCAPE:
             self.Close()
