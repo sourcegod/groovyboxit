@@ -88,6 +88,8 @@ NumPad 1-8       Jouer le pad + lancer le repeat (re-presser pour stopper)
 1-6 (ternaire)   Choisir le taux ternaire : 1/3, 1/6, 1/12, 1/24, 1/48, 1/96
 
 --- BPM / Volume Global / Pan Global ---
+H                Tap Tempo : frapper au rythme pour définir le BPM
+                 (4 frappes minimum = 1 mesure ; pause > 2 s repart de zéro)
 ( ou 5           BPM +5
 )                BPM -5
 +                Volume +1
@@ -216,3 +218,7 @@ Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
 
 --- Aide ---
 F1               Afficher cette aide
+F2               Renommer l'élément courant :
+                   focus liste des pistes  → renommer la piste
+                   focus ailleurs          → renommer le pattern courant
+                   fenêtre Songs           → renommer le song courant
