@@ -5,6 +5,7 @@
     Date: Sun, 14/06/2026
     Author: Coolbrother
 """
+import time as _time
 
 
 class Metronome:
@@ -21,7 +22,11 @@ class Metronome:
         sound_idx         -- index du son de click, non encore utilisé
     """
 
-    METRO_EVENT = -1   # marqueur interne pour les événements click dans _run_thread
+    METRO_EVENT    = -1    # marqueur interne pour les événements click dans _run_thread
+    TAP_MAX_TAPS   = 8    # nombre maximum de frappes conservées pour la moyenne
+    TAP_RESET_DELAY = 2.0 # délai (s) sans frappe au-delà duquel on repart de zéro
+    BPM_MIN        = 20
+    BPM_MAX        = 300
 
     def __init__(self):
         self.active             = False
@@ -29,6 +34,7 @@ class Metronome:
         self.volume             = 100   # réservé future dialog
         self.sound_idx          = 0     # réservé future dialog
         self._before_rec        = False  # état active sauvegardé avant Rec
+        self._tap_times         = []     # timestamps des frappes (monotonic)
 
     # ------------------------------------------------------------------
 
@@ -48,6 +54,56 @@ class Metronome:
                 if t_sec > elapsed - 0.002:
                     events.append((t_sec, self.METRO_EVENT, beat, 0))
         return events
+
+    # ------------------------------------------------------------------
+
+    def tap(self, t=None):
+        """Enregistre une frappe et retourne le nouveau BPM, ou None si insuffisant.
+
+        t : timestamp (float, monotonic). Si None, utilise time.monotonic().
+
+        Logique :
+        - Si la dernière frappe date de plus de TAP_RESET_DELAY secondes, on repart
+          de zéro (la frappe courante devient la première d'une nouvelle séquence).
+        - BPM calculé en moyennant les intervalles entre les TAP_MAX_TAPS dernières
+          frappes consécutives.
+        - Retourne None tant qu'il n'y a pas au moins 2 frappes dans la fenêtre.
+        - Le BPM retourné est clampé entre BPM_MIN et BPM_MAX.
+        """
+        now = t if t is not None else _time.monotonic()
+
+        if self._tap_times and (now - self._tap_times[-1]) > self.TAP_RESET_DELAY:
+            self._tap_times = []
+
+        self._tap_times.append(now)
+
+        # Limiter à TAP_MAX_TAPS + 1 timestamps (= TAP_MAX_TAPS intervalles)
+        if len(self._tap_times) > self.TAP_MAX_TAPS + 1:
+            self._tap_times = self._tap_times[-(self.TAP_MAX_TAPS + 1):]
+
+        if len(self._tap_times) < 2:
+            return None
+
+        intervals = [self._tap_times[i] - self._tap_times[i - 1]
+                     for i in range(1, len(self._tap_times))]
+        avg_interval = sum(intervals) / len(intervals)
+        bpm = 60.0 / avg_interval
+        return max(self.BPM_MIN, min(self.BPM_MAX, round(bpm)))
+
+    def is_fresh_sequence(self, t=None):
+        """Vrai si la prochaine frappe démarrerait une nouvelle séquence.
+
+        Permet à l'appelant de sauvegarder un état undo avant la première
+        frappe d'une nouvelle séquence, sans en créer une par tap.
+        """
+        if not self._tap_times:
+            return True
+        now = t if t is not None else _time.monotonic()
+        return (now - self._tap_times[-1]) > self.TAP_RESET_DELAY
+
+    def reset_tap(self):
+        """Réinitialise la séquence de frappes Tap Tempo."""
+        self._tap_times = []
 
     # ------------------------------------------------------------------
 

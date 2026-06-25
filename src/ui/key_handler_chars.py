@@ -154,6 +154,20 @@ class CharHandler:
                 win._show_status("Tous les Pads: Désolés")
             return True
 
+        # H : Tap Tempo
+        if not ctrl and not shift and not alt \
+                and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
+                and (ukey == ord('h') or key == ord('H')):
+            metro = win._player._metro
+            if metro.is_fresh_sequence():
+                win._add_undo(f"Tap Tempo (BPM: {win._player.bpm})")
+            bpm = metro.tap()
+            if bpm is not None:
+                win._player.set_bpm(bpm)
+                win._bpm_ctrl.SetValue(bpm)
+                win._show_status(f"Tap Tempo: {bpm} BPM")
+            return True
+
         # C : toggle click
         if ukey == ord('c') or (not ctrl and not shift and key == ord('C')):
             if win._player.clicking:
