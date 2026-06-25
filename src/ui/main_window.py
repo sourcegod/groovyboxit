@@ -197,7 +197,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx
         )
 
         bpm_label = wx.StaticText(panel, label="BPM:")
-        self._bpm_ctrl = wx.SpinCtrl(panel, min=5, max=600, initial=self._player.bpm, size=(80, -1))
+        self._bpm_ctrl = wx.SpinCtrl(panel, min=1, max=600, initial=self._player.bpm, size=(80, -1))
         self._bpm_ctrl.Bind(wx.EVT_SPINCTRL, self._on_bpm_spin)
 
         vol_label = wx.StaticText(panel, label="Vol:")

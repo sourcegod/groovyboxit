@@ -1073,7 +1073,7 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def set_bpm(self, bpm):
-        if 5 <= bpm <= 600:
+        if 1 <= bpm <= 600:
             self.bpm = bpm
             self.step_duration = 60.0 / self.bpm / 4
             self._wakeup.set()

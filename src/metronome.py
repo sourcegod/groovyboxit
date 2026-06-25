@@ -26,8 +26,8 @@ class Metronome:
     TAP_MIN_TAPS    = 4   # frappes minimales avant d'émettre un BPM (1 mesure à 4/4)
     TAP_MAX_TAPS    = 8   # nombre maximum de frappes conservées pour la moyenne
     TAP_RESET_DELAY = 2.0 # délai (s) sans frappe au-delà duquel on repart de zéro
-    BPM_MIN         = 20
-    BPM_MAX         = 300
+    BPM_MIN         = 20   # limite basse du Tap Tempo (plage globale : 1–600)
+    BPM_MAX         = 300  # limite haute du Tap Tempo (au-delà, taper est irréaliste)
 
     def __init__(self):
         self.active             = False
