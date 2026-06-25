@@ -12,6 +12,7 @@ import time as _time
 import json
 import numpy as np
 from audio_sampler import AudioSampler, PlayMode
+import sound_cache
 
 _BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
 _BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "bend_log.txt")
@@ -215,7 +216,33 @@ class SynthEngine:
         if entry is None:
             return None
         n_steps = midi_note - entry["root_midi"]
+
+        if n_steps != 0:
+            src = entry["sampler"]
+            try:
+                mtime = os.path.getmtime(entry["path"])
+            except OSError:
+                mtime = 0.0
+            key = sound_cache.make_key(
+                entry["path"], mtime, n_steps, src.samplerate,
+                src._loop_start, src._loop_end,
+            )
+            cached = sound_cache.load(key)
+            if cached is not None:
+                pitched = src._clone(cached["data"])
+                if cached["loop_start"] is not None:
+                    pitched._loop_start = cached["loop_start"]
+                    pitched._loop_end   = cached["loop_end"]
+                self._raw_cache[midi_note] = pitched
+                return pitched
+
         pitched = entry["sampler"].pitch_shift(n_steps)
+
+        if n_steps != 0:
+            sound_cache.save_async(
+                key, pitched.data, pitched._loop_start, pitched._loop_end
+            )
+
         self._raw_cache[midi_note] = pitched
         return pitched
 

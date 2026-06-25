@@ -84,6 +84,20 @@ class AppConfig:
         return os.path.join(self._base_dir, value)
 
     @property
+    def sound_cache_dir(self):
+        """Répertoire du cache disque des sons pré-calculés.
+
+        Défaut : ~/.cache/groovyboxit/precompute
+        Configurable via la clé "sound_cache_dir" dans config.json.
+        """
+        value = self._data.get("sound_cache_dir", "").strip()
+        if not value:
+            return os.path.join(os.path.expanduser("~"), ".cache", "groovyboxit", "precompute")
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
+    @property
     def click1_file(self):
         return self._get_file("click1_file")
 

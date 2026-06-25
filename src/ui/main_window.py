@@ -10,6 +10,7 @@ from song import Song
 from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
 from app_config import AppConfig
+import sound_cache
 from ui.dialogs import (
     KeyboardHelpDialog,
     GenRowDialog,
@@ -103,6 +104,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx
         self._kits_dir     = cfg.kits_dir
         self._presets_dir  = cfg.presets_dir
         self._projects_dir = cfg.projects_dir
+        sound_cache.init(cfg.sound_cache_dir)
         self._rack = Rack()
         self._rack.set_slot(0, InstrumentType.KIT, "TR-707",
                             {"kit": os.path.join(self._kits_dir, "tr_707.json")})
