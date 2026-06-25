@@ -22,11 +22,12 @@ class Metronome:
         sound_idx         -- index du son de click, non encore utilisé
     """
 
-    METRO_EVENT    = -1    # marqueur interne pour les événements click dans _run_thread
-    TAP_MAX_TAPS   = 8    # nombre maximum de frappes conservées pour la moyenne
+    METRO_EVENT     = -1   # marqueur interne pour les événements click dans _run_thread
+    TAP_MIN_TAPS    = 4   # frappes minimales avant d'émettre un BPM (1 mesure à 4/4)
+    TAP_MAX_TAPS    = 8   # nombre maximum de frappes conservées pour la moyenne
     TAP_RESET_DELAY = 2.0 # délai (s) sans frappe au-delà duquel on repart de zéro
-    BPM_MIN        = 20
-    BPM_MAX        = 300
+    BPM_MIN         = 20
+    BPM_MAX         = 300
 
     def __init__(self):
         self.active             = False
@@ -67,7 +68,8 @@ class Metronome:
           de zéro (la frappe courante devient la première d'une nouvelle séquence).
         - BPM calculé en moyennant les intervalles entre les TAP_MAX_TAPS dernières
           frappes consécutives.
-        - Retourne None tant qu'il n'y a pas au moins 2 frappes dans la fenêtre.
+        - Retourne None tant qu'il n'y a pas au moins TAP_MIN_TAPS frappes
+          (= une mesure à 4/4 → 3 intervalles mesurés, estimation stable).
         - Le BPM retourné est clampé entre BPM_MIN et BPM_MAX.
         """
         now = t if t is not None else _time.monotonic()
@@ -81,7 +83,7 @@ class Metronome:
         if len(self._tap_times) > self.TAP_MAX_TAPS + 1:
             self._tap_times = self._tap_times[-(self.TAP_MAX_TAPS + 1):]
 
-        if len(self._tap_times) < 2:
+        if len(self._tap_times) < self.TAP_MIN_TAPS:
             return None
 
         intervals = [self._tap_times[i] - self._tap_times[i - 1]
