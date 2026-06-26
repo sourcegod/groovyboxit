@@ -1,6 +1,7 @@
 import wx
 from midi_editor import MidiEditor
 from synth_engine import midi_to_note_name
+from rack import InstrumentType
 
 
 class _NoteEditDialog(wx.Dialog):
@@ -79,7 +80,14 @@ class _NoteEditDialog(wx.Dialog):
 
 
 class MidiEditorWindow(wx.Frame):
-    """Fenêtre d'éditeur MIDI — deux modes : notes (Ctrl+1) et tous les événements (Ctrl+2)."""
+    """Fenêtre d'éditeur MIDI — deux modes : notes (Ctrl+1) et tous les événements (Ctrl+2).
+
+    Navigation :
+      ←/→  : groupe précédent/suivant (même offset = accord)
+      ↑/↓  : note précédente/suivante dans l'accord courant
+      Entrée : éditer la note sélectionnée
+      Suppr  : supprimer la note sélectionnée
+    """
 
     MODE_NOTES = 0   # notes de la piste courante (grille séquenceur)
     MODE_ALL   = 1   # tous les événements MIDI (grille + tape K/P + CC)
@@ -88,15 +96,18 @@ class MidiEditorWindow(wx.Frame):
         super().__init__(parent, title="Éditeur MIDI",
                          size=(780, 460),
                          style=wx.DEFAULT_FRAME_STYLE | wx.FRAME_FLOAT_ON_PARENT)
-        self._parent      = parent
-        self._view_mode   = view_mode
-        self._events      = []
-        self._midi_editor = MidiEditor()
+        self._parent               = parent
+        self._view_mode            = view_mode
+        self._events               = []
+        self._midi_editor          = MidiEditor()
+        self._skip_listbox_announce = False   # évite que EVT_LISTBOX écrase l'annonce clavier
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
         self._refresh()
 
+    # ------------------------------------------------------------------
+    # Construction UI
     # ------------------------------------------------------------------
 
     def _build_ui(self):
@@ -106,33 +117,79 @@ class MidiEditorWindow(wx.Frame):
         self._mode_label = wx.StaticText(panel, label="")
         vbox.Add(self._mode_label, 0, wx.ALL, 6)
 
-        self._event_lb = wx.ListBox(panel, style=wx.LB_SINGLE, size=(-1, 340))
+        self._event_lb = wx.ListBox(panel, style=wx.LB_SINGLE, size=(-1, 320))
         vbox.Add(self._event_lb, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
         self._event_lb.Bind(wx.EVT_LISTBOX, self._on_listbox_select)
 
-        self._status = wx.StaticText(panel, label="")
-        vbox.Add(self._status, 0, wx.ALL, 6)
+        # ListBox status (annoncée en temps réel par le lecteur d'écran)
+        self._status_ctrl = wx.ListBox(panel, choices=[""], style=wx.LB_SINGLE)
+        vbox.Add(self._status_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
 
         panel.SetSizer(vbox)
         self._event_lb.SetFocus()
 
     # ------------------------------------------------------------------
+    # Helpers d'affichage
+    # ------------------------------------------------------------------
 
     def _pad_name(self, pad_idx):
-        """Nom du pad (depuis voice_manager ou label par défaut)."""
+        """Nom du pad du kit/drum (voice_manager ou label par défaut)."""
         vm   = self._parent._player.voice_manager
         name = vm.get_name(pad_idx) if pad_idx < 16 else ""
         return name if name else f"Pad_{pad_idx+1:02d}"
 
-    def _pad_names_list(self, num_pads):
+    def _event_note_name(self, ev):
+        """Nom affiché pour un événement note selon son etype et le slot de sa piste.
+
+        - etype P : note MIDI brute (enregistrement live synth) → nom directement
+        - etype K : index pad kit (enregistrement live kit) → nom du pad
+        - etype G : index pad grille → MIDI (synth) ou nom pad (kit) selon slot
+        """
+        etype   = ev.get("etype", "G")
+        pad_val = ev["pad"]
+
+        if etype == "P":
+            return midi_to_note_name(pad_val)
+
+        if etype == "K":
+            return self._pad_name(pad_val)
+
+        # etype == "G" : vérifier le slot de la piste
+        track_idx = ev["track"]
+        slot_idx  = self._parent._router.slot_for_track(track_idx)
+        slot      = self._parent._rack.get_slot(slot_idx)
+        if slot.type == InstrumentType.SYNTH:
+            kb = self._parent._router.kb_notes_input
+            if pad_val < len(kb):
+                return midi_to_note_name(kb[pad_val])
+            return f"Note_{pad_val+1:02d}"
+        return self._pad_name(pad_val)
+
+    def _pad_names_list(self, num_pads, track_idx):
+        """Liste des noms pour le dialog d'édition (notes ou pads selon le slot)."""
+        slot_idx = self._parent._router.slot_for_track(track_idx)
+        slot     = self._parent._rack.get_slot(slot_idx)
+        if slot.type == InstrumentType.SYNTH:
+            kb = self._parent._router.kb_notes_input
+            return [midi_to_note_name(kb[i]) if i < len(kb) else f"Note_{i+1:02d}"
+                    for i in range(num_pads)]
         return [self._pad_name(i) for i in range(num_pads)]
+
+    def _bbt_str(self, bar, step):
+        """Formate (bar, step) en 'Bar:Beat:Tick' 1-based."""
+        pat            = self._parent._player._pattern
+        num_steps      = pat._num_steps
+        num_beats      = pat._num_beats
+        steps_per_beat = max(1, num_steps // num_beats)
+        beat = step // steps_per_beat
+        tick = step % steps_per_beat
+        return f"{bar + 1}:{beat + 1}:{tick + 1}"
 
     def _update_mode_label(self):
         pat  = self._parent._player._pattern
         tidx = self._parent._player._cur_track
         n    = len(self._events)
         if self._view_mode == self.MODE_NOTES:
-            name  = self._pad_name(tidx) if False else ""
             tname = self._parent._player.voice_manager.get_name(tidx)
             tstr  = f"Piste {tidx+1}" + (f" ({tname})" if tname else "")
             self._mode_label.SetLabel(
@@ -164,33 +221,85 @@ class MidiEditorWindow(wx.Frame):
         if self._events:
             cur = min(me._cur_idx, len(self._events) - 1)
             me._cur_idx = cur
+            self._skip_listbox_announce = True
             self._event_lb.SetSelection(cur)
         self._update_mode_label()
 
     def _event_label(self, e):
         if e["type"] == "note":
-            pad_str = self._pad_name(e["pad"])
+            name = self._event_note_name(e)
+            bbt  = self._bbt_str(e["bar"], e["step"])
             if e["etype"] == "G":
-                return (f"B{e['bar']+1:02d}:S{e['step']+1:02d}  "
-                        f"Tr{e['track']+1:02d}  "
-                        f"{pad_str:<12}  Vel:{e['vel']:3d}")
+                return (f"{bbt}  Tr{e['track']+1:02d}  "
+                        f"{name:<6}  Vel:{e['vel']:3d}")
             else:
-                # Tape K/P : afficher aussi le nom de note MIDI
-                note_name = midi_to_note_name(e["pad"])
-                return (f"B{e['bar']+1:02d}:S{e['step']+1:02d}  "
-                        f"Tr{e['track']+1:02d}  "
-                        f"{note_name:<5}  Vel:{e['vel']:3d}  "
+                return (f"{bbt}  Tr{e['track']+1:02d}  "
+                        f"{name:<6}  Vel:{e['vel']:3d}  "
                         f"Dur:{e['dur']}ms  [{e['etype']}]")
         elif e["type"] == "bend":
-            return (f"B{e['bar']+1:02d}:S{e['step']+1:02d}  "
-                    f"Tr{e['track']+1:02d}  Bend:{e['value']:+d}")
+            bbt = self._bbt_str(e["bar"], e["step"])
+            return f"{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
         elif e["type"] == "mod":
-            return (f"B{e['bar']+1:02d}:S{e['step']+1:02d}  "
-                    f"Tr{e['track']+1:02d}  Mod:{e['value']}")
+            bbt = self._bbt_str(e["bar"], e["step"])
+            return f"{bbt}  Tr{e['track']+1:02d}  Mod:{e['value']}"
         return str(e)
 
     def _set_status(self, msg):
-        self._status.SetLabel(msg)
+        self._status_ctrl.SetString(0, msg)
+
+    # ------------------------------------------------------------------
+    # Lecture sonore (preview)
+    # ------------------------------------------------------------------
+
+    def _play_event(self, ev):
+        """Joue le son du pad correspondant à un événement grille."""
+        if ev.get("type") == "note" and ev.get("etype") == "G":
+            self._parent._play(ev["pad"])
+
+    def _play_group_at(self, idx):
+        """Joue tous les événements du groupe à l'offset courant."""
+        for i in self._midi_editor.group_indices(self._events, idx):
+            self._play_event(self._events[i])
+
+    # ------------------------------------------------------------------
+    # Annonces de statut
+    # ------------------------------------------------------------------
+
+    def _announce_group(self, idx):
+        """Annonce ←/→ : position BBT + nom de note (seule) ou nombre (accord)."""
+        if not self._events or idx >= len(self._events):
+            return
+        group = self._midi_editor.group_indices(self._events, idx)
+        ev    = self._events[idx]
+        bbt   = self._bbt_str(ev["bar"], ev["step"])
+        if len(group) == 1:
+            name = self._event_note_name(ev)
+            self._set_status(f"{bbt}  ({name})")
+        else:
+            self._set_status(f"{bbt}  {len(group)} notes")
+
+    def _announce_note(self, idx):
+        """Annonce ↑/↓ : nom de note + position BBT."""
+        if not self._events or idx >= len(self._events):
+            return
+        ev   = self._events[idx]
+        bbt  = self._bbt_str(ev["bar"], ev["step"])
+        name = self._event_note_name(ev)
+        self._set_status(f"({name})  {bbt}")
+
+    def _announce_event(self, idx):
+        """Annonce générique (clic listbox) : position BBT + nom + vélocité."""
+        if not self._events or idx >= len(self._events):
+            return
+        e = self._events[idx]
+        if e["type"] == "note":
+            bbt  = self._bbt_str(e["bar"], e["step"])
+            name = self._event_note_name(e)
+            self._set_status(f"{bbt}  Tr{e['track']+1}  {name}  Vel:{e['vel']}")
+        else:
+            bbt = self._bbt_str(e["bar"], e["step"])
+            self._set_status(f"{bbt}  Tr{e['track']+1}  "
+                             f"{e['type'].capitalize()}:{e['value']}")
 
     # ------------------------------------------------------------------
     # Navigation
@@ -198,57 +307,82 @@ class MidiEditorWindow(wx.Frame):
 
     def _on_listbox_select(self, evt):
         idx = self._event_lb.GetSelection()
-        if idx != wx.NOT_FOUND:
-            self._midi_editor._cur_idx = idx
-            self._announce_event(idx)
-
-    def _announce_event(self, idx):
-        if not self._events or idx >= len(self._events):
+        if idx == wx.NOT_FOUND:
             return
-        e = self._events[idx]
-        if e["type"] == "note":
-            pad_str = self._pad_name(e["pad"])
-            self._set_status(
-                f"B{e['bar']+1}:S{e['step']+1}  Tr{e['track']+1}  "
-                f"{pad_str}  Vel:{e['vel']}"
-            )
-        else:
-            self._set_status(
-                f"B{e['bar']+1}:S{e['step']+1}  Tr{e['track']+1}  "
-                f"{e['type'].capitalize()}:{e['value']}"
-            )
+        self._midi_editor._cur_idx = idx
+        if self._skip_listbox_announce:
+            self._skip_listbox_announce = False
+            return
+        self._announce_event(idx)
 
     def _navigate_to(self, idx):
+        """Déplace la sélection sans déclencher l'annonce EVT_LISTBOX."""
         if not self._events:
             return
         idx = max(0, min(idx, len(self._events) - 1))
         self._midi_editor._cur_idx = idx
+        self._skip_listbox_announce = True
         self._event_lb.SetSelection(idx)
-        self._announce_event(idx)
 
     def _move_right(self):
-        """→ : sauter au groupe temporel suivant (offset supérieur)."""
+        """→ : groupe temporel suivant, joue le groupe, annonce position."""
         if not self._events:
             return
-        cur        = self._midi_editor._cur_idx
-        cur_offset = self._events[cur]["offset"]
-        for i in range(cur + 1, len(self._events)):
-            if self._events[i]["offset"] > cur_offset:
-                self._navigate_to(i)
-                return
-        self._set_status("Dernier groupe")
+        cur = self._midi_editor._cur_idx
+        nxt = self._midi_editor.first_of_next_group(self._events, cur)
+        if nxt >= 0:
+            self._navigate_to(nxt)
+            self._play_group_at(nxt)
+            self._announce_group(nxt)
+        else:
+            self._set_status("Dernier groupe")
 
     def _move_left(self):
-        """← : sauter au groupe temporel précédent (offset inférieur)."""
+        """← : groupe temporel précédent, joue le groupe, annonce position."""
         if not self._events:
             return
-        cur        = self._midi_editor._cur_idx
-        cur_offset = self._events[cur]["offset"]
-        for i in range(cur - 1, -1, -1):
-            if self._events[i]["offset"] < cur_offset:
-                self._navigate_to(i)
-                return
-        self._set_status("Premier groupe")
+        cur = self._midi_editor._cur_idx
+        prv = self._midi_editor.first_of_prev_group(self._events, cur)
+        if prv >= 0:
+            self._navigate_to(prv)
+            self._play_group_at(prv)
+            self._announce_group(prv)
+        else:
+            self._set_status("Premier groupe")
+
+    def _move_down_in_group(self):
+        """↓ : note suivante dans l'accord courant ; joue et annonce toujours."""
+        if not self._events:
+            return
+        cur   = self._midi_editor._cur_idx
+        group = self._midi_editor.group_indices(self._events, cur)
+        if not group:
+            return
+        pos = group.index(cur) if cur in group else 0
+        if pos < len(group) - 1:
+            target = group[pos + 1]
+            self._navigate_to(target)
+        else:
+            target = group[-1]   # déjà à la dernière note, reste dessus
+        self._play_event(self._events[target])
+        self._announce_note(target)
+
+    def _move_up_in_group(self):
+        """↑ : note précédente dans l'accord courant ; joue et annonce toujours."""
+        if not self._events:
+            return
+        cur   = self._midi_editor._cur_idx
+        group = self._midi_editor.group_indices(self._events, cur)
+        if not group:
+            return
+        pos = group.index(cur) if cur in group else 0
+        if pos > 0:
+            target = group[pos - 1]
+            self._navigate_to(target)
+        else:
+            target = group[0]    # déjà à la première note, reste dessus
+        self._play_event(self._events[target])
+        self._announce_note(target)
 
     # ------------------------------------------------------------------
     # Édition
@@ -266,7 +400,8 @@ class MidiEditorWindow(wx.Frame):
             self._set_status("Édition directe des événements tape non disponible ici")
             return
         pat       = self._parent._player._pattern
-        pad_names = self._pad_names_list(pat._num_pads)
+        track_idx = self._parent._player._cur_track
+        pad_names = self._pad_names_list(pat._num_pads, track_idx)
         self._parent._add_undo(
             f"Éditer note Tr{ev['track']+1} B{ev['bar']+1}:S{ev['step']+1}"
         )
@@ -280,9 +415,7 @@ class MidiEditorWindow(wx.Frame):
                 new_step = dlg.get_step(),
             )
             if new_ev:
-                old_idx = self._midi_editor._cur_idx
                 self._refresh()
-                # Retrouver la nouvelle position dans la liste
                 for i, e in enumerate(self._events):
                     if (e["etype"] == "G" and
                             e["track"] == new_ev["track"] and
@@ -291,11 +424,9 @@ class MidiEditorWindow(wx.Frame):
                             e["pad"]   == new_ev["pad"]):
                         self._navigate_to(i)
                         break
-                pad_str = self._pad_name(new_ev["pad"])
-                self._set_status(
-                    f"Note modifiée → {pad_str}  "
-                    f"B{new_ev['bar']+1}:S{new_ev['step']+1}  Vel:{new_ev['vel']}"
-                )
+                bbt  = self._bbt_str(new_ev["bar"], new_ev["step"])
+                name = self._event_note_name(new_ev)
+                self._set_status(f"Note modifiée → ({name})  {bbt}  Vel:{new_ev['vel']}")
             else:
                 self._parent._pop_last_undo()
                 self._set_status("Édition annulée (hors limites)")
@@ -359,9 +490,12 @@ class MidiEditorWindow(wx.Frame):
             self._move_right()
             return
 
-        # ↑/↓ : délégué au ListBox (navigation item par item)
-        if not ctrl and not shift and key in (wx.WXK_UP, wx.WXK_DOWN):
-            evt.Skip()
+        # ↑/↓ : navigation dans l'accord courant
+        if not ctrl and not shift and key == wx.WXK_UP:
+            self._move_up_in_group()
+            return
+        if not ctrl and not shift and key == wx.WXK_DOWN:
+            self._move_down_in_group()
             return
 
         # Entrée : éditer la note sélectionnée
