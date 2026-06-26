@@ -26,78 +26,85 @@ class MidiEditor:
     # ------------------------------------------------------------------
 
     def get_note_events(self, pattern, track_idx, lim_left=None, lim_right=None):
-        """Retourne les événements note de la grille (_curpattern) pour une piste.
+        """Retourne toutes les notes (grille + tape K/P) d'une piste.
 
-        Chaque cellule non nulle de _curpattern[track_idx][pad][bar][step]
-        produit un événement dict avec etype='G'.
+        - _curpattern[track_idx][pad][bar][step] → etype 'G'
+        - _tape[(track_idx, bar, step)] etype K/P → inclus tel quel
+
+        Les deux sources sont fusionnées ici car _tape peut contenir des notes
+        enregistrées live (clavier MIDI) absentes de la grille.
+        Refactorisation future prévue pour unifier les deux structures.
         """
         events = []
-        if track_idx >= len(pattern._curpattern):
-            return events
-        track_data = pattern._curpattern[track_idx]
-        for pad_idx, pad_data in enumerate(track_data):
-            for bar_idx, bar_data in enumerate(pad_data):
-                for step_idx, vel in enumerate(bar_data):
-                    if vel <= 0:
-                        continue
-                    offset = bar_idx * pattern._num_steps + step_idx
-                    if lim_left  is not None and offset < lim_left:
-                        continue
-                    if lim_right is not None and offset > lim_right:
-                        continue
-                    dur = (pattern._voices[pad_idx]["duration_ms"]
-                           if pad_idx < len(pattern._voices) else 500)
-                    events.append({
-                        "type":      "note",
-                        "etype":     "G",
-                        "track":     track_idx,
-                        "pad":       pad_idx,
-                        "bar":       bar_idx,
-                        "step":      step_idx,
-                        "offset":    offset,
-                        "vel":       vel,
-                        "dur":       dur,
-                    })
-        events.sort(key=lambda e: (e["offset"], e["pad"]))
-        return events
 
-    def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
-        """Retourne tous les événements MIDI des pistes sélectionnées.
+        # --- Grille séquenceur ---
+        if track_idx < len(pattern._curpattern):
+            for pad_idx, pad_data in enumerate(pattern._curpattern[track_idx]):
+                for bar_idx, bar_data in enumerate(pad_data):
+                    for step_idx, vel in enumerate(bar_data):
+                        if vel <= 0:
+                            continue
+                        offset = bar_idx * pattern._num_steps + step_idx
+                        if lim_left  is not None and offset < lim_left:
+                            continue
+                        if lim_right is not None and offset > lim_right:
+                            continue
+                        dur = (pattern._voices[pad_idx]["duration_ms"]
+                               if pad_idx < len(pattern._voices) else 500)
+                        events.append({
+                            "type":   "note",
+                            "etype":  "G",
+                            "track":  track_idx,
+                            "pad":    pad_idx,
+                            "bar":    bar_idx,
+                            "step":   step_idx,
+                            "offset": offset,
+                            "vel":    vel,
+                            "dur":    dur,
+                        })
 
-        Inclut : grille (G), tape K/P, bend_tape, mod_tape.
-        """
-        sel_set = set(sel_tracks)
-        events  = []
-
-        # Grille (_curpattern)
-        for t in sorted(sel_set):
-            evs = self.get_note_events(pattern, t, lim_left, lim_right)
-            events.extend(evs)
-
-        # Tape enregistré (K/P)
-        for (t, b, s), tape_events in sorted(pattern._tape.items()):
-            if t not in sel_set:
+        # --- Tape enregistrée (K/P) ---
+        for (t, b, s), tape_list in sorted(pattern._tape.items()):
+            if t != track_idx:
                 continue
             offset = b * pattern._num_steps + s
             if lim_left  is not None and offset < lim_left:
                 continue
             if lim_right is not None and offset > lim_right:
                 continue
-            for i, ev in enumerate(tape_events):
-                if ev.etype in ("K", "P"):
-                    events.append({
-                        "type":      "note",
-                        "etype":     ev.etype,
-                        "track":     t,
-                        "bar":       b,
-                        "step":      s,
-                        "offset":    offset,
-                        "pad":       ev.note,   # note MIDI pour K/P
-                        "vel":       ev.vel,
-                        "dur":       ev.dur,
-                        "bend":      ev.bend,
-                        "event_idx": i,
-                    })
+            for i, ev in enumerate(tape_list):
+                if ev.etype not in ("K", "P"):
+                    continue
+                events.append({
+                    "type":      "note",
+                    "etype":     ev.etype,
+                    "track":     t,
+                    "bar":       b,
+                    "step":      s,
+                    "offset":    offset,
+                    "pad":       ev.note,   # K: index pad kit ; P: note MIDI brute
+                    "vel":       ev.vel,
+                    "dur":       ev.dur,
+                    "bend":      ev.bend,
+                    "event_idx": i,
+                })
+
+        events.sort(key=lambda e: (e["offset"], e["pad"]))
+        return events
+
+    def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
+        """Retourne tous les événements MIDI des pistes sélectionnées.
+
+        Inclut : notes (grille G + tape K/P via get_note_events), bend_tape, mod_tape.
+        La tape K/P n'est PAS relue ici : get_note_events() l'inclut déjà.
+        """
+        sel_set = set(sel_tracks)
+        events  = []
+
+        # Notes (grille + tape K/P)
+        for t in sorted(sel_set):
+            evs = self.get_note_events(pattern, t, lim_left, lim_right)
+            events.extend(evs)
 
         # Automation pitch bend
         for t in sorted(sel_set):
@@ -176,6 +183,47 @@ class MidiEditor:
             if not lst:
                 del pattern._tape[key]
         return True
+
+    # ------------------------------------------------------------------
+    # Navigation par groupes (accord = plusieurs notes au même offset)
+    # ------------------------------------------------------------------
+
+    def group_indices(self, events, idx):
+        """Retourne les indices des événements au même offset que events[idx]."""
+        if not events or idx >= len(events):
+            return []
+        offset = events[idx]["offset"]
+        return [i for i, e in enumerate(events) if e["offset"] == offset]
+
+    def first_of_next_group(self, events, idx):
+        """Retourne l'index du premier événement du groupe suivant, ou -1."""
+        if not events or idx >= len(events):
+            return -1
+        cur_offset = events[idx]["offset"]
+        for i in range(idx + 1, len(events)):
+            if events[i]["offset"] > cur_offset:
+                return i
+        return -1
+
+    def first_of_prev_group(self, events, idx):
+        """Retourne l'index du premier événement du groupe précédent, ou -1."""
+        if not events or idx >= len(events):
+            return -1
+        cur_offset = events[idx]["offset"]
+        prev_any = -1
+        for i in range(idx - 1, -1, -1):
+            if events[i]["offset"] < cur_offset:
+                prev_any = i
+                break
+        if prev_any < 0:
+            return -1
+        target_offset = events[prev_any]["offset"]
+        for i in range(len(events)):
+            if events[i]["offset"] == target_offset:
+                return i
+        return -1
+
+    # ------------------------------------------------------------------
 
     def edit_grid_note(self, pattern, ev, new_pad=None, new_vel=None,
                        new_bar=None, new_step=None):
