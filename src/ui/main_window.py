@@ -28,11 +28,12 @@ from ui.dialogs import (
 from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
 from ui.song_window import SongWindow
-from ui.mw_patterns import PatternMixin
-from ui.mw_songs    import SongMixin
-from ui.mw_project  import ProjectMixin
-from ui.mw_tracks   import TrackMixin
-from ui.mw_pads     import PadMixin
+from ui.mw_patterns    import PatternMixin
+from ui.mw_songs       import SongMixin
+from ui.mw_project     import ProjectMixin
+from ui.mw_tracks      import TrackMixin
+from ui.mw_pads        import PadMixin
+from ui.mw_midi_editor import MidiEditorMixin
 from midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -62,7 +63,8 @@ class _LoadingDialog(wx.Dialog):
             self.EndModal(wx.ID_OK)
 
 
-class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx.Frame):
+class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
+                 MidiEditorMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
@@ -132,7 +134,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin, wx
         self._cur_pattern_idx = 0
         self._song_list = [Song(i) for i in range(Song.MAX_SONGS)]
         self._cur_song_idx = 0
-        self._song_window = None
+        self._song_window         = None
+        self._midi_editor_window  = None
         self._pre_song_pattern_idx = 0
         self._player._pattern_list_ref     = self._pattern_list
         self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)

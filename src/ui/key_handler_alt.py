@@ -80,6 +80,12 @@ class AltHandler:
         if not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             win._open_explorer()
             return True
+        if not ctrl and not shift and (ukey == ord('3') or key == ord('3')):
+            win._open_midi_editor_window(0)
+            return True
+        if not ctrl and not shift and (ukey == ord('4') or key == ord('4')):
+            win._open_midi_editor_window(1)
+            return True
         if not ctrl and not shift and (ukey == ord('5') or key == ord('5')):
             win._open_song_window()
             return True
