@@ -45,8 +45,9 @@ def test_note_events_count_track0():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_note_events(p, 0)
-    # pad0:step0, pad0:step4, pad1:step0, pad2:bar1step2 → 4 notes
-    assert len(ev) == 4
+    # Grille : pad0:step0, pad0:step4, pad1:step0, pad2:bar1step2 → 4
+    # Tape K : (0,0,0) → 1
+    assert len(ev) == 5
 
 
 def test_note_events_only_nonzero_cells():
@@ -56,11 +57,16 @@ def test_note_events_only_nonzero_cells():
     assert all(e["vel"] > 0 for e in ev)
 
 
-def test_note_events_etype_G():
+def test_note_events_etypes():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_note_events(p, 0)
-    assert all(e["etype"] == "G" for e in ev)
+    # Grille → G, tape K/P également inclus
+    assert all(e["etype"] in ("G", "K", "P") for e in ev)
+    grid = [e for e in ev if e["etype"] == "G"]
+    tape = [e for e in ev if e["etype"] in ("K", "P")]
+    assert len(grid) == 4
+    assert len(tape) == 1
 
 
 def test_note_events_sorted_by_offset_then_pad():
@@ -97,9 +103,12 @@ def test_note_events_track1():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_note_events(p, 1)
-    assert len(ev) == 1
-    assert ev[0]["pad"] == 3
-    assert ev[0]["step"] == 8
+    # Grille : pad3 step8 → 1 ; tape P : note64 step4 → 1
+    assert len(ev) == 2
+    grid = next(e for e in ev if e["etype"] == "G")
+    tape = next(e for e in ev if e["etype"] == "P")
+    assert grid["pad"] == 3 and grid["step"] == 8
+    assert tape["pad"] == 64 and tape["step"] == 4
 
 
 def test_note_events_empty_track():
@@ -126,9 +135,9 @@ def test_note_events_lim_left():
 def test_note_events_lim_right():
     me = MidiEditor()
     p  = _make_pattern()
-    # Jusqu'à offset 3 inclus → seulement offset 0 (2 notes)
+    # Jusqu'à offset 3 inclus → offset 0 : pad0(G), pad1(G), K(note=60) → 3 notes
     ev = me.get_note_events(p, 0, lim_right=3)
-    assert len(ev) == 2
+    assert len(ev) == 3
     assert all(e["offset"] <= 3 for e in ev)
 
 
@@ -151,11 +160,11 @@ def test_note_events_group_at_same_offset():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_note_events(p, 0)
-    # Deux notes à offset 0 : pad 0 et pad 1
+    # Offset 0 : pad0(G), pad1(G), tape K note=60 → 3 événements
     at_zero = [e for e in ev if e["offset"] == 0]
-    assert len(at_zero) == 2
-    pads = {e["pad"] for e in at_zero}
-    assert pads == {0, 1}
+    assert len(at_zero) == 3
+    grid_pads = {e["pad"] for e in at_zero if e["etype"] == "G"}
+    assert grid_pads == {0, 1}
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +336,120 @@ def test_edit_grid_out_of_bounds_returns_none():
           "new_bar": 999}
     result = me.edit_grid_note(p, ev, new_bar=999)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# group_indices
+# ---------------------------------------------------------------------------
+
+def test_group_indices_single_note():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # pad0:step4 est seul à offset 4
+    idx = next(i for i, e in enumerate(ev) if e["step"] == 4 and e["pad"] == 0)
+    assert me.group_indices(ev, idx) == [idx]
+
+
+def test_group_indices_chord():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # offset 0 : pad0(G), pad1(G), tape K(note=60) → 3 événements
+    at_zero = [i for i, e in enumerate(ev) if e["offset"] == 0]
+    assert len(at_zero) == 3
+    for i in at_zero:
+        assert me.group_indices(ev, i) == at_zero
+
+
+def test_group_indices_empty():
+    me = MidiEditor()
+    assert me.group_indices([], 0) == []
+
+
+def test_group_indices_out_of_range():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    assert me.group_indices(ev, 999) == []
+
+
+# ---------------------------------------------------------------------------
+# first_of_next_group
+# ---------------------------------------------------------------------------
+
+def test_first_of_next_group_basic():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Premier groupe à offset 0, le suivant commence à offset 4
+    idx0 = next(i for i, e in enumerate(ev) if e["offset"] == 0)
+    nxt  = me.first_of_next_group(ev, idx0)
+    assert nxt >= 0
+    assert ev[nxt]["offset"] > ev[idx0]["offset"]
+
+
+def test_first_of_next_group_from_chord():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Depuis le 2e élément du groupe 0 (pad1 à offset 0)
+    at_zero = [i for i, e in enumerate(ev) if e["offset"] == 0]
+    nxt = me.first_of_next_group(ev, at_zero[-1])
+    assert ev[nxt]["offset"] > 0
+
+
+def test_first_of_next_group_at_last():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    last = len(ev) - 1
+    assert me.first_of_next_group(ev, last) == -1
+
+
+def test_first_of_next_group_empty():
+    me = MidiEditor()
+    assert me.first_of_next_group([], 0) == -1
+
+
+# ---------------------------------------------------------------------------
+# first_of_prev_group
+# ---------------------------------------------------------------------------
+
+def test_first_of_prev_group_basic():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Trouver un index dans le groupe à offset 4
+    idx4 = next(i for i, e in enumerate(ev) if e["offset"] == 4)
+    prv  = me.first_of_prev_group(ev, idx4)
+    assert prv >= 0
+    assert ev[prv]["offset"] < ev[idx4]["offset"]
+
+
+def test_first_of_prev_group_returns_first_of_group():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Depuis offset 4, le groupe précédent (offset 0) a 2 notes → doit retourner index 0
+    idx4 = next(i for i, e in enumerate(ev) if e["offset"] == 4)
+    prv  = me.first_of_prev_group(ev, idx4)
+    assert ev[prv]["offset"] == 0
+    # Doit être le premier élément du groupe 0
+    group0 = me.group_indices(ev, prv)
+    assert prv == group0[0]
+
+
+def test_first_of_prev_group_at_first():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    assert me.first_of_prev_group(ev, 0) == -1
+
+
+def test_first_of_prev_group_empty():
+    me = MidiEditor()
+    assert me.first_of_prev_group([], 0) == -1
 
 
 # ---------------------------------------------------------------------------
