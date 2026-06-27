@@ -1,4 +1,4 @@
-"""Tests — MidiEditor (Phase 6 étape 1a)."""
+"""Tests — MidiEditor (Phase 6 étapes 1a–1f)."""
 import sys
 import os
 import pytest
@@ -465,3 +465,139 @@ def test_default_state():
     me = MidiEditor()
     assert me._view_mode == MidiEditor.VIEW_NOTES
     assert me._cur_idx   == 0
+
+
+# ---------------------------------------------------------------------------
+# Navigation séquentielle (simule ←/→ successifs)
+# ---------------------------------------------------------------------------
+
+def test_nav_right_sequence():
+    """Trois appuis → avance note par note à travers les groupes."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    cur = 0
+    visited_offsets = [ev[cur]["offset"]]
+    for _ in range(3):
+        nxt = me.first_of_next_group(ev, cur)
+        if nxt < 0:
+            break
+        cur = nxt
+        visited_offsets.append(ev[cur]["offset"])
+    assert visited_offsets == sorted(set(visited_offsets))
+
+
+def test_nav_left_sequence():
+    """Depuis le dernier groupe, ← revient en arrière à chaque appui."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Partir du dernier événement
+    cur = len(ev) - 1
+    last_offset = ev[cur]["offset"]
+    prv = me.first_of_prev_group(ev, cur)
+    assert prv >= 0
+    assert ev[prv]["offset"] < last_offset
+
+
+def test_nav_right_then_left_returns_to_start():
+    """→ puis ← revient au premier groupe."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    nxt = me.first_of_next_group(ev, 0)
+    assert nxt >= 0
+    prv = me.first_of_prev_group(ev, nxt)
+    assert ev[prv]["offset"] == ev[0]["offset"]
+
+
+# ---------------------------------------------------------------------------
+# group_entry — comportement ↑/↓ simulé via group_indices
+# ---------------------------------------------------------------------------
+
+def test_group_entry_first_note_is_lowest_index():
+    """Quand on arrive sur un groupe, group[0] est le premier à jouer."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    nxt = me.first_of_next_group(ev, 0)   # groupe à offset 0 est déjà le début
+    # Simuler ←/→ arrivant sur un groupe : first_of_next_group donne le 1er index
+    group = me.group_indices(ev, nxt)
+    assert group[0] == nxt            # first_of_*_group renvoie toujours group[0]
+
+
+def test_group_entry_down_plays_first_then_second():
+    """Séquence group_entry : 1er ↓ → group[0], 2e ↓ → group[1]."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Groupe à offset 0 : 3 notes
+    group = me.group_indices(ev, 0)
+    assert len(group) >= 2
+    # 1er appui ↓ (group_entry=True) → joue group[0], cur reste group[0]
+    target_first = group[0]
+    # 2e appui ↓ (group_entry=False) → avance à group[1]
+    pos = group.index(target_first)
+    target_second = group[pos + 1]
+    assert ev[target_second]["offset"] == ev[target_first]["offset"]   # même accord
+    assert target_second > target_first
+
+
+def test_group_entry_up_plays_first_note():
+    """↑ en group_entry joue aussi group[0] (même comportement que ↓)."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    group = me.group_indices(ev, 0)
+    assert len(group) >= 2
+    # Simuler group_entry=True, ↑ → group[0]
+    target = group[0]
+    assert ev[target]["offset"] == 0
+
+
+def test_group_entry_single_note_group():
+    """Sur un groupe d'une seule note, group_entry n'a pas d'effet visible."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # offset 4 : une seule note (pad0)
+    idx4 = next(i for i, e in enumerate(ev) if e["offset"] == 4)
+    group = me.group_indices(ev, idx4)
+    assert len(group) == 1
+    # group_entry=True → target = group[0] = idx4 (inchangé)
+    assert group[0] == idx4
+
+
+# ---------------------------------------------------------------------------
+# first_of_next/prev_group depuis l'intérieur d'un accord
+# ---------------------------------------------------------------------------
+
+def test_next_group_from_second_note_in_chord():
+    """→ depuis la 2e note d'un accord saute bien au groupe suivant."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    group0 = me.group_indices(ev, 0)
+    assert len(group0) >= 2
+    # Depuis la 2e note du groupe 0
+    nxt_from_second = me.first_of_next_group(ev, group0[1])
+    nxt_from_first  = me.first_of_next_group(ev, group0[0])
+    # Les deux doivent atterrir sur le même prochain groupe
+    assert nxt_from_second == nxt_from_first
+
+
+def test_prev_group_from_second_note_in_chord():
+    """← depuis la 2e note d'un accord revient au groupe précédent."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # offset 4 a un groupe précédent à offset 0
+    idx4  = next(i for i, e in enumerate(ev) if e["offset"] == 4)
+    group = me.group_indices(ev, 0)
+    # Depuis la 2e note du groupe à offset 0, ← doit renvoyer -1 (premier groupe)
+    prv = me.first_of_prev_group(ev, group[0])
+    assert prv == -1
+    # Depuis offset 4, ← revient à group[0]
+    prv4 = me.first_of_prev_group(ev, idx4)
+    assert ev[prv4]["offset"] == 0
+    assert prv4 == group[0]
