@@ -149,6 +149,8 @@ class TrackMixin:
             self._router.load_slot_preview(self._cur_slot)
         elif slot.type == InstrumentType.KIT:
             self._load_kit_slot(self._cur_slot)
+        if self._midi_editor_window is not None:
+            self._midi_editor_window.refresh()
 
     def _on_slot_choice(self, event):
         from rack import InstrumentType

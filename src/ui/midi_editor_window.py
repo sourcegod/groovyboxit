@@ -1,3 +1,4 @@
+import threading
 import wx
 from midi_editor import MidiEditor
 from synth_engine import midi_to_note_name
@@ -101,6 +102,9 @@ class MidiEditorWindow(wx.Frame):
         self._events               = []
         self._midi_editor          = MidiEditor()
         self._skip_listbox_announce = False   # évite que EVT_LISTBOX écrase l'annonce clavier
+        self._preview_midis        = []       # notes MIDI en cours de preview (accord)
+        self._preview_timer        = None     # Timer d'arrêt automatique
+        self._group_entry          = False    # ←/→ vient d'atterrir sur un groupe
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
@@ -251,15 +255,71 @@ class MidiEditorWindow(wx.Frame):
     # Lecture sonore (preview)
     # ------------------------------------------------------------------
 
+    def _stop_preview(self):
+        """Annule le timer en cours et arrête toutes les notes preview."""
+        if self._preview_timer is not None:
+            self._preview_timer.cancel()
+            self._preview_timer = None
+        if self._preview_midis:
+            router = self._parent._router
+            if router.synth_ready():
+                for midi in self._preview_midis:
+                    router.synth.stop(midi)
+            self._preview_midis = []
+
     def _play_event(self, ev):
-        """Joue le son du pad correspondant à un événement grille."""
-        if ev.get("type") == "note" and ev.get("etype") == "G":
-            self._parent._play(ev["pad"])
+        """Joue le son d'un événement note (appelé depuis _play_group_at)."""
+        if ev.get("type") != "note":
+            return
+        etype = ev.get("etype")
+        slot  = self._parent._rack.get_slot(self._parent._cur_slot)
+        if slot.type == InstrumentType.SYNTH:
+            router = self._parent._router
+            if not router.synth_ready():
+                router.load_slot_preview(self._parent._cur_slot)
+                return
+            if etype == "G":
+                pad = ev["pad"]
+                if pad >= len(router.kb_notes_input):
+                    return
+                midi = router.kb_notes_input[pad]
+            elif etype == "P":
+                midi = ev["pad"]
+            else:
+                return
+            dur_ms = max(50, ev.get("dur", 500))
+            router.synth.play(midi, maxtime_ms=dur_ms)
+            self._preview_midis.append(midi)
+            return dur_ms
+        elif etype == "G":
+            self._parent._player.play_sound(ev["pad"])
+        return None
 
     def _play_group_at(self, idx):
         """Joue tous les événements du groupe à l'offset courant."""
+        self._stop_preview()
+        dur_ms = 500
         for i in self._midi_editor.group_indices(self._events, idx):
-            self._play_event(self._events[i])
+            result = self._play_event(self._events[i])
+            if result is not None:
+                dur_ms = result
+        if self._preview_midis:
+            self._preview_timer = threading.Timer(
+                dur_ms / 1000.0,
+                lambda: wx.CallAfter(self._stop_preview)
+            )
+            self._preview_timer.start()
+
+    def _play_single_at(self, idx):
+        """Stop le preview précédent et joue uniquement la note à idx."""
+        self._stop_preview()
+        dur_ms = self._play_event(self._events[idx])
+        if self._preview_midis:
+            self._preview_timer = threading.Timer(
+                (dur_ms or 500) / 1000.0,
+                lambda: wx.CallAfter(self._stop_preview)
+            )
+            self._preview_timer.start()
 
     # ------------------------------------------------------------------
     # Annonces de statut
@@ -333,7 +393,9 @@ class MidiEditorWindow(wx.Frame):
         if nxt >= 0:
             self._navigate_to(nxt)
             self._play_group_at(nxt)
-            self._announce_group(nxt)
+            group = self._midi_editor.group_indices(self._events, nxt)
+            self._group_entry = len(group) > 1
+            wx.CallAfter(self._announce_group, nxt)
         else:
             self._set_status("Dernier groupe")
 
@@ -346,7 +408,9 @@ class MidiEditorWindow(wx.Frame):
         if prv >= 0:
             self._navigate_to(prv)
             self._play_group_at(prv)
-            self._announce_group(prv)
+            group = self._midi_editor.group_indices(self._events, prv)
+            self._group_entry = len(group) > 1
+            wx.CallAfter(self._announce_group, prv)
         else:
             self._set_status("Premier groupe")
 
@@ -358,14 +422,18 @@ class MidiEditorWindow(wx.Frame):
         group = self._midi_editor.group_indices(self._events, cur)
         if not group:
             return
-        pos = group.index(cur) if cur in group else 0
-        if pos < len(group) - 1:
-            target = group[pos + 1]
-            self._navigate_to(target)
+        if self._group_entry:
+            target = group[0]
+            self._group_entry = False
         else:
-            target = group[-1]   # déjà à la dernière note, reste dessus
-        self._play_event(self._events[target])
-        self._announce_note(target)
+            pos = group.index(cur) if cur in group else 0
+            if pos < len(group) - 1:
+                target = group[pos + 1]
+                self._navigate_to(target)
+            else:
+                target = group[-1]
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_note, target)
 
     def _move_up_in_group(self):
         """↑ : note précédente dans l'accord courant ; joue et annonce toujours."""
@@ -375,14 +443,18 @@ class MidiEditorWindow(wx.Frame):
         group = self._midi_editor.group_indices(self._events, cur)
         if not group:
             return
-        pos = group.index(cur) if cur in group else 0
-        if pos > 0:
-            target = group[pos - 1]
-            self._navigate_to(target)
+        if self._group_entry:
+            target = group[0]
+            self._group_entry = False
         else:
-            target = group[0]    # déjà à la première note, reste dessus
-        self._play_event(self._events[target])
-        self._announce_note(target)
+            pos = group.index(cur) if cur in group else 0
+            if pos > 0:
+                target = group[pos - 1]
+                self._navigate_to(target)
+            else:
+                target = group[0]
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_note, target)
 
     # ------------------------------------------------------------------
     # Édition
@@ -521,6 +593,7 @@ class MidiEditorWindow(wx.Frame):
         evt.Skip()
 
     def _on_close(self, evt):
+        self._stop_preview()
         self._parent._midi_editor_window = None
         evt.Skip()
 
