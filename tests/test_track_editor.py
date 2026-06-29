@@ -663,6 +663,151 @@ def test_erase_grid_then_paste_at_bar5():
     assert sum_bars_4_7 > 0,  "Mesures 4-7 doivent contenir les données collées"
 
 
+# ---------------------------------------------------------------------------
+# _EventClipboard — copy_events / paste_events / has_event_clipboard
+# ---------------------------------------------------------------------------
+
+def _make_note(track, pad, bar, step, vel=100, etype="G", dur=200, bend=0,
+               num_steps=16):
+    return {
+        "type":   "note",
+        "etype":  etype,
+        "track":  track,
+        "pad":    pad,
+        "bar":    bar,
+        "step":   step,
+        "offset": bar * num_steps + step,
+        "vel":    vel,
+        "dur":    dur,
+        "bend":   bend,
+    }
+
+
+def test_copy_events_empty_returns_zero():
+    te = TrackEditor()
+    assert te.copy_events([]) == 0
+    assert not te.has_event_clipboard()
+
+
+def test_copy_events_non_note_ignored():
+    te = TrackEditor()
+    ev = {"type": "bend", "track": 0, "offset": 0, "value": 100}
+    assert te.copy_events([ev]) == 0
+    assert not te.has_event_clipboard()
+
+
+def test_copy_events_single_note():
+    te = TrackEditor()
+    ev = _make_note(0, 2, 0, 4, vel=80)
+    assert te.copy_events([ev]) == 1
+    assert te.has_event_clipboard()
+    entry = te._event_clipboard.events[0]
+    assert entry["rel_track"]  == 0
+    assert entry["rel_offset"] == 0
+
+
+def test_copy_events_rel_offsets():
+    te  = TrackEditor()
+    ev0 = _make_note(0, 0, 0, 2)   # offset=2
+    ev1 = _make_note(0, 1, 0, 5)   # offset=5
+    te.copy_events([ev0, ev1])
+    entries = te._event_clipboard.events
+    assert entries[0]["rel_offset"] == 0
+    assert entries[1]["rel_offset"] == 3
+
+
+def test_copy_events_multi_track_rel():
+    te  = TrackEditor()
+    ev0 = _make_note(2, 0, 0, 0)   # track=2 (anchor)
+    ev1 = _make_note(4, 1, 0, 0)   # track=4
+    te.copy_events([ev0, ev1])
+    entries = {e["rel_track"] for e in te._event_clipboard.events}
+    assert entries == {0, 2}
+
+
+def test_paste_events_grid_correct_cell():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    ev  = _make_note(0, 3, 0, 4, vel=90)
+    te.copy_events([ev])
+    n = te.paste_events(p, 0, 8)   # colle à offset=8 → bar=0, step=8
+    assert n == 1
+    assert p._curpattern[0][3][0][8] == 90
+
+
+def test_paste_events_preserves_rel_offset():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=1, num_bars=2, num_steps=16)
+    ev0 = _make_note(0, 0, 0, 0, vel=64)   # offset=0
+    ev1 = _make_note(0, 1, 0, 4, vel=96)   # offset=4
+    te.copy_events([ev0, ev1])
+    te.paste_events(p, 0, 8)   # cible offset=8 → 8+0=8, 8+4=12
+    assert p._curpattern[0][0][0][8]  == 64
+    assert p._curpattern[0][1][0][12] == 96
+
+
+def test_paste_events_multi_track():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=4, num_bars=2, num_steps=16)
+    ev0 = _make_note(0, 0, 0, 0, vel=70)   # rel_track=0
+    ev1 = _make_note(2, 0, 0, 0, vel=80)   # rel_track=2
+    te.copy_events([ev0, ev1])
+    te.paste_events(p, 1, 4)   # piste cible=1 → 1+0=1, 1+2=3
+    assert p._curpattern[1][0][0][4] == 70
+    assert p._curpattern[3][0][0][4] == 80
+
+
+def test_paste_events_skips_out_of_bounds_track():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=2, num_bars=2, num_steps=16)
+    ev0 = _make_note(0, 0, 0, 0, vel=50)   # rel_track=0 → piste 1 (dans les limites)
+    ev1 = _make_note(3, 0, 0, 0, vel=60)   # rel_track=3 → piste 4 (hors limites)
+    te.copy_events([ev0, ev1])
+    n = te.paste_events(p, 1, 0)
+    assert n == 1   # seul ev0 collé
+
+
+def test_paste_events_skips_out_of_bounds_offset():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=1, num_bars=1, num_steps=16)
+    ev  = _make_note(0, 0, 0, 0)
+    te.copy_events([ev])
+    n = te.paste_events(p, 0, 16)   # bar=1 hors limites (num_bars=1)
+    assert n == 0
+
+
+def test_paste_events_tape_kp():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=1, num_bars=2, num_steps=16)
+    ev  = _make_note(0, 60, 0, 2, vel=100, etype="P", dur=300, bend=200)
+    te.copy_events([ev])
+    n = te.paste_events(p, 0, 8)
+    assert n == 1
+    key = (0, 0, 8)
+    assert key in p._tape
+    te_ev = p._tape[key][0]
+    assert te_ev.etype == "P"
+    assert te_ev.note  == 60
+    assert te_ev.vel   == 100
+    assert te_ev.bend  == 200
+
+
+def test_paste_events_no_clipboard_returns_zero():
+    te = TrackEditor()
+    p  = _make_pattern()
+    assert te.paste_events(p, 0, 0) == 0
+
+
+def test_copy_events_overwrites_previous():
+    te  = TrackEditor()
+    ev0 = _make_note(0, 0, 0, 0, vel=10)
+    ev1 = _make_note(0, 0, 0, 1, vel=20)
+    te.copy_events([ev0])
+    te.copy_events([ev1])
+    assert len(te._event_clipboard.events) == 1
+    assert te._event_clipboard.events[0]["vel"] == 20
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = failed = 0
