@@ -109,6 +109,7 @@ class MidiEditorWindow(wx.Frame):
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
+        self.Bind(wx.EVT_ACTIVATE,  self._on_activate)
         self._refresh()
 
     # ------------------------------------------------------------------
@@ -393,13 +394,16 @@ class MidiEditorWindow(wx.Frame):
         self._announce_event(idx)
 
     def _navigate_to(self, idx):
-        """Déplace la sélection sans déclencher l'annonce EVT_LISTBOX."""
+        """Déplace la sélection sans déclencher l'annonce EVT_LISTBOX.
+        Synchronise aussi le playhead sur l'offset de l'événement cible,
+        afin que I/O enregistrent la position courante dans la liste."""
         if not self._events:
             return
         idx = max(0, min(idx, len(self._events) - 1))
         self._midi_editor._cur_idx = idx
         self._skip_listbox_announce = True
         self._event_lb.SetSelection(idx)
+        self._parent._player._go_to_offset(float(self._events[idx]["offset"]))
 
     def _move_right(self):
         """→ : groupe temporel suivant, joue le groupe, annonce position."""
@@ -502,6 +506,19 @@ class MidiEditorWindow(wx.Frame):
     # Sélection
     # ------------------------------------------------------------------
 
+    def _sync_lims_from_selection(self):
+        """Synchronise lim_left/right sur l'étendue des événements sélectionnés.
+        Réinitialise les limiteurs si la sélection est vide."""
+        te = self._parent._track_editor
+        if not self._selected_indices:
+            te.reset_lims()
+            return
+        offsets = [self._events[i]["offset"]
+                   for i in self._selected_indices if i < len(self._events)]
+        if offsets:
+            te.set_lim_left(min(offsets))
+            te.set_lim_right(max(offsets))
+
     def _toggle_group_selection(self, idx):
         """Toggle la sélection de tous les indices du groupe à idx."""
         group = self._midi_editor.group_indices(self._events, idx)
@@ -513,6 +530,7 @@ class MidiEditorWindow(wx.Frame):
                 self._selected_indices.add(i)
         for i in group:
             self._update_label(i)
+        self._sync_lims_from_selection()
 
     def _toggle_note_selection(self, idx):
         """Toggle la sélection d'une seule note."""
@@ -521,16 +539,24 @@ class MidiEditorWindow(wx.Frame):
         else:
             self._selected_indices.add(idx)
         self._update_label(idx)
+        self._sync_lims_from_selection()
 
     def _select_all(self):
         self._selected_indices = set(range(len(self._events)))
         self._refresh_labels()
+        self._sync_lims_from_selection()
         self._set_status(f"{len(self._selected_indices)} événement(s) sélectionné(s)")
 
     def _deselect_all(self):
         self._selected_indices.clear()
         self._refresh_labels()
+        self._sync_lims_from_selection()   # reset_lims() implicite
         self._set_status("Sélection effacée")
+
+    def _clear_selection(self):
+        """Vide la sélection et synchronise les limiteurs sans message."""
+        self._selected_indices.clear()
+        self._sync_lims_from_selection()
 
     def _sel_status_suffix(self):
         n = len(self._selected_indices)
@@ -681,7 +707,7 @@ class MidiEditorWindow(wx.Frame):
                     deleted += 1
             if deleted:
                 self._parent._player._compute_offsets()
-                self._selected_indices.clear()
+                self._clear_selection()
                 self._midi_editor._cur_idx = max(0, cur - deleted)
                 self._refresh()
                 self._set_status(f"{deleted} note(s) supprimée(s)")
@@ -715,14 +741,67 @@ class MidiEditorWindow(wx.Frame):
                 self._parent._pop_last_undo()
 
     # ------------------------------------------------------------------
+    # Limiteurs (délégation vers TrackEditor du parent)
+    # ------------------------------------------------------------------
+
+    def _lim_bbt(self, step):
+        pat   = self._parent._player._pattern
+        ns    = pat._num_steps
+        spb   = max(1, ns // pat._num_beats)
+        total = pat._num_bars * ns
+        return self._parent._track_editor.fmt_bbt(step, ns, spb, total)
+
+    def _set_lim_left(self, step):
+        self._parent._track_editor.set_lim_left(step)
+        self._refresh()
+        wx.CallAfter(self._set_status, f"Limiteur Gauche: {self._lim_bbt(step)}")
+
+    def _set_lim_right(self, step):
+        self._parent._track_editor.set_lim_right(step)
+        self._refresh()
+        wx.CallAfter(self._set_status, f"Limiteur Droit: {self._lim_bbt(step)}")
+
+    def _reset_lims(self):
+        self._parent._track_editor.reset_lims()
+        self._refresh()
+        wx.CallAfter(self._set_status, "Limiteurs réinitialisés")
+
+    def _go_first_event(self):
+        if self._events:
+            self._navigate_to(0)
+            wx.CallAfter(self._announce_group, 0)
+
+    def _go_last_event(self):
+        if self._events:
+            last = len(self._events) - 1
+            self._navigate_to(last)
+            wx.CallAfter(self._announce_group, last)
+
+    # ------------------------------------------------------------------
     # Presse-papier événements
     # ------------------------------------------------------------------
 
     def _source_events(self):
-        """Retourne les notes source : sélectionnées, ou groupe courant."""
+        """Retourne les notes source pour copier/couper/supprimer.
+
+        Priorité :
+        1. Sélection manuelle (_selected_indices non vide)
+        2. Limiteurs actifs → tous les événements dans [lim_left, lim_right]
+        3. Groupe courant (accord à la position du curseur)
+        """
         if self._selected_indices:
             return [self._events[i] for i in sorted(self._selected_indices)
                     if self._events[i].get("type") == "note"]
+        te    = self._parent._track_editor
+        lim_l = te._lim_left
+        lim_r = te._lim_right
+        if lim_l is not None or lim_r is not None:
+            lo    = lim_l if lim_l is not None else 0
+            hi    = lim_r if lim_r is not None else float("inf")
+            notes = [e for e in self._events
+                     if e.get("type") == "note" and lo <= e["offset"] <= hi]
+            if notes:
+                return notes
         if not self._events:
             return []
         cur   = self._midi_editor._cur_idx
@@ -750,7 +829,7 @@ class MidiEditorWindow(wx.Frame):
         )
         if deleted:
             self._parent._player._compute_offsets()
-            self._selected_indices.clear()
+            self._clear_selection()
             cur = self._midi_editor._cur_idx
             self._midi_editor._cur_idx = max(0, cur - deleted)
             self._refresh()
@@ -894,10 +973,68 @@ class MidiEditorWindow(wx.Frame):
             self._set_status("Rafraîchi")
             return
 
-        # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
-        if self._parent._key_manager.handle_transport(evt):
+        # i : limiteur gauche à la position du playhead
+        if not ctrl and not shift and (ukey == ord('i') or ukey == ord('I')):
+            step = int(self._parent._player._current_offset())
+            self._set_lim_left(step)
             return
 
+        # o : limiteur droit à la position du playhead
+        if not ctrl and not shift and (ukey == ord('o') or ukey == ord('O')):
+            step = int(self._parent._player._current_offset())
+            self._set_lim_right(step)
+            return
+
+        # Shift+I : limiteur gauche au début du pattern
+        if not ctrl and shift and (ukey == ord('i') or ukey == ord('I')):
+            self._set_lim_left(0)
+            return
+
+        # Shift+O : limiteur droit à la fin du pattern
+        if not ctrl and shift and (ukey == ord('o') or ukey == ord('O')):
+            pat  = self._parent._player._pattern
+            step = pat._num_bars * pat._num_steps - 1
+            self._set_lim_right(step)
+            return
+
+        # Home : premier événement de la liste filtrée
+        if not ctrl and not shift and key == wx.WXK_HOME:
+            self._go_first_event()
+            return
+
+        # End : dernier événement de la liste filtrée
+        if not ctrl and not shift and key == wx.WXK_END:
+            self._go_last_event()
+            return
+
+        # Ctrl+Home : réinitialise les limiteurs + premier événement
+        if ctrl and not shift and key == wx.WXK_HOME:
+            self._reset_lims()
+            self._go_first_event()
+            return
+
+        # Ctrl+End : réinitialise les limiteurs + dernier événement
+        if ctrl and not shift and key == wx.WXK_END:
+            self._reset_lims()
+            self._go_last_event()
+            return
+
+        # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
+        if self._parent._key_manager.handle_transport(evt):
+            pat   = self._parent._player._pattern
+            step  = int(self._parent._player._current_offset())
+            ns    = pat._num_steps
+            spb   = max(1, ns // pat._num_beats)
+            total = pat._num_bars * ns
+            bbt   = self._parent._track_editor.fmt_bbt(step, ns, spb, total)
+            wx.CallAfter(self._set_status, f"Position: {bbt}")
+            return
+
+        evt.Skip()
+
+    def _on_activate(self, evt):
+        if evt.GetActive():
+            self._event_lb.SetFocus()
         evt.Skip()
 
     def _on_close(self, evt):
