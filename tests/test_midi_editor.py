@@ -1,4 +1,4 @@
-"""Tests — MidiEditor (Phase 6 étapes 1a–1f)."""
+"""Tests — MidiEditor (Phase 6 étapes 1a–2b)."""
 import sys
 import os
 import pytest
@@ -601,3 +601,152 @@ def test_prev_group_from_second_note_in_chord():
     prv4 = me.first_of_prev_group(ev, idx4)
     assert ev[prv4]["offset"] == 0
     assert prv4 == group[0]
+
+
+# ---------------------------------------------------------------------------
+# Sélection — toggle_group_selection (logique simulée)
+# ---------------------------------------------------------------------------
+
+def _sim_toggle_group(selected, events, me, idx):
+    """Simule _toggle_group_selection sur un set Python."""
+    group = me.group_indices(events, idx)
+    if all(i in selected for i in group):
+        for i in group:
+            selected.discard(i)
+    else:
+        for i in group:
+            selected.add(i)
+
+
+def test_toggle_group_selects_all():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set()
+    # groupe à offset 0 : 3 notes
+    _sim_toggle_group(sel, ev, me, 0)
+    group0 = me.group_indices(ev, 0)
+    assert sel == set(group0)
+
+
+def test_toggle_group_deselects_when_all_selected():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set()
+    _sim_toggle_group(sel, ev, me, 0)   # sélectionner
+    _sim_toggle_group(sel, ev, me, 0)   # désélectionner
+    assert sel == set()
+
+
+def test_toggle_group_partial_becomes_full():
+    """Si une partie du groupe est sélectionnée, le toggle complète la sélection."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set()
+    group0 = me.group_indices(ev, 0)
+    sel.add(group0[0])                  # sélection partielle
+    _sim_toggle_group(sel, ev, me, 0)   # doit sélectionner tout
+    assert sel == set(group0)
+
+
+def test_toggle_group_single_note():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set()
+    idx4 = next(i for i, e in enumerate(ev) if e["offset"] == 4)
+    _sim_toggle_group(sel, ev, me, idx4)
+    assert sel == {idx4}
+    _sim_toggle_group(sel, ev, me, idx4)
+    assert sel == set()
+
+
+# ---------------------------------------------------------------------------
+# Sélection — select_all / deselect_all
+# ---------------------------------------------------------------------------
+
+def test_select_all_covers_all_indices():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set(range(len(ev)))
+    assert sel == set(range(len(ev)))
+
+
+def test_deselect_all_clears():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set(range(len(ev)))
+    sel.clear()
+    assert sel == set()
+
+
+# ---------------------------------------------------------------------------
+# Sélection — toggle_note (individuelle)
+# ---------------------------------------------------------------------------
+
+def test_toggle_note_adds():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = set()
+    sel.add(0)
+    assert 0 in sel
+
+
+def test_toggle_note_removes():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    sel = {0, 1}
+    sel.discard(0)
+    assert 0 not in sel
+    assert 1 in sel
+
+
+# ---------------------------------------------------------------------------
+# Sélection — delete simulé (logique delete_event)
+# ---------------------------------------------------------------------------
+
+def test_delete_selected_removes_grid_notes():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Sélectionner les notes G à offset 0
+    group0 = [i for i in me.group_indices(ev, 0) if ev[i]["etype"] == "G"]
+    for idx in sorted(group0, reverse=True):
+        assert me.delete_event(p, ev[idx]) is True
+    # Vérifier que les cellules sont à 0
+    assert p._curpattern[0][0][0][0] == 0
+    assert p._curpattern[0][1][0][0] == 0
+
+
+def test_delete_group_removes_all_at_offset():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    group0 = me.group_indices(ev, 0)
+    # Supprimer uniquement les notes G du groupe
+    g_notes = [i for i in group0 if ev[i]["etype"] == "G"]
+    for idx in sorted(g_notes, reverse=True):
+        me.delete_event(p, ev[idx])
+    ev2 = me.get_note_events(p, 0)
+    # Plus de notes G à offset 0
+    g_at_zero = [e for e in ev2 if e["offset"] == 0 and e["etype"] == "G"]
+    assert g_at_zero == []
+
+
+def test_delete_tape_event_returns_true():
+    """Les événements tape (K/P) sont supprimables via delete_event."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    tape_ev = next(e for e in ev if e["etype"] in ("K", "P"))
+    result = me.delete_event(p, tape_ev)
+    assert result is True
+    # La tape doit être vide à cette clé
+    key = (tape_ev["track"], tape_ev["bar"], tape_ev["step"])
+    assert p._tape.get(key) in (None, [])
