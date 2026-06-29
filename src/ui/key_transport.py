@@ -51,6 +51,13 @@ class TransportHandler:
             win._show_status(f"Mesure: {win._player.position_str()}")
             return True
 
+        # Ctrl+Space : jouer depuis le début
+        if ctrl and not shift and key in (wx.WXK_SPACE,):
+            win._player.goto_start()
+            win._player.play_pattern()
+            win._show_status(f"Play depuis début: {win._player.position_str()}")
+            return True
+
         if ctrl:
             return False
 

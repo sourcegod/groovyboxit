@@ -187,8 +187,8 @@ class CharHandler:
             win._show_status("Pattern aléatoire généré")
             return True
 
-        # Space / P : play/pause
-        if ukey in (ord(' '), ord('p')) or (not ctrl and key in (wx.WXK_SPACE, ord('P'))):
+        # Space / P : play/pause  (Ctrl+Space réservé à handle_transport)
+        if not ctrl and (ukey in (ord(' '), ord('p')) or key in (wx.WXK_SPACE, ord('P'))):
             if win._player.playing:
                 win._player.pause_pattern()
                 win._router.stop_all_synth_voices()

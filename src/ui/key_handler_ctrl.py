@@ -248,4 +248,9 @@ class CtrlHandler:
                 state = "Arrêt"
             win._show_status(f"{state}, Pos: {p.position_str()}")
             return True
+        if not shift and not alt and key == wx.WXK_SPACE:  # Ctrl+Space : jouer depuis le début
+            win._player.goto_start()
+            win._player.play_pattern()
+            win._show_status(f"Play depuis début: {win._player.position_str()}")
+            return True
         return False
