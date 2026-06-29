@@ -1,4 +1,4 @@
-"""Tests — MidiEditor (Phase 6 étapes 1a–2b)."""
+"""Tests — MidiEditor (Phase 6 étapes 1a–3c)."""
 import sys
 import os
 import pytest
@@ -750,3 +750,128 @@ def test_delete_tape_event_returns_true():
     # La tape doit être vide à cette clé
     key = (tape_ev["track"], tape_ev["bar"], tape_ev["step"])
     assert p._tape.get(key) in (None, [])
+
+
+# ---------------------------------------------------------------------------
+# _source_events — priorité sélection / limiteurs / groupe courant
+# ---------------------------------------------------------------------------
+
+class _FakeLims:
+    def __init__(self, lim_l=None, lim_r=None):
+        self._lim_left  = lim_l
+        self._lim_right = lim_r
+    def reset_lims(self):
+        self._lim_left = self._lim_right = None
+    def set_lim_left(self, v):
+        self._lim_left = v
+    def set_lim_right(self, v):
+        self._lim_right = v
+
+
+def _sim_source_events(events, selected_indices, lim_l, lim_r, cur_idx):
+    """Simule _source_events() sans wx."""
+    if selected_indices:
+        return [events[i] for i in sorted(selected_indices)
+                if events[i].get("type") == "note"]
+    if lim_l is not None or lim_r is not None:
+        lo = lim_l if lim_l is not None else 0
+        hi = lim_r if lim_r is not None else float("inf")
+        notes = [e for e in events
+                 if e.get("type") == "note" and lo <= e["offset"] <= hi]
+        if notes:
+            return notes
+    if not events:
+        return []
+    me    = MidiEditor()
+    group = me.group_indices(events, cur_idx)
+    return [events[i] for i in group if events[i].get("type") == "note"]
+
+
+def test_source_events_selection_priority():
+    """Sélection manuelle prend le dessus sur les limiteurs."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)   # 5 notes
+    # Sélectionner uniquement idx=2, limiteurs couvrant tout
+    src = _sim_source_events(ev, {2}, lim_l=0, lim_r=100, cur_idx=0)
+    assert len(src) == 1
+    assert src[0] is ev[2]
+
+
+def test_source_events_lims_over_group():
+    """Limiteurs actifs retournent tous les événements dans la plage."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Limiteurs : offsets 0 à 4 → grille pad0:0, pad1:0, pad0:4 + tape K:0 = 4 notes
+    src = _sim_source_events(ev, set(), lim_l=0, lim_r=4, cur_idx=3)
+    offsets = {e["offset"] for e in src}
+    assert offsets <= {0, 4}
+    assert len(src) == 4
+
+
+def test_source_events_group_fallback():
+    """Sans sélection ni limiteurs, retourne le groupe courant."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Curseur sur idx=0 (offset 0) → groupe de 3 notes (pad0, pad1, tape K)
+    src = _sim_source_events(ev, set(), lim_l=None, lim_r=None, cur_idx=0)
+    assert all(e["offset"] == 0 for e in src)
+    assert len(src) == 3
+
+
+def test_source_events_empty_lims_falls_to_group():
+    """Limiteurs posés mais aucun événement dans la plage → groupe courant."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    # Limiteurs dans une zone vide (offset 100–200)
+    src = _sim_source_events(ev, set(), lim_l=100, lim_r=200, cur_idx=0)
+    assert all(e["offset"] == 0 for e in src)
+
+
+# ---------------------------------------------------------------------------
+# _sync_lims_from_selection
+# ---------------------------------------------------------------------------
+
+def _sim_sync_lims(events, selected_indices, fake_te):
+    """Simule _sync_lims_from_selection() sans wx."""
+    if not selected_indices:
+        fake_te.reset_lims()
+        return
+    offsets = [events[i]["offset"] for i in selected_indices if i < len(events)]
+    if offsets:
+        fake_te.set_lim_left(min(offsets))
+        fake_te.set_lim_right(max(offsets))
+
+
+def test_sync_lims_single_event():
+    me  = MidiEditor()
+    p   = _make_pattern()
+    ev  = me.get_note_events(p, 0)
+    te  = _FakeLims()
+    # Sélectionner idx=3 (offset 4)
+    idx = next(i for i, e in enumerate(ev) if e["offset"] == 4)
+    _sim_sync_lims(ev, {idx}, te)
+    assert te._lim_left  == 4
+    assert te._lim_right == 4
+
+
+def test_sync_lims_span():
+    me  = MidiEditor()
+    p   = _make_pattern()
+    ev  = me.get_note_events(p, 0)
+    te  = _FakeLims()
+    # Sélectionner offset 0 et offset 4
+    sel = {i for i, e in enumerate(ev) if e["offset"] in (0, 4)}
+    _sim_sync_lims(ev, sel, te)
+    assert te._lim_left  == 0
+    assert te._lim_right == 4
+
+
+def test_sync_lims_empty_resets():
+    te = _FakeLims(lim_l=5, lim_r=10)
+    _sim_sync_lims([], set(), te)
+    assert te._lim_left  is None
+    assert te._lim_right is None
