@@ -105,6 +105,7 @@ class MidiEditorWindow(wx.Frame):
         self._preview_midis        = []       # notes MIDI en cours de preview (accord)
         self._preview_timer        = None     # Timer d'arrêt automatique
         self._group_entry          = False    # ←/→ vient d'atterrir sur un groupe
+        self._selected_indices     = set()    # indices sélectionnés dans self._events
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
@@ -220,7 +221,8 @@ class MidiEditorWindow(wx.Frame):
             sel          = te.get_effective_tracks(track)
             self._events = me.get_all_events(pat, sel, lim_l, lim_r)
 
-        labels = [self._event_label(e) for e in self._events]
+        self._selected_indices.clear()
+        labels = [self._event_label(e, False) for e in self._events]
         self._event_lb.Set(labels)
         if self._events:
             cur = min(me._cur_idx, len(self._events) - 1)
@@ -229,24 +231,37 @@ class MidiEditorWindow(wx.Frame):
             self._event_lb.SetSelection(cur)
         self._update_mode_label()
 
-    def _event_label(self, e):
+    def _event_label(self, e, selected=False):
+        mark = "[*] " if selected else "    "
         if e["type"] == "note":
             name = self._event_note_name(e)
             bbt  = self._bbt_str(e["bar"], e["step"])
             if e["etype"] == "G":
-                return (f"{bbt}  Tr{e['track']+1:02d}  "
+                return (f"{mark}{bbt}  Tr{e['track']+1:02d}  "
                         f"{name:<6}  Vel:{e['vel']:3d}")
             else:
-                return (f"{bbt}  Tr{e['track']+1:02d}  "
+                return (f"{mark}{bbt}  Tr{e['track']+1:02d}  "
                         f"{name:<6}  Vel:{e['vel']:3d}  "
                         f"Dur:{e['dur']}ms  [{e['etype']}]")
         elif e["type"] == "bend":
             bbt = self._bbt_str(e["bar"], e["step"])
-            return f"{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
+            return f"{mark}{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
         elif e["type"] == "mod":
             bbt = self._bbt_str(e["bar"], e["step"])
-            return f"{bbt}  Tr{e['track']+1:02d}  Mod:{e['value']}"
+            return f"{mark}{bbt}  Tr{e['track']+1:02d}  Mod:{e['value']}"
         return str(e)
+
+    def _update_label(self, idx):
+        """Met à jour le label d'un seul item dans la ListBox."""
+        if 0 <= idx < len(self._events):
+            self._event_lb.SetString(
+                idx, self._event_label(self._events[idx], idx in self._selected_indices)
+            )
+
+    def _refresh_labels(self):
+        """Remet à jour tous les labels (après changement de sélection globale)."""
+        for i, e in enumerate(self._events):
+            self._event_lb.SetString(i, self._event_label(e, i in self._selected_indices))
 
     def _set_status(self, msg):
         self._status_ctrl.SetString(0, msg)
@@ -332,11 +347,12 @@ class MidiEditorWindow(wx.Frame):
         group = self._midi_editor.group_indices(self._events, idx)
         ev    = self._events[idx]
         bbt   = self._bbt_str(ev["bar"], ev["step"])
+        suf   = self._sel_status_suffix()
         if len(group) == 1:
             name = self._event_note_name(ev)
-            self._set_status(f"{bbt}  ({name})")
+            self._set_status(f"{bbt}  ({name}){suf}")
         else:
-            self._set_status(f"{bbt}  {len(group)} notes")
+            self._set_status(f"{bbt}  {len(group)} notes{suf}")
 
     def _announce_note(self, idx):
         """Annonce ↑/↓ : nom de note + position BBT."""
@@ -345,7 +361,8 @@ class MidiEditorWindow(wx.Frame):
         ev   = self._events[idx]
         bbt  = self._bbt_str(ev["bar"], ev["step"])
         name = self._event_note_name(ev)
-        self._set_status(f"({name})  {bbt}")
+        suf  = self._sel_status_suffix()
+        self._set_status(f"({name})  {bbt}{suf}")
 
     def _announce_event(self, idx):
         """Annonce générique (clic listbox) : position BBT + nom + vélocité."""
@@ -457,6 +474,114 @@ class MidiEditorWindow(wx.Frame):
         wx.CallAfter(self._announce_note, target)
 
     # ------------------------------------------------------------------
+    # Sélection
+    # ------------------------------------------------------------------
+
+    def _toggle_group_selection(self, idx):
+        """Toggle la sélection de tous les indices du groupe à idx."""
+        group = self._midi_editor.group_indices(self._events, idx)
+        if all(i in self._selected_indices for i in group):
+            for i in group:
+                self._selected_indices.discard(i)
+        else:
+            for i in group:
+                self._selected_indices.add(i)
+        for i in group:
+            self._update_label(i)
+
+    def _toggle_note_selection(self, idx):
+        """Toggle la sélection d'une seule note."""
+        if idx in self._selected_indices:
+            self._selected_indices.discard(idx)
+        else:
+            self._selected_indices.add(idx)
+        self._update_label(idx)
+
+    def _select_all(self):
+        self._selected_indices = set(range(len(self._events)))
+        self._refresh_labels()
+        self._set_status(f"{len(self._selected_indices)} événement(s) sélectionné(s)")
+
+    def _deselect_all(self):
+        self._selected_indices.clear()
+        self._refresh_labels()
+        self._set_status("Sélection effacée")
+
+    def _sel_status_suffix(self):
+        n = len(self._selected_indices)
+        return f"  [{n} sél.]" if n else ""
+
+    def _select_move_right(self):
+        """Shift+→ : groupe suivant + toggle sélection du groupe."""
+        if not self._events:
+            return
+        cur = self._midi_editor._cur_idx
+        nxt = self._midi_editor.first_of_next_group(self._events, cur)
+        if nxt >= 0:
+            self._navigate_to(nxt)
+            self._toggle_group_selection(nxt)
+            group = self._midi_editor.group_indices(self._events, nxt)
+            self._group_entry = len(group) > 1
+            wx.CallAfter(self._announce_group, nxt)
+        else:
+            self._set_status("Dernier groupe")
+
+    def _select_move_left(self):
+        """Shift+← : groupe précédent + toggle sélection du groupe."""
+        if not self._events:
+            return
+        cur = self._midi_editor._cur_idx
+        prv = self._midi_editor.first_of_prev_group(self._events, cur)
+        if prv >= 0:
+            self._navigate_to(prv)
+            self._toggle_group_selection(prv)
+            group = self._midi_editor.group_indices(self._events, prv)
+            self._group_entry = len(group) > 1
+            wx.CallAfter(self._announce_group, prv)
+        else:
+            self._set_status("Premier groupe")
+
+    def _select_move_down(self):
+        """Shift+↓ : note suivante dans le groupe + toggle sélection."""
+        if not self._events:
+            return
+        cur   = self._midi_editor._cur_idx
+        group = self._midi_editor.group_indices(self._events, cur)
+        if not group:
+            return
+        if self._group_entry:
+            target = group[0]
+            self._group_entry = False
+        else:
+            pos = group.index(cur) if cur in group else 0
+            target = group[pos + 1] if pos < len(group) - 1 else group[-1]
+            if target != cur:
+                self._navigate_to(target)
+        self._toggle_note_selection(target)
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_note, target)
+
+    def _select_move_up(self):
+        """Shift+↑ : note précédente dans le groupe + toggle sélection."""
+        if not self._events:
+            return
+        cur   = self._midi_editor._cur_idx
+        group = self._midi_editor.group_indices(self._events, cur)
+        if not group:
+            return
+        if self._group_entry:
+            target = group[0]
+            self._group_entry = False
+        else:
+            pos = group.index(cur) if cur in group else 0
+            target = group[pos - 1] if pos > 0 else group[0]
+            if target != cur:
+                self._navigate_to(target)
+        self._toggle_note_selection(target)
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_note, target)
+
+    # ------------------------------------------------------------------
     # Édition
     # ------------------------------------------------------------------
 
@@ -509,22 +634,56 @@ class MidiEditorWindow(wx.Frame):
     def _delete_event(self):
         if not self._events:
             return
-        cur = self._midi_editor._cur_idx
-        ev  = self._events[cur]
-        if ev.get("type") != "note":
-            self._set_status("Suppression non disponible pour ce type")
-            return
         pat = self._parent._player._pattern
-        self._parent._add_undo(
-            f"Supprimer note Tr{ev['track']+1} B{ev['bar']+1}:S{ev['step']+1}"
-        )
-        if self._midi_editor.delete_event(pat, ev):
-            new_idx = min(cur, max(0, len(self._events) - 2))
-            self._midi_editor._cur_idx = new_idx
-            self._refresh()
-            self._set_status("Note supprimée")
+        cur = self._midi_editor._cur_idx
+
+        if self._selected_indices:
+            # Supprimer toutes les notes sélectionnées (G uniquement)
+            targets = sorted(
+                [i for i in self._selected_indices
+                 if self._events[i].get("type") == "note"],
+                reverse=True
+            )
+            if not targets:
+                self._set_status("Aucune note sélectionnée supprimable")
+                return
+            self._parent._add_undo(f"Suppr {len(targets)} note(s) sélectionnée(s)")
+            deleted = 0
+            for idx in targets:
+                if self._midi_editor.delete_event(pat, self._events[idx]):
+                    deleted += 1
+            if deleted:
+                self._selected_indices.clear()
+                self._midi_editor._cur_idx = max(0, cur - deleted)
+                self._refresh()
+                self._set_status(f"{deleted} note(s) supprimée(s)")
+            else:
+                self._parent._pop_last_undo()
         else:
-            self._parent._pop_last_undo()
+            # Supprimer le groupe (accord) courant
+            group = self._midi_editor.group_indices(self._events, cur)
+            targets = [i for i in group if self._events[i].get("type") == "note"]
+            if not targets:
+                self._set_status("Suppression non disponible pour ce type")
+                return
+            n = len(targets)
+            ev0 = self._events[targets[0]]
+            self._parent._add_undo(
+                f"Suppr {'accord' if n > 1 else 'note'} "
+                f"Tr{ev0['track']+1} B{ev0['bar']+1}:S{ev0['step']+1}"
+            )
+            deleted = sum(
+                1 for idx in sorted(targets, reverse=True)
+                if self._midi_editor.delete_event(pat, self._events[idx])
+            )
+            if deleted:
+                self._midi_editor._cur_idx = max(0, cur - deleted)
+                self._refresh()
+                self._set_status(
+                    f"{'Accord' if n > 1 else 'Note'} supprimé(e) ({deleted} note(s))"
+                )
+            else:
+                self._parent._pop_last_undo()
 
     # ------------------------------------------------------------------
     # Clavier
@@ -562,12 +721,38 @@ class MidiEditorWindow(wx.Frame):
             self._move_right()
             return
 
+        # Shift+←/→ : navigation + sélection du groupe
+        if not ctrl and shift and key == wx.WXK_LEFT:
+            self._select_move_left()
+            return
+        if not ctrl and shift and key == wx.WXK_RIGHT:
+            self._select_move_right()
+            return
+
         # ↑/↓ : navigation dans l'accord courant
         if not ctrl and not shift and key == wx.WXK_UP:
             self._move_up_in_group()
             return
         if not ctrl and not shift and key == wx.WXK_DOWN:
             self._move_down_in_group()
+            return
+
+        # Shift+↑/↓ : navigation + sélection de la note
+        if not ctrl and shift and key == wx.WXK_UP:
+            self._select_move_up()
+            return
+        if not ctrl and shift and key == wx.WXK_DOWN:
+            self._select_move_down()
+            return
+
+        # Ctrl+A : sélectionner tout
+        if ctrl and not shift and (ukey == ord('a') or ukey == ord('A')):
+            self._select_all()
+            return
+
+        # Ctrl+Shift+A : désélectionner tout
+        if ctrl and shift and (ukey == ord('a') or ukey == ord('A')):
+            self._deselect_all()
             return
 
         # Entrée : éditer la note sélectionnée
