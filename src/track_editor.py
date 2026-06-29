@@ -7,6 +7,7 @@
     Author: Coolbrother
 """
 import copy
+from pattern import TapeEvent
 
 
 class _ClipboardData:
@@ -19,6 +20,19 @@ class _ClipboardData:
         self.tape       = tape         # {(rel_track, bar, step): [TapeEvent]}
 
 
+class _EventClipboard:
+    """Presse-papier d'événements MIDI individuels (multi-pistes, multi-offsets).
+
+    Chaque entrée conserve rel_track (relatif à la piste la plus basse copiée)
+    et rel_offset (relatif à l'offset minimum copié), ce qui permet de recoller
+    les événements sur n'importe quelle piste cible et à n'importe quelle position.
+    Ce clipboard est indépendant du _ClipboardData piste-niveau et survit aux
+    changements de pattern.
+    """
+    def __init__(self, events):
+        self.events = events   # liste de dicts avec rel_track, rel_offset + données note
+
+
 class TrackEditor:
     """Gestion de la sélection multi-pistes et des opérations presse-papier.
 
@@ -27,10 +41,11 @@ class TrackEditor:
     """
 
     def __init__(self):
-        self._sel_tracks = set()            # indices des pistes sélectionnées
-        self._clipboard  = None             # _ClipboardData ou None
-        self._lim_left   = None             # limiteur gauche (step 0-based, ou None)
-        self._lim_right  = None             # limiteur droit  (step 0-based, ou None)
+        self._sel_tracks      = set()       # indices des pistes sélectionnées
+        self._clipboard       = None        # _ClipboardData (niveau piste) ou None
+        self._event_clipboard = None        # _EventClipboard (niveau note) ou None
+        self._lim_left        = None        # limiteur gauche (step 0-based, ou None)
+        self._lim_right       = None        # limiteur droit  (step 0-based, ou None)
 
     # ------------------------------------------------------------------
     # Sélection de pistes
@@ -241,6 +256,66 @@ class TrackEditor:
 
     def has_clipboard(self):
         return self._clipboard is not None
+
+    # ------------------------------------------------------------------
+    # Presse-papier événements (niveau note, multi-pistes)
+    # ------------------------------------------------------------------
+
+    def copy_events(self, events):
+        """Copie une liste d'événements dans le presse-papier d'événements.
+
+        Conserve rel_track (delta par rapport à la piste la plus basse) et
+        rel_offset (delta par rapport à l'offset le plus petit). Retourne le
+        nombre d'événements copiés.
+        """
+        notes = [e for e in events if e.get("type") == "note"]
+        if not notes:
+            return 0
+        anchor_track  = min(e["track"]  for e in notes)
+        anchor_offset = min(e["offset"] for e in notes)
+        self._event_clipboard = _EventClipboard([
+            {**e,
+             "rel_track":  e["track"]  - anchor_track,
+             "rel_offset": e["offset"] - anchor_offset}
+            for e in notes
+        ])
+        return len(notes)
+
+    def paste_events(self, pattern, target_track, target_offset):
+        """Colle le presse-papier d'événements à partir de (target_track, target_offset).
+
+        Chaque note est replacée sur target_track + rel_track, à l'offset
+        target_offset + rel_offset. Les événements hors des limites du pattern
+        sont ignorés. Retourne le nombre d'événements collés.
+        """
+        if self._event_clipboard is None:
+            return 0
+        ns     = pattern._num_steps
+        pasted = 0
+        for ev in self._event_clipboard.events:
+            abs_track  = target_track  + ev["rel_track"]
+            abs_offset = target_offset + ev["rel_offset"]
+            bar, step  = divmod(abs_offset, ns)
+            if abs_track >= pattern._num_tracks:
+                continue
+            if bar >= pattern._num_bars or step >= ns:
+                continue
+            if ev["etype"] == "G":
+                pad = ev["pad"]
+                if pad < len(pattern._curpattern[abs_track]):
+                    pattern._curpattern[abs_track][pad][bar][step] = ev["vel"]
+                    pasted += 1
+            elif ev["etype"] in ("K", "P"):
+                te  = TapeEvent(ev["etype"], ev["pad"], ev["vel"],
+                                ev["dur"], ev.get("bend", 0))
+                key = (abs_track, bar, step)
+                with pattern._lock:
+                    pattern._tape.setdefault(key, []).append(te)
+                pasted += 1
+        return pasted
+
+    def has_event_clipboard(self):
+        return self._event_clipboard is not None
 
     # ------------------------------------------------------------------
     # Privé

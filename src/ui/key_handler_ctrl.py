@@ -69,17 +69,33 @@ class CtrlHandler:
             )
             return True
         if not shift and not alt and key == ord('V'):
-            te  = win._track_editor
-            cur = win._player._cur_track
-            pat = win._player._pattern
-            dest_bar = int(win._player._current_offset()) // pat._num_steps
-            if te.has_clipboard():
+            te         = win._track_editor
+            cur        = win._player._cur_track
+            pat        = win._player._pattern
+            cur_offset = int(win._player._current_offset())
+            dest_bar   = cur_offset // pat._num_steps
+            if te.has_event_clipboard():
+                win._add_undo(f"Coller notes Tr{cur + 1} @{cur_offset}")
+                n = te.paste_events(pat, cur, cur_offset)
+                if n:
+                    win._player._compute_offsets()
+                    win._refresh_grid()
+                    win._show_status(
+                        f"{n} note(s) collée(s) — Piste {cur + 1}, Mesure {dest_bar + 1}"
+                    )
+                else:
+                    win._pop_last_undo()
+                    win._show_status("Coller: hors limites du pattern")
+            elif te.has_clipboard():
                 win._add_undo(f"Coller piste {cur + 1}, mesure {dest_bar + 1}")
-            if te.paste(pat, cur, dest_bar=dest_bar):
-                win._refresh_grid()
-                win._show_status(
-                    f"Collé à partir de la Piste {cur + 1}, Mesure {dest_bar + 1}"
-                )
+                if te.paste(pat, cur, dest_bar=dest_bar):
+                    win._refresh_grid()
+                    win._show_status(
+                        f"Collé à partir de la Piste {cur + 1}, Mesure {dest_bar + 1}"
+                    )
+                else:
+                    win._pop_last_undo()
+                    win._show_status("Presse-papier vide")
             else:
                 win._show_status("Presse-papier vide")
             return True

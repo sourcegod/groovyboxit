@@ -652,10 +652,10 @@ class MidiEditorWindow(wx.Frame):
                 name = self._event_note_name(new_ev)
                 self._set_status(f"Note modifiée → ({name})  {bbt}  Vel:{new_ev['vel']}")
             else:
-                self._undo.pop_last()
+                self._parent._pop_last_undo()
                 self._set_status("Édition annulée (hors limites)")
         else:
-            self._undo.pop_last()
+            self._parent._pop_last_undo()
         dlg.Destroy()
 
     def _delete_event(self):
@@ -686,7 +686,7 @@ class MidiEditorWindow(wx.Frame):
                 self._refresh()
                 self._set_status(f"{deleted} note(s) supprimée(s)")
             else:
-                self._undo.pop_last()
+                self._parent._pop_last_undo()
         else:
             # Supprimer le groupe (accord) courant
             group = self._midi_editor.group_indices(self._events, cur)
@@ -712,7 +712,71 @@ class MidiEditorWindow(wx.Frame):
                     f"{'Accord' if n > 1 else 'Note'} supprimé(e) ({deleted} note(s))"
                 )
             else:
-                self._undo.pop_last()
+                self._parent._pop_last_undo()
+
+    # ------------------------------------------------------------------
+    # Presse-papier événements
+    # ------------------------------------------------------------------
+
+    def _source_events(self):
+        """Retourne les notes source : sélectionnées, ou groupe courant."""
+        if self._selected_indices:
+            return [self._events[i] for i in sorted(self._selected_indices)
+                    if self._events[i].get("type") == "note"]
+        if not self._events:
+            return []
+        cur   = self._midi_editor._cur_idx
+        group = self._midi_editor.group_indices(self._events, cur)
+        return [self._events[i] for i in group
+                if self._events[i].get("type") == "note"]
+
+    def _copy_events(self):
+        src = self._source_events()
+        n   = self._parent._track_editor.copy_events(src)
+        self._set_status(f"{n} note(s) copiée(s)" if n else "Rien à copier")
+
+    def _cut_events(self):
+        src = self._source_events()
+        if not src:
+            self._set_status("Rien à couper")
+            return
+        self._parent._track_editor.copy_events(src)
+        pat  = self._parent._player._pattern
+        n    = len(src)
+        self._add_undo(f"Couper {n} note(s)")
+        deleted = sum(
+            1 for ev in src
+            if self._midi_editor.delete_event(pat, ev)
+        )
+        if deleted:
+            self._parent._player._compute_offsets()
+            self._selected_indices.clear()
+            cur = self._midi_editor._cur_idx
+            self._midi_editor._cur_idx = max(0, cur - deleted)
+            self._refresh()
+            self._set_status(f"{deleted} note(s) coupée(s)")
+        else:
+            self._parent._pop_last_undo()
+            self._set_status("Coupe impossible")
+
+    def _paste_events(self):
+        te = self._parent._track_editor
+        if not te.has_event_clipboard():
+            self._set_status("Presse-papier vide")
+            return
+        pat         = self._parent._player._pattern
+        cur_track   = self._parent._player._cur_track
+        cur_offset  = (self._events[self._midi_editor._cur_idx]["offset"]
+                       if self._events else 0)
+        self._add_undo(f"Coller notes Tr{cur_track + 1} @{cur_offset}")
+        n = te.paste_events(pat, cur_track, cur_offset)
+        if n:
+            self._parent._player._compute_offsets()
+            self._refresh()
+            self._set_status(f"{n} note(s) collée(s)")
+        else:
+            self._parent._pop_last_undo()
+            self._set_status("Coller: hors limites du pattern")
 
     # ------------------------------------------------------------------
     # Clavier
@@ -782,6 +846,21 @@ class MidiEditorWindow(wx.Frame):
         # Ctrl+Shift+A : désélectionner tout
         if ctrl and shift and (ukey == ord('a') or ukey == ord('A')):
             self._deselect_all()
+            return
+
+        # Ctrl+C : copier
+        if ctrl and not shift and (ukey == ord('c') or ukey == ord('C')):
+            self._copy_events()
+            return
+
+        # Ctrl+X : couper
+        if ctrl and not shift and (ukey == ord('x') or ukey == ord('X')):
+            self._cut_events()
+            return
+
+        # Ctrl+V : coller
+        if ctrl and not shift and (ukey == ord('v') or ukey == ord('V')):
+            self._paste_events()
             return
 
         # Ctrl+Z : annuler
