@@ -474,6 +474,31 @@ class MidiEditorWindow(wx.Frame):
         wx.CallAfter(self._announce_note, target)
 
     # ------------------------------------------------------------------
+    # Undo / Redo — délégation vers la fenêtre principale
+    # ------------------------------------------------------------------
+
+    def _add_undo(self, title):
+        self._parent._add_undo(title)
+
+    def _undo_action(self):
+        hist = self._parent._undo.history_list()
+        title = hist[0].title if hist else None
+        self._parent._undo_action()
+        self._refresh()
+        self._set_status(f"Undo: {title}" if title else "Undo: rien à annuler")
+
+    def _redo_action(self):
+        fut = self._parent._undo.future_list()
+        title = fut[0].title if fut else None
+        self._parent._redo_action()
+        self._refresh()
+        self._set_status(f"Redo: {title}" if title else "Redo: rien à refaire")
+
+    def _undo_history_dialog(self):
+        self._parent._undo_history_dialog()
+        self._refresh()
+
+    # ------------------------------------------------------------------
     # Sélection
     # ------------------------------------------------------------------
 
@@ -601,7 +626,7 @@ class MidiEditorWindow(wx.Frame):
         pat       = self._parent._player._pattern
         track_idx = self._parent._player._cur_track
         pad_names = self._pad_names_list(pat._num_pads, track_idx)
-        self._parent._add_undo(
+        self._add_undo(
             f"Éditer note Tr{ev['track']+1} B{ev['bar']+1}:S{ev['step']+1}"
         )
         dlg = _NoteEditDialog(self, ev, pat, pad_names)
@@ -627,10 +652,10 @@ class MidiEditorWindow(wx.Frame):
                 name = self._event_note_name(new_ev)
                 self._set_status(f"Note modifiée → ({name})  {bbt}  Vel:{new_ev['vel']}")
             else:
-                self._parent._pop_last_undo()
+                self._undo.pop_last()
                 self._set_status("Édition annulée (hors limites)")
         else:
-            self._parent._pop_last_undo()
+            self._undo.pop_last()
         dlg.Destroy()
 
     def _delete_event(self):
@@ -649,7 +674,7 @@ class MidiEditorWindow(wx.Frame):
             if not targets:
                 self._set_status("Aucune note sélectionnée supprimable")
                 return
-            self._parent._add_undo(f"Suppr {len(targets)} note(s) sélectionnée(s)")
+            self._add_undo(f"Suppr {len(targets)} note(s) sélectionnée(s)")
             deleted = 0
             for idx in targets:
                 if self._midi_editor.delete_event(pat, self._events[idx]):
@@ -661,7 +686,7 @@ class MidiEditorWindow(wx.Frame):
                 self._refresh()
                 self._set_status(f"{deleted} note(s) supprimée(s)")
             else:
-                self._parent._pop_last_undo()
+                self._undo.pop_last()
         else:
             # Supprimer le groupe (accord) courant
             group = self._midi_editor.group_indices(self._events, cur)
@@ -671,7 +696,7 @@ class MidiEditorWindow(wx.Frame):
                 return
             n = len(targets)
             ev0 = self._events[targets[0]]
-            self._parent._add_undo(
+            self._add_undo(
                 f"Suppr {'accord' if n > 1 else 'note'} "
                 f"Tr{ev0['track']+1} B{ev0['bar']+1}:S{ev0['step']+1}"
             )
@@ -687,7 +712,7 @@ class MidiEditorWindow(wx.Frame):
                     f"{'Accord' if n > 1 else 'Note'} supprimé(e) ({deleted} note(s))"
                 )
             else:
-                self._parent._pop_last_undo()
+                self._undo.pop_last()
 
     # ------------------------------------------------------------------
     # Clavier
@@ -757,6 +782,21 @@ class MidiEditorWindow(wx.Frame):
         # Ctrl+Shift+A : désélectionner tout
         if ctrl and shift and (ukey == ord('a') or ukey == ord('A')):
             self._deselect_all()
+            return
+
+        # Ctrl+Z : annuler
+        if ctrl and not shift and (ukey == ord('z') or ukey == ord('Z')):
+            self._undo_action()
+            return
+
+        # Shift+Z : refaire
+        if not ctrl and shift and (ukey == ord('z') or ukey == ord('Z')):
+            self._redo_action()
+            return
+
+        # Ctrl+Shift+Z : historique undo
+        if ctrl and shift and (ukey == ord('z') or ukey == ord('Z')):
+            self._undo_history_dialog()
             return
 
         # Entrée : éditer la note sélectionnée
