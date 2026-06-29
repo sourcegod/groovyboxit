@@ -46,6 +46,8 @@ class ProjectMixin:
         self._router.stop_all_synth_voices()
         self._pattern_list    = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
+        self._pattern_cache       = [None] * len(self._pattern_list)
+        self._pattern_cache_dirty = set(range(len(self._pattern_list)))
         self._song_list       = [Song(i) for i in range(Song.MAX_SONGS)]
         self._cur_song_idx    = 0
         self._player._pattern_list_ref = self._pattern_list
@@ -220,8 +222,12 @@ class ProjectMixin:
     # ------------------------------------------------------------------
 
     def _capture_state(self):
-        """Sérialise l'état complet de l'application pour l'undo/redo."""
-        import copy
+        """Sérialise l'état complet de l'application pour l'undo/redo.
+
+        Seuls les patterns marqués dirty sont re-sérialisés ; les autres
+        réutilisent leur dict précédent (partage de référence read-only).
+        En pratique, seul le pattern courant change entre deux _add_undo().
+        """
         cur = self._pattern_list[self._cur_pattern_idx]
         cur._voices = self._player.voice_manager.to_list()
         self._flush_pattern_to_store(cur)
@@ -230,10 +236,17 @@ class ProjectMixin:
         cur._loop_end   = live._loop_end
         cur._loop_count = live._loop_count
         cur._looping    = live._looping
+
+        self._pattern_cache_dirty.add(self._cur_pattern_idx)
+        for i in sorted(self._pattern_cache_dirty):
+            if i < len(self._pattern_list):
+                self._pattern_cache[i] = self._pattern_list[i].to_dict()
+        self._pattern_cache_dirty.clear()
+
         return {
             "cur_pattern_idx": self._cur_pattern_idx,
             "cur_song_idx":    self._cur_song_idx,
-            "patterns":        [p.to_dict() for p in self._pattern_list],
+            "patterns":        list(self._pattern_cache),
             "songs":           [s.to_dict() for s in self._song_list],
             "rack":            self._rack.to_dict(),
             "clipboard":       self._clipboard_to_dict(),
@@ -286,6 +299,10 @@ class ProjectMixin:
         """Restaure l'état de l'application depuis un snapshot undo/redo."""
         for i, pd in enumerate(state["patterns"]):
             self._pattern_list[i].from_dict(pd)
+        # Les dicts du state sont déjà la sérialisation à jour — on les réutilise
+        # comme cache pour le prochain _capture_state().
+        self._pattern_cache = list(state["patterns"])
+        self._pattern_cache_dirty.clear()
         for i, sd in enumerate(state["songs"]):
             self._song_list[i].from_dict(sd)
         self._rack.from_dict(state["rack"])

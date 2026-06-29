@@ -152,6 +152,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         )
         self._track_editor = TrackEditor()
         self._undo = UndoManager()
+        self._pattern_cache       = [None] * len(self._pattern_list)
+        self._pattern_cache_dirty = set(range(len(self._pattern_list)))
         self._skip_next_track_select = False
         self._build_ui()
         self._update_title()

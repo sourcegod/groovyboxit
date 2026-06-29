@@ -101,6 +101,7 @@ class PatternMixin:
         cur = self._pattern_list[self._cur_pattern_idx]
         cur._voices = self._player.voice_manager.to_list()
         self._flush_pattern_to_store(cur)
+        self._pattern_cache_dirty.add(self._cur_pattern_idx)  # ancien courant flushé
         self._cur_pattern_idx = idx
         new = self._pattern_list[idx]
         self._apply_pattern_from_store(new)
@@ -131,6 +132,7 @@ class PatternMixin:
             pat.load_pattern(self._player._pattern._curpattern)
             pat._name = name
             self._flush_pattern_to_store(pat)
+            self._pattern_cache_dirty.add(idx)   # slot cible modifié hors du courant
             self._refresh_pattern_listbox()
             self._mark_modified()
             self._show_status(f"Pattern {idx + 1:02d} dupliqué")
