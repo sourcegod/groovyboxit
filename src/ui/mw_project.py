@@ -312,7 +312,9 @@ class ProjectMixin:
 
     def _add_undo(self, title):
         """Capture l'état courant et l'enregistre dans l'historique undo."""
-        self._undo.add(title, self._capture_state())
+        import time
+        t = time.time()              # horodatage avant la sérialisation (lente)
+        self._undo.add(title, self._capture_state(), timestamp=t)
 
     def _pop_last_undo(self):
         """Retire la dernière entrée undo (dialog annulé ou aucun changement)."""

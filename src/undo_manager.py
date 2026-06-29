@@ -13,9 +13,9 @@ MAX_HISTORY = 50
 class UndoEntry:
     __slots__ = ("title", "timestamp", "state")
 
-    def __init__(self, title, state):
+    def __init__(self, title, state, timestamp=None):
         self.title     = title
-        self.timestamp = time.time()
+        self.timestamp = timestamp if timestamp is not None else time.time()
         self.state     = state
 
     def rel_time(self):
@@ -56,11 +56,13 @@ class UndoManager:
 
     # ------------------------------------------------------------------
 
-    def add(self, title, state):
+    def add(self, title, state, timestamp=None):
         """Enregistre un point de sauvegarde AVANT une modification.
         Vide le futur (redo) car un nouvel historique commence.
+        timestamp : si fourni, horodatage pré-calculé (utile quand _capture_state
+        est lent — on capture time.time() avant l'appel à la sérialisation).
         """
-        self._history.append(UndoEntry(title, state))
+        self._history.append(UndoEntry(title, state, timestamp))
         if len(self._history) > self._max:
             self._history.pop(0)
         self._future.clear()

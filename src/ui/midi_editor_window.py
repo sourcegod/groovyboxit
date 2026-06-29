@@ -499,8 +499,20 @@ class MidiEditorWindow(wx.Frame):
         self._set_status(f"Redo: {title}" if title else "Redo: rien à refaire")
 
     def _undo_history_dialog(self):
-        self._parent._undo_history_dialog()
-        self._refresh()
+        from ui.dialogs import UndoHistoryDialog
+        entries = self._parent._undo.history_list()
+        if not entries:
+            self._set_status("Historique Undo: vide")
+            return
+        prev_focus = wx.Window.FindFocus()
+        dlg = UndoHistoryDialog(self, entries)
+        if dlg.ShowModal() == wx.ID_OK:
+            steps = dlg.get_steps()
+            for _ in range(steps):
+                self._undo_action()
+        dlg.Destroy()
+        if prev_focus:
+            prev_focus.SetFocus()
 
     # ------------------------------------------------------------------
     # Sélection
