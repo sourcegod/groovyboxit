@@ -655,6 +655,7 @@ class MidiEditorWindow(wx.Frame):
                 if self._midi_editor.delete_event(pat, self._events[idx]):
                     deleted += 1
             if deleted:
+                self._parent._player._compute_offsets()
                 self._selected_indices.clear()
                 self._midi_editor._cur_idx = max(0, cur - deleted)
                 self._refresh()
@@ -679,6 +680,7 @@ class MidiEditorWindow(wx.Frame):
                 if self._midi_editor.delete_event(pat, self._events[idx])
             )
             if deleted:
+                self._parent._player._compute_offsets()
                 self._midi_editor._cur_idx = max(0, cur - deleted)
                 self._refresh()
                 self._set_status(
