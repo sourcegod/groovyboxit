@@ -512,7 +512,7 @@ class MidiEditorWindow(wx.Frame):
         return f"  [{n} sél.]" if n else ""
 
     def _select_move_right(self):
-        """Shift+→ : groupe suivant + toggle sélection du groupe."""
+        """Shift+→ : groupe suivant + toggle sélection du groupe + joue."""
         if not self._events:
             return
         cur = self._midi_editor._cur_idx
@@ -520,6 +520,7 @@ class MidiEditorWindow(wx.Frame):
         if nxt >= 0:
             self._navigate_to(nxt)
             self._toggle_group_selection(nxt)
+            self._play_group_at(nxt)
             group = self._midi_editor.group_indices(self._events, nxt)
             self._group_entry = len(group) > 1
             wx.CallAfter(self._announce_group, nxt)
@@ -527,7 +528,7 @@ class MidiEditorWindow(wx.Frame):
             self._set_status("Dernier groupe")
 
     def _select_move_left(self):
-        """Shift+← : groupe précédent + toggle sélection du groupe."""
+        """Shift+← : groupe précédent + toggle sélection du groupe + joue."""
         if not self._events:
             return
         cur = self._midi_editor._cur_idx
@@ -535,6 +536,7 @@ class MidiEditorWindow(wx.Frame):
         if prv >= 0:
             self._navigate_to(prv)
             self._toggle_group_selection(prv)
+            self._play_group_at(prv)
             group = self._midi_editor.group_indices(self._events, prv)
             self._group_entry = len(group) > 1
             wx.CallAfter(self._announce_group, prv)
