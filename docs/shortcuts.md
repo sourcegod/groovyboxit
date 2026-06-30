@@ -222,6 +222,7 @@ Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
   Shift+↑/↓      Sélectionner / désélectionner la note individuelle dans l'accord
 
   -- Édition --
+  Ctrl+Shift+Q   Ouvrir le dialog de quantisation (résolution, force, swing, fenêtre)
   Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity)
   Suppr / Ret.   Supprimer l'événement sélectionné
   Ctrl+C         Copier les événements sélectionnés
