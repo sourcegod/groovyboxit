@@ -943,7 +943,9 @@ class MidiEditorWindow(wx.Frame):
         """
         from ui.dialogs_simple import QuantizeDialog
         from pattern import Pattern
-        p   = self._parent._player
+        p        = self._parent._player
+        old_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
+                    p._quant_window_idx, p._quant_starts, p._quant_durations)
         dlg = QuantizeDialog(self,
                              res_idx        = p._quant_res_idx,
                              force_idx      = p._quant_force_idx,
@@ -959,6 +961,8 @@ class MidiEditorWindow(wx.Frame):
             p._quant_window_idx = dlg.get_window_idx()
             p._quant_starts     = dlg.get_quant_starts()
             p._quant_durations  = dlg.get_quant_durations()
+            new_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
+                        p._quant_window_idx, p._quant_starts, p._quant_durations)
             res = p._quant_res_idx
             if res == -2:
                 _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
@@ -966,6 +970,8 @@ class MidiEditorWindow(wx.Frame):
                        if kind == "snaps" and val in Pattern.QUANT_STEPS else -1)
             if result == wx.ID_APPLY and res >= 0:
                 self._parent._add_undo("Quantiser pattern (éditeur MIDI)")
+            elif result == wx.ID_OK and new_snap != old_snap:
+                self._parent._add_undo("Paramètres quantisation modifiés")
                 p.apply_quant_to_pattern(
                     res,
                     force_idx      = p._quant_force_idx,

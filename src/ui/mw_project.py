@@ -243,6 +243,7 @@ class ProjectMixin:
                 self._pattern_cache[i] = self._pattern_list[i].to_dict()
         self._pattern_cache_dirty.clear()
 
+        p = self._player
         return {
             "cur_pattern_idx": self._cur_pattern_idx,
             "cur_song_idx":    self._cur_song_idx,
@@ -250,6 +251,15 @@ class ProjectMixin:
             "songs":           [s.to_dict() for s in self._song_list],
             "rack":            self._rack.to_dict(),
             "clipboard":       self._clipboard_to_dict(),
+            "quant_params": {
+                "res_idx":        p._quant_res_idx,
+                "force_idx":      p._quant_force_idx,
+                "swing_idx":      p._quant_swing_idx,
+                "window_idx":     p._quant_window_idx,
+                "quant_starts":   p._quant_starts,
+                "quant_durations":p._quant_durations,
+                "grid_idx":       p._grid_idx,
+            },
         }
 
     def _clipboard_to_dict(self):
@@ -316,6 +326,17 @@ class ProjectMixin:
         live._loop_end   = new._loop_end
         live._loop_count = new._loop_count
         self._player._compute_offsets()
+        qp = state.get("quant_params", {})
+        if qp:
+            from pattern import Pattern
+            p = self._player
+            p._quant_res_idx     = qp.get("res_idx",        -1)
+            p._quant_force_idx   = qp.get("force_idx",       4)
+            p._quant_swing_idx   = qp.get("swing_idx",       0)
+            p._quant_window_idx  = qp.get("window_idx",      4)
+            p._quant_starts      = qp.get("quant_starts",    True)
+            p._quant_durations   = qp.get("quant_durations", False)
+            p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
         self._pattern_listbox.SetSelection(self._cur_pattern_idx)
         self._refresh_pattern_listbox()
         self._refresh_grid()

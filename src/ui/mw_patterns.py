@@ -301,12 +301,14 @@ class PatternMixin:
         dlg.Destroy()
 
     def _quantize_pattern_dialog(self):
-        p   = self._player
+        p        = self._player
+        old_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
+                    p._quant_window_idx, p._quant_starts, p._quant_durations)
         dlg = QuantizeDialog(self,
                              res_idx        = p._quant_res_idx,
                              force_idx      = p._quant_force_idx,
                              swing_idx      = p._quant_swing_idx,
-                             window_idx     = p._quant_window_idx,   # 4 = 100 %
+                             window_idx     = p._quant_window_idx,
                              quant_starts   = p._quant_starts,
                              quant_durations= p._quant_durations)
         result = dlg.ShowModal()
@@ -317,6 +319,8 @@ class PatternMixin:
             p._quant_window_idx = dlg.get_window_idx()
             p._quant_starts     = dlg.get_quant_starts()
             p._quant_durations  = dlg.get_quant_durations()
+            new_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
+                        p._quant_window_idx, p._quant_starts, p._quant_durations)
             # Résoudre la résolution effective (Grille courante → QUANT_STEPS)
             res = p._quant_res_idx
             if res == -2:   # Grille courante
@@ -324,6 +328,8 @@ class PatternMixin:
                 res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
             if result == wx.ID_APPLY and res >= 0:
                 self._add_undo("Quantiser pattern")
+            elif result == wx.ID_OK and new_snap != old_snap:
+                self._add_undo("Paramètres quantisation modifiés")
                 self._player.apply_quant_to_pattern(
                     res,
                     force_idx      = p._quant_force_idx,
