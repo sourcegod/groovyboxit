@@ -51,6 +51,13 @@ class DrumPlayer:
         self.step_duration = 60.0 / self.bpm / 4
         self.quant_idx = 7  # défaut: 1/16
         self._grid_idx = Pattern.GRID_DEFAULT_IDX   # grille globale (navigation + quantise)
+        # État du dialog Quantiser (post-processing)
+        self._quant_res_idx      = -1   # -2=grille courante, -1=aucune, 0..13=QUANT_LIST
+        self._quant_force_idx    = 4    # 100 %
+        self._quant_swing_idx    = 0    # 50 % (pas de swing)
+        self._quant_window_idx   = 4    # 100 % (pas de filtrage par fenêtre)
+        self._quant_starts       = True
+        self._quant_durations    = False
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None

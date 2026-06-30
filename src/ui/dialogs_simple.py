@@ -129,20 +129,39 @@ class GridDialog(wx.Dialog):
 
 
 class QuantizeDialog(wx.Dialog):
-    def __init__(self, parent, cur_idx, quant_in_rec=True):
-        super().__init__(parent, title="Quantisation du pattern")
+    """Boîte de quantisation du pattern : résolution, force, swing, fenêtre, débuts/durées."""
 
-        list_label = wx.StaticText(self, label="Valeur de quantisation :")
-        self._list = wx.ListBox(
-            self,
-            choices=["None"] + Pattern.QUANT_LIST,
-            style=wx.LB_SINGLE,
-        )
-        # cur_idx 0..13 → indice dialogue 1..14 ; -1 (None) → 0
-        self._list.SetSelection(cur_idx + 1 if cur_idx >= 0 else 0)
+    _FORCE_LABELS  = [f"Force: {v} %"   for v in (0, 25, 50, 75, 100)]
+    _SWING_LABELS  = [f"Swing: {v} %"   for v in (0, 25, 50, 75, 100)]
+    _WINDOW_LABELS = [f"Fenêtre: {v} %" for v in (0, 25, 50, 75, 100)]
 
-        self._quant_in_rec_cb = wx.CheckBox(self, label="Auto in Recording")
-        self._quant_in_rec_cb.SetValue(quant_in_rec)
+    # résolution : -2=Grille courante, -1=Aucune, 0..13=QUANT_LIST
+    _RES_OFFSET = 2   # ListBox[0]=Grille courante, [1]=Aucune, [2+]= QUANT_LIST
+
+    def __init__(self, parent, res_idx=-1, force_idx=4, swing_idx=0,
+                 window_idx=4, quant_starts=True, quant_durations=False):
+        super().__init__(parent, title="Quantisation")
+
+        res_choices = (["Résolution: Grille courante", "Résolution: Aucune"]
+                       + [f"Résolution: {q}" for q in Pattern.QUANT_LIST])
+
+        self._res_lb   = wx.ListBox(self, choices=res_choices, style=wx.LB_SINGLE, size=(-1, 130))
+        lb_sel = res_idx + self._RES_OFFSET if res_idx >= -1 else 0
+        self._res_lb.SetSelection(max(0, lb_sel))
+
+        self._force_lb  = wx.ListBox(self, choices=self._FORCE_LABELS, style=wx.LB_SINGLE)
+        self._force_lb.SetSelection(max(0, min(force_idx, len(self._FORCE_LABELS) - 1)))
+
+        self._swing_lb  = wx.ListBox(self, choices=self._SWING_LABELS, style=wx.LB_SINGLE)
+        self._swing_lb.SetSelection(max(0, min(swing_idx, len(self._SWING_LABELS) - 1)))
+
+        self._window_lb = wx.ListBox(self, choices=self._WINDOW_LABELS, style=wx.LB_SINGLE)
+        self._window_lb.SetSelection(max(0, min(window_idx, len(self._WINDOW_LABELS) - 1)))
+
+        self._starts_cb    = wx.CheckBox(self, label="Quantiser les débuts")
+        self._durations_cb = wx.CheckBox(self, label="Quantiser les durées")
+        self._starts_cb.SetValue(quant_starts)
+        self._durations_cb.SetValue(quant_durations)
 
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
@@ -157,20 +176,39 @@ class QuantizeDialog(wx.Dialog):
         btn_sizer.Realize()
 
         vbox = wx.BoxSizer(wx.VERTICAL)
-        vbox.Add(list_label,            0, wx.ALL, 6)
-        vbox.Add(self._list,            1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-        vbox.Add(self._quant_in_rec_cb, 0, wx.ALL, 6)
-        vbox.Add(btn_sizer,             0, wx.EXPAND | wx.ALL, 6)
+        for lb in (self._res_lb, self._force_lb, self._swing_lb, self._window_lb):
+            vbox.Add(lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._starts_cb,    0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._durations_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(btn_sizer,          0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
-        self._list.SetFocus()
+        self._res_lb.SetFocus()
 
-    def get_selection(self):
-        """Retourne -1 (None) ou 0..13 (indice dans QUANT_LIST)."""
-        return self._list.GetSelection() - 1
+    def get_resolution(self):
+        """Retourne -2 (Grille courante), -1 (Aucune) ou 0..13 (QUANT_LIST)."""
+        sel = self._res_lb.GetSelection()
+        if sel == wx.NOT_FOUND:
+            return -1
+        return sel - self._RES_OFFSET
 
-    def get_quant_in_recording(self):
-        return self._quant_in_rec_cb.GetValue()
+    def get_force_idx(self):
+        sel = self._force_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 4
+
+    def get_swing_idx(self):
+        sel = self._swing_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
+
+    def get_window_idx(self):
+        sel = self._window_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 3
+
+    def get_quant_starts(self):
+        return self._starts_cb.GetValue()
+
+    def get_quant_durations(self):
+        return self._durations_cb.GetValue()
 
 
 class SaveSongDialog(wx.Dialog):

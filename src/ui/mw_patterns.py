@@ -301,24 +301,37 @@ class PatternMixin:
         dlg.Destroy()
 
     def _quantize_pattern_dialog(self):
-        dlg    = QuantizeDialog(self, self._player.quant_idx, self._player._quant_in_recording)
+        p   = self._player
+        dlg = QuantizeDialog(self,
+                             res_idx        = p._quant_res_idx,
+                             force_idx      = p._quant_force_idx,
+                             swing_idx      = p._quant_swing_idx,
+                             window_idx     = p._quant_window_idx,   # 4 = 100 %
+                             quant_starts   = p._quant_starts,
+                             quant_durations= p._quant_durations)
         result = dlg.ShowModal()
         if result in (wx.ID_OK, wx.ID_APPLY):
-            idx = dlg.get_selection()
-            self._player._quant_in_recording = dlg.get_quant_in_recording()
-            self._player.quant_idx = idx
-            if idx >= 0:
-                self._quant_list.SetSelection(idx)
-            else:
-                self._quant_list.SetSelection(wx.NOT_FOUND)
-            if result == wx.ID_APPLY and idx >= 0:
-                self._player.apply_quant_to_pattern()
+            p._quant_res_idx    = dlg.get_resolution()
+            p._quant_force_idx  = dlg.get_force_idx()
+            p._quant_swing_idx  = dlg.get_swing_idx()
+            p._quant_window_idx = dlg.get_window_idx()
+            p._quant_starts     = dlg.get_quant_starts()
+            p._quant_durations  = dlg.get_quant_durations()
+            # Résoudre la résolution effective (Grille courante → QUANT_STEPS)
+            res = p._quant_res_idx
+            if res == -2:   # Grille courante
+                _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
+                res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
+            if result == wx.ID_APPLY and res >= 0:
+                self._add_undo("Quantiser pattern")
+                self._player.apply_quant_to_pattern(res)
+                self._player._compute_offsets()
                 self._refresh_grid()
-                self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[idx]}")
-            elif idx >= 0:
-                self._show_status(f"Quant par défaut: {Pattern.QUANT_LIST[idx]}")
+                self._show_status(f"Pattern quantisé : {Pattern.QUANT_LIST[res]}")
+            elif res >= 0:
+                self._show_status(f"Quantisation mémorisée : {Pattern.QUANT_LIST[res]}")
             else:
-                self._show_status("Quant: désactivée")
+                self._show_status("Quantisation : aucune résolution sélectionnée")
         dlg.Destroy()
 
     def _pattern_properties_dialog(self):
