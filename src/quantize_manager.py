@@ -69,37 +69,114 @@ class QuantizeManager:
             pad[0][c] = True
         p.float_offsets[row] = sorted(grid)
 
-    def apply_quant_to_pattern(self, quant_idx=None):
+    def apply_quant_to_pattern(self, quant_idx=None, force_idx=4, swing_idx=0,
+                               window_idx=4, quant_starts=True, quant_durations=False):
+        """Quantise grille (G) et tape (K/P) avec force, swing et fenêtre.
+
+        force_idx  : 0..4 → 0/25/50/75/100 % d'attraction vers la grille
+        swing_idx  : 0..4 → 0/25/50/75/100 % de décalage des temps impairs
+        window_idx : 0..4 → 0/25/50/75/100 % de la demi-division : zone de capture
+        quant_starts   : aligner les débuts de notes
+        quant_durations: aligner les durées (K/P uniquement)
+        """
         p = self._p
         if quant_idx is None:
             quant_idx = p.quant_idx
         if quant_idx < 0:
             return
+
+        _PCT       = [0, 25, 50, 75, 100]
+        force_pct  = _PCT[min(force_idx,  4)]
+        swing_pct  = _PCT[min(swing_idx,  4)]
+        window_pct = _PCT[min(window_idx, 4)]
+
         denom     = Pattern.QUANT_STEPS[quant_idx]
         num_steps = p._pattern._num_steps
-        grid_per_bar = [i * num_steps / denom for i in range(denom)]
+        num_bars  = p._pattern._num_bars
+        step_size = num_steps / denom
+        half_step = step_size / 2.0
+
+        # Grille avec swing : temps impairs (i % 2 == 1) décalés
+        swing_shift = swing_pct / 100.0 * step_size / 2.0
         full_grid = [
-            bar_idx * num_steps + gp
-            for bar_idx in range(p._pattern._num_bars)
-            for gp in grid_per_bar
+            bar * num_steps + i * step_size + (swing_shift if i % 2 == 1 else 0.0)
+            for bar in range(num_bars)
+            for i in range(denom)
         ]
-        for pad_idx in range(p._pattern._num_pads):
-            pad    = p._pattern._curpattern[p._cur_track][pad_idx]
-            active = p.float_offsets[pad_idx]
-            for bar in pad:
-                bar[:] = [False] * len(bar)
-            if not active:
-                continue
-            snapped = set()
-            for pos in active:
-                nearest = min(full_grid, key=lambda pt: abs(pt - pos))
-                snapped.add(nearest)
-            for fp in snapped:
-                bar_idx  = int(fp // num_steps)
-                step_idx = round(fp % num_steps) % num_steps
-                if bar_idx < p._pattern._num_bars:
-                    pad[bar_idx][step_idx] = True
-            p.float_offsets[pad_idx] = sorted(snapped)
+
+        def _nearest(pos):
+            return min(full_grid, key=lambda g: abs(g - pos))
+
+        def _in_window(pos, ng):
+            if window_pct >= 100:
+                return True
+            return abs(pos - ng) <= window_pct / 100.0 * half_step
+
+        def _snap(pos, ng):
+            if force_pct >= 100:
+                return ng
+            return pos + (ng - pos) * force_pct / 100.0
+
+        # --- Notes grille (G) ---
+        if quant_starts:
+            for pad_idx in range(p._pattern._num_pads):
+                pad    = p._pattern._curpattern[p._cur_track][pad_idx]
+                active = p.float_offsets[pad_idx]
+                for bar in pad:
+                    bar[:] = [False] * len(bar)
+                if not active:
+                    continue
+                snapped = []
+                for pos in active:
+                    ng = _nearest(pos)
+                    new_pos = _snap(pos, ng) if _in_window(pos, ng) else pos
+                    rounded = round(new_pos)
+                    snapped.append(float(rounded))
+                for fp in snapped:
+                    bar_idx  = int(fp) // num_steps
+                    step_idx = int(fp) % num_steps
+                    if 0 <= bar_idx < num_bars and 0 <= step_idx < num_steps:
+                        pad[bar_idx][step_idx] = True
+                p.float_offsets[pad_idx] = sorted(snapped)
+
+        # --- Notes tape K/P ---
+        if not quant_starts and not quant_durations:
+            return
+        pattern        = p._pattern
+        steps_per_beat = max(1, num_steps // pattern._num_beats)
+        ms_per_step    = 60000.0 / max(1, p.bpm) / steps_per_beat
+        dur_grid       = [max(1.0, i * step_size)
+                          for i in range(1, num_bars * denom + 2)]
+        new_tape = {}
+        with pattern._lock:
+            for (t, b, s), evs in list(pattern._tape.items()):
+                if t != p._cur_track:
+                    new_tape[(t, b, s)] = evs
+                    continue
+                for ev in evs:
+                    if ev.etype not in ("K", "P"):
+                        new_tape.setdefault((t, b, s), []).append(ev)
+                        continue
+                    n_bar, n_step = b, s
+                    if quant_starts:
+                        pos = b * num_steps + float(s)
+                        ng  = _nearest(pos)
+                        if _in_window(pos, ng):
+                            new_pos = _snap(pos, ng)
+                            n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
+                            n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
+                    n_dur = ev.dur
+                    if quant_durations and ev.dur > 0:
+                        dur_steps = ev.dur / ms_per_step
+                        ng_dur    = min(dur_grid, key=lambda g: abs(g - dur_steps))
+                        if _in_window(dur_steps, ng_dur):
+                            n_dur = max(10, round(_snap(dur_steps, ng_dur) * ms_per_step))
+                    new_tape.setdefault((t, n_bar, n_step), []).append(
+                        TapeEvent(ev.etype, ev.note, ev.vel, n_dur, ev.bend)
+                    )
+            # Nettoyer les clés vides et mettre à jour
+            pattern._tape.clear()
+            pattern._tape.update({k: v for k, v in new_tape.items() if v})
 
     # ------------------------------------------------------------------
     # Géométrie du pattern

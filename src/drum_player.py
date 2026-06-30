@@ -682,8 +682,8 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def apply_quant_to_pattern(self, quant_idx=None):
-        self._qm.apply_quant_to_pattern(quant_idx)
+    def apply_quant_to_pattern(self, quant_idx=None, **kwargs):
+        self._qm.apply_quant_to_pattern(quant_idx, **kwargs)
 
     #--------------------------------------------------------------------------
 

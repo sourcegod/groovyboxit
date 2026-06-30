@@ -324,7 +324,14 @@ class PatternMixin:
                 res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
             if result == wx.ID_APPLY and res >= 0:
                 self._add_undo("Quantiser pattern")
-                self._player.apply_quant_to_pattern(res)
+                self._player.apply_quant_to_pattern(
+                    res,
+                    force_idx      = p._quant_force_idx,
+                    swing_idx      = p._quant_swing_idx,
+                    window_idx     = p._quant_window_idx,
+                    quant_starts   = p._quant_starts,
+                    quant_durations= p._quant_durations,
+                )
                 self._player._compute_offsets()
                 self._refresh_grid()
                 self._show_status(f"Pattern quantisé : {Pattern.QUANT_LIST[res]}")
