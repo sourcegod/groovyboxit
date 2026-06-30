@@ -220,8 +220,7 @@ class CtrlHandler:
             win._player.goto_end()
             win._show_status(f"Fin: {win._player.position_str()}")
             return True
-        if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Aller à
-            win._goto_dialog()
+        if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Grille (à venir)
             return True
         if shift and not alt and key == ord('L'):         # Ctrl+Shift+L : dialog loop points
             win._loop_select_dialog()
@@ -236,17 +235,8 @@ class CtrlHandler:
                 p._wakeup.set()
             win._show_status(f"Boucle début: {win._player.position_str()}")
             return True
-        if not shift and not alt and key == ord('G'):     # Ctrl+G : état + position
-            p = win._player
-            if p.playing and getattr(p, 'recording', False):
-                state = "Rec"
-            elif p.playing:
-                state = "Lecture"
-            elif p._resume_offset is not None:
-                state = "Pause"
-            else:
-                state = "Arrêt"
-            win._show_status(f"{state}, Pos: {p.position_str()}")
+        if not shift and not alt and key == ord('G'):     # Ctrl+G : Aller à une position
+            win._goto_dialog()
             return True
         if not shift and not alt and key == wx.WXK_SPACE:  # Ctrl+Space : jouer depuis le début
             win._player.goto_start()

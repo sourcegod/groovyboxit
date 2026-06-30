@@ -43,8 +43,9 @@ Shift+PageDown   Transport : +1 tick (pas)
 Shift+PageUp     Transport : −1 tick (pas)
 w                Transport : +1 seconde
 b                Transport : −1 seconde
-Ctrl+G           Afficher l'état du player et la position (Lecture|Pause|Arrêt, Pos: bar:beat:tick / total)
-Ctrl+Shift+G     Transport : Aller à une position (boîte de dialogue Unité + Valeur + bar:beat:tick)
+U                Afficher l'état du player et la position (Lecture|Pause|Arrêt, Pos: bar:beat:tick / total)
+Ctrl+G           Aller à une position (boîte de dialogue Unité + Valeur + bar:beat:tick)
+Ctrl+Shift+G     Ouvrir la boîte de grille (résolution de navigation et quantisation)
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Mute / Solo (Pads — focus grille) ---
@@ -252,8 +253,9 @@ Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
   Shift+PageUp     -1 tick (pas)
   l                Boucle On / Off
   Shift+L          Poser le point de fin de boucle à la position courante du playhead
-  Ctrl+G           Afficher l'état du player et la position courante
-  Ctrl+Shift+G     Aller à une position (dialog bar:beat:tick)
+  U                Afficher l'état du player et la position courante
+  Ctrl+G           Aller à une position (dialog bar:beat:tick)
+  Ctrl+Shift+G     Ouvrir la boîte de grille
   Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Fenêtre Songs (Alt+5) ---
