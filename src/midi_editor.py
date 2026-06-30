@@ -225,6 +225,52 @@ class MidiEditor:
 
     # ------------------------------------------------------------------
 
+    def edit_tape_note(self, pattern, ev, new_note=None, new_vel=None,
+                       new_bar=None, new_step=None, new_dur=None):
+        """Modifie un événement tape (etype K ou P). Retourne le nouvel event_info ou None."""
+        from pattern import TapeEvent
+        etype = ev.get("etype")
+        if etype not in ("K", "P"):
+            return None
+        old_key = (ev["track"], ev["bar"], ev["step"])
+        old_idx = ev.get("event_idx", -1)
+        t       = ev["track"]
+        n_note  = new_note if new_note is not None else ev["pad"]
+        n_vel   = max(1, min(127, new_vel  if new_vel  is not None else ev["vel"]))
+        n_bar   = new_bar  if new_bar  is not None else ev["bar"]
+        n_step  = new_step if new_step is not None else ev["step"]
+        n_dur   = max(10,  new_dur  if new_dur  is not None else ev.get("dur", 500))
+        n_bend  = ev.get("bend", 0)
+        if n_bar < 0 or n_bar >= pattern._num_bars:
+            return None
+        if n_step < 0 or n_step >= pattern._num_steps:
+            return None
+        with pattern._lock:
+            lst = pattern._tape.get(old_key)
+            if lst is None or old_idx < 0 or old_idx >= len(lst):
+                return None
+            del lst[old_idx]
+            if not lst:
+                del pattern._tape[old_key]
+            new_key = (t, n_bar, n_step)
+            pattern._tape.setdefault(new_key, []).append(
+                TapeEvent(etype, n_note, n_vel, n_dur, n_bend)
+            )
+            new_idx = len(pattern._tape[new_key]) - 1
+        return {
+            "type":      "note",
+            "etype":     etype,
+            "track":     t,
+            "bar":       n_bar,
+            "step":      n_step,
+            "offset":    n_bar * pattern._num_steps + n_step,
+            "pad":       n_note,
+            "vel":       n_vel,
+            "dur":       n_dur,
+            "bend":      n_bend,
+            "event_idx": new_idx,
+        }
+
     def edit_grid_note(self, pattern, ev, new_pad=None, new_vel=None,
                        new_bar=None, new_step=None):
         """Modifie un événement grille (etype G). Retourne le nouvel event_info ou None."""
