@@ -23,6 +23,8 @@ Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
 
 --- Lecture ---
 Espace / P       Play / Pause pattern (reprend depuis la position pausée)
+Ctrl+Space       Aller au début et lancer la lecture immédiatement (Goto Start + Play)
+                 Fonctionne aussi depuis l'éditeur MIDI et la fenêtre Songs
 V                Stop All (sons + pattern + Rec + Erase + réinitialise la position)
 C                Toggle métronome (click)
 Q                Activer / désactiver le mode Note Repeat
@@ -194,6 +196,65 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
 Alt+M            Connecter / déconnecter le port MIDI sélectionné
 Alt+Shift+M      Actualiser la liste des ports MIDI
 Double-clic      Connecter le port MIDI sélectionné (liste des ports)
+
+--- Éditeur MIDI (Alt+4) ---
+Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
+Échap            Fermer la fenêtre
+
+  -- Modes d'affichage --
+  Ctrl+1         Afficher les notes de la piste courante seulement (mode sauvegardé)
+  Ctrl+2         Afficher tous les événements MIDI du pattern (mode sauvegardé)
+
+  -- Navigation dans la liste --
+  ←/→            Aller et jouer la note ou groupe temporel précédent / suivant
+  ↑/↓            Naviguer entre les notes d'un accord (groupe simultané)
+  Début (Home)   Aller au premier événement de la liste filtrée
+  Fin   (End)    Aller au dernier événement de la liste filtrée
+  Ctrl+Début     Réinitialiser les limiteurs et aller au premier événement
+  Ctrl+Fin       Réinitialiser les limiteurs et aller au dernier événement
+
+  -- Sélection --
+  Ctrl+A         Sélectionner tous les événements affichés
+  Ctrl+Shift+A   Désélectionner tout
+  Shift+←        Sélectionner/désélectionner le groupe et aller au précédent (joue le groupe)
+  Shift+→        Sélectionner/désélectionner le groupe et aller au suivant (joue le groupe)
+  Shift+↑/↓      Sélectionner / désélectionner la note individuelle dans l'accord
+
+  -- Édition --
+  Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity)
+  Suppr / Ret.   Supprimer l'événement sélectionné
+  Ctrl+C         Copier les événements sélectionnés
+  Ctrl+X         Couper les événements sélectionnés
+  Ctrl+V         Coller le presse-papier
+  Ctrl+Z         Annuler (Undo)
+  Shift+Z        Refaire (Redo)
+  Ctrl+Shift+Z   Afficher l'historique des annulations
+
+  -- Limiteurs temporels --
+  i              Poser le limiteur gauche (In) à la position courante du playhead
+  o              Poser le limiteur droit (Out) à la position courante du playhead
+  Shift+I        Poser le limiteur gauche au début du pattern (step 0)
+  Shift+O        Poser le limiteur droit à la fin du pattern (dernier step)
+
+  -- Transport (partagé avec la fenêtre principale) --
+  Espace / P       Play / Pause pattern
+  Ctrl+Space       Aller au début et lancer la lecture immédiatement (Goto Start + Play)
+  V                Stop All
+  g                Aller au début du pattern (Goto Start)
+  Shift+G          Aller à la fin du pattern (Goto End)
+  w                Avancer de 1 seconde
+  b                Reculer de 1 seconde
+  PageDown         +1 mesure
+  PageUp           -1 mesure
+  Ctrl+PageDown    +1 battement
+  Ctrl+PageUp      -1 battement
+  Shift+PageDown   +1 tick (pas)
+  Shift+PageUp     -1 tick (pas)
+  l                Boucle On / Off
+  Shift+L          Poser le point de fin de boucle à la position courante du playhead
+  Ctrl+G           Afficher l'état du player et la position courante
+  Ctrl+Shift+G     Aller à une position (dialog bar:beat:tick)
+  Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
 
 --- Fenêtre Songs (Alt+5) ---
 Alt+5            Ouvrir la fenêtre Songs

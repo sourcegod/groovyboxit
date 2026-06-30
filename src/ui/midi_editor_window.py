@@ -886,6 +886,7 @@ class MidiEditorWindow(wx.Frame):
         # Ctrl+1 : mode notes de la piste courante
         if ctrl and not shift and (ukey == ord('1') or key == ord('1')):
             self._view_mode = self.MODE_NOTES
+            self._parent._midi_editor_view_mode = self.MODE_NOTES
             self._refresh()
             self._set_status("Mode : Notes de la piste courante")
             return
@@ -893,6 +894,7 @@ class MidiEditorWindow(wx.Frame):
         # Ctrl+2 : mode tous les événements
         if ctrl and not shift and (ukey == ord('2') or key == ord('2')):
             self._view_mode = self.MODE_ALL
+            self._parent._midi_editor_view_mode = self.MODE_ALL
             self._refresh()
             self._set_status("Mode : Tous les événements MIDI")
             return

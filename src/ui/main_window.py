@@ -136,6 +136,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._cur_song_idx = 0
         self._song_window         = None
         self._midi_editor_window  = None
+        self._midi_editor_view_mode = 0   # dernier mode utilisé (0=notes piste, 1=tous)
         self._pre_song_pattern_idx = 0
         self._player._pattern_list_ref     = self._pattern_list
         self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)
