@@ -1,6 +1,7 @@
 from .dialogs_simple import (
     KeyboardHelpDialog,
     GenRowDialog,
+    GridDialog,
     QuantizeDialog,
     SaveSongDialog,
     SavePatternDialog,
@@ -28,6 +29,7 @@ from .dialogs_temporal import (
 __all__ = [
     "KeyboardHelpDialog",
     "GenRowDialog",
+    "GridDialog",
     "QuantizeDialog",
     "SaveSongDialog",
     "SavePatternDialog",

@@ -93,6 +93,41 @@ class GenRowDialog(wx.Dialog):
         return sel if sel != wx.NOT_FOUND else 7
 
 
+class GridDialog(wx.Dialog):
+    """Boîte de sélection de la résolution de grille globale (navigation + quantisation)."""
+
+    def __init__(self, parent, cur_idx=None):
+        if cur_idx is None:
+            cur_idx = Pattern.GRID_DEFAULT_IDX
+        super().__init__(parent, title="Grille — résolution")
+
+        lbl       = wx.StaticText(self, label="Résolution de la grille :")
+        self._lb  = wx.ListBox(self, choices=Pattern.GRID_LABELS, style=wx.LB_SINGLE)
+        self._lb.SetSelection(max(0, min(cur_idx, len(Pattern.GRID_LABELS) - 1)))
+        self._lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(lbl,      0, wx.ALL, 6)
+        vbox.Add(self._lb, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._lb.SetFocus()
+
+    def get_grid_idx(self):
+        sel = self._lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else Pattern.GRID_DEFAULT_IDX
+
+
 class QuantizeDialog(wx.Dialog):
     def __init__(self, parent, cur_idx, quant_in_rec=True):
         super().__init__(parent, title="Quantisation du pattern")

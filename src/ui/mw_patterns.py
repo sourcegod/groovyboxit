@@ -2,6 +2,7 @@ import wx
 from pattern import Pattern
 from .dialogs import (
     GenRowDialog,
+    GridDialog,
     GotoDialog,
     QuantizeDialog,
     SavePatternDialog,
@@ -285,6 +286,18 @@ class PatternMixin:
     def _show_keyboard_help(self):
         dlg = KeyboardHelpDialog(self)
         dlg.ShowModal()
+        dlg.Destroy()
+
+    def _grid_dialog(self):
+        old_idx = self._player._grid_idx
+        dlg = GridDialog(self, old_idx)
+        if dlg.ShowModal() == wx.ID_OK:
+            new_idx = dlg.get_grid_idx()
+            if new_idx != old_idx:
+                self._add_undo(f"Grille : {Pattern.GRID_LABELS[old_idx]} → {Pattern.GRID_LABELS[new_idx]}")
+                self._player._grid_idx = new_idx
+            label = Pattern.GRID_LABELS[self._player._grid_idx]
+            self._show_status(f"Grille : {label}")
         dlg.Destroy()
 
     def _quantize_pattern_dialog(self):

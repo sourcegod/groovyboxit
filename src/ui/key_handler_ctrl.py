@@ -220,7 +220,8 @@ class CtrlHandler:
             win._player.goto_end()
             win._show_status(f"Fin: {win._player.position_str()}")
             return True
-        if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Grille (à venir)
+        if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Grille
+            win._grid_dialog()
             return True
         if shift and not alt and key == ord('L'):         # Ctrl+Shift+L : dialog loop points
             win._loop_select_dialog()
