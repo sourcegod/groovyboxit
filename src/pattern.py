@@ -27,6 +27,42 @@ class Pattern:
                    "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
     QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
     QUANT_LABELS = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
+
+    # Grille globale : (label, type, valeur)
+    # "bars"  → valeur = nombre de mesures par division (grille grossière)
+    # "snaps" → valeur = nombre de divisions par mesure (grille fine)
+    GRID_RESOLUTIONS = [
+        ("4 mes.",  "bars",  4),
+        ("2 mes.",  "bars",  2),
+        ("1 mes.",  "snaps", 1),
+        ("1/2",     "snaps", 2),
+        ("1/3",     "snaps", 3),
+        ("1/4",     "snaps", 4),
+        ("1/6",     "snaps", 6),
+        ("1/8",     "snaps", 8),
+        ("1/12",    "snaps", 12),
+        ("1/16",    "snaps", 16),
+        ("1/24",    "snaps", 24),
+        ("1/32",    "snaps", 32),
+        ("1/48",    "snaps", 48),
+        ("1/64",    "snaps", 64),
+        ("1/96",    "snaps", 96),
+        ("1/128",   "snaps", 128),
+    ]
+    GRID_LABELS      = [r[0] for r in GRID_RESOLUTIONS]
+    GRID_DEFAULT_IDX = 9   # 1/16
+
+    @staticmethod
+    def grid_step_size(grid_idx, num_steps):
+        """Taille d'un pas de grille en steps (float).
+
+        grid_idx  : index dans GRID_RESOLUTIONS
+        num_steps : steps par mesure du pattern courant
+        """
+        _, kind, val = Pattern.GRID_RESOLUTIONS[grid_idx]
+        if kind == "bars":
+            return val * num_steps   # ex. 4 mes × 16 steps = 64 steps
+        return num_steps / val       # ex. 16 / 16 = 1.0 step
     MAX_PATTERNS      = 99
     MAX_BARS          = 999
     MAX_TRACKS        = 16

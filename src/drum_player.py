@@ -50,6 +50,7 @@ class DrumPlayer:
         self.voice_manager = VoiceManager(self._pattern._num_pads)
         self.step_duration = 60.0 / self.bpm / 4
         self.quant_idx = 7  # défaut: 1/16
+        self._grid_idx = Pattern.GRID_DEFAULT_IDX   # grille globale (navigation + quantise)
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
