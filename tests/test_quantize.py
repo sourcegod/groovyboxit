@@ -304,13 +304,14 @@ def test_grid_default_idx():
 
 def test_player_default_quant_params():
     player = make_player()
-    assert player._quant_res_idx    == -1
-    assert player._quant_force_idx  == 4
-    assert player._quant_swing_idx  == 0
-    assert player._quant_window_idx == 4
-    assert player._quant_starts     == True
-    assert player._quant_durations  == False
-    assert player._grid_idx         == Pattern.GRID_DEFAULT_IDX
+    assert player._quant_res_idx       == -1
+    assert player._quant_force_idx     == 4
+    assert player._quant_swing_idx     == 0
+    assert player._quant_window_idx    == 4
+    assert player._quant_starts        == True
+    assert player._quant_durations     == False
+    assert player._quant_direction_idx == 0
+    assert player._grid_idx            == Pattern.GRID_DEFAULT_IDX
     print("  valeurs par défaut quant_params : OK")
 
 
@@ -571,6 +572,105 @@ def test_quant_tape_window_50_quantizes_close_note():
 
 
 # ---------------------------------------------------------------------------
+# Direction — G events
+#
+# Grille 1/4 : denom=4, num_steps=16, step_size=4
+# Points de grille : [0, 4, 8, 12]
+# pos=2.6 : plus proche=4, précédent=0, suivant=4
+# pos=2.0 : plus proche=0 (dist=2 ≤ dist à 4=2, tiebreak vers 0), précédent=0, suivant=4
+# ---------------------------------------------------------------------------
+
+def test_quant_direction_proche_snaps_to_nearest():
+    # pos=2.6, nearest=4 (dist 1.4 < dist à 0=2.6) → step 4
+    player = make_player()
+    player.float_offsets[0] = [2.6]
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=0)
+    assert 4 in active_steps(player, 0)
+    print("  direction Proche  : pos 2.6 → step 4 (nearest) : OK")
+
+def test_quant_direction_precedente_snaps_backward():
+    # pos=2.6, précédent ≤ 2.6 → 0 → step 0
+    player = make_player()
+    player.float_offsets[0] = [2.6]
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=1)
+    steps = active_steps(player, 0)
+    assert 0 in steps and 4 not in steps
+    print("  direction Précédente : pos 2.6 → step 0 (floor) : OK")
+
+def test_quant_direction_suivante_snaps_forward():
+    # pos=1.0, suivant ≥ 1.0 → 4 → step 4
+    player = make_player()
+    player.float_offsets[0] = [1.0]
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=2)
+    steps = active_steps(player, 0)
+    assert 4 in steps and 0 not in steps
+    print("  direction Suivante  : pos 1.0 → step 4 (ceil) : OK")
+
+def test_quant_direction_precedente_note_on_grid():
+    # pos=4.0 est déjà sur la grille → précédent=4.0 → step 4 inchangé
+    player = make_player()
+    player.float_offsets[0] = [4.0]
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=1)
+    assert 4 in active_steps(player, 0)
+    print("  direction Précédente : pos sur grille → step 4 inchangé : OK")
+
+def test_quant_direction_suivante_note_on_grid():
+    # pos=4.0 est déjà sur la grille → suivant=4.0 → step 4 inchangé
+    player = make_player()
+    player.float_offsets[0] = [4.0]
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=2)
+    assert 4 in active_steps(player, 0)
+    print("  direction Suivante  : pos sur grille → step 4 inchangé : OK")
+
+
+# ---------------------------------------------------------------------------
+# Direction — Tape K/P
+# ---------------------------------------------------------------------------
+
+def test_quant_direction_tape_precedente_snaps_backward():
+    # K step=3 (pos=3.0), grille 1/4, précédent ≤ 3 → 0 → step 0
+    player = make_player()
+    _add_K(player, 0, 3)
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=1)
+    pos = _tape_pos(player)
+    assert (0, 0) in pos and (0, 3) not in pos
+    print("  tape direction Précédente : step 3 → step 0 : OK")
+
+def test_quant_direction_tape_suivante_snaps_forward():
+    # K step=1 (pos=1.0), grille 1/4, suivant ≥ 1 → 4 → step 4
+    player = make_player()
+    _add_K(player, 0, 1)
+    player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
+                                   force_idx=4, direction_idx=2)
+    pos = _tape_pos(player)
+    assert (0, 4) in pos and (0, 1) not in pos
+    print("  tape direction Suivante  : step 1 → step 4 : OK")
+
+
+# ---------------------------------------------------------------------------
+# Direction — constante QUANT_DIRECTIONS + valeur par défaut
+# ---------------------------------------------------------------------------
+
+def test_quant_directions_constant():
+    assert len(Pattern.QUANT_DIRECTIONS) == 3
+    assert "Proche"    in Pattern.QUANT_DIRECTIONS[0]
+    assert "Précédente" in Pattern.QUANT_DIRECTIONS[1]
+    assert "Suivante"  in Pattern.QUANT_DIRECTIONS[2]
+    print("  QUANT_DIRECTIONS : 3 entrées Proche/Précédente/Suivante : OK")
+
+def test_player_default_direction_idx():
+    player = make_player()
+    assert player._quant_direction_idx == 0
+    print("  _quant_direction_idx défaut = 0 (Proche) : OK")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=== test_quantize ===")
@@ -633,4 +733,16 @@ if __name__ == "__main__":
     # Tape K/P — fenêtre
     test_quant_tape_window_50_leaves_far_note()
     test_quant_tape_window_50_quantizes_close_note()
+    # Direction — G events
+    test_quant_direction_proche_snaps_to_nearest()
+    test_quant_direction_precedente_snaps_backward()
+    test_quant_direction_suivante_snaps_forward()
+    test_quant_direction_precedente_note_on_grid()
+    test_quant_direction_suivante_note_on_grid()
+    # Direction — Tape K/P
+    test_quant_direction_tape_precedente_snaps_backward()
+    test_quant_direction_tape_suivante_snaps_forward()
+    # Direction — constante + défaut
+    test_quant_directions_constant()
+    test_player_default_direction_idx()
     print("Tous les tests : OK")
