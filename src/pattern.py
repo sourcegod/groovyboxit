@@ -33,6 +33,7 @@ class Pattern:
     # "snaps" → valeur = nombre de divisions par mesure (grille fine)
     GRID_RESOLUTIONS = [
         ("4 mes.",  "bars",  4),
+        ("3 mes.",  "bars",  3),
         ("2 mes.",  "bars",  2),
         ("1 mes.",  "snaps", 1),
         ("1/2",     "snaps", 2),
@@ -50,7 +51,7 @@ class Pattern:
         ("1/128",   "snaps", 128),
     ]
     GRID_LABELS      = [r[0] for r in GRID_RESOLUTIONS]
-    GRID_DEFAULT_IDX = 9   # 1/16
+    GRID_DEFAULT_IDX = 10  # 1/16
 
     @staticmethod
     def grid_step_size(grid_idx, num_steps):
