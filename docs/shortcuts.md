@@ -18,7 +18,8 @@ Shift+F          Diviser le pattern par deux (garde la première moitié)
 Ctrl+E           Appliquer la quant à la ligne courante
 Ctrl+Shift+E     Choisir la ligne + quant et générer le motif
 Shift+E          Décocher toute la ligne courante
-Shift+Q          Quantiser le pattern (valeur par défaut)
+Ctrl+Q           Quantiser le pattern depuis la grille courante (résolution déduite de la grille)
+Shift+Q          Quantiser le pattern avec les derniers paramètres mémorisés (sans dialog)
 Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
 
 --- Lecture ---
@@ -222,6 +223,8 @@ Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
   Shift+↑/↓      Sélectionner / désélectionner la note individuelle dans l'accord
 
   -- Édition --
+  Ctrl+Q         Quantiser le pattern depuis la grille courante (sans dialog)
+  Shift+Q        Quantiser le pattern avec les derniers paramètres mémorisés (sans dialog)
   Ctrl+Shift+Q   Ouvrir le dialog de quantisation (résolution, force, swing, fenêtre)
   Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity)
   Suppr / Ret.   Supprimer l'événement sélectionné
