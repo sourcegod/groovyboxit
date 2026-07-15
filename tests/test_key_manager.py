@@ -275,8 +275,10 @@ class FakeWindow:
     def _refresh_track_list(self):        self.calls.append('_refresh_track_list')
     def _apply_quant(self):               self.calls.append('_apply_quant')
     def _gen_row_dialog(self):            self.calls.append('_gen_row_dialog')
-    def _quantize_pattern(self):          self.calls.append('_quantize_pattern')
-    def _quantize_pattern_dialog(self):   self.calls.append('_quantize_pattern_dialog')
+    def _quantize_pattern(self):           self.calls.append('_quantize_pattern')
+    def _quantize_pattern_dialog(self):    self.calls.append('_quantize_pattern_dialog')
+    def _quantize_from_grid(self):         self.calls.append('_quantize_from_grid')
+    def _quantize_with_last_params(self):  self.calls.append('_quantize_with_last_params')
     def _track_properties_dialog(self):   self.calls.append('_track_properties_dialog')
     def _assign_track_slot(self):         self.calls.append('_assign_track_slot')
     def _move(self, dr, dc):              self.calls.append(('_move', dr, dc))
@@ -764,12 +766,19 @@ def test_shift_f_halves_pattern():
     teardown(app)
     print("  Shift+F → halve_pattern() : OK")
 
-def test_shift_q_quantizes_pattern():
+def test_ctrl_q_quantizes_from_grid():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('Q'), ctrl=True))
+    assert '_quantize_from_grid' in win.calls
+    teardown(app)
+    print("  Ctrl+Q → _quantize_from_grid() : OK")
+
+def test_shift_q_quantizes_with_last_params():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('Q'), shift=True))
-    assert '_quantize_pattern' in win.calls
+    assert '_quantize_with_last_params' in win.calls
     teardown(app)
-    print("  Shift+Q → _quantize_pattern() : OK")
+    print("  Shift+Q → _quantize_with_last_params() : OK")
 
 def test_shift_e_unchecks_whole_row():
     app, win, km = make_km()
@@ -951,6 +960,7 @@ if __name__ == "__main__":
     test_ctrl_1_sets_pad_mode()
     test_ctrl_2_sets_keyboard_mode()
     test_ctrl_shift_q_opens_quantize_dialog()
+    test_ctrl_q_quantizes_from_grid()
     test_ctrl_t_assigns_track_slot()
     test_ctrl_shift_t_opens_track_properties()
     test_ctrl_r_starts_count_in()
@@ -988,7 +998,7 @@ if __name__ == "__main__":
     test_shift_x_unmutes_all_pads()
     test_shift_s_unsolos_all_pads()
     test_shift_f_halves_pattern()
-    test_shift_q_quantizes_pattern()
+    test_shift_q_quantizes_with_last_params()
     test_shift_e_unchecks_whole_row()
     test_bpm_increase_via_key5()
     test_volume_decrease_via_key6()
