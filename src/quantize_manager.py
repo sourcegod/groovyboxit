@@ -70,14 +70,16 @@ class QuantizeManager:
         p.float_offsets[row] = sorted(grid)
 
     def apply_quant_to_pattern(self, quant_idx=None, force_idx=4, swing_idx=0,
-                               window_idx=4, quant_starts=True, quant_durations=False):
-        """Quantise grille (G) et tape (K/P) avec force, swing et fenêtre.
+                               window_idx=4, quant_starts=True, quant_durations=False,
+                               direction_idx=0):
+        """Quantise grille (G) et tape (K/P) avec force, swing, fenêtre et direction.
 
-        force_idx  : 0..4 → 0/25/50/75/100 % d'attraction vers la grille
-        swing_idx  : 0..4 → 0/25/50/75/100 % de décalage des temps impairs
-        window_idx : 0..4 → 0/25/50/75/100 % de la demi-division : zone de capture
-        quant_starts   : aligner les débuts de notes
+        force_idx     : 0..4 → 0/25/50/75/100 % d'attraction vers la grille
+        swing_idx     : 0..4 → 0/25/50/75/100 % de décalage des temps impairs
+        window_idx    : 0..4 → 0/25/50/75/100 % de la demi-division : zone de capture
+        quant_starts  : aligner les débuts de notes
         quant_durations: aligner les durées (K/P uniquement)
+        direction_idx : 0=Proche, 1=Précédente, 2=Suivante
         """
         p = self._p
         if quant_idx is None:
@@ -104,8 +106,15 @@ class QuantizeManager:
             for i in range(denom)
         ]
 
-        def _nearest(pos):
-            return min(full_grid, key=lambda g: abs(g - pos))
+        def _find_target(pos, grid):
+            if direction_idx == 1:   # Précédente : plus grand point ≤ pos
+                cands = [g for g in grid if g <= pos]
+                return cands[-1] if cands else grid[0]
+            elif direction_idx == 2: # Suivante : plus petit point ≥ pos
+                cands = [g for g in grid if g >= pos]
+                return cands[0] if cands else grid[-1]
+            else:                    # Proche (défaut)
+                return min(grid, key=lambda g: abs(g - pos))
 
         def _in_window(pos, ng):
             if window_pct >= 100:
@@ -128,7 +137,7 @@ class QuantizeManager:
                     continue
                 snapped = []
                 for pos in active:
-                    ng = _nearest(pos)
+                    ng = _find_target(pos, full_grid)
                     new_pos = _snap(pos, ng) if _in_window(pos, ng) else pos
                     rounded = round(new_pos)
                     snapped.append(float(rounded))
@@ -160,7 +169,7 @@ class QuantizeManager:
                     n_bar, n_step = b, s
                     if quant_starts:
                         pos = b * num_steps + float(s)
-                        ng  = _nearest(pos)
+                        ng  = _find_target(pos, full_grid)
                         if _in_window(pos, ng):
                             new_pos = _snap(pos, ng)
                             n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
@@ -168,7 +177,7 @@ class QuantizeManager:
                     n_dur = ev.dur
                     if quant_durations and ev.dur > 0:
                         dur_steps = ev.dur / ms_per_step
-                        ng_dur    = min(dur_grid, key=lambda g: abs(g - dur_steps))
+                        ng_dur    = _find_target(dur_steps, dur_grid)
                         if _in_window(dur_steps, ng_dur):
                             n_dur = max(10, round(_snap(dur_steps, ng_dur) * ms_per_step))
                     new_tape.setdefault((t, n_bar, n_step), []).append(

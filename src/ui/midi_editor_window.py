@@ -945,24 +945,28 @@ class MidiEditorWindow(wx.Frame):
         from pattern import Pattern
         p        = self._parent._player
         old_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
-                    p._quant_window_idx, p._quant_starts, p._quant_durations)
+                    p._quant_window_idx, p._quant_starts, p._quant_durations,
+                    p._quant_direction_idx)
         dlg = QuantizeDialog(self,
                              res_idx        = p._quant_res_idx,
                              force_idx      = p._quant_force_idx,
                              swing_idx      = p._quant_swing_idx,
                              window_idx     = p._quant_window_idx,
                              quant_starts   = p._quant_starts,
-                             quant_durations= p._quant_durations)
+                             quant_durations= p._quant_durations,
+                             direction_idx  = p._quant_direction_idx)
         result = dlg.ShowModal()
         if result in (wx.ID_OK, wx.ID_APPLY):
-            p._quant_res_idx    = dlg.get_resolution()
-            p._quant_force_idx  = dlg.get_force_idx()
-            p._quant_swing_idx  = dlg.get_swing_idx()
-            p._quant_window_idx = dlg.get_window_idx()
-            p._quant_starts     = dlg.get_quant_starts()
-            p._quant_durations  = dlg.get_quant_durations()
+            p._quant_res_idx       = dlg.get_resolution()
+            p._quant_force_idx     = dlg.get_force_idx()
+            p._quant_swing_idx     = dlg.get_swing_idx()
+            p._quant_window_idx    = dlg.get_window_idx()
+            p._quant_starts        = dlg.get_quant_starts()
+            p._quant_durations     = dlg.get_quant_durations()
+            p._quant_direction_idx = dlg.get_direction_idx()
             new_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
-                        p._quant_window_idx, p._quant_starts, p._quant_durations)
+                        p._quant_window_idx, p._quant_starts, p._quant_durations,
+                        p._quant_direction_idx)
             res = p._quant_res_idx
             if res == -2:
                 _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
@@ -979,6 +983,7 @@ class MidiEditorWindow(wx.Frame):
                     window_idx     = p._quant_window_idx,
                     quant_starts   = p._quant_starts,
                     quant_durations= p._quant_durations,
+                    direction_idx  = p._quant_direction_idx,
                 )
                 p._compute_offsets()
                 self._parent._refresh_grid()
@@ -1007,6 +1012,7 @@ class MidiEditorWindow(wx.Frame):
             window_idx     = p._quant_window_idx,
             quant_starts   = p._quant_starts,
             quant_durations= p._quant_durations,
+            direction_idx  = p._quant_direction_idx,
         )
         p._compute_offsets()
         self._parent._refresh_grid()
@@ -1031,6 +1037,7 @@ class MidiEditorWindow(wx.Frame):
             window_idx     = p._quant_window_idx,
             quant_starts   = p._quant_starts,
             quant_durations= p._quant_durations,
+            direction_idx  = p._quant_direction_idx,
         )
         p._compute_offsets()
         self._parent._refresh_grid()

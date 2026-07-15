@@ -25,8 +25,9 @@ class Pattern:
     VALID_NUM_STEPS = (16, 32, 64, 128)
     QUANT_LIST  = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16",
                    "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
-    QUANT_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
-    QUANT_LABELS = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
+    QUANT_STEPS      = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
+    QUANT_LABELS     = [f"Quant_{i + 1:02d} - {q}" for i, q in enumerate(QUANT_LIST)]
+    QUANT_DIRECTIONS = ["Direction: Proche", "Direction: Précédente", "Direction: Suivante"]
 
     # Grille globale : (label, type, valeur)
     # "bars"  → valeur = nombre de mesures par division (grille grossière)

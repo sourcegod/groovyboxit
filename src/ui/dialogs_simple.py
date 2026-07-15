@@ -139,7 +139,8 @@ class QuantizeDialog(wx.Dialog):
     _RES_OFFSET = 2   # ListBox[0]=Grille courante, [1]=Aucune, [2+]= QUANT_LIST
 
     def __init__(self, parent, res_idx=-1, force_idx=4, swing_idx=0,
-                 window_idx=4, quant_starts=True, quant_durations=False):
+                 window_idx=4, quant_starts=True, quant_durations=False,
+                 direction_idx=0):
         super().__init__(parent, title="Quantisation")
 
         res_choices = (["Résolution: Grille courante", "Résolution: Aucune"]
@@ -157,6 +158,9 @@ class QuantizeDialog(wx.Dialog):
 
         self._window_lb = wx.ListBox(self, choices=self._WINDOW_LABELS, style=wx.LB_SINGLE)
         self._window_lb.SetSelection(max(0, min(window_idx, len(self._WINDOW_LABELS) - 1)))
+
+        self._direction_lb = wx.ListBox(self, choices=Pattern.QUANT_DIRECTIONS, style=wx.LB_SINGLE)
+        self._direction_lb.SetSelection(max(0, min(direction_idx, len(Pattern.QUANT_DIRECTIONS) - 1)))
 
         self._starts_cb    = wx.CheckBox(self, label="Quantiser les débuts")
         self._durations_cb = wx.CheckBox(self, label="Quantiser les durées")
@@ -176,7 +180,8 @@ class QuantizeDialog(wx.Dialog):
         btn_sizer.Realize()
 
         vbox = wx.BoxSizer(wx.VERTICAL)
-        for lb in (self._res_lb, self._force_lb, self._swing_lb, self._window_lb):
+        for lb in (self._res_lb, self._force_lb, self._swing_lb, self._window_lb,
+                   self._direction_lb):
             vbox.Add(lb, 0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._starts_cb,    0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._durations_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
@@ -209,6 +214,10 @@ class QuantizeDialog(wx.Dialog):
 
     def get_quant_durations(self):
         return self._durations_cb.GetValue()
+
+    def get_direction_idx(self):
+        sel = self._direction_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
 
 
 class SaveSongDialog(wx.Dialog):

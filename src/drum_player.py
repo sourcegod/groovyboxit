@@ -58,6 +58,7 @@ class DrumPlayer:
         self._quant_window_idx   = 4    # 100 % (pas de filtrage par fenêtre)
         self._quant_starts       = True
         self._quant_durations    = False
+        self._quant_direction_idx = 0   # 0=Proche, 1=Précédente, 2=Suivante
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
