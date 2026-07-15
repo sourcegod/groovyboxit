@@ -160,6 +160,48 @@ class PatternMixin:
         self._refresh_grid()
         self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[self._player.quant_idx]}")
 
+    def _quantize_from_grid(self):
+        p = self._player
+        _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
+        res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
+        if res < 0:
+            self._show_status("Ctrl+Q : résolution de grille incompatible")
+            return
+        self._add_undo("Quantiser pattern (grille)")
+        p.apply_quant_to_pattern(
+            res,
+            force_idx      = p._quant_force_idx,
+            swing_idx      = p._quant_swing_idx,
+            window_idx     = p._quant_window_idx,
+            quant_starts   = p._quant_starts,
+            quant_durations= p._quant_durations,
+        )
+        p._compute_offsets()
+        self._refresh_grid()
+        self._show_status(f"Pattern quantisé (grille) : {Pattern.QUANT_LIST[res]}")
+
+    def _quantize_with_last_params(self):
+        p = self._player
+        res = p._quant_res_idx
+        if res == -2:
+            _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
+            res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
+        if res < 0:
+            self._show_status("Shift+Q : aucune résolution de quantisation mémorisée")
+            return
+        self._add_undo("Quantiser pattern (derniers params)")
+        p.apply_quant_to_pattern(
+            res,
+            force_idx      = p._quant_force_idx,
+            swing_idx      = p._quant_swing_idx,
+            window_idx     = p._quant_window_idx,
+            quant_starts   = p._quant_starts,
+            quant_durations= p._quant_durations,
+        )
+        p._compute_offsets()
+        self._refresh_grid()
+        self._show_status(f"Pattern quantisé : {Pattern.QUANT_LIST[res]}")
+
     def _gen_row_dialog(self):
         dlg    = GenRowDialog(self, self._cur_row, self._player.quant_idx, self.ROWS)
         result = dlg.ShowModal()

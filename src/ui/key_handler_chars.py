@@ -61,9 +61,9 @@ class CharHandler:
                 win._show_status("Impossible de diviser (1 mesure minimum)")
             return True
 
-        # Shift+Q : quantiser le pattern (undo géré dans _quantize_pattern)
+        # Shift+Q : quantiser avec les derniers paramètres (sans dialog)
         if shift and not ctrl and key == ord('Q'):
-            win._quantize_pattern()
+            win._quantize_with_last_params()
             return True
 
         # Q : toggle Note Repeat

@@ -991,6 +991,52 @@ class MidiEditorWindow(wx.Frame):
         dlg.Destroy()
         self._event_lb.SetFocus()
 
+    def _quantize_from_grid(self):
+        from pattern import Pattern
+        p = self._parent._player
+        _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
+        res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
+        if res < 0:
+            self._set_status("Ctrl+Q : résolution de grille incompatible")
+            return
+        self._parent._add_undo("Quantiser pattern (grille, éditeur MIDI)")
+        p.apply_quant_to_pattern(
+            res,
+            force_idx      = p._quant_force_idx,
+            swing_idx      = p._quant_swing_idx,
+            window_idx     = p._quant_window_idx,
+            quant_starts   = p._quant_starts,
+            quant_durations= p._quant_durations,
+        )
+        p._compute_offsets()
+        self._parent._refresh_grid()
+        self._refresh()
+        self._set_status(f"Pattern quantisé (grille) : {Pattern.QUANT_LIST[res]}")
+
+    def _quantize_with_last_params(self):
+        from pattern import Pattern
+        p = self._parent._player
+        res = p._quant_res_idx
+        if res == -2:
+            _, kind, val = Pattern.GRID_RESOLUTIONS[p._grid_idx]
+            res = Pattern.QUANT_STEPS.index(val) if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
+        if res < 0:
+            self._set_status("Shift+Q : aucune résolution de quantisation mémorisée")
+            return
+        self._parent._add_undo("Quantiser pattern (derniers params, éditeur MIDI)")
+        p.apply_quant_to_pattern(
+            res,
+            force_idx      = p._quant_force_idx,
+            swing_idx      = p._quant_swing_idx,
+            window_idx     = p._quant_window_idx,
+            quant_starts   = p._quant_starts,
+            quant_durations= p._quant_durations,
+        )
+        p._compute_offsets()
+        self._parent._refresh_grid()
+        self._refresh()
+        self._set_status(f"Pattern quantisé : {Pattern.QUANT_LIST[res]}")
+
     def _delete_event(self):
         if not self._events:
             return
@@ -1331,6 +1377,16 @@ class MidiEditorWindow(wx.Frame):
         # Ctrl+Shift+Q : boite de quantisation (même dialog que le pattern)
         if ctrl and shift and (ukey == ord('q') or ukey == ord('Q')):
             self._quantize_dialog()
+            return
+
+        # Ctrl+Q : quantiser depuis la grille courante (sans dialog)
+        if ctrl and not shift and (ukey == ord('q') or ukey == ord('Q')):
+            self._quantize_from_grid()
+            return
+
+        # Shift+Q : quantiser avec les derniers paramètres (sans dialog)
+        if not ctrl and shift and (ukey == ord('q') or ukey == ord('Q')):
+            self._quantize_with_last_params()
             return
 
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
