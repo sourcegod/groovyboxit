@@ -262,14 +262,14 @@ def test_rec_quant_multi_bar_correct_bar_and_step():
 # ---------------------------------------------------------------------------
 
 def test_grid_step_size_snaps_1_16():
-    # GRID_RESOLUTIONS[9] = ("1/16", "snaps", 16) → 16/16 = 1.0
-    size = Pattern.grid_step_size(9, num_steps=16)
+    # GRID_RESOLUTIONS[10] = ("1/16", "snaps", 16) → 16/16 = 1.0
+    size = Pattern.grid_step_size(10, num_steps=16)
     assert size == 1.0
     print("  grid_step_size 1/16 (snaps, val=16) → 1.0 step : OK")
 
 def test_grid_step_size_snaps_1_4():
-    # GRID_RESOLUTIONS[5] = ("1/4", "snaps", 4) → 16/4 = 4.0
-    size = Pattern.grid_step_size(5, num_steps=16)
+    # GRID_RESOLUTIONS[6] = ("1/4", "snaps", 4) → 16/4 = 4.0
+    size = Pattern.grid_step_size(6, num_steps=16)
     assert size == 4.0
     print("  grid_step_size 1/4 (snaps, val=4) → 4.0 steps : OK")
 
@@ -279,17 +279,23 @@ def test_grid_step_size_bars_4_mes():
     assert size == 64.0
     print("  grid_step_size 4 mes. (bars, val=4) → 64.0 steps : OK")
 
-def test_grid_step_size_bars_2_mes():
-    # GRID_RESOLUTIONS[1] = ("2 mes.", "bars", 2) → 2*16 = 32.0
+def test_grid_step_size_bars_3_mes():
+    # GRID_RESOLUTIONS[1] = ("3 mes.", "bars", 3) → 3*16 = 48.0
     size = Pattern.grid_step_size(1, num_steps=16)
+    assert size == 48.0
+    print("  grid_step_size 3 mes. (bars, val=3) → 48.0 steps : OK")
+
+def test_grid_step_size_bars_2_mes():
+    # GRID_RESOLUTIONS[2] = ("2 mes.", "bars", 2) → 2*16 = 32.0
+    size = Pattern.grid_step_size(2, num_steps=16)
     assert size == 32.0
     print("  grid_step_size 2 mes. (bars, val=2) → 32.0 steps : OK")
 
 def test_grid_default_idx():
-    assert Pattern.GRID_DEFAULT_IDX == 9
-    label, kind, val = Pattern.GRID_RESOLUTIONS[9]
+    assert Pattern.GRID_DEFAULT_IDX == 10
+    label, kind, val = Pattern.GRID_RESOLUTIONS[10]
     assert label == "1/16" and kind == "snaps" and val == 16
-    print("  GRID_DEFAULT_IDX=9 → '1/16' snaps 16 : OK")
+    print("  GRID_DEFAULT_IDX=10 → '1/16' snaps 16 : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -596,6 +602,7 @@ if __name__ == "__main__":
     test_grid_step_size_snaps_1_16()
     test_grid_step_size_snaps_1_4()
     test_grid_step_size_bars_4_mes()
+    test_grid_step_size_bars_3_mes()
     test_grid_step_size_bars_2_mes()
     test_grid_default_idx()
     # Valeurs par défaut
