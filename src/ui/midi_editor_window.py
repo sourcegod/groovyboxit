@@ -3,6 +3,7 @@ import wx
 from midi_editor import MidiEditor
 from synth_engine import midi_to_note_name
 from rack import InstrumentType
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 
 
 class _NoteEditDialog(wx.Dialog):
@@ -10,7 +11,7 @@ class _NoteEditDialog(wx.Dialog):
 
     def __init__(self, parent, ev, pattern, pad_names):
         from synth_engine import midi_to_note_name
-        etype     = ev.get("etype", "G")
+        etype     = ev.get("etype", ETYPE_GRID)
         super().__init__(parent, title="Éditer note",
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         num_bars  = pattern._num_bars
@@ -18,8 +19,8 @@ class _NoteEditDialog(wx.Dialog):
         num_pads  = pattern._num_pads
         self._etype = etype
 
-        # Sélecteur instrument : pad (G/K) ou note MIDI (P)
-        if etype == "P":
+        # Sélecteur instrument : pad (GRID/KIT) ou note MIDI (PATCH)
+        if etype == ETYPE_PATCH:
             inst_lbl      = wx.StaticText(self, label="Note :")
             note_choices  = [f"{i:3d}  {midi_to_note_name(i)}" for i in range(128)]
             self._inst_lb = wx.ListBox(self, choices=note_choices,
@@ -38,11 +39,11 @@ class _NoteEditDialog(wx.Dialog):
         self._step_ctrl = wx.SpinCtrl(self, min=1, max=num_steps,
                                       initial=ev["step"] + 1, size=(70, -1))
 
-        # Durée : éditable pour les événements tape (K/P), lecture seule pour G
+        # Durée : éditable pour les événements tape (KIT/PATCH), lecture seule pour GRID
         dur_lbl        = wx.StaticText(self, label="Durée (ms) :")
         self._dur_ctrl = wx.SpinCtrl(self, min=10, max=30000,
                                      initial=max(10, ev.get("dur", 500)), size=(80, -1))
-        if etype == "G":
+        if etype == ETYPE_GRID:
             self._dur_ctrl.Enable(False)
 
         vel_lbl        = wx.StaticText(self, label="Vélocité :")
@@ -114,7 +115,7 @@ class _MidiEventEditDialog(wx.Dialog):
     """Dialog d'édition MIDI : note (C0..G10), position BBT, durée BBT, vélocité."""
 
     def __init__(self, parent, ev, pattern):
-        etype          = ev.get("etype", "G")
+        etype          = ev.get("etype", ETYPE_GRID)
         num_bars       = pattern._num_bars
         num_steps      = pattern._num_steps
         num_beats      = pattern._num_beats
@@ -176,11 +177,11 @@ class _MidiEventEditDialog(wx.Dialog):
         self._pos_txt.Bind(wx.EVT_TEXT_ENTER, self._on_pos_confirm)
         self._pos_txt.Bind(wx.EVT_KILL_FOCUS, self._on_pos_confirm)
 
-        # --- Durée BBT (désactivée pour G : dérive des réglages du pad) ---
+        # --- Durée BBT (désactivée pour GRID : dérive des réglages du pad) ---
         dur_lbl       = wx.StaticText(self, label="Durée (mes:batt:tck) :")
         self._dur_txt = wx.TextCtrl(self, value=f"{dur_bars}:{dur_beats}:{dur_ticks}",
                                     size=(90, -1))
-        if etype == "G":
+        if etype == ETYPE_GRID:
             self._dur_txt.Enable(False)
 
         # --- Vélocité ---
@@ -311,7 +312,7 @@ class MidiEditorWindow(wx.Frame):
     """
 
     MODE_NOTES = 0   # notes de la piste courante (grille séquenceur)
-    MODE_ALL   = 1   # tous les événements MIDI (grille + tape K/P + CC)
+    MODE_ALL   = 1   # tous les événements MIDI (grille + tape KIT/PATCH + CC)
 
     def __init__(self, parent, view_mode=MODE_NOTES):
         super().__init__(parent, title="Éditeur MIDI",
@@ -369,20 +370,20 @@ class MidiEditorWindow(wx.Frame):
     def _event_note_name(self, ev):
         """Nom affiché pour un événement note selon son etype et le slot de sa piste.
 
-        - etype P : note MIDI brute (enregistrement live synth) → nom directement
-        - etype K : index pad kit (enregistrement live kit) → nom du pad
-        - etype G : index pad grille → MIDI (synth) ou nom pad (kit) selon slot
+        - etype PATCH : note MIDI brute (enregistrement live synth) → nom directement
+        - etype KIT : index pad kit (enregistrement live kit) → nom du pad
+        - etype GRID : index pad grille → MIDI (synth) ou nom pad (kit) selon slot
         """
-        etype   = ev.get("etype", "G")
+        etype   = ev.get("etype", ETYPE_GRID)
         pad_val = ev["pad"]
 
-        if etype == "P":
+        if etype == ETYPE_PATCH:
             return midi_to_note_name(pad_val)
 
-        if etype == "K":
+        if etype == ETYPE_KIT:
             return self._pad_name(pad_val)
 
-        # etype == "G" : vérifier le slot de la piste
+        # etype == ETYPE_GRID : vérifier le slot de la piste
         track_idx = ev["track"]
         slot_idx  = self._parent._router.slot_for_track(track_idx)
         slot      = self._parent._rack.get_slot(slot_idx)
@@ -459,7 +460,7 @@ class MidiEditorWindow(wx.Frame):
         if e["type"] == "note":
             name = self._event_note_name(e)
             bbt  = self._bbt_str(e["bar"], e["step"])
-            if e["etype"] == "G":
+            if e["etype"] == ETYPE_GRID:
                 return (f"{mark}{bbt}  Tr{e['track']+1:02d}  "
                         f"{name:<6}  Vel:{e['vel']:3d}")
             else:
@@ -516,12 +517,12 @@ class MidiEditorWindow(wx.Frame):
             if not router.synth_ready():
                 router.load_slot_preview(self._parent._cur_slot)
                 return
-            if etype == "G":
+            if etype == ETYPE_GRID:
                 pad = ev["pad"]
                 if pad >= len(router.kb_notes_input):
                     return
                 midi = router.kb_notes_input[pad]
-            elif etype == "P":
+            elif etype == ETYPE_PATCH:
                 midi = ev["pad"]
             else:
                 return
@@ -529,7 +530,7 @@ class MidiEditorWindow(wx.Frame):
             router.synth.play(midi, maxtime_ms=dur_ms)
             self._preview_midis.append(midi)
             return dur_ms
-        elif etype == "G":
+        elif etype == ETYPE_GRID:
             self._parent._player.play_sound(ev["pad"])
         return None
 
@@ -880,14 +881,14 @@ class MidiEditorWindow(wx.Frame):
         if ev.get("type") != "note":
             self._set_status("Pas une note — édition non disponible")
             return
-        etype = ev.get("etype", "G")
+        etype = ev.get("etype", ETYPE_GRID)
         pat   = self._parent._player._pattern
         self._add_undo(
             f"Éditer note Tr{ev['track']+1} B{ev['bar']+1}:S{ev['step']+1}"
         )
         dlg = _MidiEventEditDialog(self, ev, pat)
         if dlg.ShowModal() == wx.ID_OK:
-            if etype == "G":
+            if etype == ETYPE_GRID:
                 new_note = min(dlg.get_note(), pat._num_pads - 1)
                 new_ev = self._midi_editor.edit_grid_note(
                     pat, ev,
@@ -908,7 +909,7 @@ class MidiEditorWindow(wx.Frame):
             if new_ev:
                 # Pour les notes grille, rafraîchir le cache _all_offsets
                 # (utilisé par erase/navigation) après une édition manuelle.
-                if etype == "G":
+                if etype == ETYPE_GRID:
                     self._parent._player._compute_offsets()
                 if self._parent._player.playing:
                     self._parent._player._wakeup.set()

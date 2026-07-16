@@ -6,12 +6,15 @@
     Author: Coolbrother
 """
 
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+
 
 class MidiEditor:
     """Logique d'édition des événements MIDI d'un pattern.
 
-    Source unique : _tape[(track, bar, step)] = [TapeEvent], etype G/K/P.
-    Mode étendu (VIEW_ALL) : _tape (G/K/P) + _bend_tape + _mod_tape.
+    Source unique : _tape[(track, bar, step)] = [TapeEvent], etype
+    ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH.
+    Mode étendu (VIEW_ALL) : _tape (idem) + _bend_tape + _mod_tape.
     """
 
     VIEW_NOTES = 0   # notes de la grille de la piste courante
@@ -26,7 +29,7 @@ class MidiEditor:
     # ------------------------------------------------------------------
 
     def get_note_events(self, pattern, track_idx, lim_left=None, lim_right=None):
-        """Retourne toutes les notes (G/K/P) d'une piste, depuis _tape."""
+        """Retourne toutes les notes (GRID/KIT/PATCH) d'une piste, depuis _tape."""
         events = []
 
         for (t, b, s), tape_list in sorted(pattern._tape.items()):
@@ -38,12 +41,12 @@ class MidiEditor:
             if lim_right is not None and offset > lim_right:
                 continue
             for i, ev in enumerate(tape_list):
-                if ev.etype == "G":
+                if ev.etype == ETYPE_GRID:
                     dur = (pattern._voices[ev.note]["duration_ms"]
                            if ev.note < len(pattern._voices) else 500)
                     events.append({
                         "type":      "note",
-                        "etype":     "G",
+                        "etype":     ETYPE_GRID,
                         "track":     t,
                         "pad":       ev.note,
                         "bar":       b,
@@ -61,7 +64,7 @@ class MidiEditor:
                         "bar":       b,
                         "step":      s,
                         "offset":    offset,
-                        "pad":       ev.note,   # K: index pad kit ; P: note MIDI brute
+                        "pad":       ev.note,   # KIT: index pad kit ; PATCH: note MIDI brute
                         "vel":       ev.vel,
                         "dur":       ev.dur,
                         "bend":      ev.bend,
@@ -74,12 +77,12 @@ class MidiEditor:
     def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
         """Retourne tous les événements MIDI des pistes sélectionnées.
 
-        Inclut : notes (G/K/P via get_note_events), bend_tape, mod_tape.
+        Inclut : notes (GRID/KIT/PATCH via get_note_events), bend_tape, mod_tape.
         """
         sel_set = set(sel_tracks)
         events  = []
 
-        # Notes (G/K/P, via _tape)
+        # Notes (GRID/KIT/PATCH, via _tape)
         for t in sorted(sel_set):
             evs = self.get_note_events(pattern, t, lim_left, lim_right)
             events.extend(evs)
@@ -131,7 +134,7 @@ class MidiEditor:
         """Supprime un événement. Retourne True si supprimé."""
         if ev.get("type") != "note":
             return False
-        if ev.get("etype") == "G":
+        if ev.get("etype") == ETYPE_GRID:
             return self._delete_grid_event(pattern, ev)
         return self._delete_tape_event(pattern, ev)
 
@@ -205,10 +208,10 @@ class MidiEditor:
 
     def edit_tape_note(self, pattern, ev, new_note=None, new_vel=None,
                        new_bar=None, new_step=None, new_dur=None):
-        """Modifie un événement tape (etype K ou P). Retourne le nouvel event_info ou None."""
+        """Modifie un événement tape (etype KIT ou PATCH). Retourne le nouvel event_info ou None."""
         from pattern import TapeEvent
         etype = ev.get("etype")
-        if etype not in ("K", "P"):
+        if etype not in (ETYPE_KIT, ETYPE_PATCH):
             return None
         old_key = (ev["track"], ev["bar"], ev["step"])
         old_idx = ev.get("event_idx", -1)
@@ -251,8 +254,8 @@ class MidiEditor:
 
     def edit_grid_note(self, pattern, ev, new_pad=None, new_vel=None,
                        new_bar=None, new_step=None):
-        """Modifie un événement grille (etype G). Retourne le nouvel event_info ou None."""
-        if ev.get("etype") != "G":
+        """Modifie un événement grille (etype GRID). Retourne le nouvel event_info ou None."""
+        if ev.get("etype") != ETYPE_GRID:
             return None
         t        = ev["track"]
         old_pad  = ev["pad"]
@@ -281,7 +284,7 @@ class MidiEditor:
                if n_pad < len(pattern._voices) else 500)
         return {
             "type":   "note",
-            "etype":  "G",
+            "etype":  ETYPE_GRID,
             "track":  t,
             "pad":    n_pad,
             "bar":    n_bar,

@@ -1,6 +1,6 @@
 import os
 import wx
-from pattern import Pattern
+from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
@@ -263,19 +263,19 @@ class ProjectMixin:
         }
 
     def _clipboard_to_dict(self):
-        """Sérialise le presse-papier TrackEditor (grille G + tape K/P, unifiées)."""
+        """Sérialise le presse-papier TrackEditor (grille GRID + tape KIT/PATCH, unifiées)."""
         cb = self._track_editor._clipboard
         if cb is None:
             return None
         tape_list = []
         for (t, b, s), events in cb.tape.items():
             for ev in events:
-                if ev.etype == "G":
-                    tape_list.append(["G", t, b, s, ev.note, ev.vel])
-                elif ev.etype == "K":
-                    tape_list.append(["K", t, b, s, ev.note, ev.vel, ev.dur])
+                if ev.etype == ETYPE_GRID:
+                    tape_list.append([ETYPE_GRID, t, b, s, ev.note, ev.vel])
+                elif ev.etype == ETYPE_KIT:
+                    tape_list.append([ETYPE_KIT, t, b, s, ev.note, ev.vel, ev.dur])
                 else:
-                    tape_list.append(["P", t, b, s, ev.note, ev.vel, ev.dur, ev.bend])
+                    tape_list.append([ETYPE_PATCH, t, b, s, ev.note, ev.vel, ev.dur, ev.bend])
         return {
             "num_tracks": cb.num_tracks,
             "num_bars":   cb.num_bars,
@@ -293,9 +293,9 @@ class ProjectMixin:
         tape = {}
         for rec in d["tape"]:
             etype = rec[0]
-            if etype == "G":
+            if etype == ETYPE_GRID:
                 _, t, b, s, note, vel = rec
-                tape.setdefault((t, b, s), []).append(TapeEvent("G", note, vel, 0, 0))
+                tape.setdefault((t, b, s), []).append(TapeEvent(ETYPE_GRID, note, vel, 0, 0))
             else:
                 t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
                 bend = rec[7] if len(rec) > 7 else 0

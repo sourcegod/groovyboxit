@@ -4,7 +4,7 @@ import threading
 import os
 
 from metronome import Metronome
-from pattern import Pattern, TapeEvent
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from voice_manager import VoiceManager
 from quantize_manager import QuantizeManager
 from loop_manager import LoopManager, LoopWindow
@@ -23,7 +23,7 @@ def _bend_log(msg):
 
 class DrumPlayer:
     NR_EVENT         = -100  # marqueur interne pour les événements Note Repeat dans la liste
-    GRID_EVENT       = -6   # marqueur interne pour les événements grille (etype "G" de _tape)
+    GRID_EVENT       = -6   # marqueur interne pour les événements grille (etype ETYPE_GRID de _tape)
     KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
     BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
@@ -463,10 +463,10 @@ class DrumPlayer:
                     t_sec = (float_off - lp_start) * self.step_duration
                     if t_sec > elapsed - 0.002:
                         for ev in note_list:
-                            if ev.etype == "G":
+                            if ev.etype == ETYPE_GRID:
                                 events.append((t_sec, self.GRID_EVENT,
                                                (t_idx, ev.note), ev.vel))
-                            elif ev.etype == "K":
+                            elif ev.etype == ETYPE_KIT:
                                 events.append((t_sec, self.KIT_TAPE_EVENT,
                                                (t_idx, ev.note, ev.dur), ev.vel))
                             else:
@@ -535,7 +535,7 @@ class DrumPlayer:
                     t_idx, midi_note, dur = evt_data
                     if self.erasing and t_idx == self._cur_track \
                             and midi_note in self._erase_active_midi_notes:
-                        self._erase_tape_event(t_idx, midi_note, t_sec, "K")
+                        self._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_KIT)
                     elif self._on_kit_tape_cb:
                         self._on_kit_tape_cb(t_idx, midi_note, velocity, dur)
                     else:
@@ -544,7 +544,7 @@ class DrumPlayer:
                     t_idx, midi_note, dur, bend = evt_data
                     if self.erasing and t_idx == self._cur_track \
                             and midi_note in self._erase_active_midi_notes:
-                        self._erase_tape_event(t_idx, midi_note, t_sec, "P")
+                        self._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_PATCH)
                     elif self._on_patch_tape_cb:
                         self._on_patch_tape_cb(t_idx, midi_note, velocity, dur, bend)
                 elif track_or_type == self.BEND_TAPE_EVENT:
@@ -867,7 +867,7 @@ class DrumPlayer:
                 continue
             dist = circ_dist(b * self._pattern._num_steps + s)
             for i, ev in enumerate(events):
-                if ev.etype == "P" and ev.note == midi_note and dist < best_dist:
+                if ev.etype == ETYPE_PATCH and ev.note == midi_note and dist < best_dist:
                     best_dist = dist
                     best_key  = (t, b, s)
                     best_i    = i
@@ -961,7 +961,7 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def record_patch_note(self, midi_note, velocity=100, duration_ms=None, bend=0):
-        """Enregistre une note MIDI brute dans _tape (etype="P").
+        """Enregistre une note MIDI brute dans _tape (etype=ETYPE_PATCH).
 
         duration_ms=None → durée mesurée jusqu'au note_off via record_patch_note_off().
         duration_ms>=0   → durée fixe (numpad).
@@ -975,12 +975,12 @@ class DrumPlayer:
         with self._pattern._lock:
             events = self._pattern._tape.setdefault(key, [])
             for i, ev in enumerate(events):
-                if ev.etype == "P" and ev.note == midi_note:
-                    events[i] = TapeEvent("P", midi_note, vel, dur, bend)
+                if ev.etype == ETYPE_PATCH and ev.note == midi_note:
+                    events[i] = TapeEvent(ETYPE_PATCH, midi_note, vel, dur, bend)
                     entry_idx = i
                     break
             else:
-                events.append(TapeEvent("P", midi_note, vel, dur, bend))
+                events.append(TapeEvent(ETYPE_PATCH, midi_note, vel, dur, bend))
                 entry_idx = len(events) - 1
         if duration_ms is None:
             self._pending_patch[midi_note] = (key, entry_idx, now)
@@ -1002,7 +1002,7 @@ class DrumPlayer:
                 return
             duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
             ev = events[entry_idx]
-            events[entry_idx] = TapeEvent("P", ev.note, ev.vel, duration_ms, ev.bend)
+            events[entry_idx] = TapeEvent(ETYPE_PATCH, ev.note, ev.vel, duration_ms, ev.bend)
         _bend_log(f"REC note_off note={midi_note} dur_finale={duration_ms}ms")
 
     #--------------------------------------------------------------------------
@@ -1032,14 +1032,14 @@ class DrumPlayer:
     #--------------------------------------------------------------------------
 
     def record_kit_note(self, midi_note, velocity=100):
-        """Enregistre une note MIDI brute dans _tape (etype="K") sans passer par la grille."""
+        """Enregistre une note MIDI brute dans _tape (etype=ETYPE_KIT) sans passer par la grille."""
         _, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
         key = (self._cur_track, bar_idx, step_idx)
         with self._pattern._lock:
             events = self._pattern._tape.setdefault(key, [])
-            if not any(ev.etype == "K" and ev.note == midi_note for ev in events):
-                events.append(TapeEvent("K", midi_note, vel, 0, 0))
+            if not any(ev.etype == ETYPE_KIT and ev.note == midi_note for ev in events):
+                events.append(TapeEvent(ETYPE_KIT, midi_note, vel, 0, 0))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------

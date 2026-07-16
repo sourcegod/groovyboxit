@@ -3,7 +3,12 @@ import threading
 from collections import namedtuple
 
 # Événement enregistré dans _tape.
-# etype: "G" = grille (pad de la séquence), "K" = kit (note MIDI brute), "P" = patch synth (note + bend)
+# etype: ETYPE_GRID = grille (pad de la séquence), ETYPE_KIT = kit (note MIDI brute),
+#        ETYPE_PATCH = patch synth (note + bend)
+ETYPE_GRID  = "GRID"
+ETYPE_KIT   = "KIT"
+ETYPE_PATCH = "PATCH"
+
 TapeEvent = namedtuple("TapeEvent", ["etype", "note", "vel", "dur", "bend"])
 
 
@@ -140,14 +145,14 @@ class Pattern:
         ]
 
     #--------------------------------------------------------------------------
-    # API grille — façade au-dessus de _tape (etype "G"), remplace l'indexation
+    # API grille — façade au-dessus de _tape (etype ETYPE_GRID), remplace l'indexation
     # directe d'un grand tableau [track][pad][bar][step].
     #--------------------------------------------------------------------------
 
     def get_cell(self, track, pad, bar, step):
         """Vélocité (0..127) de la note grille (track,pad) à (bar,step). 0 si absente."""
         for ev in self._tape.get((track, bar, step), ()):
-            if ev.etype == "G" and ev.note == pad:
+            if ev.etype == ETYPE_GRID and ev.note == pad:
                 return ev.vel
         return 0
 
@@ -158,27 +163,27 @@ class Pattern:
         with self._lock:
             evs = self._tape.get(key)
             if evs is not None:
-                evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad)]
+                evs[:] = [ev for ev in evs if not (ev.etype == ETYPE_GRID and ev.note == pad)]
                 if not evs:
                     del self._tape[key]
             if vel > 0:
-                self._tape.setdefault(key, []).append(TapeEvent("G", pad, vel, 0, 0))
+                self._tape.setdefault(key, []).append(TapeEvent(ETYPE_GRID, pad, vel, 0, 0))
 
     def clear_grid_pad(self, track, pad):
-        """Efface toutes les notes G d'un pad sur une piste (toutes mesures)."""
+        """Efface toutes les notes GRID d'un pad sur une piste (toutes mesures)."""
         with self._lock:
             for key in list(self._tape.keys()):
                 if key[0] != track:
                     continue
                 evs = self._tape[key]
-                evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad)]
+                evs[:] = [ev for ev in evs if not (ev.etype == ETYPE_GRID and ev.note == pad)]
                 if not evs:
                     del self._tape[key]
 
     def clear_grid_box(self, tracks, bars, steps):
-        """Efface les notes G dans un rectangle track×bar×step.
+        """Efface les notes GRID dans un rectangle track×bar×step.
 
-        Ne filtre que etype=="G" : ne supprime jamais un TapeEvent K/P
+        Ne filtre que etype==ETYPE_GRID : ne supprime jamais un TapeEvent KIT/PATCH
         coexistant à la même clé _tape.
         """
         track_set = set(tracks)
@@ -190,7 +195,7 @@ class Pattern:
                 if t not in track_set or b not in bar_set or s not in step_set:
                     continue
                 evs = self._tape[key]
-                evs[:] = [ev for ev in evs if ev.etype != "G"]
+                evs[:] = [ev for ev in evs if ev.etype != ETYPE_GRID]
                 if not evs:
                     del self._tape[key]
 
@@ -204,12 +209,12 @@ class Pattern:
             self.set_cell(track, pad, bar, step, v)
 
     def iter_grid(self, track=None):
-        """Itère (track, pad, bar, step, vel) sur toutes les notes G (piste filtrée si donnée)."""
+        """Itère (track, pad, bar, step, vel) sur toutes les notes GRID (piste filtrée si donnée)."""
         for (t, b, s), evs in self._tape.items():
             if track is not None and t != track:
                 continue
             for ev in evs:
-                if ev.etype == "G":
+                if ev.etype == ETYPE_GRID:
                     yield (t, ev.note, b, s, ev.vel)
 
     def to_dense_grid(self):
@@ -248,9 +253,9 @@ class Pattern:
     #--------------------------------------------------------------------------
 
     def load_pattern(self, pattern):
-        """Remplace les notes de grille (etype "G") depuis une matrice dense.
+        """Remplace les notes de grille (etype ETYPE_GRID) depuis une matrice dense.
 
-        Laisse les événements K/P intacts (comportement historique : la
+        Laisse les événements KIT/PATCH intacts (comportement historique : la
         grille et la tape MIDI enregistrée sont deux apports indépendants).
         """
         self._num_tracks = len(pattern)
@@ -261,7 +266,7 @@ class Pattern:
         with self._lock:
             for key in list(self._tape.keys()):
                 evs = self._tape[key]
-                evs[:] = [ev for ev in evs if ev.etype != "G"]
+                evs[:] = [ev for ev in evs if ev.etype != ETYPE_GRID]
                 if not evs:
                     del self._tape[key]
             for t, track in enumerate(pattern):
@@ -271,7 +276,7 @@ class Pattern:
                             vel = nv(v)
                             if vel > 0:
                                 self._tape.setdefault((t, bar, step), []).append(
-                                    TapeEvent("G", pad, vel, 0, 0)
+                                    TapeEvent(ETYPE_GRID, pad, vel, 0, 0)
                                 )
 
     #--------------------------------------------------------------------------
@@ -427,12 +432,12 @@ class Pattern:
             "kit_tape": [
                 [t, b, s, ev.note, ev.vel, ev.dur]
                 for (t, b, s), events in self._tape.items()
-                for ev in events if ev.etype == "K"
+                for ev in events if ev.etype == ETYPE_KIT
             ],
             "patch_tape": [
                 [t, b, s, ev.note, ev.vel, ev.dur, ev.bend]
                 for (t, b, s), events in self._tape.items()
-                for ev in events if ev.etype == "P"
+                for ev in events if ev.etype == ETYPE_PATCH
             ],
             "bend_tape": [list(t) for t in self._bend_tape],
             "mod_tape":  [list(t) for t in self._mod_tape],
@@ -456,7 +461,7 @@ class Pattern:
         self._loop_end   = d.get("loop_end", None)
         self._loop_count = d.get("loop_count", 0)
         self._tape = {}
-        self.load_pattern(d["curpattern"])   # peuple les entrées "G"
+        self.load_pattern(d["curpattern"])   # peuple les entrées ETYPE_GRID
         if "track_slots"   in d: self._track_slots   = d["track_slots"]
         if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]
         if "track_solos"   in d: self._track_solos   = d["track_solos"]
@@ -468,12 +473,12 @@ class Pattern:
         for rec in d.get("kit_tape", []):
             t, b, s, note, vel = rec[:5]
             dur = rec[5] if len(rec) > 5 else 0
-            self._tape.setdefault((t, b, s), []).append(TapeEvent("K", note, vel, dur, 0))
+            self._tape.setdefault((t, b, s), []).append(TapeEvent(ETYPE_KIT, note, vel, dur, 0))
         for rec in d.get("patch_tape", []):
             t, b, s, note, vel = rec[:5]
             dur  = rec[5] if len(rec) > 5 else 0
             bend = rec[6] if len(rec) > 6 else 0
-            self._tape.setdefault((t, b, s), []).append(TapeEvent("P", note, vel, dur, bend))
+            self._tape.setdefault((t, b, s), []).append(TapeEvent(ETYPE_PATCH, note, vel, dur, bend))
         raw_bends = d.get("bend_tape", [])
         self._bend_tape = [
             [tuple(p) for p in track_bends]

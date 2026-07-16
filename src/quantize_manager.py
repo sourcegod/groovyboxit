@@ -1,4 +1,4 @@
-from pattern import Pattern, TapeEvent
+from pattern import Pattern, TapeEvent, ETYPE_KIT, ETYPE_PATCH
 
 
 class QuantizeManager:
@@ -17,7 +17,7 @@ class QuantizeManager:
     # ------------------------------------------------------------------
 
     def compute_offsets(self):
-        """Reconstruit _all_offsets (cache float par piste/pad) depuis les notes G de _tape."""
+        """Reconstruit _all_offsets (cache float par piste/pad) depuis les notes GRID de _tape."""
         p = self._p
         pattern    = p._pattern
         num_tracks = pattern._num_tracks
@@ -56,13 +56,13 @@ class QuantizeManager:
     def apply_quant_to_pattern(self, quant_idx=None, force_idx=4, swing_idx=0,
                                window_idx=4, quant_starts=True, quant_durations=False,
                                direction_idx=0):
-        """Quantise grille (G) et tape (K/P) avec force, swing, fenêtre et direction.
+        """Quantise grille (GRID) et tape (KIT/PATCH) avec force, swing, fenêtre et direction.
 
         force_idx     : 0..4 → 0/25/50/75/100 % d'attraction vers la grille
         swing_idx     : 0..4 → 0/25/50/75/100 % de décalage des temps impairs
         window_idx    : 0..4 → 0/25/50/75/100 % de la demi-division : zone de capture
         quant_starts  : aligner les débuts de notes
-        quant_durations: aligner les durées (K/P uniquement)
+        quant_durations: aligner les durées (KIT/PATCH uniquement)
         direction_idx : 0=Proche, 1=Précédente, 2=Suivante
         """
         p = self._p
@@ -110,7 +110,7 @@ class QuantizeManager:
                 return ng
             return pos + (ng - pos) * force_pct / 100.0
 
-        # --- Notes grille (G) ---
+        # --- Notes grille (GRID) ---
         if quant_starts:
             for pad_idx in range(p._pattern._num_pads):
                 active = p.float_offsets[pad_idx]
@@ -130,7 +130,7 @@ class QuantizeManager:
                         p._pattern.set_cell(p._cur_track, pad_idx, bar_idx, step_idx, 100)
                 p.float_offsets[pad_idx] = sorted(snapped)
 
-        # --- Notes tape K/P ---
+        # --- Notes tape KIT/PATCH ---
         if not quant_starts and not quant_durations:
             return
         pattern        = p._pattern
@@ -145,7 +145,7 @@ class QuantizeManager:
                     new_tape[(t, b, s)] = evs
                     continue
                 for ev in evs:
-                    if ev.etype not in ("K", "P"):
+                    if ev.etype not in (ETYPE_KIT, ETYPE_PATCH):
                         new_tape.setdefault((t, b, s), []).append(ev)
                         continue
                     n_bar, n_step = b, s

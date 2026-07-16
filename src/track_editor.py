@@ -6,7 +6,7 @@
     Date: Mon, 15/06/2026
     Author: Coolbrother
 """
-from pattern import TapeEvent
+from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 
 
 class _ClipboardData:
@@ -15,7 +15,7 @@ class _ClipboardData:
         self.num_tracks = num_tracks   # nombre de pistes copiées
         self.num_bars   = num_bars     # mesures dans la source
         self.num_steps  = num_steps    # pas par mesure dans la source
-        self.tape       = tape         # {(rel_track, bar, step): [TapeEvent]} — incl. etype "G"
+        self.tape       = tape         # {(rel_track, bar, step): [TapeEvent]} — incl. etype ETYPE_GRID
 
 
 class _EventClipboard:
@@ -170,11 +170,11 @@ class TrackEditor:
     def paste(self, pattern, cur_track, dest_bar=0, merge=False):
         """Colle le presse-papier à partir de cur_track et dest_bar.
 
-        merge=False (défaut) : remplace les données existantes — la grille (G)
-            est intégralement écrasée sur la zone de destination, la tape K/P
+        merge=False (défaut) : remplace les données existantes — la grille (GRID)
+            est intégralement écrasée sur la zone de destination, la tape KIT/PATCH
             n'est remplacée que sur les clés présentes dans le presse-papier.
-        merge=True  (Shift+V): mélange — max(vel) par pad sur la grille (G),
-            union brute (concaténation) sur la tape K/P.
+        merge=True  (Shift+V): mélange — max(vel) par pad sur la grille (GRID),
+            union brute (concaténation) sur la tape KIT/PATCH.
         Étend le pattern si la zone de collage dépasse sa longueur actuelle.
         Retourne False si le presse-papier est vide.
         """
@@ -215,13 +215,13 @@ class TrackEditor:
     def _merge_events(existing, incoming):
         """Fusionne deux listes de TapeEvent au même (track, bar, step).
 
-        G   : garde vel = max() par pad (reproduit le max() de l'ancienne grille dense).
-        K/P : union brute par concaténation (comportement historique, doublons possibles).
+        GRID     : garde vel = max() par pad (reproduit le max() de l'ancienne grille dense).
+        KIT/PATCH : union brute par concaténation (comportement historique, doublons possibles).
         """
-        result   = [ev for ev in existing if ev.etype != "G"]
-        g_by_pad = {ev.note: ev for ev in existing if ev.etype == "G"}
+        result   = [ev for ev in existing if ev.etype != ETYPE_GRID]
+        g_by_pad = {ev.note: ev for ev in existing if ev.etype == ETYPE_GRID}
         for ev in incoming:
-            if ev.etype != "G":
+            if ev.etype != ETYPE_GRID:
                 result.append(ev)
                 continue
             prev = g_by_pad.get(ev.note)
@@ -233,10 +233,10 @@ class TrackEditor:
     def erase_grid(self, pattern, cur_track):
         """Copie dans le presse-papier, puis efface la grille et (si limiteurs) la tape.
 
-        Sans limiteurs : efface toute la grille (G), tape K/P préservée (comportement
-        d'origine) — via clear_grid_box qui ne filtre que etype "G".
-        Avec limiteurs : efface _tape (G+K/P) + _bend_tape + _mod_tape dans la plage,
-        via _erase_tape_range qui couvre déjà la grille (G vit désormais dans _tape).
+        Sans limiteurs : efface toute la grille (GRID), tape KIT/PATCH préservée (comportement
+        d'origine) — via clear_grid_box qui ne filtre que etype ETYPE_GRID.
+        Avec limiteurs : efface _tape (GRID+KIT/PATCH) + _bend_tape + _mod_tape dans la plage,
+        via _erase_tape_range qui couvre déjà la grille (GRID vit désormais dans _tape).
         Le clipboard ne contient que la plage limitée (barres relatives à l'origine).
         Raccourci DAW : Ctrl+X (Erase).
         """
@@ -307,12 +307,12 @@ class TrackEditor:
                 continue
             if bar >= pattern._num_bars or step >= ns:
                 continue
-            if ev["etype"] == "G":
+            if ev["etype"] == ETYPE_GRID:
                 pad = ev["pad"]
                 if pad < pattern._num_pads:
                     pattern.set_cell(abs_track, pad, bar, step, ev["vel"])
                     pasted += 1
-            elif ev["etype"] in ("K", "P"):
+            elif ev["etype"] in (ETYPE_KIT, ETYPE_PATCH):
                 te  = TapeEvent(ev["etype"], ev["pad"], ev["vel"],
                                 ev["dur"], ev.get("bend", 0))
                 key = (abs_track, bar, step)
@@ -329,7 +329,7 @@ class TrackEditor:
     # ------------------------------------------------------------------
 
     def _extract(self, pattern, tracks, lim_l=None, lim_r=None):
-        """Extrait les pistes dans le clipboard (grille G + tape K/P, unifiées dans _tape).
+        """Extrait les pistes dans le clipboard (grille GRID + tape KIT/PATCH, unifiées dans _tape).
 
         Sans limiteurs : copie tout le pattern (barres absolues).
         Avec limiteurs : copie seulement la plage [lim_l, lim_r]; les indices
