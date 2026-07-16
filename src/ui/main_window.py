@@ -393,20 +393,23 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _set_cell(self, row, col, value):
         self._cells[row][col].SetValue(bool(value))
-        self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
-            100 if value else 0
+        self._player._pattern.set_cell(
+            self._player._cur_track, row, 0, col, 100 if value else 0
+        )
         self._player.float_offsets[row] = [
             float(c) for c in range(self.COLS)
-            if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
+            if self._player._pattern.get_cell(self._player._cur_track, row, 0, c)
         ]
 
     def _on_checkbox(self, row, col):
         self._add_undo(f"Cellule {row + 1}/{col + 1}")
-        self._player._pattern._curpattern[self._player._cur_track][row][0][col] = \
-            100 if self._cells[row][col].GetValue() else 0
+        self._player._pattern.set_cell(
+            self._player._cur_track, row, 0, col,
+            100 if self._cells[row][col].GetValue() else 0,
+        )
         self._player.float_offsets[row] = [
             float(c) for c in range(self.COLS)
-            if self._player._pattern._curpattern[self._player._cur_track][row][0][c]
+            if self._player._pattern.get_cell(self._player._cur_track, row, 0, c)
         ]
         self._mark_modified()
 

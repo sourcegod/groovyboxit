@@ -17,38 +17,23 @@ class QuantizeManager:
     # ------------------------------------------------------------------
 
     def compute_offsets(self):
-        """Reconstruit _all_offsets et les entrées "G" du tape depuis _curpattern."""
+        """Reconstruit _all_offsets (cache float par piste/pad) depuis les notes G de _tape."""
         p = self._p
         pattern    = p._pattern
         num_tracks = pattern._num_tracks
-        all_offsets = []
-        new_grid = {}   # (track, bar, step) -> [TapeEvent("G", ...)]
-        for track_idx in range(num_tracks):
-            track_offsets = []
-            for pad_idx, pad in enumerate(pattern._curpattern[track_idx]):
-                offsets = []
-                base = 0
-                for bar_idx, bar in enumerate(pad):
-                    for step_idx, active in enumerate(bar):
-                        if active:
-                            offsets.append(float(base + step_idx))
-                            vel = 100 if isinstance(active, bool) else int(active)
-                            key = (track_idx, bar_idx, step_idx)
-                            new_grid.setdefault(key, []).append(
-                                TapeEvent(etype="G", note=pad_idx, vel=vel, dur=0, bend=0)
-                            )
-                    base += len(bar)
-                track_offsets.append(offsets)
-            all_offsets.append(track_offsets)
+        all_offsets = [
+            [[] for _ in range(pattern._num_pads)]
+            for _ in range(num_tracks)
+        ]
+        for track_idx, pad_idx, bar_idx, step_idx, vel in pattern.iter_grid():
+            if track_idx < num_tracks:
+                all_offsets[track_idx][pad_idx].append(
+                    float(bar_idx * pattern._num_steps + step_idx)
+                )
+        for track_offsets in all_offsets:
+            for offsets in track_offsets:
+                offsets.sort()
         p._all_offsets = all_offsets   # assignation atomique
-        with pattern._lock:
-            for key in list(pattern._tape.keys()):
-                pattern._tape[key] = [ev for ev in pattern._tape[key]
-                                      if ev.etype != "G"]
-                if not pattern._tape[key]:
-                    del pattern._tape[key]
-            for key, evs in new_grid.items():
-                pattern._tape.setdefault(key, []).extend(evs)
         if p.playing or p.clicking or p._note_repeat_active:
             p._wakeup.set()
 
@@ -61,12 +46,11 @@ class QuantizeManager:
         denom     = Pattern.QUANT_STEPS[quant_idx]
         num_steps = p._pattern._num_steps
         grid      = [i * num_steps / denom for i in range(denom)]
-        pad       = p._pattern._curpattern[p._cur_track][row]
-        for c in range(num_steps):
-            pad[0][c] = False
+        row_vals  = [0] * num_steps
         for fp in grid:
             c = min(num_steps - 1, round(fp))
-            pad[0][c] = True
+            row_vals[c] = 100
+        p._pattern.set_grid_row(p._cur_track, row, 0, row_vals)
         p.float_offsets[row] = sorted(grid)
 
     def apply_quant_to_pattern(self, quant_idx=None, force_idx=4, swing_idx=0,
@@ -129,10 +113,8 @@ class QuantizeManager:
         # --- Notes grille (G) ---
         if quant_starts:
             for pad_idx in range(p._pattern._num_pads):
-                pad    = p._pattern._curpattern[p._cur_track][pad_idx]
                 active = p.float_offsets[pad_idx]
-                for bar in pad:
-                    bar[:] = [False] * len(bar)
+                p._pattern.clear_grid_pad(p._cur_track, pad_idx)
                 if not active:
                     continue
                 snapped = []
@@ -145,7 +127,7 @@ class QuantizeManager:
                     bar_idx  = int(fp) // num_steps
                     step_idx = int(fp) % num_steps
                     if 0 <= bar_idx < num_bars and 0 <= step_idx < num_steps:
-                        pad[bar_idx][step_idx] = True
+                        p._pattern.set_cell(p._cur_track, pad_idx, bar_idx, step_idx, 100)
                 p.float_offsets[pad_idx] = sorted(snapped)
 
         # --- Notes tape K/P ---

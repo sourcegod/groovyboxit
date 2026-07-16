@@ -23,7 +23,7 @@ def _bend_log(msg):
 
 class DrumPlayer:
     NR_EVENT         = -100  # marqueur interne pour les événements Note Repeat dans la liste
-    GRID_EVENT       = -6   # marqueur interne pour les événements grille (_curpattern)
+    GRID_EVENT       = -6   # marqueur interne pour les événements grille (etype "G" de _tape)
     KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
     BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
@@ -621,12 +621,8 @@ class DrumPlayer:
                             self._song_pos += 1
                             next_idx = self._song_sequence[self._song_pos]
                             next_pat = self._pattern_list_ref[next_idx]
-                            self._pattern.load_pattern(next_pat._curpattern)
+                            self._pattern.copy_from(next_pat)
                             self._pattern._looping = False
-                            with self._pattern._lock:
-                                self._pattern._tape = dict(next_pat._tape)
-                            self._pattern._bend_tape = [list(t) for t in next_pat._bend_tape]
-                            self._pattern._mod_tape  = [list(t) for t in next_pat._mod_tape]
                             if next_pat._bpm != self.bpm:
                                 self.bpm           = next_pat._bpm
                                 self.step_duration = 60.0 / self.bpm / 4
@@ -640,12 +636,8 @@ class DrumPlayer:
                                 self._song_pos = 0
                                 first_idx = self._song_sequence[0]
                                 first_pat = self._pattern_list_ref[first_idx]
-                                self._pattern.load_pattern(first_pat._curpattern)
+                                self._pattern.copy_from(first_pat)
                                 self._pattern._looping = False
-                                with self._pattern._lock:
-                                    self._pattern._tape = dict(first_pat._tape)
-                                self._pattern._bend_tape = [list(t) for t in first_pat._bend_tape]
-                                self._pattern._mod_tape  = [list(t) for t in first_pat._mod_tape]
                                 if first_pat._bpm != self.bpm:
                                     self.bpm           = first_pat._bpm
                                     self.step_duration = 60.0 / self.bpm / 4
@@ -847,15 +839,7 @@ class DrumPlayer:
         step_idx = step % self._pattern._num_steps
 
         if not any(min(round(f), total_steps - 1) == step for f in self.float_offsets[pad_idx]):
-            self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = False
-            key = (self._cur_track, bar_idx, step_idx)
-            with self._pattern._lock:
-                evs = self._pattern._tape.get(key)
-                if evs:
-                    evs[:] = [ev for ev in evs
-                              if not (ev.etype == "G" and ev.note == pad_idx)]
-                    if not evs:
-                        del self._pattern._tape[key]
+            self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, 0)
 
         return bar_idx, step_idx
 
@@ -911,18 +895,11 @@ class DrumPlayer:
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
-        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = 100
+        self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, 100)
 
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
-
-        key    = (self._cur_track, bar_idx, step_idx)
-        new_ev = TapeEvent(etype="G", note=pad_idx, vel=100, dur=0, bend=0)
-        with self._pattern._lock:
-            evs = self._pattern._tape.setdefault(key, [])
-            evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad_idx)]
-            evs.append(new_ev)
 
         if self._on_recorded_cb:
             self._on_recorded_cb(pad_idx, bar_idx, step_idx)
@@ -941,15 +918,7 @@ class DrumPlayer:
         bar_idx  = step // num_steps
         step_idx = step % num_steps
         if not any(round(f) % total_steps == step for f in self.float_offsets[pad_idx]):
-            self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = 0
-            key = (self._cur_track, bar_idx, step_idx)
-            with self._pattern._lock:
-                evs = self._pattern._tape.get(key)
-                if evs:
-                    evs[:] = [ev for ev in evs
-                              if not (ev.etype == "G" and ev.note == pad_idx)]
-                    if not evs:
-                        del self._pattern._tape[key]
+            self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, 0)
         if self._on_replaced_cb:
             self._on_replaced_cb(pad_idx, bar_idx, step_idx)
 
@@ -983,16 +952,10 @@ class DrumPlayer:
     def record_hit(self, pad_idx, velocity=100):
         float_offset, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
-        self._pattern._curpattern[self._cur_track][pad_idx][bar_idx][step_idx] = vel
+        self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, vel)
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
-        key    = (self._cur_track, bar_idx, step_idx)
-        new_ev = TapeEvent(etype="G", note=pad_idx, vel=vel, dur=0, bend=0)
-        with self._pattern._lock:
-            evs = self._pattern._tape.setdefault(key, [])
-            evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad_idx)]
-            evs.append(new_ev)
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------

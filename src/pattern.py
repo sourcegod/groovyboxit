@@ -3,7 +3,7 @@ import threading
 from collections import namedtuple
 
 # Événement enregistré dans _tape.
-# etype: "G" = grille (_curpattern), "K" = kit (note MIDI brute), "P" = patch synth (note + bend)
+# etype: "G" = grille (pad de la séquence), "K" = kit (note MIDI brute), "P" = patch synth (note + bend)
 TapeEvent = namedtuple("TapeEvent", ["etype", "note", "vel", "dur", "bend"])
 
 
@@ -92,9 +92,6 @@ class Pattern:
 
         self._tracks = [Track(i) for i in range(self._num_tracks)]
 
-        # [track][pad][bar][step]
-        self._curpattern = self._make_empty()
-
         # slot d'instrument assigné à chaque piste (indice dans le Rack)
         self._track_slots   = [0]     * self._num_tracks
 
@@ -143,11 +140,107 @@ class Pattern:
         ]
 
     #--------------------------------------------------------------------------
+    # API grille — façade au-dessus de _tape (etype "G"), remplace l'indexation
+    # directe d'un grand tableau [track][pad][bar][step].
+    #--------------------------------------------------------------------------
+
+    def get_cell(self, track, pad, bar, step):
+        """Vélocité (0..127) de la note grille (track,pad) à (bar,step). 0 si absente."""
+        for ev in self._tape.get((track, bar, step), ()):
+            if ev.etype == "G" and ev.note == pad:
+                return ev.vel
+        return 0
+
+    def set_cell(self, track, pad, bar, step, value):
+        """Écrit (value>0) ou efface (value<=0) la note grille (track,pad) à (bar,step)."""
+        vel = Pattern._norm_vel(value)
+        key = (track, bar, step)
+        with self._lock:
+            evs = self._tape.get(key)
+            if evs is not None:
+                evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad)]
+                if not evs:
+                    del self._tape[key]
+            if vel > 0:
+                self._tape.setdefault(key, []).append(TapeEvent("G", pad, vel, 0, 0))
+
+    def clear_grid_pad(self, track, pad):
+        """Efface toutes les notes G d'un pad sur une piste (toutes mesures)."""
+        with self._lock:
+            for key in list(self._tape.keys()):
+                if key[0] != track:
+                    continue
+                evs = self._tape[key]
+                evs[:] = [ev for ev in evs if not (ev.etype == "G" and ev.note == pad)]
+                if not evs:
+                    del self._tape[key]
+
+    def clear_grid_box(self, tracks, bars, steps):
+        """Efface les notes G dans un rectangle track×bar×step.
+
+        Ne filtre que etype=="G" : ne supprime jamais un TapeEvent K/P
+        coexistant à la même clé _tape.
+        """
+        track_set = set(tracks)
+        bar_set   = set(bars)
+        step_set  = set(steps)
+        with self._lock:
+            for key in list(self._tape.keys()):
+                t, b, s = key
+                if t not in track_set or b not in bar_set or s not in step_set:
+                    continue
+                evs = self._tape[key]
+                evs[:] = [ev for ev in evs if ev.etype != "G"]
+                if not evs:
+                    del self._tape[key]
+
+    def grid_row(self, track, pad, bar):
+        """Snapshot list[int] (longueur _num_steps) — lecture seule."""
+        return [self.get_cell(track, pad, bar, step) for step in range(self._num_steps)]
+
+    def set_grid_row(self, track, pad, bar, values):
+        """Remplace toute la ligne (track,pad,bar) par values (bulk write)."""
+        for step, v in enumerate(values):
+            self.set_cell(track, pad, bar, step, v)
+
+    def iter_grid(self, track=None):
+        """Itère (track, pad, bar, step, vel) sur toutes les notes G (piste filtrée si donnée)."""
+        for (t, b, s), evs in self._tape.items():
+            if track is not None and t != track:
+                continue
+            for ev in evs:
+                if ev.etype == "G":
+                    yield (t, ev.note, b, s, ev.vel)
+
+    def to_dense_grid(self):
+        """Reconstruit [track][pad][bar][step] à la demande — pour to_dict()/compat uniquement."""
+        grid = self._make_empty()
+        for t, pad, b, s, vel in self.iter_grid():
+            if (t < len(grid) and pad < len(grid[t])
+                    and b < len(grid[t][pad]) and s < len(grid[t][pad][b])):
+                grid[t][pad][b][s] = vel
+        return grid
+
+    def copy_from(self, other):
+        """Clone entièrement l'état grille + tape + automation d'un autre Pattern.
+
+        Remplace le duo load_pattern(other.to_dense_grid()) + copies manuelles de
+        _tape/_bend_tape/_mod_tape historiquement dispersées dans l'UI.
+        """
+        self._num_tracks = other._num_tracks
+        self._num_pads   = other._num_pads
+        self._num_bars   = other._num_bars
+        self._num_steps  = other._num_steps
+        with self._lock:
+            self._tape = {k: list(v) for k, v in other._tape.items()}
+        self._bend_tape = [list(t) for t in other._bend_tape]
+        self._mod_tape  = [list(t) for t in other._mod_tape]
+
+    #--------------------------------------------------------------------------
 
     def new_pattern(self, num_bars=1, num_steps=16):
         self._num_bars  = num_bars
         self._num_steps = num_steps
-        self._curpattern = self._make_empty()
         self._tape       = {}
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
         self._mod_tape   = [[] for _ in range(self._num_tracks)]
@@ -155,32 +248,41 @@ class Pattern:
     #--------------------------------------------------------------------------
 
     def load_pattern(self, pattern):
+        """Remplace les notes de grille (etype "G") depuis une matrice dense.
+
+        Laisse les événements K/P intacts (comportement historique : la
+        grille et la tape MIDI enregistrée sont deux apports indépendants).
+        """
         self._num_tracks = len(pattern)
         self._num_pads   = len(pattern[0])       if pattern                        else Pattern.NUM_PADS
         self._num_bars   = len(pattern[0][0])    if pattern and pattern[0]         else 1
         self._num_steps  = len(pattern[0][0][0]) if pattern and pattern[0] and pattern[0][0] else 16
         nv = Pattern._norm_vel
-        self._curpattern = [
-            [[[ nv(v) for v in bar] for bar in pad] for pad in track]
-            for track in pattern
-        ]
+        with self._lock:
+            for key in list(self._tape.keys()):
+                evs = self._tape[key]
+                evs[:] = [ev for ev in evs if ev.etype != "G"]
+                if not evs:
+                    del self._tape[key]
+            for t, track in enumerate(pattern):
+                for pad, pad_data in enumerate(track):
+                    for bar, bar_data in enumerate(pad_data):
+                        for step, v in enumerate(bar_data):
+                            vel = nv(v)
+                            if vel > 0:
+                                self._tape.setdefault((t, bar, step), []).append(
+                                    TapeEvent("G", pad, vel, 0, 0)
+                                )
 
     #--------------------------------------------------------------------------
 
     def reset_pattern(self):
-        for track in self._curpattern:
-            for pad in track:
-                for bar in pad:
-                    bar[:] = [0] * len(bar)
         self._tape      = {}
         self._bend_tape = [[] for _ in range(self._num_tracks)]
         self._mod_tape  = [[] for _ in range(self._num_tracks)]
 
     def clear_track(self, track_idx):
         """Efface tous les pas de la piste track_idx (grille + tape MIDI)."""
-        for pad in self._curpattern[track_idx]:
-            for bar in pad:
-                bar[:] = [0] * len(bar)
         with self._lock:
             self._tape = {k: v for k, v in self._tape.items() if k[0] != track_idx}
         if track_idx < len(self._bend_tape):
@@ -198,7 +300,7 @@ class Pattern:
             num_steps = random.randint(1, 8)
             steps     = random.sample(range(self._num_steps), num_steps)
             for step in steps:
-                self._curpattern[track][pad][0][step] = 100
+                self.set_cell(track, pad, 0, step, 100)
 
     #--------------------------------------------------------------------------
 
@@ -208,9 +310,6 @@ class Pattern:
             return False
         half       = self._num_bars
         half_steps = half * self._num_steps
-        for track in self._curpattern:
-            for pad in track:
-                pad.extend([bar[:] for bar in pad])
         new_tape = dict(self._tape)
         for (t, b, s), events in self._tape.items():
             new_tape[(t, b + half, s)] = events[:]
@@ -234,9 +333,6 @@ class Pattern:
             return False
         half       = self._num_bars // 2
         half_steps = half * self._num_steps
-        for track in self._curpattern:
-            for pad in track:
-                del pad[half:]
         self._tape = {
             (t, b, s): events
             for (t, b, s), events in self._tape.items()
@@ -257,55 +353,33 @@ class Pattern:
 
     def build_pattern_01(self):
         self.reset_pattern()
-        p = self._curpattern
-        p[0][0][0][0]  = p[0][0][0][4]  = p[0][0][0][8]  = p[0][0][0][12] = 100
-        p[0][4][0][2]  = p[0][4][0][6]  = p[0][4][0][10] = 100
-        p[0][5][0][1:4]  = [100] * 3
-        p[0][5][0][5:8]  = [100] * 3
-        p[0][5][0][9:12] = [100] * 3
-        p[0][5][0][13:16] = [100] * 3
-        p[0][7][0][15] = 100
-        p[0][8][0][14] = 100
-        p[0][9][0][13] = 100
-        p[0][10][0][0] = 100
+        for step in (0, 4, 8, 12):
+            self.set_cell(0, 0, 0, step, 100)
+        for step in (2, 6, 10):
+            self.set_cell(0, 4, 0, step, 100)
+        for step in (*range(1, 4), *range(5, 8), *range(9, 12), *range(13, 16)):
+            self.set_cell(0, 5, 0, step, 100)
+        self.set_cell(0, 7,  0, 15, 100)
+        self.set_cell(0, 8,  0, 14, 100)
+        self.set_cell(0, 9,  0, 13, 100)
+        self.set_cell(0, 10, 0, 0,  100)
 
     #--------------------------------------------------------------------------
 
     def is_empty(self):
-        return not any(
-            step
-            for track in self._curpattern
-            for pad in track
-            for bar in pad
-            for step in bar
-        )
+        return not self._tape
 
     #--------------------------------------------------------------------------
 
     def resize(self, num_bars, num_steps):
-        """Étend ou tronque _curpattern sans effacer les données existantes."""
+        """Étend ou tronque le pattern sans effacer les données existantes."""
         old_steps = self._num_steps
         old_bars  = self._num_bars
 
         if num_steps != old_steps:
-            for track in self._curpattern:
-                for pad in track:
-                    for bar in pad:
-                        if num_steps > old_steps:
-                            bar.extend([0] * (num_steps - old_steps))
-                        else:
-                            del bar[num_steps:]
             self._num_steps = num_steps
 
         if num_bars != old_bars:
-            for track in self._curpattern:
-                for pad in track:
-                    if num_bars > old_bars:
-                        pad.extend(
-                            [[0] * num_steps for _ in range(num_bars - old_bars)]
-                        )
-                    else:
-                        del pad[num_bars:]
             self._num_bars = num_bars
 
         self._tape = {
@@ -346,7 +420,7 @@ class Pattern:
             "track_solos":   self._track_solos,
             "track_volumes": self._track_volumes,
             "track_pans":    self._track_pans,
-            "curpattern":    self._curpattern,
+            "curpattern":    self.to_dense_grid(),
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
             "kb_root_midi":  self._kb_root_midi,
@@ -381,7 +455,8 @@ class Pattern:
         self._loop_start = d.get("loop_start", None)
         self._loop_end   = d.get("loop_end", None)
         self._loop_count = d.get("loop_count", 0)
-        self.load_pattern(d["curpattern"])
+        self._tape = {}
+        self.load_pattern(d["curpattern"])   # peuple les entrées "G"
         if "track_slots"   in d: self._track_slots   = d["track_slots"]
         if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]
         if "track_solos"   in d: self._track_solos   = d["track_solos"]
@@ -390,7 +465,6 @@ class Pattern:
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
-        self._tape = {}
         for rec in d.get("kit_tape", []):
             t, b, s, note, vel = rec[:5]
             dur = rec[5] if len(rec) > 5 else 0

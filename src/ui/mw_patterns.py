@@ -17,11 +17,11 @@ class PatternMixin:
     """Méthodes MainWindow relatives aux patterns : grille, sauvegarde, dialogs."""
 
     def _refresh_grid(self):
+        cur_track = self._player._cur_track
         for r in range(self.ROWS):
+            row = self._player._pattern.grid_row(cur_track, r, 0)
             for c in range(self.COLS):
-                self._cells[r][c].SetValue(
-                    self._player._pattern._curpattern[self._player._cur_track][r][0][c]
-                )
+                self._cells[r][c].SetValue(bool(row[c]))
         self._player._compute_offsets()
 
     def _on_pattern_select(self, event):
@@ -62,27 +62,21 @@ class PatternMixin:
     def _flush_pattern_to_store(self, pat):
         """Copie l'état courant du player + router dans l'objet Pattern du store."""
         live = self._player._pattern
-        pat.load_pattern(live._curpattern)
+        pat.copy_from(live)
         pat._bpm           = self._player.bpm
         pat._track_slots   = self._router._track_slots[:]
         pat._track_mutes   = self._router._track_mutes[:]
         pat._track_solos   = self._router._track_solos[:]
         pat._track_volumes = self._router._track_volumes[:]
         pat._track_pans    = self._router._track_pans[:]
-        pat._tape      = dict(live._tape)
-        pat._bend_tape = [list(t) for t in live._bend_tape]
-        pat._mod_tape  = [list(t) for t in live._mod_tape]
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
         live = self._player._pattern
-        live.load_pattern(new._curpattern)
+        live.copy_from(new)
         self._player.set_bpm(new._bpm)
         self._bpm_ctrl.SetValue(int(new._bpm))
         live._looping  = new._looping
-        live._tape     = dict(new._tape)
-        live._bend_tape = [list(t) for t in new._bend_tape]
-        live._mod_tape  = [list(t) for t in new._mod_tape]
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes
@@ -116,7 +110,6 @@ class PatternMixin:
     def _save_pattern(self):
         self._add_undo(f"Sauvegarder pattern {self._cur_pattern_idx + 1:02d}")
         pat = self._pattern_list[self._cur_pattern_idx]
-        pat.load_pattern(self._player._pattern._curpattern)
         self._flush_pattern_to_store(pat)
         self._refresh_pattern_listbox()
         self._mark_modified()
@@ -130,7 +123,6 @@ class PatternMixin:
             name = dlg.get_name()
             self._add_undo(f"Dupliquer pattern → {idx + 1:02d}")
             pat  = self._pattern_list[idx]
-            pat.load_pattern(self._player._pattern._curpattern)
             pat._name = name
             self._flush_pattern_to_store(pat)
             self._pattern_cache_dirty.add(idx)   # slot cible modifié hors du courant
@@ -149,7 +141,7 @@ class PatternMixin:
         self._player.quant_idx = quant_idx
         self._add_undo(f"Quant ligne {row + 1}")
         self._player.apply_quant_row(quant_idx, row)
-        pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
+        pad = self._player._pattern.grid_row(self._player._cur_track, row, 0)
         for c in range(self.COLS):
             self._cells[row][c].SetValue(bool(pad[c]))
         self._show_status(f"Ligne {row + 1}: {Pattern.QUANT_LIST[quant_idx]} coché")
@@ -215,7 +207,7 @@ class PatternMixin:
             if result == wx.ID_APPLY:
                 self._add_undo(f"Générer ligne {row + 1}")
                 self._player.apply_quant_row(quant_idx, row)
-                pad = self._player._pattern._curpattern[self._player._cur_track][row][0]
+                pad = self._player._pattern.grid_row(self._player._cur_track, row, 0)
                 for c in range(self.COLS):
                     self._cells[row][c].SetValue(bool(pad[c]))
                 self._show_status(
@@ -433,7 +425,7 @@ class PatternMixin:
             elif action == "Doubler":
                 self._add_undo(f"Doubler pattern {self._cur_pattern_idx + 1:02d}")
                 if self._player.double_pattern():
-                    pat.load_pattern(live._curpattern)
+                    pat.copy_from(live)
                     self._refresh_grid()
                     self._show_status(
                         f"Pattern {self._cur_pattern_idx + 1:02d}: doublé — {live._num_bars} mesures"
@@ -443,7 +435,7 @@ class PatternMixin:
             elif action == "Diviser par 2":
                 self._add_undo(f"Diviser pattern {self._cur_pattern_idx + 1:02d}")
                 if self._player.halve_pattern():
-                    pat.load_pattern(live._curpattern)
+                    pat.copy_from(live)
                     self._refresh_grid()
                     self._show_status(
                         f"Pattern {self._cur_pattern_idx + 1:02d}: divisé — {live._num_bars} mesures"
@@ -461,5 +453,5 @@ class PatternMixin:
     def _resize_live_pattern(self, num_bars, num_steps):
         live = self._player._pattern
         live.resize(num_bars, num_steps)
-        self._pattern_list[self._cur_pattern_idx].load_pattern(live._curpattern)
+        self._pattern_list[self._cur_pattern_idx].copy_from(live)
         self._player._compute_offsets()

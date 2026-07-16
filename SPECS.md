@@ -1233,8 +1233,8 @@ Outil de diagnostic des points de bouclage : affiche les paramètres, aligne les
 
 ## Points ouverts / Phase suivante
 
-- **_curpattern + _tape — unification complète** : deux sources de notes → une seule structure canonique (Phase 5 étape 2 unifiée etype G, mais certains chemins de lecture à vérifier)
 - **Éditeur MIDI (Phase 6)** : en cours — MidiEditorWindow opérationnel, QuantizeDialog avancée opérationnelle ; intégration cross-fenêtres et sauvegarde projets en cours de finalisation
+- **Format JSON `.gvp` — unification `tape`** : `to_dict()`/`from_dict()` sérialisent encore séparément `curpattern`/`kit_tape`/`patch_tape` (rétrocompatibilité des presets existants) ; le format cible documenté plus haut (une seule liste `tape` avec `etype`) reste à implémenter dans une session dédiée
 - **AudioSampler — UI groupes mute exclusif** : logique FAITE, PadPropertiesDialog à compléter
 - **Slots LOOP / AUDIO / MIDI_FILE / MIDI_PORT** : types définis, non implémentés
 - **Mode Chord** : voicings d'accords sur la gamme courante

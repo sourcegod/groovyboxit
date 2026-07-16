@@ -263,29 +263,28 @@ class ProjectMixin:
         }
 
     def _clipboard_to_dict(self):
-        """Sérialise le presse-papier TrackEditor."""
+        """Sérialise le presse-papier TrackEditor (grille G + tape K/P, unifiées)."""
         cb = self._track_editor._clipboard
         if cb is None:
             return None
         tape_list = []
         for (t, b, s), events in cb.tape.items():
             for ev in events:
-                if ev.etype == "K":
+                if ev.etype == "G":
+                    tape_list.append(["G", t, b, s, ev.note, ev.vel])
+                elif ev.etype == "K":
                     tape_list.append(["K", t, b, s, ev.note, ev.vel, ev.dur])
                 else:
                     tape_list.append(["P", t, b, s, ev.note, ev.vel, ev.dur, ev.bend])
-        import copy
         return {
             "num_tracks": cb.num_tracks,
             "num_bars":   cb.num_bars,
             "num_steps":  cb.num_steps,
-            "grid":       copy.deepcopy(cb.grid),
             "tape":       tape_list,
         }
 
     def _clipboard_from_dict(self, d):
         """Restaure le presse-papier TrackEditor depuis un dict."""
-        import copy
         from track_editor import _ClipboardData
         from pattern import TapeEvent
         if d is None:
@@ -293,15 +292,18 @@ class ProjectMixin:
             return
         tape = {}
         for rec in d["tape"]:
-            etype, t, b, s, note, vel, dur = (
-                rec[0], rec[1], rec[2], rec[3], rec[4], rec[5], rec[6])
-            bend = rec[7] if len(rec) > 7 else 0
-            tape.setdefault((t, b, s), []).append(TapeEvent(etype, note, vel, dur, bend))
+            etype = rec[0]
+            if etype == "G":
+                _, t, b, s, note, vel = rec
+                tape.setdefault((t, b, s), []).append(TapeEvent("G", note, vel, 0, 0))
+            else:
+                t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
+                bend = rec[7] if len(rec) > 7 else 0
+                tape.setdefault((t, b, s), []).append(TapeEvent(etype, note, vel, dur, bend))
         self._track_editor._clipboard = _ClipboardData(
             num_tracks = d["num_tracks"],
             num_bars   = d["num_bars"],
             num_steps  = d["num_steps"],
-            grid       = copy.deepcopy(d["grid"]),
             tape       = tape,
         )
 

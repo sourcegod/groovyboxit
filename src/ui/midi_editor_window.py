@@ -906,8 +906,8 @@ class MidiEditorWindow(wx.Frame):
                     new_dur  = dlg.get_dur_ms(),
                 )
             if new_ev:
-                # Pour les notes grille, reconstruire les entrées G du tape
-                # (_curpattern → tape["G"]) afin que le player joue les nouvelles notes.
+                # Pour les notes grille, rafraîchir le cache _all_offsets
+                # (utilisé par erase/navigation) après une édition manuelle.
                 if etype == "G":
                     self._parent._player._compute_offsets()
                 if self._parent._player.playing:

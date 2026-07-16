@@ -10,8 +10,8 @@
 class MidiEditor:
     """Logique d'édition des événements MIDI d'un pattern.
 
-    Source principale : _curpattern[track][pad][bar][step] (grille séquenceur).
-    Mode étendu (VIEW_ALL) : grille + _tape (K/P) + _bend_tape + _mod_tape.
+    Source unique : _tape[(track, bar, step)] = [TapeEvent], etype G/K/P.
+    Mode étendu (VIEW_ALL) : _tape (G/K/P) + _bend_tape + _mod_tape.
     """
 
     VIEW_NOTES = 0   # notes de la grille de la piste courante
@@ -26,44 +26,9 @@ class MidiEditor:
     # ------------------------------------------------------------------
 
     def get_note_events(self, pattern, track_idx, lim_left=None, lim_right=None):
-        """Retourne toutes les notes (grille + tape K/P) d'une piste.
-
-        - _curpattern[track_idx][pad][bar][step] → etype 'G'
-        - _tape[(track_idx, bar, step)] etype K/P → inclus tel quel
-
-        Les deux sources sont fusionnées ici car _tape peut contenir des notes
-        enregistrées live (clavier MIDI) absentes de la grille.
-        Refactorisation future prévue pour unifier les deux structures.
-        """
+        """Retourne toutes les notes (G/K/P) d'une piste, depuis _tape."""
         events = []
 
-        # --- Grille séquenceur ---
-        if track_idx < len(pattern._curpattern):
-            for pad_idx, pad_data in enumerate(pattern._curpattern[track_idx]):
-                for bar_idx, bar_data in enumerate(pad_data):
-                    for step_idx, vel in enumerate(bar_data):
-                        if vel <= 0:
-                            continue
-                        offset = bar_idx * pattern._num_steps + step_idx
-                        if lim_left  is not None and offset < lim_left:
-                            continue
-                        if lim_right is not None and offset > lim_right:
-                            continue
-                        dur = (pattern._voices[pad_idx]["duration_ms"]
-                               if pad_idx < len(pattern._voices) else 500)
-                        events.append({
-                            "type":   "note",
-                            "etype":  "G",
-                            "track":  track_idx,
-                            "pad":    pad_idx,
-                            "bar":    bar_idx,
-                            "step":   step_idx,
-                            "offset": offset,
-                            "vel":    vel,
-                            "dur":    dur,
-                        })
-
-        # --- Tape enregistrée (K/P) ---
         for (t, b, s), tape_list in sorted(pattern._tape.items()):
             if t != track_idx:
                 continue
@@ -73,21 +38,35 @@ class MidiEditor:
             if lim_right is not None and offset > lim_right:
                 continue
             for i, ev in enumerate(tape_list):
-                if ev.etype not in ("K", "P"):
-                    continue
-                events.append({
-                    "type":      "note",
-                    "etype":     ev.etype,
-                    "track":     t,
-                    "bar":       b,
-                    "step":      s,
-                    "offset":    offset,
-                    "pad":       ev.note,   # K: index pad kit ; P: note MIDI brute
-                    "vel":       ev.vel,
-                    "dur":       ev.dur,
-                    "bend":      ev.bend,
-                    "event_idx": i,
-                })
+                if ev.etype == "G":
+                    dur = (pattern._voices[ev.note]["duration_ms"]
+                           if ev.note < len(pattern._voices) else 500)
+                    events.append({
+                        "type":      "note",
+                        "etype":     "G",
+                        "track":     t,
+                        "pad":       ev.note,
+                        "bar":       b,
+                        "step":      s,
+                        "offset":    offset,
+                        "vel":       ev.vel,
+                        "dur":       dur,
+                        "event_idx": i,
+                    })
+                else:
+                    events.append({
+                        "type":      "note",
+                        "etype":     ev.etype,
+                        "track":     t,
+                        "bar":       b,
+                        "step":      s,
+                        "offset":    offset,
+                        "pad":       ev.note,   # K: index pad kit ; P: note MIDI brute
+                        "vel":       ev.vel,
+                        "dur":       ev.dur,
+                        "bend":      ev.bend,
+                        "event_idx": i,
+                    })
 
         events.sort(key=lambda e: (e["offset"], e["pad"]))
         return events
@@ -95,13 +74,12 @@ class MidiEditor:
     def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
         """Retourne tous les événements MIDI des pistes sélectionnées.
 
-        Inclut : notes (grille G + tape K/P via get_note_events), bend_tape, mod_tape.
-        La tape K/P n'est PAS relue ici : get_note_events() l'inclut déjà.
+        Inclut : notes (G/K/P via get_note_events), bend_tape, mod_tape.
         """
         sel_set = set(sel_tracks)
         events  = []
 
-        # Notes (grille + tape K/P)
+        # Notes (G/K/P, via _tape)
         for t in sorted(sel_set):
             evs = self.get_note_events(pattern, t, lim_left, lim_right)
             events.extend(evs)
@@ -159,15 +137,15 @@ class MidiEditor:
 
     def _delete_grid_event(self, pattern, ev):
         t, pad, b, s = ev["track"], ev["pad"], ev["bar"], ev["step"]
-        if t >= len(pattern._curpattern):
+        if not (0 <= t < pattern._num_tracks):
             return False
-        if pad >= len(pattern._curpattern[t]):
+        if not (0 <= pad < pattern._num_pads):
             return False
-        if b >= len(pattern._curpattern[t][pad]):
+        if not (0 <= b < pattern._num_bars):
             return False
-        if s >= len(pattern._curpattern[t][pad][b]):
+        if not (0 <= s < pattern._num_steps):
             return False
-        pattern._curpattern[t][pad][b][s] = 0
+        pattern.set_cell(t, pad, b, s, 0)
         return True
 
     def _delete_tape_event(self, pattern, ev):
@@ -286,23 +264,18 @@ class MidiEditor:
         n_bar    = new_bar  if new_bar  is not None else old_bar
         n_step   = new_step if new_step is not None else old_step
 
-        grid = pattern._curpattern
-        if t >= len(grid):
+        if not (0 <= t < pattern._num_tracks):
+            return None
+        if not (0 <= n_pad < pattern._num_pads):
+            return None
+        if not (0 <= n_bar < pattern._num_bars):
+            return None
+        if not (0 <= n_step < pattern._num_steps):
             return None
 
-        # Effacer l'ancienne cellule
-        if (old_pad < len(grid[t]) and
-                old_bar  < len(grid[t][old_pad]) and
-                old_step < len(grid[t][old_pad][old_bar])):
-            grid[t][old_pad][old_bar][old_step] = 0
-
-        # Écrire à la nouvelle position
-        if (n_pad < len(grid[t]) and
-                n_bar  < len(grid[t][n_pad]) and
-                n_step < len(grid[t][n_pad][n_bar])):
-            grid[t][n_pad][n_bar][n_step] = max(1, min(127, n_vel))
-        else:
-            return None
+        n_vel = max(1, min(127, n_vel))
+        pattern.set_cell(t, old_pad, old_bar, old_step, 0)
+        pattern.set_cell(t, n_pad, n_bar, n_step, n_vel)
 
         dur = (pattern._voices[n_pad]["duration_ms"]
                if n_pad < len(pattern._voices) else 500)

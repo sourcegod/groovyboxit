@@ -6,18 +6,16 @@
     Date: Mon, 15/06/2026
     Author: Coolbrother
 """
-import copy
 from pattern import TapeEvent
 
 
 class _ClipboardData:
     """Données copiées depuis une sélection de pistes."""
-    def __init__(self, num_tracks, num_bars, num_steps, grid, tape):
+    def __init__(self, num_tracks, num_bars, num_steps, tape):
         self.num_tracks = num_tracks   # nombre de pistes copiées
         self.num_bars   = num_bars     # mesures dans la source
         self.num_steps  = num_steps    # pas par mesure dans la source
-        self.grid       = grid         # [rel_track][pad][bar][step]
-        self.tape       = tape         # {(rel_track, bar, step): [TapeEvent]}
+        self.tape       = tape         # {(rel_track, bar, step): [TapeEvent]} — incl. etype "G"
 
 
 class _EventClipboard:
@@ -172,8 +170,11 @@ class TrackEditor:
     def paste(self, pattern, cur_track, dest_bar=0, merge=False):
         """Colle le presse-papier à partir de cur_track et dest_bar.
 
-        merge=False (défaut) : remplace les données existantes.
-        merge=True  (Shift+V): mélange — max() sur la grille, union sur la tape.
+        merge=False (défaut) : remplace les données existantes — la grille (G)
+            est intégralement écrasée sur la zone de destination, la tape K/P
+            n'est remplacée que sur les clés présentes dans le presse-papier.
+        merge=True  (Shift+V): mélange — max(vel) par pad sur la grille (G),
+            union brute (concaténation) sur la tape K/P.
         Étend le pattern si la zone de collage dépasse sa longueur actuelle.
         Retourne False si le presse-papier est vide.
         """
@@ -187,22 +188,10 @@ class TrackEditor:
         if needed_bars > pattern._num_bars:
             pattern.resize(needed_bars, pattern._num_steps)
 
-        for rel in range(n_paste):
-            abs_t = cur_track + rel
-            for pad in range(min(pattern._num_pads, len(cb.grid[rel]))):
-                for rel_bar in range(min(cb.num_bars, len(cb.grid[rel][pad]))):
-                    dst_bar = dest_bar + rel_bar
-                    if dst_bar >= pattern._num_bars:
-                        break
-                    src = cb.grid[rel][pad][rel_bar]
-                    dst = pattern._curpattern[abs_t][pad][dst_bar]
-                    n = min(num_steps, len(src), len(dst))
-                    if merge:
-                        for step in range(n):
-                            dst[step] = max(dst[step], src[step])
-                    else:
-                        for step in range(n):
-                            dst[step] = src[step]
+        if not merge:
+            dst_tracks = range(cur_track, cur_track + n_paste)
+            dst_bars   = range(dest_bar, min(dest_bar + cb.num_bars, pattern._num_bars))
+            pattern.clear_grid_box(dst_tracks, dst_bars, range(num_steps))
 
         with pattern._lock:
             for (rel_t, rel_bar, step), events in cb.tape.items():
@@ -213,18 +202,41 @@ class TrackEditor:
                     continue
                 abs_t = cur_track + rel_t
                 key = (abs_t, dst_bar, step)
-                if merge and key in pattern._tape:
-                    pattern._tape[key] = pattern._tape[key] + list(events)
+                if merge:
+                    pattern._tape[key] = self._merge_events(
+                        pattern._tape.get(key, []), events
+                    )
                 else:
                     pattern._tape[key] = list(events)
 
         return True
 
+    @staticmethod
+    def _merge_events(existing, incoming):
+        """Fusionne deux listes de TapeEvent au même (track, bar, step).
+
+        G   : garde vel = max() par pad (reproduit le max() de l'ancienne grille dense).
+        K/P : union brute par concaténation (comportement historique, doublons possibles).
+        """
+        result   = [ev for ev in existing if ev.etype != "G"]
+        g_by_pad = {ev.note: ev for ev in existing if ev.etype == "G"}
+        for ev in incoming:
+            if ev.etype != "G":
+                result.append(ev)
+                continue
+            prev = g_by_pad.get(ev.note)
+            if prev is None or ev.vel > prev.vel:
+                g_by_pad[ev.note] = ev
+        result.extend(g_by_pad.values())
+        return result
+
     def erase_grid(self, pattern, cur_track):
         """Copie dans le presse-papier, puis efface la grille et (si limiteurs) la tape.
 
-        Sans limiteurs : efface toute la grille, tape préservée (comportement d'origine).
-        Avec limiteurs : efface grille + _tape + _bend_tape + _mod_tape dans la plage.
+        Sans limiteurs : efface toute la grille (G), tape K/P préservée (comportement
+        d'origine) — via clear_grid_box qui ne filtre que etype "G".
+        Avec limiteurs : efface _tape (G+K/P) + _bend_tape + _mod_tape dans la plage,
+        via _erase_tape_range qui couvre déjà la grille (G vit désormais dans _tape).
         Le clipboard ne contient que la plage limitée (barres relatives à l'origine).
         Raccourci DAW : Ctrl+X (Erase).
         """
@@ -232,17 +244,12 @@ class TrackEditor:
         lim_l = self._lim_left
         lim_r = self._lim_right
         self._clipboard = self._extract(pattern, tracks, lim_l, lim_r)
-        for t in tracks:
-            for pad in pattern._curpattern[t]:
-                for bar_idx, bar in enumerate(pad):
-                    if lim_l is None or lim_r is None:
-                        bar[:] = [0] * len(bar)
-                    else:
-                        for step_idx in range(len(bar)):
-                            g = bar_idx * pattern._num_steps + step_idx
-                            if lim_l <= g <= lim_r:
-                                bar[step_idx] = 0
-            if lim_l is not None and lim_r is not None:
+        if lim_l is None or lim_r is None:
+            pattern.clear_grid_box(
+                tracks, range(pattern._num_bars), range(pattern._num_steps)
+            )
+        else:
+            for t in tracks:
                 self._erase_tape_range(pattern, t, lim_l, lim_r)
         return True
 
@@ -302,8 +309,8 @@ class TrackEditor:
                 continue
             if ev["etype"] == "G":
                 pad = ev["pad"]
-                if pad < len(pattern._curpattern[abs_track]):
-                    pattern._curpattern[abs_track][pad][bar][step] = ev["vel"]
+                if pad < pattern._num_pads:
+                    pattern.set_cell(abs_track, pad, bar, step, ev["vel"])
                     pasted += 1
             elif ev["etype"] in ("K", "P"):
                 te  = TapeEvent(ev["etype"], ev["pad"], ev["vel"],
@@ -322,7 +329,7 @@ class TrackEditor:
     # ------------------------------------------------------------------
 
     def _extract(self, pattern, tracks, lim_l=None, lim_r=None):
-        """Extrait les pistes dans le clipboard.
+        """Extrait les pistes dans le clipboard (grille G + tape K/P, unifiées dans _tape).
 
         Sans limiteurs : copie tout le pattern (barres absolues).
         Avec limiteurs : copie seulement la plage [lim_l, lim_r]; les indices
@@ -333,19 +340,6 @@ class TrackEditor:
             start_bar = lim_l // ns
             end_bar   = min(lim_r // ns, pattern._num_bars - 1)
             num_bars  = max(1, end_bar - start_bar + 1)
-            grid = []
-            for t in tracks:
-                track_grid = []
-                for pad_data in pattern._curpattern[t]:
-                    pad_bars = []
-                    for rel_bar in range(num_bars):
-                        src_bar = start_bar + rel_bar
-                        if src_bar < len(pad_data):
-                            pad_bars.append(list(pad_data[src_bar]))
-                        else:
-                            pad_bars.append([0] * ns)
-                    track_grid.append(pad_bars)
-                grid.append(track_grid)
             tape = {}
             with pattern._lock:
                 for (t, bar, step), events in pattern._tape.items():
@@ -353,7 +347,6 @@ class TrackEditor:
                         rel = tracks.index(t)
                         tape[(rel, bar - start_bar, step)] = list(events)
         else:
-            grid = [copy.deepcopy(pattern._curpattern[t]) for t in tracks]
             num_bars = pattern._num_bars
             tape = {}
             with pattern._lock:
@@ -365,7 +358,6 @@ class TrackEditor:
             num_tracks = len(tracks),
             num_bars   = num_bars,
             num_steps  = ns,
-            grid       = grid,
             tape       = tape,
         )
 
@@ -377,12 +369,6 @@ class TrackEditor:
                 pattern.clear_track(t)
         else:
             for t in tracks:
-                for pad in pattern._curpattern[t]:
-                    for bar_idx, bar in enumerate(pad):
-                        for step_idx in range(len(bar)):
-                            g = bar_idx * pattern._num_steps + step_idx
-                            if lim_l <= g <= lim_r:
-                                bar[step_idx] = 0
                 self._erase_tape_range(pattern, t, lim_l, lim_r)
 
     def _erase_tape_range(self, pattern, track, lim_l, lim_r):
