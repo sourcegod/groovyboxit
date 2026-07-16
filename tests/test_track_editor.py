@@ -23,13 +23,6 @@ def _make_pattern(num_tracks=4, num_bars=2, num_steps=16):
     p._num_tracks = num_tracks
     p._num_bars   = num_bars
     p._num_steps  = num_steps
-    p._curpattern = [
-        [
-            [[0] * num_steps for _ in range(num_bars)]
-            for _ in range(p._num_pads)
-        ]
-        for _ in range(num_tracks)
-    ]
     p._tape      = {}
     p._bend_tape = [[] for _ in range(num_tracks)]
     p._mod_tape  = [[] for _ in range(num_tracks)]
@@ -38,19 +31,34 @@ def _make_pattern(num_tracks=4, num_bars=2, num_steps=16):
 
 def _fill_track(pattern, track_idx, value=100):
     """Met toutes les cellules d'une piste à `value`."""
-    for pad in pattern._curpattern[track_idx]:
-        for bar in pad:
-            for i in range(len(bar)):
-                bar[i] = value
+    for pad in range(pattern._num_pads):
+        for bar in range(pattern._num_bars):
+            for step in range(pattern._num_steps):
+                pattern.set_cell(track_idx, pad, bar, step, value)
 
 
 def _track_sum(pattern, track_idx):
+    return sum(vel for _, _, _, _, vel in pattern.iter_grid(track=track_idx))
+
+
+def _bar_sum(pattern, track_idx, bar_idx):
     return sum(
-        v
-        for pad in pattern._curpattern[track_idx]
-        for bar in pad
-        for v in bar
+        pattern.get_cell(track_idx, pad, bar_idx, step)
+        for pad in range(pattern._num_pads)
+        for step in range(pattern._num_steps)
     )
+
+
+def _bars_sum(pattern, track_idx, bars):
+    return sum(_bar_sum(pattern, track_idx, b) for b in bars)
+
+
+def _clip_cell(cb, rel_track, pad, bar, step):
+    """Vélocité d'une note G dans le presse-papier (clipboard.tape)."""
+    for ev in cb.tape.get((rel_track, bar, step), []):
+        if ev.etype == "G" and ev.note == pad:
+            return ev.vel
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +167,7 @@ def test_copy_single_track():
     te.copy(p, 0)
     assert te.has_clipboard()
     assert te._clipboard.num_tracks == 1
-    assert te._clipboard.grid[0][0][0][0] == 99
+    assert _clip_cell(te._clipboard, 0, 0, 0, 0) == 99
 
 
 def test_copy_with_lims_extracts_limited_range():
@@ -174,7 +182,7 @@ def test_copy_with_lims_extracts_limited_range():
     te.copy(p, 0)
 
     assert te._clipboard.num_bars == 2        # 2 mesures copiées
-    assert te._clipboard.grid[0][0][0][0] == 3  # 1re mesure relative (bar 1 source)
+    assert _clip_cell(te._clipboard, 0, 0, 0, 0) == 3  # 1re mesure relative (bar 1 source)
     assert _track_sum(p, 0) > 0              # pattern non modifié
 
 
@@ -466,16 +474,8 @@ def test_erase_grid_with_lims_clears_only_range():
     te.erase_grid(p, 0)
 
     # 1re mesure (steps 0..15) doit rester intacte
-    sum_bar0 = sum(
-        p._curpattern[0][pad][0][step]
-        for pad in range(p._num_pads)
-        for step in range(16)
-    )
-    sum_bar1 = sum(
-        p._curpattern[0][pad][1][step]
-        for pad in range(p._num_pads)
-        for step in range(16)
-    )
+    sum_bar0 = _bar_sum(p, 0, 0)
+    sum_bar1 = _bar_sum(p, 0, 1)
     assert sum_bar0 > 0, "La 1re mesure ne devrait pas être effacée"
     assert sum_bar1 == 0, "La 2e mesure devrait être effacée"
 
@@ -513,16 +513,8 @@ def test_erase_tracks_with_lims_clears_only_range():
     te.set_lim_right(15)
     te.erase(p, 0)
 
-    sum_bar0 = sum(
-        p._curpattern[0][pad][0][step]
-        for pad in range(p._num_pads)
-        for step in range(16)
-    )
-    sum_bar1 = sum(
-        p._curpattern[0][pad][1][step]
-        for pad in range(p._num_pads)
-        for step in range(16)
-    )
+    sum_bar0 = _bar_sum(p, 0, 0)
+    sum_bar1 = _bar_sum(p, 0, 1)
     assert sum_bar0 == 0, "La 1re mesure devrait être effacée"
     assert sum_bar1 > 0, "La 2e mesure ne devrait pas être effacée"
 
@@ -534,17 +526,40 @@ def test_paste_merge_grid():
     dst = _make_pattern(num_bars=1, num_steps=16)
 
     # dst : step 0 vaut 80, step 1 vaut 0
-    dst._curpattern[0][0][0][0] = 80
-    dst._curpattern[0][0][0][1] = 0
+    dst.set_cell(0, 0, 0, 0, 80)
     # src : step 0 vaut 50, step 1 vaut 90
-    src._curpattern[0][0][0][0] = 50
-    src._curpattern[0][0][0][1] = 90
+    src.set_cell(0, 0, 0, 0, 50)
+    src.set_cell(0, 0, 0, 1, 90)
 
     te.copy(src, 0)
     te.paste(dst, 0, merge=True)
 
-    assert dst._curpattern[0][0][0][0] == 80   # max(80, 50) = 80 (dst conservé)
-    assert dst._curpattern[0][0][0][1] == 90   # max(0, 90)  = 90 (src ajouté)
+    assert dst.get_cell(0, 0, 0, 0) == 80   # max(80, 50) = 80 (dst conservé)
+    assert dst.get_cell(0, 0, 0, 1) == 90   # max(0, 90)  = 90 (src ajouté)
+
+
+def test_paste_replace_preserves_kp_outside_clipboard_keys():
+    """Contrat dense (G) vs sparse (K/P) du collage en mode remplacement.
+
+    La grille (G) est intégralement écrasée sur toute la zone de destination,
+    mais la tape K/P n'est remplacée que sur les clés présentes dans le
+    presse-papier — un événement K/P de la destination situé en dehors de ces
+    clés doit survivre au collage.
+    """
+    te  = TrackEditor()
+    src = _make_pattern(num_bars=1, num_steps=16)
+    dst = _make_pattern(num_bars=1, num_steps=16)
+    src.set_cell(0, 0, 0, 2, 100)   # seule note G de la source, à step=2
+    dst.set_cell(0, 0, 0, 2, 50)    # G existant à la même position (sera écrasé)
+    dst._tape.setdefault((0, 0, 5), []).append(TapeEvent("K", 36, 90, 0, 0))   # hors clipboard
+
+    te.copy(src, 0)
+    te.paste(dst, 0)   # remplacement (merge=False)
+
+    assert dst.get_cell(0, 0, 0, 2) == 100      # G écrasé par la source
+    assert dst.get_cell(0, 0, 0, 5) == 0        # aucun G ajouté à step 5
+    kp_at_5 = [ev for ev in dst._tape.get((0, 0, 5), []) if ev.etype == "K"]
+    assert len(kp_at_5) == 1 and kp_at_5[0].note == 36   # K préservé (hors clé clipboard)
 
 
 def test_paste_merge_tape():
@@ -588,12 +603,7 @@ def test_paste_extends_when_overflow():
 
     assert dst._num_bars == 6, "Le pattern doit être étendu à 6 mesures"
     # Les 3 premières mesures restent vides (mesures 0-2)
-    sum_bars_0_2 = sum(
-        dst._curpattern[0][pad][b][s]
-        for pad in range(dst._num_pads)
-        for b in range(3)
-        for s in range(16)
-    )
+    sum_bars_0_2 = _bars_sum(dst, 0, range(3))
     assert sum_bars_0_2 == 0, "Mesures 0-2 doivent rester vides"
 
 
@@ -608,16 +618,8 @@ def test_paste_at_dest_bar():
     te.paste(dst, 0, dest_bar=2)
 
     # Mesures 0-1 de dst intactes (vides)
-    sum_bar0 = sum(
-        dst._curpattern[0][pad][0][s]
-        for pad in range(dst._num_pads)
-        for s in range(16)
-    )
-    sum_bar2 = sum(
-        dst._curpattern[0][pad][2][s]
-        for pad in range(dst._num_pads)
-        for s in range(16)
-    )
+    sum_bar0 = _bar_sum(dst, 0, 0)
+    sum_bar2 = _bar_sum(dst, 0, 2)
     assert sum_bar0 == 0, "Mesure 0 ne doit pas être modifiée"
     assert sum_bar2 > 0,  "Mesure 2 doit contenir les données collées"
 
@@ -647,18 +649,8 @@ def test_erase_grid_then_paste_at_bar5():
     assert p._num_bars == 8, "Pattern doit être étendu à 8 mesures"
 
     # Mesures 0-3 vides, mesures 4-7 remplies
-    sum_bars_0_3 = sum(
-        p._curpattern[0][pad][b][s]
-        for pad in range(p._num_pads)
-        for b in range(4)
-        for s in range(16)
-    )
-    sum_bars_4_7 = sum(
-        p._curpattern[0][pad][b][s]
-        for pad in range(p._num_pads)
-        for b in range(4, 8)
-        for s in range(16)
-    )
+    sum_bars_0_3 = _bars_sum(p, 0, range(4))
+    sum_bars_4_7 = _bars_sum(p, 0, range(4, 8))
     assert sum_bars_0_3 == 0, "Mesures 0-3 doivent rester vides"
     assert sum_bars_4_7 > 0,  "Mesures 4-7 doivent contenir les données collées"
 
@@ -732,7 +724,7 @@ def test_paste_events_grid_correct_cell():
     te.copy_events([ev])
     n = te.paste_events(p, 0, 8)   # colle à offset=8 → bar=0, step=8
     assert n == 1
-    assert p._curpattern[0][3][0][8] == 90
+    assert p.get_cell(0, 3, 0, 8) == 90
 
 
 def test_paste_events_preserves_rel_offset():
@@ -742,8 +734,8 @@ def test_paste_events_preserves_rel_offset():
     ev1 = _make_note(0, 1, 0, 4, vel=96)   # offset=4
     te.copy_events([ev0, ev1])
     te.paste_events(p, 0, 8)   # cible offset=8 → 8+0=8, 8+4=12
-    assert p._curpattern[0][0][0][8]  == 64
-    assert p._curpattern[0][1][0][12] == 96
+    assert p.get_cell(0, 0, 0, 8)  == 64
+    assert p.get_cell(0, 1, 0, 12) == 96
 
 
 def test_paste_events_multi_track():
@@ -753,8 +745,8 @@ def test_paste_events_multi_track():
     ev1 = _make_note(2, 0, 0, 0, vel=80)   # rel_track=2
     te.copy_events([ev0, ev1])
     te.paste_events(p, 1, 4)   # piste cible=1 → 1+0=1, 1+2=3
-    assert p._curpattern[1][0][0][4] == 70
-    assert p._curpattern[3][0][0][4] == 80
+    assert p.get_cell(1, 0, 0, 4) == 70
+    assert p.get_cell(3, 0, 0, 4) == 80
 
 
 def test_paste_events_skips_out_of_bounds_track():

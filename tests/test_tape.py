@@ -250,7 +250,7 @@ def test_roundtrip_patch_tape_with_bend():
 def test_from_dict_kit_tape_backward_compat_5_columns():
     """Anciens presets sans colonne dur doivent se charger avec dur=0."""
     old = {
-        "curpattern": Pattern()._curpattern,
+        "curpattern": Pattern().to_dense_grid(),
         "kit_tape": [[0, 0, 3, 36, 100]],   # 5 colonnes, sans dur
     }
     p = Pattern()
@@ -262,7 +262,7 @@ def test_from_dict_kit_tape_backward_compat_5_columns():
 def test_from_dict_patch_tape_backward_compat_5_columns():
     """Anciens presets sans dur ni bend doivent charger dur=0, bend=0."""
     old = {
-        "curpattern": Pattern()._curpattern,
+        "curpattern": Pattern().to_dense_grid(),
         "patch_tape": [[0, 0, 7, 60, 90]],   # 5 colonnes
     }
     p = Pattern()
@@ -274,7 +274,7 @@ def test_from_dict_patch_tape_backward_compat_5_columns():
 def test_from_dict_patch_tape_backward_compat_6_columns():
     """Anciens presets avec dur mais sans bend doivent charger bend=0."""
     old = {
-        "curpattern": Pattern()._curpattern,
+        "curpattern": Pattern().to_dense_grid(),
         "patch_tape": [[0, 0, 3, 60, 100, 500]],   # 6 colonnes, sans bend
     }
     p = Pattern()
@@ -284,14 +284,14 @@ def test_from_dict_patch_tape_backward_compat_6_columns():
 
 def test_from_dict_empty_tapes():
     p = Pattern()
-    p.from_dict({"curpattern": Pattern()._curpattern})
+    p.from_dict({"curpattern": Pattern().to_dense_grid()})
     assert p._tape == {}
     print("  from_dict sans kit_tape/patch_tape → _tape vide : OK")
 
 def test_from_dict_mixed_kit_and_patch_same_step():
     """Kit et patch au même (track, bar, step) → tous dans _tape."""
     old = {
-        "curpattern": Pattern()._curpattern,
+        "curpattern": Pattern().to_dense_grid(),
         "kit_tape":   [[0, 0, 4, 36, 100, 0]],
         "patch_tape": [[0, 0, 4, 60, 90, 500, 0]],
     }
@@ -1007,7 +1007,7 @@ def test_roundtrip_bend_tape():
 
 def test_from_dict_without_bend_tape_gives_empty():
     p = Pattern()
-    p.from_dict({"curpattern": Pattern()._curpattern})
+    p.from_dict({"curpattern": Pattern().to_dense_grid()})
     assert isinstance(p._bend_tape, list)
     assert all(t == [] for t in p._bend_tape)
     print("  from_dict sans bend_tape → listes vides (rétrocompat) : OK")
@@ -1480,7 +1480,7 @@ def test_integration_record_json_reload_with_mod():
 
 
 # ---------------------------------------------------------------------------
-# Etype "G" — unification grille (_curpattern) dans _tape (GRID_EVENT)
+# Etype "G" — grille unifiée dans _tape (GRID_EVENT)
 # ---------------------------------------------------------------------------
 
 def test_grid_event_constant_value():
@@ -1490,27 +1490,22 @@ def test_grid_event_constant_value():
     print("  DrumPlayer.GRID_EVENT == -6 : OK")
 
 
-def test_compute_offsets_syncs_G_entry():
-    """_compute_offsets crée un TapeEvent 'G' dans _tape pour chaque step actif."""
+def test_compute_offsets_reflects_existing_G_events():
+    """_compute_offsets projette les notes G déjà présentes dans _tape vers _all_offsets."""
     pl = _make_player()
-    pl._pattern._curpattern[0][3][0][7] = 90   # track 0, pad 3, bar 0, step 7
+    pl._pattern.set_cell(0, 3, 0, 7, 90)   # track 0, pad 3, bar 0, step 7
     pl._compute_offsets()
-    key = (0, 0, 7)
-    assert key in pl._pattern._tape, "clé (0,0,7) absente de _tape"
-    g_events = [ev for ev in pl._pattern._tape[key]
-                if ev.etype == "G" and ev.note == 3]
-    assert len(g_events) == 1, f"attendu 1 event 'G', obtenu {len(g_events)}"
-    assert g_events[0].vel == 90
-    print("  _compute_offsets crée TapeEvent('G') pour step actif : OK")
+    assert 7.0 in pl._all_offsets[0][3]
+    print("  _compute_offsets reflète les notes G existantes dans _all_offsets : OK")
 
 
-def test_compute_offsets_removes_stale_G():
-    """_compute_offsets supprime les 'G' périmés quand _curpattern est vide."""
+def test_compute_offsets_does_not_mutate_tape():
+    """_compute_offsets est une projection en lecture seule : elle ne modifie plus _tape."""
     pl = _make_player()
     pl._pattern._tape[(0, 0, 5)] = [TapeEvent("G", 2, 100, 0, 0)]
-    pl._compute_offsets()   # _curpattern tout à zéro → aucun "G" légitime
-    assert (0, 0, 5) not in pl._pattern._tape, "'G' périmé doit être supprimé"
-    print("  _compute_offsets supprime les 'G' périmés : OK")
+    pl._compute_offsets()
+    assert (0, 0, 5) in pl._pattern._tape, "compute_offsets ne doit plus supprimer d'entrées _tape"
+    print("  _compute_offsets ne mute plus _tape (lecture seule) : OK")
 
 
 def test_compute_offsets_preserves_K_and_P():
@@ -1518,7 +1513,7 @@ def test_compute_offsets_preserves_K_and_P():
     pl = _make_player()
     pl._pattern._tape[(0, 0, 3)] = [TapeEvent("K", 36, 100, 0, 0),
                                      TapeEvent("P", 60, 90, 400, 0)]
-    pl._compute_offsets()   # _curpattern vide → aucun "G"
+    pl._compute_offsets()   # lecture seule : ne mute pas _tape
     assert (0, 0, 3) in pl._pattern._tape, "clé (0,0,3) ne doit pas disparaître"
     etypes = [ev.etype for ev in pl._pattern._tape[(0, 0, 3)]]
     assert "K" in etypes, "K doit rester"
@@ -1602,7 +1597,7 @@ def test_clear_offset_removes_G_from_tape():
 
 
 def test_to_dict_excludes_G_entries():
-    """to_dict ne sérialise pas les TapeEvent 'G' (dérivés de _curpattern)."""
+    """to_dict ne sérialise pas les TapeEvent 'G' (dérivés de _tape via to_dense_grid)."""
     pl = _make_player()
     pl.record_hit(4, 100)   # crée un "G" dans _tape
     d = pl._pattern.to_dict()
@@ -1787,10 +1782,10 @@ if __name__ == "__main__":
     test_flush_and_apply_roundtrip_mod_tape_via_todict()
     test_to_dict_does_not_raise_after_record_mod()
     test_integration_record_json_reload_with_mod()
-    # Etype "G" — unification grille (_curpattern) dans _tape (GRID_EVENT)
+    # Etype "G" — grille unifiée dans _tape (GRID_EVENT)
     test_grid_event_constant_value()
-    test_compute_offsets_syncs_G_entry()
-    test_compute_offsets_removes_stale_G()
+    test_compute_offsets_reflects_existing_G_events()
+    test_compute_offsets_does_not_mutate_tape()
     test_compute_offsets_preserves_K_and_P()
     test_record_hit_adds_G_to_tape()
     test_record_hit_G_velocity_clamped()

@@ -28,11 +28,13 @@ def _make_player_with_notes():
       Piste 2 — Pad 7  : step  15             (ghost note en fin de mesure)
     """
     p = DrumPlayer()
-    cp = p._pattern._curpattern
-    cp[0][0][0][0]  = cp[0][0][0][4]  = cp[0][0][0][8]  = cp[0][0][0][12] = True
-    cp[0][3][0][2]  = True
-    cp[1][1][0][0]  = cp[1][1][0][8]  = True
-    cp[2][7][0][15] = True
+    pat = p._pattern
+    for step in (0, 4, 8, 12):
+        pat.set_cell(0, 0, 0, step, 100)
+    pat.set_cell(0, 3, 0, 2, 100)
+    pat.set_cell(1, 1, 0, 0, 100)
+    pat.set_cell(1, 1, 0, 8, 100)
+    pat.set_cell(2, 7, 0, 15, 100)
     p._compute_offsets()
     return p
 

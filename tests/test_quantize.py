@@ -41,9 +41,7 @@ def make_player():
 
 def active_steps(player, pad_idx, bar=0):
     return [
-        i for i, v in enumerate(
-            player._pattern._curpattern[0][pad_idx][bar]
-        )
+        i for i, v in enumerate(player._pattern.grid_row(0, pad_idx, bar))
         if v
     ]
 
@@ -78,8 +76,8 @@ def test_quant_row_1_16_fills_every_step():
 
 def test_quant_row_clears_previous_content():
     player = make_player()
-    pat = player._pattern._curpattern[0][0][0]
-    pat[1] = pat[3] = pat[7] = True
+    for step in (1, 3, 7):
+        player._pattern.set_cell(0, 0, 0, step, 100)
     player.apply_quant_row(Pattern.QUANT_STEPS.index(4), 0)
     assert active_steps(player, 0) == [0, 4, 8, 12]
     print("  quant_row efface le contenu précédent : OK")
@@ -115,11 +113,10 @@ def test_quant_pattern_snaps_3_4_to_1_8_grid():
 
 def test_quant_pattern_clears_old_steps_before_snap():
     player = make_player()
-    pat = player._pattern._curpattern[0][0][0]
-    pat[3] = True
+    player._pattern.set_cell(0, 0, 0, 3, 100)
     player.float_offsets[0] = [3.4]
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(8))
-    assert not pat[3]
+    assert not player._pattern.get_cell(0, 0, 0, 3)
     print("  quant_pattern efface les pas existants avant snap : OK")
 
 def test_quant_pattern_no_offsets_leaves_pad_empty():
@@ -130,11 +127,10 @@ def test_quant_pattern_no_offsets_leaves_pad_empty():
 
 def test_quant_pattern_none_idx_does_not_modify_pattern():
     player = make_player()
-    pat = player._pattern._curpattern[0][0][0]
-    pat[3] = True
+    player._pattern.set_cell(0, 0, 0, 3, 100)
     player.quant_idx = -1
     player.apply_quant_to_pattern()
-    assert pat[3]
+    assert player._pattern.get_cell(0, 0, 0, 3)
     print("  quant_pattern quant_idx=-1 (None) → pattern inchangé : OK")
 
 def test_quant_pattern_snap_in_second_bar():
@@ -147,8 +143,7 @@ def test_quant_pattern_snap_in_second_bar():
     ]
     player.float_offsets[0] = [18.4]
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4))
-    bar1 = player._pattern._curpattern[0][0][1]
-    assert bar1[4]
+    assert player._pattern.get_cell(0, 0, 1, 4)
     print("  quant_pattern multi-bar : 18.4 → bar 1, step 4 : OK")
 
 
@@ -210,7 +205,7 @@ def test_rec_quant_writes_snapped_step_in_pattern():
     player._quant_in_recording = True
     player.quant_idx = Pattern.QUANT_STEPS.index(4)
     hit_at(player, 2.6)   # snap → step 4
-    assert player._pattern._curpattern[0][0][0][4]
+    assert player._pattern.get_cell(0, 0, 0, 4)
     print("  rec quant écrit step 4 dans le pattern : OK")
 
 def test_rec_quant_does_not_write_raw_step():
@@ -219,7 +214,7 @@ def test_rec_quant_does_not_write_raw_step():
     player._quant_in_recording = True
     player.quant_idx = Pattern.QUANT_STEPS.index(4)
     hit_at(player, 2.6)   # snap → 4, pas 3
-    assert not player._pattern._curpattern[0][0][0][3]
+    assert not player._pattern.get_cell(0, 0, 0, 3)
     print("  rec quant n'écrit pas le step brut (3) : OK")
 
 def test_rec_quant_stores_snapped_float_offset():

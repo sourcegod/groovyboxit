@@ -36,12 +36,14 @@ def _make_multitrack_pattern():
       Piste 3 — pad 2  : step  3              (note isolée)
     """
     p = Pattern()
-    cp = p._curpattern
-    cp[0][0][0][0] = cp[0][0][0][4] = cp[0][0][0][8] = cp[0][0][0][12] = True
-    cp[0][4][0][2] = cp[0][4][0][10] = True
-    cp[1][1][0][0] = cp[1][1][0][8]  = True
-    cp[2][7][0][15] = True
-    cp[3][2][0][3]  = True
+    for step in (0, 4, 8, 12):
+        p.set_cell(0, 0, 0, step, 100)
+    for step in (2, 10):
+        p.set_cell(0, 4, 0, step, 100)
+    for step in (0, 8):
+        p.set_cell(1, 1, 0, step, 100)
+    p.set_cell(2, 7, 0, 15, 100)
+    p.set_cell(3, 2, 0, 3,  100)
     # Assignations de slots variées
     p._track_slots = [0, 1, 2, 1, 0, 0, 0, 0]
     # Mixage par piste
@@ -68,7 +70,7 @@ def _serialize(pat):
         "track_solos":   pat._track_solos[:],
         "track_volumes": pat._track_volumes[:],
         "track_pans":    pat._track_pans[:],
-        "curpattern":    pat._curpattern,
+        "curpattern":    pat.to_dense_grid(),
         "voices":        pat._voices,
     }
 
@@ -122,8 +124,9 @@ def test_pattern_has_track_mix_fields():
 
 def test_curpattern_dimensions():
     p = Pattern()
-    assert len(p._curpattern) == NUM_TRACKS
-    for track in p._curpattern:
+    dense = p.to_dense_grid()
+    assert len(dense) == NUM_TRACKS
+    for track in dense:
         assert len(track) == NUM_PADS
         for pad in track:
             assert len(pad) == 1          # 1 mesure par défaut
@@ -133,7 +136,7 @@ def test_curpattern_dimensions():
 
 def test_curpattern_initially_empty():
     p = Pattern()
-    for track in p._curpattern:
+    for track in p.to_dense_grid():
         for pad in track:
             for bar in pad:
                 assert not any(bar)
@@ -143,7 +146,7 @@ def test_curpattern_initially_empty():
 def test_load_pattern_preserves_dimensions():
     src = _make_multitrack_pattern()
     dst = Pattern()
-    dst.load_pattern(src._curpattern)
+    dst.load_pattern(src.to_dense_grid())
     assert dst._num_tracks == NUM_TRACKS
     assert dst._num_pads   == NUM_PADS
     assert dst._num_bars   == 1
@@ -161,17 +164,16 @@ def test_roundtrip_curpattern_notes():
     data = _serialize(src)
     dst = _deserialize(data)
 
-    cp = dst._curpattern
-    assert cp[0][0][0][0],   "Piste 0 pad 0 step 0"
-    assert cp[0][0][0][4],   "Piste 0 pad 0 step 4"
-    assert cp[0][0][0][8],   "Piste 0 pad 0 step 8"
-    assert cp[0][0][0][12],  "Piste 0 pad 0 step 12"
-    assert cp[0][4][0][2],   "Piste 0 pad 4 step 2"
-    assert cp[0][4][0][10],  "Piste 0 pad 4 step 10"
-    assert cp[1][1][0][0],   "Piste 1 pad 1 step 0"
-    assert cp[1][1][0][8],   "Piste 1 pad 1 step 8"
-    assert cp[2][7][0][15],  "Piste 2 pad 7 step 15"
-    assert cp[3][2][0][3],   "Piste 3 pad 2 step 3"
+    assert dst.get_cell(0, 0, 0, 0),   "Piste 0 pad 0 step 0"
+    assert dst.get_cell(0, 0, 0, 4),   "Piste 0 pad 0 step 4"
+    assert dst.get_cell(0, 0, 0, 8),   "Piste 0 pad 0 step 8"
+    assert dst.get_cell(0, 0, 0, 12),  "Piste 0 pad 0 step 12"
+    assert dst.get_cell(0, 4, 0, 2),   "Piste 0 pad 4 step 2"
+    assert dst.get_cell(0, 4, 0, 10),  "Piste 0 pad 4 step 10"
+    assert dst.get_cell(1, 1, 0, 0),   "Piste 1 pad 1 step 0"
+    assert dst.get_cell(1, 1, 0, 8),   "Piste 1 pad 1 step 8"
+    assert dst.get_cell(2, 7, 0, 15),  "Piste 2 pad 7 step 15"
+    assert dst.get_cell(3, 2, 0, 3),   "Piste 3 pad 2 step 3"
     print("  round-trip curpattern (notes multi-pistes) : OK")
 
 
@@ -181,7 +183,7 @@ def test_roundtrip_curpattern_empty_tracks():
     data = _serialize(src)
     dst = _deserialize(data)
     for track_idx in range(4, NUM_TRACKS):
-        for pad in dst._curpattern[track_idx]:
+        for pad in dst.to_dense_grid()[track_idx]:
             for bar in pad:
                 assert not any(bar), f"Piste {track_idx} doit être vide"
     print("  round-trip pistes vides : OK")
@@ -287,8 +289,8 @@ def test_json_roundtrip_single_pattern():
 
         assert dst._name == "JSON Test"
         assert dst._track_slots == [0, 1, 2, 1, 0, 0, 0, 0]
-        assert dst._curpattern[2][7][0][15]
-        assert dst._curpattern[3][2][0][3]
+        assert dst.get_cell(2, 7, 0, 15)
+        assert dst.get_cell(3, 2, 0, 3)
         assert dst._voices[0]["volume"]     == 80
     finally:
         os.unlink(path)
@@ -299,9 +301,9 @@ def test_json_roundtrip_99_patterns():
     """Un preset complet de 99 patterns doit se recharger sans perte."""
     pattern_list = [Pattern() for _ in range(99)]
     # Quelques patterns non vides
-    pattern_list[0]._curpattern[0][0][0][0]  = True
+    pattern_list[0].set_cell(0, 0, 0, 0, 100)
     pattern_list[0]._track_slots             = [0, 1, 2, 3, 0, 0, 0, 0]
-    pattern_list[5]._curpattern[1][3][0][7]  = True
+    pattern_list[5].set_cell(1, 3, 0, 7, 100)
     pattern_list[5]._track_slots             = [1, 2, 0, 0, 0, 0, 0, 0]
     pattern_list[5]._name                    = "Pattern 6"
 
@@ -315,17 +317,14 @@ def test_json_roundtrip_99_patterns():
         loaded = _load_preset_dict(data)
 
         assert len(loaded) == 99
-        assert loaded[0]._curpattern[0][0][0][0]
+        assert loaded[0].get_cell(0, 0, 0, 0)
         assert loaded[0]._track_slots             == [0, 1, 2, 3, 0, 0, 0, 0]
-        assert loaded[5]._curpattern[1][3][0][7]
+        assert loaded[5].get_cell(1, 3, 0, 7)
         assert loaded[5]._track_slots             == [1, 2, 0, 0, 0, 0, 0, 0]
         assert loaded[5]._name                    == "Pattern 6"
         # Patterns vides
         for i in [1, 2, 10, 50, 98]:
-            for track in loaded[i]._curpattern:
-                for pad in track:
-                    for bar in pad:
-                        assert not any(bar), f"Pattern {i} doit être vide"
+            assert loaded[i].is_empty(), f"Pattern {i} doit être vide"
     finally:
         os.unlink(path)
     print("  JSON round-trip (99 patterns) : OK")
@@ -341,7 +340,7 @@ def test_json_backwards_compatible_no_track_fields():
                 "bpm": 120,
                 "num_bars": 1,
                 "num_steps": 16,
-                "curpattern": Pattern()._curpattern,
+                "curpattern": Pattern().to_dense_grid(),
                 # pas de track_slots, track_mutes, track_solos, track_volumes, track_pans
                 "voices": Pattern()._voices,
             }

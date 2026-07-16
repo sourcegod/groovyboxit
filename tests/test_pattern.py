@@ -31,23 +31,18 @@ def make_pat(**kw):
 
 
 def step_count(pat):
-    """Nombre total de pas True dans _curpattern."""
-    return sum(
-        1 for track in pat._curpattern
-        for pad in track
-        for bar in pad
-        for step in bar if step
-    )
+    """Nombre total de notes de grille actives (etype 'G')."""
+    return sum(1 for _ in pat.iter_grid())
 
 
 def bar_lengths(pat):
     """Liste des longueurs (num_steps) de chaque bar[track=0][pad=0]."""
-    return [len(bar) for bar in pat._curpattern[0][0]]
+    return [len(pat.grid_row(0, 0, b)) for b in range(pat._num_bars)]
 
 
 def pad_count(pat):
     """Nombre de mesures dans pad[track=0][pad=0]."""
-    return len(pat._curpattern[0][0])
+    return pat._num_bars
 
 
 # ---------------------------------------------------------------------------
@@ -84,13 +79,14 @@ def test_default_is_empty():
     assert p.is_empty()
     print("  Pattern vide par défaut : OK")
 
-def test_default_curpattern_shape():
+def test_default_dense_grid_shape():
     p = Pattern()
-    assert len(p._curpattern) == p._num_tracks
-    assert len(p._curpattern[0]) == p._num_pads
-    assert len(p._curpattern[0][0]) == p._num_bars
-    assert len(p._curpattern[0][0][0]) == p._num_steps
-    print("  Forme _curpattern [tracks][pads][bars][steps] correcte : OK")
+    dense = p.to_dense_grid()
+    assert len(dense) == p._num_tracks
+    assert len(dense[0]) == p._num_pads
+    assert len(dense[0][0]) == p._num_bars
+    assert len(dense[0][0][0]) == p._num_steps
+    print("  Forme to_dense_grid() [tracks][pads][bars][steps] correcte : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +102,7 @@ def test_new_pattern_sets_dimensions():
 
 def test_new_pattern_is_empty():
     p = Pattern()
-    p._curpattern[0][0][0][0] = True
+    p.set_cell(0, 0, 0, 0, 100)
     p.new_pattern(2, 16)
     assert p.is_empty()
     print("  new_pattern efface les données existantes : OK")
@@ -114,8 +110,8 @@ def test_new_pattern_is_empty():
 def test_new_pattern_shape_correct():
     p = Pattern()
     p.new_pattern(3, 64)
-    assert len(p._curpattern[0][0]) == 3
-    assert len(p._curpattern[0][0][0]) == 64
+    assert p._num_bars  == 3
+    assert p._num_steps == 64
     print("  new_pattern(3,64) → shape [3][64] : OK")
 
 
@@ -127,28 +123,37 @@ def test_load_pattern_updates_dimensions():
     src = Pattern()
     src.new_pattern(4, 32)
     dst = Pattern()
-    dst.load_pattern(src._curpattern)
+    dst.load_pattern(src.to_dense_grid())
     assert dst._num_bars == 4
     assert dst._num_steps == 32
     print("  load_pattern met à jour num_bars et num_steps : OK")
 
 def test_load_pattern_copies_data_independently():
     src = Pattern()
-    src._curpattern[0][0][0][5] = True
+    src.set_cell(0, 0, 0, 5, 100)
     dst = Pattern()
-    dst.load_pattern(src._curpattern)
+    dst.load_pattern(src.to_dense_grid())
     # Modifier la source ne doit pas affecter la destination
-    src._curpattern[0][0][0][5] = False
-    assert dst._curpattern[0][0][0][5]
+    src.set_cell(0, 0, 0, 5, 0)
+    assert dst.get_cell(0, 0, 0, 5) == 100
     print("  load_pattern fait une copie indépendante : OK")
 
 def test_load_pattern_preserves_true_steps():
     src = Pattern()
-    src._curpattern[0][3][0][7] = True
+    src.set_cell(0, 3, 0, 7, 100)
     dst = Pattern()
-    dst.load_pattern(src._curpattern)
-    assert dst._curpattern[0][3][0][7]
-    print("  load_pattern conserve les pas True : OK")
+    dst.load_pattern(src.to_dense_grid())
+    assert dst.get_cell(0, 3, 0, 7) == 100
+    print("  load_pattern conserve les pas actifs : OK")
+
+def test_load_pattern_preserves_kp_events():
+    dst = Pattern()
+    dst._tape[(0, 0, 0)] = []
+    from pattern import TapeEvent
+    dst._tape[(0, 0, 0)].append(TapeEvent("K", 60, 90, 0, 0))
+    dst.load_pattern(Pattern().to_dense_grid())
+    assert any(ev.etype == "K" for ev in dst._tape.get((0, 0, 0), []))
+    print("  load_pattern préserve les événements K/P existants : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +162,8 @@ def test_load_pattern_preserves_true_steps():
 
 def test_reset_pattern_clears_all_steps():
     p = Pattern()
-    p._curpattern[0][0][0][0] = True
-    p._curpattern[0][5][0][3] = True
+    p.set_cell(0, 0, 0, 0, 100)
+    p.set_cell(0, 5, 0, 3, 100)
     p.reset_pattern()
     assert p.is_empty()
     print("  reset_pattern efface tous les pas : OK")
@@ -166,7 +171,7 @@ def test_reset_pattern_clears_all_steps():
 def test_reset_pattern_preserves_dimensions():
     p = Pattern()
     p.new_pattern(3, 32)
-    p._curpattern[0][0][0][0] = True
+    p.set_cell(0, 0, 0, 0, 100)
     p.reset_pattern()
     assert p._num_bars == 3
     assert p._num_steps == 32
@@ -188,20 +193,16 @@ def test_gen_pattern_only_affects_given_track():
     p.gen_pattern(0)
     # Les autres pistes (1..7) doivent rester vides
     for t in range(1, p._num_tracks):
-        for pad in p._curpattern[t]:
-            for bar in pad:
-                assert not any(bar)
+        assert list(p.iter_grid(track=t)) == []
     print("  gen_pattern n'affecte que la piste demandée : OK")
 
 def test_gen_pattern_resets_before_generating():
     p = Pattern()
-    # Mettre True sur un pas de la piste 0
-    p._curpattern[0][0][0][0] = True
+    p.set_cell(0, 0, 0, 0, 100)
     p.gen_pattern(0)
     # gen_pattern appelle reset_pattern() en premier, donc le pas [0][0][0][0]
-    # peut être True ou False selon le random — mais _toutes_ les valeurs True
+    # peut être actif ou non selon le random — mais toutes les notes actives
     # sont celles placées par gen_pattern, pas des résidus.
-    # On vérifie juste que le résultat est cohérent (au moins 1 True).
     assert not p.is_empty()
     print("  gen_pattern repart d'un état vide : OK")
 
@@ -226,12 +227,12 @@ def test_double_bars_returns_true_on_success():
 def test_double_bars_duplicates_content():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._curpattern[0][0][0][3] = True   # bar 0, step 3
-    p._curpattern[0][0][1][7] = True   # bar 1, step 7
+    p.set_cell(0, 0, 0, 3, 100)   # bar 0, step 3
+    p.set_cell(0, 0, 1, 7, 100)   # bar 1, step 7
     p.double_bars()
     # Après doublement : bars 0..3, les bars 2 et 3 sont des copies de 0 et 1
-    assert p._curpattern[0][0][2][3] is True   # copie de bar 0
-    assert p._curpattern[0][0][3][7] is True   # copie de bar 1
+    assert p.get_cell(0, 0, 2, 3) == 100   # copie de bar 0
+    assert p.get_cell(0, 0, 3, 7) == 100   # copie de bar 1
     print("  double_bars duplique le contenu des mesures : OK")
 
 def test_double_bars_returns_false_at_max():
@@ -263,14 +264,14 @@ def test_halve_bars_returns_true_on_success():
 def test_halve_bars_keeps_first_half():
     p = Pattern()
     p.new_pattern(4, 16)
-    p._curpattern[0][0][0][1] = True   # bar 0 → conservée
-    p._curpattern[0][0][1][2] = True   # bar 1 → conservée
-    p._curpattern[0][0][2][3] = True   # bar 2 → supprimée
-    p._curpattern[0][0][3][4] = True   # bar 3 → supprimée
+    p.set_cell(0, 0, 0, 1, 100)   # bar 0 → conservée
+    p.set_cell(0, 0, 1, 2, 100)   # bar 1 → conservée
+    p.set_cell(0, 0, 2, 3, 100)   # bar 2 → supprimée
+    p.set_cell(0, 0, 3, 4, 100)   # bar 3 → supprimée
     p.halve_bars()
-    assert p._curpattern[0][0][0][1] is True
-    assert p._curpattern[0][0][1][2] is True
-    assert len(p._curpattern[0][0]) == 2   # bars 2 et 3 supprimées
+    assert p.get_cell(0, 0, 0, 1) == 100
+    assert p.get_cell(0, 0, 1, 2) == 100
+    assert p._num_bars == 2   # bars 2 et 3 supprimées
     print("  halve_bars conserve la première moitié : OK")
 
 def test_halve_bars_returns_false_if_one_bar():
@@ -302,18 +303,18 @@ def test_build_pattern_01_not_empty():
 def test_build_pattern_01_kick_on_downbeat():
     p = Pattern()
     p.build_pattern_01()
-    assert p._curpattern[0][0][0][0]    # temps 1
-    assert p._curpattern[0][0][0][4]    # temps 2
-    assert p._curpattern[0][0][0][8]    # temps 3
-    assert p._curpattern[0][0][0][12]   # temps 4
+    assert p.get_cell(0, 0, 0, 0)    # temps 1
+    assert p.get_cell(0, 0, 0, 4)    # temps 2
+    assert p.get_cell(0, 0, 0, 8)    # temps 3
+    assert p.get_cell(0, 0, 0, 12)   # temps 4
     print("  build_pattern_01: kick sur les 4 temps : OK")
 
 def test_build_pattern_01_resets_prior_data():
     p = Pattern()
-    p._curpattern[0][0][0][15] = True
+    p.set_cell(0, 0, 0, 15, 100)
     p.build_pattern_01()
-    # Après build, le pas 15 sur pad 0 doit être False (reset en premier)
-    assert not p._curpattern[0][0][0][15]
+    # Après build, le pas 15 sur pad 0 doit être inactif (reset en premier)
+    assert not p.get_cell(0, 0, 0, 15)
     print("  build_pattern_01 efface les données précédentes : OK")
 
 
@@ -328,22 +329,30 @@ def test_is_empty_true_on_new_pattern():
 
 def test_is_empty_false_when_one_step_set():
     p = Pattern()
-    p._curpattern[0][0][0][0] = True
+    p.set_cell(0, 0, 0, 0, 100)
     assert not p.is_empty()
-    print("  is_empty() == False dès qu'un pas est True : OK")
+    print("  is_empty() == False dès qu'un pas est actif : OK")
 
 def test_is_empty_true_after_reset():
     p = Pattern()
-    p._curpattern[0][0][0][0] = True
+    p.set_cell(0, 0, 0, 0, 100)
     p.reset_pattern()
     assert p.is_empty()
     print("  is_empty() == True après reset_pattern() : OK")
 
 def test_is_empty_checks_all_tracks():
     p = Pattern()
-    p._curpattern[7][15][0][15] = True   # dernière piste, dernier pad, dernier pas
+    p.set_cell(7, 15, 0, 15, 100)   # dernière piste, dernier pad, dernier pas
     assert not p.is_empty()
     print("  is_empty() vérifie toutes les pistes et tous les pads : OK")
+
+def test_is_empty_false_with_only_kp_events():
+    """Un pattern sans note de grille mais avec une note K/P n'est pas vide."""
+    from pattern import TapeEvent
+    p = Pattern()
+    p._tape[(0, 0, 0)] = [TapeEvent("K", 60, 90, 0, 0)]
+    assert not p.is_empty()
+    print("  is_empty() == False avec seulement des notes K/P : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -361,30 +370,30 @@ def test_resize_extend_steps_bar_length():
     p = Pattern()
     p.new_pattern(1, 16)
     p.resize(1, 32)
-    assert all(len(bar) == 32 for bar in p._curpattern[0][0])
+    assert bar_lengths(p) == [32]
     print("  resize: chaque bar a la nouvelle longueur après extension : OK")
 
 def test_resize_truncate_steps_bar_length():
     p = Pattern()
     p.new_pattern(1, 32)
     p.resize(1, 16)
-    assert all(len(bar) == 16 for bar in p._curpattern[0][0])
+    assert bar_lengths(p) == [16]
     print("  resize: chaque bar tronquée à la nouvelle longueur : OK")
 
 def test_resize_extend_steps_preserves_existing():
     p = Pattern()
     p.new_pattern(1, 16)
-    p._curpattern[0][0][0][3] = True
+    p.set_cell(0, 0, 0, 3, 100)
     p.resize(1, 32)
-    assert p._curpattern[0][0][0][3] is True
+    assert p.get_cell(0, 0, 0, 3) == 100
     print("  resize: l'extension de steps conserve les pas existants : OK")
 
 def test_resize_extend_steps_new_steps_are_false():
     p = Pattern()
     p.new_pattern(1, 16)
     p.resize(1, 32)
-    assert not p._curpattern[0][0][0][16]
-    assert not p._curpattern[0][0][0][31]
+    assert not p.get_cell(0, 0, 0, 16)
+    assert not p.get_cell(0, 0, 0, 31)
     print("  resize: nouveaux pas initialisés à False : OK")
 
 def test_resize_extend_bars_updates_num_bars():
@@ -398,52 +407,52 @@ def test_resize_extend_bars_count():
     p = Pattern()
     p.new_pattern(2, 16)
     p.resize(5, 16)
-    assert len(p._curpattern[0][0]) == 5
+    assert pad_count(p) == 5
     print("  resize: nombre de bars correct après extension : OK")
 
 def test_resize_truncate_bars_count():
     p = Pattern()
     p.new_pattern(4, 16)
     p.resize(2, 16)
-    assert len(p._curpattern[0][0]) == 2
+    assert pad_count(p) == 2
     print("  resize: nombre de bars correct après troncature : OK")
 
 def test_resize_extend_bars_preserves_existing():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._curpattern[0][0][1][5] = True   # bar 1
+    p.set_cell(0, 0, 1, 5, 100)   # bar 1
     p.resize(4, 16)
-    assert p._curpattern[0][0][1][5] is True
+    assert p.get_cell(0, 0, 1, 5) == 100
     print("  resize: l'extension de bars conserve les bars existantes : OK")
 
 def test_resize_new_bars_are_empty():
     p = Pattern()
     p.new_pattern(2, 16)
     p.resize(4, 16)
-    assert not any(p._curpattern[0][0][2])
-    assert not any(p._curpattern[0][0][3])
+    assert not any(p.grid_row(0, 0, 2))
+    assert not any(p.grid_row(0, 0, 3))
     print("  resize: nouvelles bars initialisées à False : OK")
 
 def test_resize_noop_same_dimensions():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._curpattern[0][0][0][3] = True
+    p.set_cell(0, 0, 0, 3, 100)
     p.resize(2, 16)
     assert p._num_bars == 2
     assert p._num_steps == 16
-    assert p._curpattern[0][0][0][3] is True
+    assert p.get_cell(0, 0, 0, 3) == 100
     print("  resize: aucun changement si dimensions identiques : OK")
 
 def test_resize_both_bars_and_steps():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._curpattern[0][0][0][0] = True
+    p.set_cell(0, 0, 0, 0, 100)
     p.resize(4, 32)
     assert p._num_bars == 4
     assert p._num_steps == 32
-    assert p._curpattern[0][0][0][0] is True
-    assert len(p._curpattern[0][0]) == 4
-    assert len(p._curpattern[0][0][0]) == 32
+    assert p.get_cell(0, 0, 0, 0) == 100
+    assert pad_count(p) == 4
+    assert len(p.grid_row(0, 0, 0)) == 32
     print("  resize: extension simultanée bars et steps : OK")
 
 
@@ -481,12 +490,13 @@ def test_to_dict_looping_value():
     assert p.to_dict()["looping"] is False
     print("  to_dict['looping'] reflète _looping : OK")
 
-def test_to_dict_curpattern_is_same_object():
+def test_to_dict_curpattern_matches_dense_grid():
     p = Pattern()
+    p.set_cell(0, 3, 0, 7, 100)
     d = p.to_dict()
-    # to_dict expose _curpattern directement (pas de copie) — vérifier que les données y sont
-    assert d["curpattern"] is p._curpattern
-    print("  to_dict['curpattern'] pointe sur _curpattern : OK")
+    # curpattern est désormais dérivé à la volée depuis _tape (etype "G")
+    assert d["curpattern"] == p.to_dense_grid()
+    print("  to_dict['curpattern'] == to_dense_grid() (dérivé de _tape) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -495,26 +505,26 @@ def test_to_dict_curpattern_is_same_object():
 
 def test_from_dict_restores_name():
     p = Pattern()
-    p.from_dict({"name": "Test", "bpm": 100, "curpattern": Pattern()._curpattern})
+    p.from_dict({"name": "Test", "bpm": 100, "curpattern": Pattern().to_dense_grid()})
     assert p._name == "Test"
     print("  from_dict restaure _name : OK")
 
 def test_from_dict_restores_bpm():
     p = Pattern()
-    p.from_dict({"name": "", "bpm": 175, "curpattern": Pattern()._curpattern})
+    p.from_dict({"name": "", "bpm": 175, "curpattern": Pattern().to_dense_grid()})
     assert p._bpm == 175
     print("  from_dict restaure _bpm : OK")
 
 def test_from_dict_restores_looping():
     p = Pattern()
     p.from_dict({"name": "", "bpm": 100, "looping": False,
-                 "curpattern": Pattern()._curpattern})
+                 "curpattern": Pattern().to_dense_grid()})
     assert p._looping is False
     print("  from_dict restaure _looping : OK")
 
 def test_from_dict_defaults_for_missing_fields():
     p = Pattern()
-    p.from_dict({"curpattern": Pattern()._curpattern})
+    p.from_dict({"curpattern": Pattern().to_dense_grid()})
     assert p._name      == ""
     assert p._bpm       == 100
     assert p._looping   is True
@@ -541,11 +551,25 @@ def test_from_dict_restores_voices():
 
 def test_from_dict_missing_track_fields_keep_defaults():
     p = Pattern()
-    p.from_dict({"curpattern": Pattern()._curpattern})
+    p.from_dict({"curpattern": Pattern().to_dense_grid()})
     # Sans clés track_*, les listes par défaut doivent rester intactes
     assert p._track_mutes   == [False] * 8
     assert p._track_volumes == [100]   * 8
     print("  from_dict sans track_* → listes par défaut conservées : OK")
+
+def test_from_dict_preserves_kit_and_patch_tape():
+    """from_dict doit peupler les événements G AVANT d'ajouter kit_tape/patch_tape."""
+    src = Pattern()
+    src.set_cell(0, 3, 0, 7, 100)
+    src._tape.setdefault((0, 0, 2), []).extend([])
+    from pattern import TapeEvent
+    src._tape.setdefault((0, 0, 2), []).append(TapeEvent("K", 60, 90, 0, 0))
+    d = src.to_dict()
+    dst = Pattern()
+    dst.from_dict(d)
+    assert dst.get_cell(0, 3, 0, 7) == 100
+    assert any(ev.etype == "K" for ev in dst._tape.get((0, 0, 2), []))
+    print("  from_dict conserve G (via curpattern) et K/P (via kit_tape) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -569,23 +593,23 @@ def test_roundtrip_preserves_metadata():
 
 def test_roundtrip_preserves_curpattern():
     src = Pattern()
-    src._curpattern[0][5][0][11] = True
+    src.set_cell(0, 5, 0, 11, 100)
     d = src.to_dict()
     dst = Pattern()
     dst.from_dict(d)
-    assert dst._curpattern[0][5][0][11]
-    print("  to_dict → from_dict conserve les données de _curpattern : OK")
+    assert dst.get_cell(0, 5, 0, 11) == 100
+    print("  to_dict → from_dict conserve les notes de grille : OK")
 
 def test_roundtrip_is_independent_copy():
     src = Pattern()
-    src._curpattern[0][0][0][0] = True
+    src.set_cell(0, 0, 0, 0, 100)
     d = src.to_dict()
     dst = Pattern()
     dst.from_dict(d)
     # from_dict fait load_pattern qui copie → modifier src ne doit pas affecter dst
-    src._curpattern[0][0][0][0] = False
-    assert dst._curpattern[0][0][0][0]
-    print("  from_dict produit une copie indépendante de _curpattern : OK")
+    src.set_cell(0, 0, 0, 0, 0)
+    assert dst.get_cell(0, 0, 0, 0) == 100
+    print("  from_dict produit une copie indépendante : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -599,7 +623,7 @@ if __name__ == "__main__":
     test_default_looping_true()
     test_default_start_bar_zero()
     test_default_is_empty()
-    test_default_curpattern_shape()
+    test_default_dense_grid_shape()
     # new_pattern
     test_new_pattern_sets_dimensions()
     test_new_pattern_is_empty()
@@ -608,6 +632,7 @@ if __name__ == "__main__":
     test_load_pattern_updates_dimensions()
     test_load_pattern_copies_data_independently()
     test_load_pattern_preserves_true_steps()
+    test_load_pattern_preserves_kp_events()
     # reset_pattern
     test_reset_pattern_clears_all_steps()
     test_reset_pattern_preserves_dimensions()
@@ -635,6 +660,7 @@ if __name__ == "__main__":
     test_is_empty_false_when_one_step_set()
     test_is_empty_true_after_reset()
     test_is_empty_checks_all_tracks()
+    test_is_empty_false_with_only_kp_events()
     # resize
     test_resize_extend_steps_updates_num_steps()
     test_resize_extend_steps_bar_length()
@@ -653,7 +679,7 @@ if __name__ == "__main__":
     test_to_dict_name_value()
     test_to_dict_bpm_value()
     test_to_dict_looping_value()
-    test_to_dict_curpattern_is_same_object()
+    test_to_dict_curpattern_matches_dense_grid()
     # from_dict
     test_from_dict_restores_name()
     test_from_dict_restores_bpm()
@@ -662,6 +688,7 @@ if __name__ == "__main__":
     test_from_dict_restores_track_slots()
     test_from_dict_restores_voices()
     test_from_dict_missing_track_fields_keep_defaults()
+    test_from_dict_preserves_kit_and_patch_tape()
     # Aller-retour
     test_roundtrip_preserves_metadata()
     test_roundtrip_preserves_curpattern()

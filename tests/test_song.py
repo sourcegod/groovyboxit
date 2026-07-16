@@ -119,7 +119,7 @@ def test_song_roundtrip():
 def test_play_song_sets_song_mode():
     pats = [make_pattern(bpm=120) for _ in range(3)]
     player = FakePlayer(pats)
-    player.load_pattern(pats[0]._curpattern)
+    player.load_pattern(pats[0].to_dense_grid())
     player.play_song([0, 1, 2], pats)
     assert player._song_mode is True
     assert player._song_sequence == [0, 1, 2]
@@ -136,7 +136,7 @@ def test_play_song_empty_sequence_noop():
 def test_stop_pattern_clears_song_mode():
     pats = [make_pattern()]
     player = FakePlayer(pats)
-    player.load_pattern(pats[0]._curpattern)
+    player.load_pattern(pats[0].to_dense_grid())
     player.play_song([0], pats)
     player.stop_pattern()
     assert player._song_mode is False
@@ -145,7 +145,7 @@ def test_play_song_sets_looping_false():
     pats = [make_pattern()]
     pats[0]._looping = True
     player = FakePlayer(pats)
-    player.load_pattern(pats[0]._curpattern)
+    player.load_pattern(pats[0].to_dense_grid())
     player.play_song([0], pats)
     assert player._pattern._looping is False
     player.stop_pattern()
@@ -163,7 +163,7 @@ def _run_song_advance_test(num_patterns, bpm=600, num_bars=1):
     advances = []
     player = FakePlayer(pats)
     player._on_song_advance_cb = lambda idx: advances.append(idx)
-    player.load_pattern(pats[0]._curpattern)
+    player.load_pattern(pats[0].to_dense_grid())
     player.play_song(list(range(num_patterns)), pats)
 
     # Attendre la fin du song (avec timeout)
@@ -214,7 +214,7 @@ def test_song_looping_from_dict_default():
 def test_play_song_sets_looping_flag():
     pats = [make_pattern()]
     player = FakePlayer(pats)
-    player.load_pattern(pats[0]._curpattern)
+    player.load_pattern(pats[0].to_dense_grid())
     player.play_song([0], pats, looping=True)
     assert player._song_looping is True
     player.stop_pattern()
@@ -227,7 +227,7 @@ def test_song_looping_loops_back():
     advances = []
     player = FakePlayer(pats)
     player._on_song_advance_cb = lambda idx: advances.append(idx)
-    player.load_pattern(pats[0]._curpattern)
+    player.load_pattern(pats[0].to_dense_grid())
     player.play_song([0, 1], pats, looping=True)
 
     # Attendre 2 cycles complets (chaque pattern = ~0.1 s à 600 BPM)
