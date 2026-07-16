@@ -627,11 +627,11 @@ def test_goto_to_offset_un_bar():
 # ---------------------------------------------------------------------------
 
 def test_etype_discriminates_k_vs_p():
-    from pattern import TapeEvent
-    ev_k = TapeEvent("K", 36, 100, 0, 0)
-    ev_p = TapeEvent("P", 36, 100, 200, 0)
-    assert ev_k.etype == "K"
-    assert ev_p.etype == "P"
+    from pattern import TapeEvent, ETYPE_KIT, ETYPE_PATCH
+    ev_k = TapeEvent(ETYPE_KIT, 36, 100, 0, 0)
+    ev_p = TapeEvent(ETYPE_PATCH, 36, 100, 200, 0)
+    assert ev_k.etype == ETYPE_KIT
+    assert ev_p.etype == ETYPE_PATCH
     assert ev_k != ev_p
     print("  TapeEvent etype K≠P pour même note : OK")
 

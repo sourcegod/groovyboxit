@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from midi_editor import MidiEditor
 
 
@@ -28,8 +28,8 @@ def _make_pattern():
     p.set_cell(1, 3, 0, 8, 100)
 
     # Tape K/P pour le mode ALL (ajoutés aux entrées G déjà posées par set_cell)
-    p._tape.setdefault((0, 0, 0), []).append(TapeEvent("K", 60, 100, 500, 0))
-    p._tape.setdefault((1, 0, 4), []).append(TapeEvent("P", 64,  80, 300, 0))
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_KIT, 60, 100, 500, 0))
+    p._tape.setdefault((1, 0, 4), []).append(TapeEvent(ETYPE_PATCH, 64,  80, 300, 0))
 
     # Automation bend/mod piste 0
     p._bend_tape[0] = [(2, 100), (6, -200)]
@@ -62,9 +62,9 @@ def test_note_events_etypes():
     p  = _make_pattern()
     ev = me.get_note_events(p, 0)
     # Grille → G, tape K/P également inclus
-    assert all(e["etype"] in ("G", "K", "P") for e in ev)
-    grid = [e for e in ev if e["etype"] == "G"]
-    tape = [e for e in ev if e["etype"] in ("K", "P")]
+    assert all(e["etype"] in (ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH) for e in ev)
+    grid = [e for e in ev if e["etype"] == ETYPE_GRID]
+    tape = [e for e in ev if e["etype"] in (ETYPE_KIT, ETYPE_PATCH)]
     assert len(grid) == 4
     assert len(tape) == 1
 
@@ -105,8 +105,8 @@ def test_note_events_track1():
     ev = me.get_note_events(p, 1)
     # Grille : pad3 step8 → 1 ; tape P : note64 step4 → 1
     assert len(ev) == 2
-    grid = next(e for e in ev if e["etype"] == "G")
-    tape = next(e for e in ev if e["etype"] == "P")
+    grid = next(e for e in ev if e["etype"] == ETYPE_GRID)
+    tape = next(e for e in ev if e["etype"] == ETYPE_PATCH)
     assert grid["pad"] == 3 and grid["step"] == 8
     assert tape["pad"] == 64 and tape["step"] == 4
 
@@ -163,7 +163,7 @@ def test_note_events_group_at_same_offset():
     # Offset 0 : pad0(G), pad1(G), tape K note=60 → 3 événements
     at_zero = [e for e in ev if e["offset"] == 0]
     assert len(at_zero) == 3
-    grid_pads = {e["pad"] for e in at_zero if e["etype"] == "G"}
+    grid_pads = {e["pad"] for e in at_zero if e["etype"] == ETYPE_GRID}
     assert grid_pads == {0, 1}
 
 
@@ -175,7 +175,7 @@ def test_all_events_includes_grid_notes():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_all_events(p, [0])
-    grid = [e for e in ev if e.get("etype") == "G"]
+    grid = [e for e in ev if e.get("etype") == ETYPE_GRID]
     assert len(grid) == 4
 
 
@@ -183,7 +183,7 @@ def test_all_events_includes_tape():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_all_events(p, [0])
-    tape = [e for e in ev if e.get("etype") in ("K", "P")]
+    tape = [e for e in ev if e.get("etype") in (ETYPE_KIT, ETYPE_PATCH)]
     assert len(tape) == 1   # tape track 0 only
 
 
@@ -207,7 +207,7 @@ def test_all_events_multi_track():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_all_events(p, [0, 1])
-    grid = [e for e in ev if e.get("etype") == "G"]
+    grid = [e for e in ev if e.get("etype") == ETYPE_GRID]
     # 4 de tr0 + 1 de tr1
     assert len(grid) == 5
 
@@ -242,7 +242,7 @@ def test_delete_grid_sets_cell_to_zero():
     me = MidiEditor()
     p  = _make_pattern()
     assert p.get_cell(0, 0, 0, 0) == 100
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0}
     me.delete_event(p, ev)
     assert p.get_cell(0, 0, 0, 0) == 0
 
@@ -250,7 +250,7 @@ def test_delete_grid_sets_cell_to_zero():
 def test_delete_out_of_bounds_track():
     me = MidiEditor()
     p  = Pattern()
-    ev = {"type": "note", "etype": "G", "track": 99, "pad": 0, "bar": 0, "step": 0}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 99, "pad": 0, "bar": 0, "step": 0}
     assert me.delete_event(p, ev) is False
 
 
@@ -275,7 +275,7 @@ def test_delete_mod_returns_false():
 def test_edit_grid_velocity():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
     result = me.edit_grid_note(p, ev, new_vel=50)
     assert result is not None
     assert result["vel"] == 50
@@ -285,7 +285,7 @@ def test_edit_grid_velocity():
 def test_edit_grid_move_position():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
     result = me.edit_grid_note(p, ev, new_bar=1, new_step=3)
     assert result is not None
     assert result["bar"]  == 1
@@ -297,7 +297,7 @@ def test_edit_grid_move_position():
 def test_edit_grid_change_pad():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
     result = me.edit_grid_note(p, ev, new_pad=5)
     assert result is not None
     assert result["pad"] == 5
@@ -308,7 +308,7 @@ def test_edit_grid_change_pad():
 def test_edit_grid_updated_offset():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
     result = me.edit_grid_note(p, ev, new_bar=1, new_step=4)
     assert result["offset"] == 1 * p._num_steps + 4
 
@@ -316,7 +316,7 @@ def test_edit_grid_updated_offset():
 def test_edit_grid_no_change():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
     result = me.edit_grid_note(p, ev)
     assert result["vel"] == 100
     assert p.get_cell(0, 0, 0, 0) == 100
@@ -325,14 +325,14 @@ def test_edit_grid_no_change():
 def test_edit_grid_wrong_etype_returns_none():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": "K", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
     assert me.edit_grid_note(p, ev) is None
 
 
 def test_edit_grid_out_of_bounds_returns_none():
     me = MidiEditor()
     p  = Pattern()
-    ev = {"type": "note", "etype": "G", "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100,
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100,
           "new_bar": 999}
     result = me.edit_grid_note(p, ev, new_bar=999)
     assert result is None
@@ -716,7 +716,7 @@ def test_delete_selected_removes_grid_notes():
     p  = _make_pattern()
     ev = me.get_note_events(p, 0)
     # Sélectionner les notes G à offset 0
-    group0 = [i for i in me.group_indices(ev, 0) if ev[i]["etype"] == "G"]
+    group0 = [i for i in me.group_indices(ev, 0) if ev[i]["etype"] == ETYPE_GRID]
     for idx in sorted(group0, reverse=True):
         assert me.delete_event(p, ev[idx]) is True
     # Vérifier que les cellules sont à 0
@@ -730,12 +730,12 @@ def test_delete_group_removes_all_at_offset():
     ev = me.get_note_events(p, 0)
     group0 = me.group_indices(ev, 0)
     # Supprimer uniquement les notes G du groupe
-    g_notes = [i for i in group0 if ev[i]["etype"] == "G"]
+    g_notes = [i for i in group0 if ev[i]["etype"] == ETYPE_GRID]
     for idx in sorted(g_notes, reverse=True):
         me.delete_event(p, ev[idx])
     ev2 = me.get_note_events(p, 0)
     # Plus de notes G à offset 0
-    g_at_zero = [e for e in ev2 if e["offset"] == 0 and e["etype"] == "G"]
+    g_at_zero = [e for e in ev2 if e["offset"] == 0 and e["etype"] == ETYPE_GRID]
     assert g_at_zero == []
 
 
@@ -744,13 +744,13 @@ def test_delete_tape_event_returns_true():
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_note_events(p, 0)
-    tape_ev = next(e for e in ev if e["etype"] in ("K", "P"))
+    tape_ev = next(e for e in ev if e["etype"] in (ETYPE_KIT, ETYPE_PATCH))
     result = me.delete_event(p, tape_ev)
     assert result is True
     # L'événement K/P doit avoir disparu (des notes G peuvent rester à la même clé)
     key = (tape_ev["track"], tape_ev["bar"], tape_ev["step"])
     remaining = p._tape.get(key, [])
-    assert not any(e.etype in ("K", "P") for e in remaining)
+    assert not any(e.etype in (ETYPE_KIT, ETYPE_PATCH) for e in remaining)
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from drum_player import DrumPlayer
 
 
@@ -34,8 +34,8 @@ def _make_live_with_kp(num_bars=2, num_steps=16):
     player._pattern.new_pattern(num_bars, num_steps)
     live = player._pattern
     live.set_cell(0, 0, 0, 0, 100)     # note de grille (G)
-    live._tape.setdefault((0, 0, 4), []).append(TapeEvent("K", 36, 90, 0, 0))
-    live._tape.setdefault((0, 1, 2), []).append(TapeEvent("P", 60, 80, 300, 50))
+    live._tape.setdefault((0, 0, 4), []).append(TapeEvent(ETYPE_KIT, 36, 90, 0, 0))
+    live._tape.setdefault((0, 1, 2), []).append(TapeEvent(ETYPE_PATCH, 60, 80, 300, 50))
     live._bend_tape[0].append((5.0, 1000))
     live._mod_tape[0].append((3.0, 64))
     return player
@@ -69,7 +69,7 @@ def test_buggy_sync_loses_kp_after_double():
     assert pat.get_cell(0, 0, 0, 0) == 100
     assert pat.get_cell(0, 0, 2, 0) == 100   # copie de la mesure 0 → mesure 2
     # ...mais K/P/bend/mod ont disparu (bug) : pat._tape ne contient QUE des G
-    assert all(ev.etype == "G" for evs in pat._tape.values() for ev in evs)
+    assert all(ev.etype == ETYPE_GRID for evs in pat._tape.values() for ev in evs)
     assert pat._bend_tape == [[] for _ in range(pat._num_tracks)]
     assert pat._mod_tape  == [[] for _ in range(pat._num_tracks)]
     print("  bug confirmé : load_pattern seul perd K/P/bend/mod après Doubler : OK")
@@ -91,9 +91,9 @@ def test_fixed_sync_preserves_everything_after_double():
 
     # K/P d'origine ET leurs copies décalées de `half` (2 mesures)
     k_bars = sorted(b for (t, b, s), evs in pat._tape.items()
-                     for ev in evs if ev.etype == "K")
+                     for ev in evs if ev.etype == ETYPE_KIT)
     p_bars = sorted(b for (t, b, s), evs in pat._tape.items()
-                     for ev in evs if ev.etype == "P")
+                     for ev in evs if ev.etype == ETYPE_PATCH)
     assert k_bars == [0, 2]   # original bar=0, copie bar=0+half(2)
     assert p_bars == [1, 3]   # original bar=1, copie bar=1+half(2)
 
@@ -119,7 +119,7 @@ def test_buggy_sync_loses_kp_after_halve():
     assert player.halve_pattern() is True   # 4 → 2 mesures
     _buggy_sync(pat, live)
 
-    assert all(ev.etype == "G" for evs in pat._tape.values() for ev in evs)
+    assert all(ev.etype == ETYPE_GRID for evs in pat._tape.values() for ev in evs)
     print("  bug confirmé : load_pattern seul perd K/P après Diviser : OK")
 
 
@@ -138,7 +138,7 @@ def test_fixed_sync_preserves_kp_after_halve():
     assert pat._mod_tape  == live._mod_tape
     # Les notes K (bar=0) et P (bar=1) sont dans la moitié conservée
     etypes = {ev.etype for evs in pat._tape.values() for ev in evs}
-    assert etypes == {"G", "K", "P"}
+    assert etypes == {ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH}
     print("  fix confirmé : copy_from() préserve K/P après Diviser : OK")
 
 
@@ -155,7 +155,7 @@ def test_buggy_sync_loses_kp_after_resize():
     live.resize(4, 32)   # étend mesures et pas
     _buggy_sync(pat, live)
 
-    assert all(ev.etype == "G" for evs in pat._tape.values() for ev in evs)
+    assert all(ev.etype == ETYPE_GRID for evs in pat._tape.values() for ev in evs)
     print("  bug confirmé : load_pattern seul perd K/P après Redimensionner : OK")
 
 
@@ -172,7 +172,7 @@ def test_fixed_sync_preserves_kp_after_resize():
     assert pat._num_steps == 32
     assert pat._tape == live._tape
     etypes = {ev.etype for evs in pat._tape.values() for ev in evs}
-    assert etypes == {"G", "K", "P"}
+    assert etypes == {ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH}
     print("  fix confirmé : copy_from() préserve K/P après Redimensionner : OK")
 
 

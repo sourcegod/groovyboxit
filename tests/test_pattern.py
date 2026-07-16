@@ -149,10 +149,10 @@ def test_load_pattern_preserves_true_steps():
 def test_load_pattern_preserves_kp_events():
     dst = Pattern()
     dst._tape[(0, 0, 0)] = []
-    from pattern import TapeEvent
-    dst._tape[(0, 0, 0)].append(TapeEvent("K", 60, 90, 0, 0))
+    from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+    dst._tape[(0, 0, 0)].append(TapeEvent(ETYPE_KIT, 60, 90, 0, 0))
     dst.load_pattern(Pattern().to_dense_grid())
-    assert any(ev.etype == "K" for ev in dst._tape.get((0, 0, 0), []))
+    assert any(ev.etype == ETYPE_KIT for ev in dst._tape.get((0, 0, 0), []))
     print("  load_pattern préserve les événements K/P existants : OK")
 
 
@@ -348,9 +348,9 @@ def test_is_empty_checks_all_tracks():
 
 def test_is_empty_false_with_only_kp_events():
     """Un pattern sans note de grille mais avec une note K/P n'est pas vide."""
-    from pattern import TapeEvent
+    from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
     p = Pattern()
-    p._tape[(0, 0, 0)] = [TapeEvent("K", 60, 90, 0, 0)]
+    p._tape[(0, 0, 0)] = [TapeEvent(ETYPE_KIT, 60, 90, 0, 0)]
     assert not p.is_empty()
     print("  is_empty() == False avec seulement des notes K/P : OK")
 
@@ -494,7 +494,7 @@ def test_to_dict_curpattern_matches_dense_grid():
     p = Pattern()
     p.set_cell(0, 3, 0, 7, 100)
     d = p.to_dict()
-    # curpattern est désormais dérivé à la volée depuis _tape (etype "G")
+    # curpattern est désormais dérivé à la volée depuis _tape (etype ETYPE_GRID)
     assert d["curpattern"] == p.to_dense_grid()
     print("  to_dict['curpattern'] == to_dense_grid() (dérivé de _tape) : OK")
 
@@ -562,13 +562,13 @@ def test_from_dict_preserves_kit_and_patch_tape():
     src = Pattern()
     src.set_cell(0, 3, 0, 7, 100)
     src._tape.setdefault((0, 0, 2), []).extend([])
-    from pattern import TapeEvent
-    src._tape.setdefault((0, 0, 2), []).append(TapeEvent("K", 60, 90, 0, 0))
+    from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+    src._tape.setdefault((0, 0, 2), []).append(TapeEvent(ETYPE_KIT, 60, 90, 0, 0))
     d = src.to_dict()
     dst = Pattern()
     dst.from_dict(d)
     assert dst.get_cell(0, 3, 0, 7) == 100
-    assert any(ev.etype == "K" for ev in dst._tape.get((0, 0, 2), []))
+    assert any(ev.etype == ETYPE_KIT for ev in dst._tape.get((0, 0, 2), []))
     print("  from_dict conserve G (via curpattern) et K/P (via kit_tape) : OK")
 
 

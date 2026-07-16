@@ -441,13 +441,13 @@ def test_quant_window_0_leaves_off_grid_note():
 # Helpers pour les tests Tape K/P
 # ---------------------------------------------------------------------------
 
-from pattern import TapeEvent as _TapeEvent
+from pattern import TapeEvent as _TapeEvent, ETYPE_KIT as _ETYPE_KIT
 
 def _add_K(player, bar, step, dur=500):
     """Ajoute un TapeEvent K sur la piste 0."""
     key = (0, bar, step)
     player._pattern._tape.setdefault(key, []).append(
-        _TapeEvent("K", 0, 100, dur, 0)
+        _TapeEvent(_ETYPE_KIT, 0, 100, dur, 0)
     )
 
 def _tape_pos(player):

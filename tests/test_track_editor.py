@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from track_editor import TrackEditor
 
 
@@ -56,7 +56,7 @@ def _bars_sum(pattern, track_idx, bars):
 def _clip_cell(cb, rel_track, pad, bar, step):
     """Vélocité d'une note G dans le presse-papier (clipboard.tape)."""
     for ev in cb.tape.get((rel_track, bar, step), []):
-        if ev.etype == "G" and ev.note == pad:
+        if ev.etype == ETYPE_GRID and ev.note == pad:
             return ev.vel
     return 0
 
@@ -251,7 +251,7 @@ def test_paste_truncates_to_destination():
 def test_copy_includes_tape_events():
     te = TrackEditor()
     p  = _make_pattern()
-    ev = TapeEvent("K", 36, 100, 0, 0)
+    ev = TapeEvent(ETYPE_KIT, 36, 100, 0, 0)
     p._tape[(0, 0, 3)] = [ev]
 
     te.copy(p, 0)
@@ -262,7 +262,7 @@ def test_paste_restores_tape_events():
     te  = TrackEditor()
     src = _make_pattern()
     dst = _make_pattern()
-    ev  = TapeEvent("K", 42, 80, 0, 0)
+    ev  = TapeEvent(ETYPE_KIT, 42, 80, 0, 0)
     src._tape[(0, 1, 5)] = [ev]
 
     te.copy(src, 0)
@@ -279,7 +279,7 @@ def test_erase_grid_fills_clipboard_zeros_steps():
     te = TrackEditor()
     p  = _make_pattern()
     _fill_track(p, 0, 44)
-    ev = TapeEvent("K", 36, 100, 0, 0)
+    ev = TapeEvent(ETYPE_KIT, 36, 100, 0, 0)
     p._tape[(0, 0, 3)] = [ev]
 
     te.erase_grid(p, 0)
@@ -293,7 +293,7 @@ def test_erase_grid_preserves_tape():
     te = TrackEditor()
     p  = _make_pattern()
     _fill_track(p, 0, 10)
-    p._tape[(0, 1, 7)] = [TapeEvent("K", 42, 80, 0, 0)]
+    p._tape[(0, 1, 7)] = [TapeEvent(ETYPE_KIT, 42, 80, 0, 0)]
 
     te.erase_grid(p, 0)
 
@@ -551,14 +551,14 @@ def test_paste_replace_preserves_kp_outside_clipboard_keys():
     dst = _make_pattern(num_bars=1, num_steps=16)
     src.set_cell(0, 0, 0, 2, 100)   # seule note G de la source, à step=2
     dst.set_cell(0, 0, 0, 2, 50)    # G existant à la même position (sera écrasé)
-    dst._tape.setdefault((0, 0, 5), []).append(TapeEvent("K", 36, 90, 0, 0))   # hors clipboard
+    dst._tape.setdefault((0, 0, 5), []).append(TapeEvent(ETYPE_KIT, 36, 90, 0, 0))   # hors clipboard
 
     te.copy(src, 0)
     te.paste(dst, 0)   # remplacement (merge=False)
 
     assert dst.get_cell(0, 0, 0, 2) == 100      # G écrasé par la source
     assert dst.get_cell(0, 0, 0, 5) == 0        # aucun G ajouté à step 5
-    kp_at_5 = [ev for ev in dst._tape.get((0, 0, 5), []) if ev.etype == "K"]
+    kp_at_5 = [ev for ev in dst._tape.get((0, 0, 5), []) if ev.etype == ETYPE_KIT]
     assert len(kp_at_5) == 1 and kp_at_5[0].note == 36   # K préservé (hors clé clipboard)
 
 
@@ -567,8 +567,8 @@ def test_paste_merge_tape():
     te  = TrackEditor()
     src = _make_pattern(num_bars=1, num_steps=16)
     dst = _make_pattern(num_bars=1, num_steps=16)
-    ev_dst = TapeEvent("K", 36, 100, 0, 0)
-    ev_src = TapeEvent("K", 42,  80, 0, 0)
+    ev_dst = TapeEvent(ETYPE_KIT, 36, 100, 0, 0)
+    ev_src = TapeEvent(ETYPE_KIT, 42,  80, 0, 0)
     dst._tape[(0, 0, 3)] = [ev_dst]
     src._tape[(0, 0, 3)] = [ev_src]
 
@@ -659,7 +659,7 @@ def test_erase_grid_then_paste_at_bar5():
 # _EventClipboard — copy_events / paste_events / has_event_clipboard
 # ---------------------------------------------------------------------------
 
-def _make_note(track, pad, bar, step, vel=100, etype="G", dur=200, bend=0,
+def _make_note(track, pad, bar, step, vel=100, etype=ETYPE_GRID, dur=200, bend=0,
                num_steps=16):
     return {
         "type":   "note",
@@ -771,14 +771,14 @@ def test_paste_events_skips_out_of_bounds_offset():
 def test_paste_events_tape_kp():
     te  = TrackEditor()
     p   = _make_pattern(num_tracks=1, num_bars=2, num_steps=16)
-    ev  = _make_note(0, 60, 0, 2, vel=100, etype="P", dur=300, bend=200)
+    ev  = _make_note(0, 60, 0, 2, vel=100, etype=ETYPE_PATCH, dur=300, bend=200)
     te.copy_events([ev])
     n = te.paste_events(p, 0, 8)
     assert n == 1
     key = (0, 0, 8)
     assert key in p._tape
     te_ev = p._tape[key][0]
-    assert te_ev.etype == "P"
+    assert te_ev.etype == ETYPE_PATCH
     assert te_ev.note  == 60
     assert te_ev.vel   == 100
     assert te_ev.bend  == 200

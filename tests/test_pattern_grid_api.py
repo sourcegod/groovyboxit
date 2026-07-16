@@ -3,7 +3,7 @@
     File: tests/test_pattern_grid_api.py
     Tests unitaires de la nouvelle API grille de Pattern (get_cell/set_cell/
     clear_grid_pad/clear_grid_box/grid_row/set_grid_row/iter_grid/
-    to_dense_grid/copy_from) — façade au-dessus de _tape (etype "G") qui
+    to_dense_grid/copy_from) — façade au-dessus de _tape (etype ETYPE_GRID) qui
     remplace l'ancien _curpattern.
     Date: Thu, 16/07/2026
     Author: Coolbrother
@@ -13,15 +13,15 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 
 
 def _K(note, vel=100, dur=0):
-    return TapeEvent("K", note, vel, dur, 0)
+    return TapeEvent(ETYPE_KIT, note, vel, dur, 0)
 
 
 def _P(note, vel=100, dur=0, bend=0):
-    return TapeEvent("P", note, vel, dur, bend)
+    return TapeEvent(ETYPE_PATCH, note, vel, dur, bend)
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ def test_set_cell_then_get_cell():
     p = Pattern()
     p.set_cell(0, 3, 0, 5, 100)
     assert p.get_cell(0, 3, 0, 5) == 100
-    assert p._tape[(0, 0, 5)] == [TapeEvent("G", 3, 100, 0, 0)]
+    assert p._tape[(0, 0, 5)] == [TapeEvent(ETYPE_GRID, 3, 100, 0, 0)]
     print("  set_cell → get_cell : OK")
 
 
@@ -87,7 +87,7 @@ def test_set_cell_coexists_with_kp_events():
     p._tape[key] = [_K(60, 90), _P(61, 70, 200, 50)]
     p.set_cell(0, 3, 0, 4, 100)
     assert set(p._tape[key]) == {
-        _K(60, 90), _P(61, 70, 200, 50), TapeEvent("G", 3, 100, 0, 0)
+        _K(60, 90), _P(61, 70, 200, 50), TapeEvent(ETYPE_GRID, 3, 100, 0, 0)
     }
     # Effacer la note G ne touche pas K/P
     p.set_cell(0, 3, 0, 4, 0)
@@ -131,7 +131,7 @@ def test_clear_grid_box_range_and_kp_preserved():
     assert p.get_cell(0, 0, 0, 0) == 0
     assert p.get_cell(0, 1, 0, 5) == 0
     assert p.get_cell(0, 0, 0, 10) == 100   # hors plage : conservé
-    assert any(ev.etype == "K" for ev in p._tape.get((0, 0, 5), []))
+    assert any(ev.etype == ETYPE_KIT for ev in p._tape.get((0, 0, 5), []))
     print("  clear_grid_box respecte la plage et préserve K/P : OK")
 
 
@@ -212,7 +212,7 @@ def test_copy_from_copies_dims_tape_bend_mod():
     assert dst._num_bars  == 3
     assert dst._num_steps == 32
     assert dst.get_cell(0, 1, 2, 10) == 90
-    assert any(ev.etype == "K" for ev in dst._tape[(0, 2, 10)])
+    assert any(ev.etype == ETYPE_KIT for ev in dst._tape[(0, 2, 10)])
     assert dst._bend_tape[0] == [(5.0, 1000)]
     assert dst._mod_tape[0]  == [(5.0, 64)]
     print("  copy_from copie dims + tape + bend + mod : OK")
