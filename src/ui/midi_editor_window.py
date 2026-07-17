@@ -491,6 +491,38 @@ class MidiEditorWindow(wx.Frame):
         self._status_ctrl.SetString(0, msg)
 
     # ------------------------------------------------------------------
+    # Solo / Mute piste
+    # ------------------------------------------------------------------
+
+    def _toggle_track_solo(self):
+        """S : bascule le solo des pistes sélectionnées, sinon de la piste courante."""
+        te     = self._parent._track_editor
+        track  = self._parent._player._cur_track
+        tracks = te.get_effective_tracks(track)
+        router = self._parent._router
+        states = [router.toggle_track_solo(t) for t in tracks]
+        self._parent._refresh_track_list()
+        if len(tracks) == 1:
+            self._set_status(f"Piste {tracks[0] + 1}: Solo {'On' if states[0] else 'Off'}")
+        else:
+            noms = ", ".join(str(t + 1) for t in tracks)
+            self._set_status(f"Pistes {noms}: Solo basculé")
+
+    def _toggle_track_mute(self):
+        """X : bascule le mute des pistes sélectionnées, sinon de la piste courante."""
+        te     = self._parent._track_editor
+        track  = self._parent._player._cur_track
+        tracks = te.get_effective_tracks(track)
+        router = self._parent._router
+        states = [router.toggle_track_mute(t) for t in tracks]
+        self._parent._refresh_track_list()
+        if len(tracks) == 1:
+            self._set_status(f"Piste {tracks[0] + 1}: Mute {'On' if states[0] else 'Off'}")
+        else:
+            noms = ", ".join(str(t + 1) for t in tracks)
+            self._set_status(f"Pistes {noms}: Mute basculé")
+
+    # ------------------------------------------------------------------
     # Lecture sonore (preview)
     # ------------------------------------------------------------------
 
@@ -1334,6 +1366,16 @@ class MidiEditorWindow(wx.Frame):
         if not ctrl and not shift and (ukey == ord('r') or key == ord('R')):
             self._refresh()
             self._set_status("Rafraîchi")
+            return
+
+        # S : solo piste(s)
+        if not ctrl and not shift and (ukey == ord('s') or key == ord('S')):
+            self._toggle_track_solo()
+            return
+
+        # X : mute piste(s)
+        if not ctrl and not shift and (ukey == ord('x') or key == ord('X')):
+            self._toggle_track_mute()
             return
 
         # i : limiteur gauche à la position du playhead
