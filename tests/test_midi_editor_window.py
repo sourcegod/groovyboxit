@@ -133,3 +133,83 @@ def test_toggle_mute_and_solo_are_independent():
     win._toggle_track_solo()
     assert win._parent._router._mutes[0] is True
     assert win._parent._router._solos[0] is True
+
+
+# ---------------------------------------------------------------------------
+# Grille courante (étape 7d) — _grid_idx vit sur le player, pas sur Pattern
+# (régression : une version précédente lisait/écrivait _parent._player._pattern._grid_idx)
+# ---------------------------------------------------------------------------
+
+class _FakeGridPattern:
+    def __init__(self, num_steps=16, num_beats=4, bpm=100):
+        self._num_steps = num_steps
+        self._num_beats = num_beats
+        self._bpm       = bpm
+
+
+class _FakeGridPlayer:
+    def __init__(self, grid_idx):
+        self._pattern  = _FakeGridPattern()
+        self._grid_idx = grid_idx
+
+
+class _FakeGridParent:
+    def __init__(self, grid_idx):
+        self._player     = _FakeGridPlayer(grid_idx)
+        self.undo_titles = []
+
+    def _add_undo(self, title):
+        self.undo_titles.append(title)
+
+    def _pop_last_undo(self):
+        self.undo_titles.pop()
+
+
+class _FakeGridWindow:
+    """Objet minimal exposant les méthodes de grille de MidiEditorWindow."""
+    _set_status       = mew.MidiEditorWindow._set_status
+    _add_undo         = mew.MidiEditorWindow._add_undo
+    _grid_value_steps = mew.MidiEditorWindow._grid_value_steps
+    _grid_value_ms    = mew.MidiEditorWindow._grid_value_ms
+    _show_grid_value  = mew.MidiEditorWindow._show_grid_value
+    _change_grid_idx  = mew.MidiEditorWindow._change_grid_idx
+    _SNAP_NOTE_NAMES  = mew.MidiEditorWindow._SNAP_NOTE_NAMES
+
+    def __init__(self, grid_idx):
+        self._parent      = _FakeGridParent(grid_idx)
+        self._status_ctrl = _FakeStatusCtrl()
+
+
+def test_grid_value_steps_reads_player_grid_idx_not_pattern():
+    from pattern import Pattern
+    win = _FakeGridWindow(grid_idx=10)   # "1/16"
+    assert win._grid_value_steps() == Pattern.grid_step_size(10, 16)
+
+
+def test_show_grid_value_reports_current_grid_and_note_name():
+    win = _FakeGridWindow(grid_idx=10)   # "1/16" → snap 16 → Double croche
+    win._show_grid_value()
+    assert win._status_ctrl.last == "Grille: 1/16, Double croche"
+
+
+def test_change_grid_idx_updates_player_not_pattern():
+    win = _FakeGridWindow(grid_idx=10)
+    win._change_grid_idx(1)
+    assert win._parent._player._grid_idx == 11
+    assert not hasattr(win._parent._player._pattern, "_grid_idx")
+    assert win._parent.undo_titles == ["Grille : 1/16 → 1/24"]
+
+
+def test_change_grid_idx_clamped_at_upper_bound():
+    from pattern import Pattern
+    win = _FakeGridWindow(grid_idx=len(Pattern.GRID_RESOLUTIONS) - 1)
+    win._change_grid_idx(1)
+    assert win._status_ctrl.last == "Grille: déjà à la borne"
+    assert win._parent.undo_titles == []
+
+
+def test_change_grid_idx_clamped_at_lower_bound():
+    win = _FakeGridWindow(grid_idx=0)
+    win._change_grid_idx(-1)
+    assert win._status_ctrl.last == "Grille: déjà à la borne"
+    assert win._parent.undo_titles == []

@@ -339,6 +339,204 @@ def test_edit_grid_out_of_bounds_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# move_event (étape 7d — Numpad 4/6)
+# ---------------------------------------------------------------------------
+
+def test_move_event_grid_forward_within_pattern():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    result = me.move_event(p, ev, 8)
+    assert result is not None
+    assert (result["bar"], result["step"]) == (0, 8)
+    assert p.get_cell(0, 0, 0, 0) == 0
+    assert p.get_cell(0, 0, 0, 8) == 100
+
+
+def test_move_event_grid_backward():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 2, "bar": 1, "step": 2, "vel": 70}
+    result = me.move_event(p, ev, -2)
+    assert result is not None
+    assert (result["bar"], result["step"]) == (1, 0)
+
+
+def test_move_event_backward_past_start_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    assert me.move_event(p, ev, -1) is None
+    assert p.get_cell(0, 0, 0, 0) == 100   # inchangé
+
+
+def test_move_event_extends_pattern_when_past_end():
+    me = MidiEditor()
+    p  = Pattern()   # 1 mesure × 16 pas par défaut
+    p.set_cell(0, 0, 0, 12, 100)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 12, "vel": 100}
+    assert p._num_bars == 1
+    result = me.move_event(p, ev, 8)   # offset 12 + 8 = 20 → bar 1, step 4
+    assert result is not None
+    assert p._num_bars == 2
+    assert (result["bar"], result["step"]) == (1, 4)
+    assert p.get_cell(0, 0, 1, 4) == 100
+
+
+def test_move_event_tape_note():
+    me = MidiEditor()
+    p  = Pattern()
+    p.resize(2, 16)
+    p._tape.setdefault((0, 0, 4), []).append(TapeEvent(ETYPE_PATCH, 64, 100, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 4,
+          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+    result = me.move_event(p, ev, 4)
+    assert result is not None
+    assert (result["bar"], result["step"]) == (0, 8)
+    assert (0, 0, 4) not in p._tape
+    assert p._tape[(0, 0, 8)][0].note == 64
+
+
+# ---------------------------------------------------------------------------
+# change_duration (étape 7d — Numpad 1/3)
+# ---------------------------------------------------------------------------
+
+def test_change_duration_grid_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    assert me.change_duration(p, ev, 50) is None
+
+
+def test_change_duration_lengthen_tape_note():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_PATCH, 64, 100, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
+          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+    result = me.change_duration(p, ev, 50)
+    assert result is not None
+    assert result["dur"] == 350
+
+
+def test_change_duration_shorten_clamped_to_10ms():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_KIT, 3, 100, 15, 0))
+    ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
+          "pad": 3, "vel": 100, "dur": 15, "bend": 0, "event_idx": 0}
+    result = me.change_duration(p, ev, -50)
+    assert result["dur"] == 10
+
+
+def test_change_duration_no_change_at_floor_returns_none():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_KIT, 3, 100, 10, 0))
+    ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
+          "pad": 3, "vel": 100, "dur": 10, "bend": 0, "event_idx": 0}
+    assert me.change_duration(p, ev, -50) is None
+
+
+# ---------------------------------------------------------------------------
+# change_velocity (étape 7d — Numpad 7/9)
+# ---------------------------------------------------------------------------
+
+def test_change_velocity_increase_grid():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    result = me.change_velocity(p, ev, 1)
+    assert result["vel"] == 101
+    assert p.get_cell(0, 0, 0, 0) == 101
+
+
+def test_change_velocity_decrease_tape():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_PATCH, 64, 50, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
+          "pad": 64, "vel": 50, "dur": 300, "bend": 0, "event_idx": 0}
+    result = me.change_velocity(p, ev, -1)
+    assert result["vel"] == 49
+
+
+def test_change_velocity_clamped_at_127_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 127}
+    assert me.change_velocity(p, ev, 1) is None
+
+
+def test_change_velocity_clamped_at_1_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 1}
+    assert me.change_velocity(p, ev, -1) is None
+
+
+# ---------------------------------------------------------------------------
+# shift_pitch (étape 7d — Numpad 2/8, Ctrl+Numpad 2/8)
+# ---------------------------------------------------------------------------
+
+def test_shift_pitch_grid_semitone():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
+    result = me.shift_pitch(p, ev, 1)
+    assert result["pad"] == 1
+    assert p.get_cell(0, 1, 0, 0) == 100
+    assert p.get_cell(0, 0, 0, 0) == 0
+
+
+def test_shift_pitch_grid_clamped_to_num_pads():
+    me = MidiEditor()
+    p  = Pattern()
+    p.set_cell(0, p._num_pads - 1, 0, 0, 100)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": p._num_pads - 1,
+          "bar": 0, "step": 0, "vel": 100}
+    assert me.shift_pitch(p, ev, 1) is None
+
+
+def test_shift_pitch_grid_octave_clamped_to_num_pads():
+    me = MidiEditor()
+    p  = Pattern()
+    p.set_cell(0, 10, 0, 0, 100)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 10, "bar": 0, "step": 0, "vel": 100}
+    result = me.shift_pitch(p, ev, 12)   # 10 + 12 = 22, borné à num_pads-1 = 15
+    assert result["pad"] == p._num_pads - 1
+
+
+def test_shift_pitch_patch_semitone():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_PATCH, 64, 100, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
+          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+    result = me.shift_pitch(p, ev, 1)
+    assert result["pad"] == 65
+
+
+def test_shift_pitch_patch_octave():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_PATCH, 64, 100, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
+          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+    result = me.shift_pitch(p, ev, -12)
+    assert result["pad"] == 52
+
+
+def test_shift_pitch_patch_clamped_to_127():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_PATCH, 127, 100, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
+          "pad": 127, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+    assert me.shift_pitch(p, ev, 1) is None
+
+
+# ---------------------------------------------------------------------------
 # group_indices
 # ---------------------------------------------------------------------------
 
