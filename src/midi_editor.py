@@ -293,3 +293,58 @@ class MidiEditor:
             "vel":    n_vel,
             "dur":    dur,
         }
+
+    # ------------------------------------------------------------------
+    # Édition numpad (étape 7d)
+    # ------------------------------------------------------------------
+
+    def move_event(self, pattern, ev, delta_steps):
+        """Déplace un événement de ±delta_steps (grille courante).
+
+        Étend le pattern (resize) si la nouvelle position dépasse sa longueur
+        actuelle. Retourne None si le déplacement franchirait le début du
+        pattern (offset < 0)."""
+        ns         = pattern._num_steps
+        old_offset = ev["bar"] * ns + ev["step"]
+        new_offset = round(old_offset + delta_steps)
+        if new_offset < 0:
+            return None
+        new_bar, new_step = divmod(new_offset, ns)
+        if new_bar >= pattern._num_bars:
+            pattern.resize(new_bar + 1, ns)
+        if ev["etype"] == ETYPE_GRID:
+            return self.edit_grid_note(pattern, ev, new_bar=new_bar, new_step=new_step)
+        return self.edit_tape_note(pattern, ev, new_bar=new_bar, new_step=new_step)
+
+    def change_duration(self, pattern, ev, delta_ms):
+        """Raccourcit/rallonge un événement tape (KIT/PATCH). GRID n'a pas de
+        durée propre (dérivée de la voix) : retourne toujours None."""
+        if ev.get("etype") not in (ETYPE_KIT, ETYPE_PATCH):
+            return None
+        new_dur = max(10, ev.get("dur", 500) + delta_ms)
+        if new_dur == ev.get("dur", 500):
+            return None
+        return self.edit_tape_note(pattern, ev, new_dur=new_dur)
+
+    def change_velocity(self, pattern, ev, delta):
+        """Modifie la vélocité de ±delta (bornée 1..127)."""
+        new_vel = max(1, min(127, ev["vel"] + delta))
+        if new_vel == ev["vel"]:
+            return None
+        if ev["etype"] == ETYPE_GRID:
+            return self.edit_grid_note(pattern, ev, new_vel=new_vel)
+        return self.edit_tape_note(pattern, ev, new_vel=new_vel)
+
+    def shift_pitch(self, pattern, ev, delta):
+        """Décale le champ pad/note de ±delta (demi-ton=±1, octave=±12).
+
+        Borné 0..127 pour PATCH (note MIDI brute), 0..num_pads-1 pour GRID/KIT
+        (index de pad)."""
+        etype   = ev["etype"]
+        hi      = 127 if etype == ETYPE_PATCH else pattern._num_pads - 1
+        new_pad = max(0, min(hi, ev["pad"] + delta))
+        if new_pad == ev["pad"]:
+            return None
+        if etype == ETYPE_GRID:
+            return self.edit_grid_note(pattern, ev, new_pad=new_pad)
+        return self.edit_tape_note(pattern, ev, new_note=new_pad)
