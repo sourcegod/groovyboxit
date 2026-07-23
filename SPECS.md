@@ -1016,6 +1016,61 @@ if ctx.on_status_ctrl:
     return True
 ```
 
+#### ListBox navigable au clavier : ne pas intercepter Haut/Bas, laisser GTK naviguer nativement
+
+Piège différent du précédent : ici la ListBox a plusieurs items et DOIT rester
+navigable par l'utilisateur (pas une barre de statut à un seul item). Si un
+handler global (`EVT_CHAR_HOOK` sur la fenêtre) intercepte Haut/Bas pour cette
+ListBox quand elle a le focus, et répercute le changement par un
+`SetSelection(idx)` **programmatique** — même accompagné d'un `SetString(idx, label)`
+pour forcer un `NAME_CHANGE` (cf. astuce précédente) — **Orca n'annonce rien**.
+Ni `SetSelection()` seul, ni `SetSelection()` + `SetString()`, ne remplacent
+une vraie navigation clavier native GTK pour l'accessibilité.
+
+**Cause :** `SetSelection()` déplace la sélection au niveau wx/interne, mais
+ne déclenche pas forcément les mêmes signaux GTK internes qu'une vraie
+navigation clavier native dans le widget — Orca n'a donc pas toujours le
+contexte nécessaire pour annoncer le changement de façon fiable.
+
+**Solution retenue :** quand la ListBox concernée a le focus, ne pas consommer
+Haut/Bas — `evt.Skip()` pour laisser GTK naviguer nativement. GTK déplace
+alors la sélection ET déclenche `wx.EVT_LISTBOX` sur ce widget ; c'est CE
+handler qui doit faire tout le travail (jouer un son, mettre à jour un état,
+annoncer via la barre de statut) — pas le handler de touche global.
+
+```python
+# Dans le handler EVT_CHAR_HOOK de la fenêtre :
+if key == wx.WXK_UP or key == wx.WXK_DOWN:
+    if self._ma_listbox.HasFocus():
+        evt.Skip()          # laisse GTK naviguer nativement + déclenche EVT_LISTBOX
+    else:
+        ...                 # comportement custom pour les autres widgets
+    return
+
+# Bind sur la ListBox elle-même — la vraie logique vit ICI :
+self._ma_listbox.Bind(wx.EVT_LISTBOX, self._on_ma_listbox_select)
+
+def _on_ma_listbox_select(self, event):
+    idx = self._ma_listbox.GetSelection()
+    ...                     # jouer le son / mettre à jour l'état / self._set_status(...)
+```
+
+**Quand un `SetSelection()` programmatique reste nécessaire malgré tout :**
+uniquement pour un raccourci qui n'a **pas** de rapport avec une navigation
+native dans CE widget (ex. un raccourci global type Alt+X, utilisable même
+quand le widget n'a pas le focus). Dans ce cas précis, il n'y a pas d'autre
+choix — accompagner alors le `SetSelection(idx)` d'un `SetString(idx, label)`
+(même texte inchangé, juste pour forcer le `NAME_CHANGE`) **et** annoncer
+explicitement le résultat soi-même via la barre de statut (`_set_status`) :
+ne pas compter sur une annonce native de la ListBox dans ce cas-là.
+
+**Repère utile :** dans ce projet, `mw_tracks.py`/`_track_list` a toujours
+suivi cette règle (il ne consomme jamais Haut/Bas pour lui-même) — c'est en
+comparant avec ce widget que le bug a été identifié.
+
+S'applique à toute `wx.ListBox` navigable au clavier (pas les barres de statut
+à un seul item, qui suivent l'astuce précédente).
+
 ---
 
 ## Boîtes de dialogue

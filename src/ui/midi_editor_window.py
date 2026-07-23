@@ -4,6 +4,7 @@ from midi_editor import MidiEditor
 from synth_engine import midi_to_note_name
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from ui.midi_virtual_keyboard import VirtualKeyboardMixin, midi_display_name
 
 
 class _NoteEditDialog(wx.Dialog):
@@ -104,13 +105,6 @@ class _NoteEditDialog(wx.Dialog):
         return self._vel_ctrl.GetValue()
 
 
-_NOTE_NAMES_C0 = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
-
-def _midi_display_name(midi):
-    """Convention C0=MIDI 0 : C0…G10 (128 notes)."""
-    return f"{_NOTE_NAMES_C0[midi % 12]}{midi // 12}"
-
-
 class _MidiEventEditDialog(wx.Dialog):
     """Dialog d'édition MIDI : note (C0..G10), position BBT, durée BBT, vélocité."""
 
@@ -149,7 +143,7 @@ class _MidiEventEditDialog(wx.Dialog):
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
 
         # --- Note (C0=MIDI 0 … G10=MIDI 127) ---
-        note_choices  = [f"{i:3d}  {_midi_display_name(i)}" for i in range(128)]
+        note_choices  = [f"{i:3d}  {midi_display_name(i)}" for i in range(128)]
         note_lbl      = wx.StaticText(self, label="Note :")
         self._note_lb = wx.ListBox(self, choices=note_choices,
                                    style=wx.LB_SINGLE, size=(160, 240))
@@ -301,7 +295,7 @@ class _MidiEventEditDialog(wx.Dialog):
         return self._vel_sp.GetValue()
 
 
-class MidiEditorWindow(wx.Frame):
+class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
     """Fenêtre d'éditeur MIDI — deux modes : notes (Ctrl+1) et tous les événements (Ctrl+2).
 
     Navigation :
@@ -316,7 +310,7 @@ class MidiEditorWindow(wx.Frame):
 
     def __init__(self, parent, view_mode=MODE_NOTES):
         super().__init__(parent, title="Éditeur MIDI",
-                         size=(780, 460),
+                         size=(780, 560),
                          style=wx.DEFAULT_FRAME_STYLE | wx.FRAME_FLOAT_ON_PARENT)
         self._parent               = parent
         self._view_mode            = view_mode
@@ -327,6 +321,8 @@ class MidiEditorWindow(wx.Frame):
         self._preview_timer        = None     # Timer d'arrêt automatique
         self._group_entry          = False    # ←/→ vient d'atterrir sur un groupe
         self._selected_indices     = set()    # indices sélectionnés dans self._events
+        self._vk_note              = 48       # clavier virtuel (7f) : note courante (C4)
+        self._skip_vk_announce     = False    # évite que EVT_LISTBOX écrase l'annonce clavier
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
@@ -349,6 +345,8 @@ class MidiEditorWindow(wx.Frame):
         self._event_lb.Bind(wx.EVT_LISTBOX,       self._on_listbox_select)
         # GTK : Enter sur ListBox génère EVT_LISTBOX_DCLICK (pas EVT_CHAR_HOOK)
         self._event_lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._edit_note_dialog())
+
+        self._build_vk_ui(panel, vbox)
 
         # ListBox status (annoncée en temps réel par le lecteur d'écran)
         self._status_ctrl = wx.ListBox(panel, choices=[""], style=wx.LB_SINGLE)
@@ -1430,6 +1428,7 @@ class MidiEditorWindow(wx.Frame):
         ukey  = evt.GetUnicodeKey()
         ctrl  = evt.ControlDown()
         shift = evt.ShiftDown()
+        alt   = evt.AltDown()
 
         if key == wx.WXK_ESCAPE:
             self.Close()
@@ -1467,12 +1466,23 @@ class MidiEditorWindow(wx.Frame):
             self._select_move_right()
             return
 
-        # ↑/↓ : navigation dans l'accord courant
+        # ↑/↓ : navigation dans l'accord courant ; sur le clavier virtuel (7f)
+        # quand il a le focus : laisser GTK naviguer nativement dans la ListBox
+        # (evt.Skip()) plutôt que d'appeler SetSelection() par programme — la
+        # navigation native déclenche EVT_LISTBOX (_on_vk_listbox_select) ET
+        # l'annonce Orca correctement, ce qu'un SetSelection() programmatique
+        # ne garantit pas de façon fiable (cf. SPECS.md accessibilité).
         if not ctrl and not shift and key == wx.WXK_UP:
-            self._move_up_in_group()
+            if self._vk_lb.HasFocus():
+                evt.Skip()
+            else:
+                self._move_up_in_group()
             return
         if not ctrl and not shift and key == wx.WXK_DOWN:
-            self._move_down_in_group()
+            if self._vk_lb.HasFocus():
+                evt.Skip()
+            else:
+                self._move_down_in_group()
             return
 
         # Shift+↑/↓ : navigation + sélection de la note
@@ -1558,11 +1568,23 @@ class MidiEditorWindow(wx.Frame):
             return
 
         # Numpad 2/8 : ±1 demi-ton ; Ctrl+Numpad 2/8 : ±1 octave
-        if not shift and key == wx.WXK_NUMPAD2:
+        if not shift and not alt and key == wx.WXK_NUMPAD2:
             self._numpad_pitch(-12 if ctrl else -1)
             return
-        if not shift and key == wx.WXK_NUMPAD8:
+        if not shift and not alt and key == wx.WXK_NUMPAD8:
             self._numpad_pitch(12 if ctrl else 1)
+            return
+
+        # Alt+Numpad 2/8 : ±1 demi-ton sur le clavier virtuel (7f) — raccourci
+        # global, utilisable même si la ListBox du clavier virtuel n'a pas le focus.
+        # (Shift+Numpad2/8 est impossible à distinguer de Shift+Flèche Bas/Haut :
+        # avec Verr. Num actif, Maj+pavé numérique est traduit en touche de
+        # navigation au niveau clavier/X11, avant même d'atteindre l'appli.)
+        if not ctrl and not shift and alt and key == wx.WXK_NUMPAD2:
+            self._vk_move(-1)
+            return
+        if not ctrl and not shift and alt and key == wx.WXK_NUMPAD8:
+            self._vk_move(1)
             return
 
         # Numpad 5 : position courante ; Ctrl+Numpad 5 : valeur de grille courante
