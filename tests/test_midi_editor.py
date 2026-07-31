@@ -536,6 +536,27 @@ def test_shift_pitch_patch_clamped_to_127():
     assert me.shift_pitch(p, ev, 1) is None
 
 
+def test_shift_pitch_kit_goes_beyond_num_pads():
+    # KIT est une note MIDI brute en aval (TrackRouter.on_kit_tape), pas un
+    # index de pad — ne doit pas être borné à num_pads-1 comme GRID.
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_KIT, p._num_pads - 1, 100, 500, 0))
+    ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
+          "pad": p._num_pads - 1, "vel": 100, "dur": 500, "bend": 0, "event_idx": 0}
+    result = me.shift_pitch(p, ev, 1)
+    assert result["pad"] == p._num_pads
+
+
+def test_shift_pitch_kit_clamped_to_127():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_KIT, 127, 100, 500, 0))
+    ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
+          "pad": 127, "vel": 100, "dur": 500, "bend": 0, "event_idx": 0}
+    assert me.shift_pitch(p, ev, 1) is None
+
+
 # ---------------------------------------------------------------------------
 # group_indices
 # ---------------------------------------------------------------------------

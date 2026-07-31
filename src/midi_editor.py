@@ -338,10 +338,12 @@ class MidiEditor:
     def shift_pitch(self, pattern, ev, delta):
         """Décale le champ pad/note de ±delta (demi-ton=±1, octave=±12).
 
-        Borné 0..127 pour PATCH (note MIDI brute), 0..num_pads-1 pour GRID/KIT
-        (index de pad)."""
+        Borné 0..127 pour PATCH et KIT (notes MIDI brutes, voir
+        TrackRouter.on_kit_tape), 0..num_pads-1 pour GRID (index de pad,
+        limite structurelle des banques de sons — voir chantier futur
+        128 pads)."""
         etype   = ev["etype"]
-        hi      = 127 if etype == ETYPE_PATCH else pattern._num_pads - 1
+        hi      = pattern._num_pads - 1 if etype == ETYPE_GRID else 127
         new_pad = max(0, min(hi, ev["pad"] + delta))
         if new_pad == ev["pad"]:
             return None
