@@ -234,12 +234,41 @@ Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
   Ctrl+Z         Annuler (Undo)
   Shift+Z        Refaire (Redo)
   Ctrl+Shift+Z   Afficher l'historique des annulations
+  D              Dupliquer l'événement/accord courant (empilé à la même position ;
+                 pad adjacent pour GRID) + avancer le playhead d'une valeur de grille
+  Shift+D        Dupliquer sans avancer le playhead
+  Ctrl+I         Insérer une note (instrument de la piste courante) à la position du
+                 playhead + avancer le playhead d'une valeur de grille
+  Alt+I          Insérer une note sans avancer le playhead
+  Ctrl+Shift+I   Ouvrir le dialog d'insertion (note, durée, vélocité)
+  A              Insérer une note entre l'événement courant et le suivant (au pas
+                 médian entre les deux), curseur sur la nouvelle note
+  R              Rafraîchir la liste des événements (utile si le pattern a été modifié
+                 depuis la fenêtre principale pendant que l'éditeur est ouvert)
+  S / Shift+S    Solo piste(s) sélectionnée(s) / Désolo toutes
+  X / Shift+X    Mute piste(s) sélectionnée(s) / Démuter toutes
 
   -- Limiteurs temporels --
   i              Poser le limiteur gauche (In) à la position courante du playhead
   o              Poser le limiteur droit (Out) à la position courante du playhead
   Shift+I        Poser le limiteur gauche au début du pattern (step 0)
   Shift+O        Poser le limiteur droit à la fin du pattern (dernier step)
+
+  -- Édition numpad (événement ou accord sélectionné) --
+  NumPad 1 / 3   Raccourcir / rallonger la durée (KIT/PATCH uniquement, pas GRID)
+  NumPad 4 / 6   Reculer / avancer la position d'une valeur de grille
+                 (étend le pattern si on dépasse la fin)
+  NumPad 7 / 9   Vélocité -1 / +1 (bornée 1..127)
+  NumPad 2 / 8   Pitch ±1 demi-ton (borné 0..127 pour KIT/PATCH, 0..num_pads-1 pour GRID)
+  Ctrl+NumPad 2/8  Pitch ±1 octave (mêmes bornes)
+  NumPad 5       Afficher la position courante
+  Ctrl+NumPad 5  Afficher la valeur de grille courante
+  NumPad - / +   Diminuer / augmenter la valeur de grille courante
+
+  -- Clavier virtuel (liste des 128 notes C0..G10) --
+  ↑ / ↓          (focus sur le clavier virtuel) Note précédente/suivante, jouée et annoncée
+  Alt+NumPad 2/8 Note du clavier virtuel ±1 demi-ton (raccourci global, quel
+                 que soit le focus) ; sert de source par défaut pour Ctrl+I/Alt+I
 
   -- Transport (partagé avec la fenêtre principale) --
   Espace / P       Play / Pause pattern

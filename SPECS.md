@@ -1182,7 +1182,7 @@ Catégories principales :
 - Pistes (Ctrl+T, Ctrl+Entrée, Entrée, F2)
 - MIDI (Alt+M, Alt+Shift+M)
 - Undo/Redo (Ctrl+Z, Shift+Z, Ctrl+Shift+Z)
-- Éditeur MIDI (Alt+4, ←/→/↑/↓, Ctrl+A, Shift+←/→/↑/↓)
+- Éditeur MIDI (Alt+4, ←/→/↑/↓, Ctrl+A, Shift+←/→/↑/↓, Numpad édition, D/Shift+D, Ctrl+I/Alt+I/Ctrl+Shift+I, A, Ctrl+G/Ctrl+Shift+G)
 - Songs (Alt+5, Entrée, Ctrl+Entrée, Suppr, Alt+↑/↓)
 - Aide (F1)
 - Renommer (F2)
