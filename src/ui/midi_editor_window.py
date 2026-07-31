@@ -10,28 +10,30 @@ from ui.midi_virtual_keyboard import VirtualKeyboardMixin, midi_display_name
 class _NoteEditDialog(wx.Dialog):
     """Dialog d'édition d'une note (pad/pitch, position, durée, vélocité)."""
 
-    def __init__(self, parent, ev, pattern, pad_names):
+    def __init__(self, parent, ev, pattern, pad_names, title="Éditer note"):
         from synth_engine import midi_to_note_name
         etype     = ev.get("etype", ETYPE_GRID)
-        super().__init__(parent, title="Éditer note",
+        super().__init__(parent, title=title,
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         num_bars  = pattern._num_bars
         num_steps = pattern._num_steps
         num_pads  = pattern._num_pads
         self._etype = etype
 
-        # Sélecteur instrument : pad (GRID/KIT) ou note MIDI (PATCH)
-        if etype == ETYPE_PATCH:
+        # Sélecteur instrument : pad (GRID, index 0..num_pads-1) ou note MIDI
+        # brute (KIT/PATCH, 0..127 — voir TrackRouter.on_kit_tape/on_patch_tape,
+        # même convention que _MidiEventEditDialog).
+        if etype == ETYPE_GRID:
+            inst_lbl      = wx.StaticText(self, label="Pad :")
+            self._inst_lb = wx.ListBox(self, choices=pad_names,
+                                       style=wx.LB_SINGLE, size=(140, 200))
+            self._inst_lb.SetSelection(min(max(ev["pad"], 0), num_pads - 1))
+        else:
             inst_lbl      = wx.StaticText(self, label="Note :")
             note_choices  = [f"{i:3d}  {midi_to_note_name(i)}" for i in range(128)]
             self._inst_lb = wx.ListBox(self, choices=note_choices,
                                        style=wx.LB_SINGLE, size=(160, 200))
             self._inst_lb.SetSelection(min(max(ev["pad"], 0), 127))
-        else:
-            inst_lbl      = wx.StaticText(self, label="Pad :")
-            self._inst_lb = wx.ListBox(self, choices=pad_names,
-                                       style=wx.LB_SINGLE, size=(140, 200))
-            self._inst_lb.SetSelection(min(max(ev["pad"], 0), num_pads - 1))
 
         bar_lbl         = wx.StaticText(self, label="Mesure :")
         self._bar_ctrl  = wx.SpinCtrl(self, min=1, max=num_bars,
@@ -323,6 +325,8 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         self._selected_indices     = set()    # indices sélectionnés dans self._events
         self._vk_note              = 48       # clavier virtuel (7f) : note courante (C4)
         self._skip_vk_announce     = False    # évite que EVT_LISTBOX écrase l'annonce clavier
+        self._insert_last_vel      = None     # 7i : dernière vélocité utilisée (dialog Ctrl+Shift+I)
+        self._insert_last_dur      = None     # 7i : dernière durée utilisée (dialog Ctrl+Shift+I)
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
@@ -968,6 +972,153 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         dlg.Destroy()
 
     # ------------------------------------------------------------------
+    # Duplication / Insertion (étape 7i)
+    # ------------------------------------------------------------------
+
+    def _advance_playhead_by_grid(self):
+        """Avance le playhead d'une valeur de grille. Ne dépasse jamais la
+        fin du pattern (pas d'extension automatique, contrairement à
+        move_event/Numpad4-6) : retourne False et ne bouge pas dans ce cas."""
+        pat        = self._parent._player._pattern
+        total      = pat._num_bars * pat._num_steps
+        new_offset = self._parent._player._current_offset() + self._grid_value_steps()
+        if new_offset >= total:
+            return False
+        self._parent._player._go_to_offset(float(new_offset))
+        return True
+
+    def _duplicate_event(self, advance):
+        """D (advance=True) / Shift+D (advance=False) : duplique l'événement
+        ou le groupe courant à la même position (accord empilé — voir
+        MidiEditor.duplicate_event). Le nouveau doublon est toujours
+        sélectionné et joué. D avance ensuite le PLAYHEAD d'une valeur de
+        grille (sans dépasser la fin de piste) ; Shift+D ne le bouge pas."""
+        if not self._events:
+            return
+        cur     = self._midi_editor._cur_idx
+        targets = (self._midi_editor.group_indices(self._events, cur)
+                   if self._group_entry else [cur])
+        targets = sorted(targets, key=lambda i: self._events[i].get("event_idx", 0),
+                          reverse=True)
+        pat = self._parent._player._pattern
+        self._add_undo("Dupliquer" + (" accord" if len(targets) > 1 else " note"))
+        results = []
+        for i in targets:
+            ev = self._events[i]
+            if ev.get("type") != "note":
+                continue
+            new_ev = self._midi_editor.duplicate_event(pat, ev)
+            if new_ev is not None:
+                results.append(new_ev)
+        if not results:
+            self._parent._pop_last_undo()
+            self._set_status("Duplication non disponible")
+            return
+        self._parent._player._compute_offsets()
+        if self._parent._player.playing:
+            self._parent._player._wakeup.set()
+        self._refresh()
+        self._group_entry = True   # le doublon fait maintenant partie d'un accord
+        found = self._find_event_index(results[-1])
+        if found is not None:
+            self._navigate_to(found)
+            self._play_single_at(found)
+        n = len(results)
+        label = f"{n} note(s) dupliquée(s)"
+        if advance:
+            if self._advance_playhead_by_grid():
+                self._set_status(f"{label} → avancé")
+            else:
+                self._set_status(f"{label} (fin de piste)")
+        else:
+            self._set_status(label)
+
+    def _insert_target(self):
+        """Détermine (etype, pad) pour une insertion rapide (Ctrl+I/Alt+I)
+        sur la piste courante, selon le type d'instrument — même logique que
+        le clavier virtuel (VirtualKeyboardMixin._play_virtual_keyboard_note) :
+        SYNTH → PATCH (note du clavier virtuel) ; KIT pitché (note_map ou
+        kit_synth chargé) → KIT (note du clavier virtuel) ; KIT classique
+        (16 pads fixes, pas de notes) → GRID (dernier pad joué — le clavier
+        virtuel n'a pas de correspondance pad pour ce cas)."""
+        slot   = self._parent._rack.get_slot(self._parent._cur_slot)
+        router = self._parent._router
+        if slot.type == InstrumentType.SYNTH:
+            return ETYPE_PATCH, self._vk_note
+        if self._parent._snd.note_map or (router.kit_synth and router.kit_synth.is_loaded()):
+            return ETYPE_KIT, self._vk_note
+        return ETYPE_GRID, (self._parent._player.last_played_pad or 0)
+
+    def _quick_insert(self, advance):
+        """Ctrl+I (advance=True) / Alt+I (advance=False) : insère une note
+        à la position du playhead, avec l'instrument de la piste courante.
+        Ctrl+I avance ensuite le playhead d'une valeur de grille (sans
+        dépasser la fin de piste) ; Alt+I ne le bouge pas."""
+        pat       = self._parent._player._pattern
+        track     = self._parent._player._cur_track
+        bar, step = divmod(int(self._parent._player._current_offset()), pat._num_steps)
+        etype, pad = self._insert_target()
+        vel = self._insert_last_vel if self._insert_last_vel is not None else 100
+        dur = self._insert_last_dur if self._insert_last_dur is not None else round(self._grid_value_ms())
+        self._add_undo("Insérer note")
+        new_ev = self._midi_editor.insert_note(pat, etype, track, bar, step, pad, vel=vel, dur=dur)
+        if new_ev is None:
+            self._parent._pop_last_undo()
+            self._set_status("Insertion impossible")
+            return
+        self._parent._player._compute_offsets()
+        if self._parent._player.playing:
+            self._parent._player._wakeup.set()
+        self._refresh()
+        found = self._find_event_index(new_ev)
+        if found is not None:
+            self._navigate_to(found)
+            self._play_single_at(found)
+        name = self._event_note_name(new_ev)
+        if advance:
+            if self._advance_playhead_by_grid():
+                self._set_status(f"Inséré ({name}) → avancé")
+            else:
+                self._set_status(f"Inséré ({name}) (fin de piste)")
+        else:
+            self._set_status(f"Inséré ({name})")
+
+    def _insert_dialog(self):
+        """Ctrl+Shift+I : dialog note/durée/vélocité, insertion sans déplacer
+        le curseur d'édition/lecture (ni le playhead, ni la sélection liste)."""
+        pat       = self._parent._player._pattern
+        track     = self._parent._player._cur_track
+        bar, step = divmod(int(self._parent._player._current_offset()), pat._num_steps)
+        etype, pad = self._insert_target()
+        vel = self._insert_last_vel if self._insert_last_vel is not None else 100
+        dur = self._insert_last_dur if self._insert_last_dur is not None else round(self._grid_value_ms())
+        ev  = {"etype": etype, "pad": pad, "bar": bar, "step": step, "dur": dur, "vel": vel}
+        pad_names = self._pad_names_list(pat._num_pads, track)
+        self._add_undo("Insérer note (dialog)")
+        dlg = _NoteEditDialog(self, ev, pat, pad_names, title="Insérer note")
+        if dlg.ShowModal() == wx.ID_OK:
+            new_ev = self._midi_editor.insert_note(
+                pat, etype, track, dlg.get_bar(), dlg.get_step(), dlg.get_inst(),
+                vel=dlg.get_vel(), dur=dlg.get_dur(),
+            )
+            if new_ev:
+                self._insert_last_vel = new_ev["vel"]
+                self._insert_last_dur = new_ev.get("dur", dur)
+                self._parent._player._compute_offsets()
+                if self._parent._player.playing:
+                    self._parent._player._wakeup.set()
+                self._refresh()
+                bbt  = self._bbt_str(new_ev["bar"], new_ev["step"])
+                name = self._event_note_name(new_ev)
+                self._set_status(f"Note insérée ({name})  {bbt}")
+            else:
+                self._parent._pop_last_undo()
+                self._set_status("Insertion annulée (hors limites)")
+        else:
+            self._parent._pop_last_undo()
+        dlg.Destroy()
+
+    # ------------------------------------------------------------------
     # Édition numpad de l'événement/groupe sélectionné (étape 7d)
     # ------------------------------------------------------------------
 
@@ -1541,6 +1692,29 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         # Suppr / Backspace : supprimer l'événement sélectionné
         if not ctrl and key in (wx.WXK_DELETE, wx.WXK_BACK):
             self._delete_event()
+            return
+
+        # D : dupliquer (accord empilé) + avancer le playhead d'une grille
+        # Shift+D : dupliquer sans bouger le playhead (étape 7i)
+        if not ctrl and not shift and (ukey == ord('d') or key == ord('D')):
+            self._duplicate_event(True)
+            return
+        if not ctrl and shift and (ukey == ord('d') or key == ord('D')):
+            self._duplicate_event(False)
+            return
+
+        # Ctrl+I : insérer une note (instrument de la piste) + avancer le
+        # playhead d'une grille. Alt+I : insérer sans avancer (Shift+I est
+        # déjà pris par le limiteur gauche début de pattern, voir plus bas).
+        # Ctrl+Shift+I : dialog note/durée/vélocité (étape 7i).
+        if ctrl and shift and (ukey == ord('i') or key == ord('I')):
+            self._insert_dialog()
+            return
+        if ctrl and not shift and (ukey == ord('i') or key == ord('I')):
+            self._quick_insert(True)
+            return
+        if not ctrl and not shift and alt and (ukey == ord('i') or key == ord('I')):
+            self._quick_insert(False)
             return
 
         # Numpad 1/3 : raccourcir/rallonger la durée (KIT/PATCH uniquement)

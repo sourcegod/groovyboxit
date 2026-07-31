@@ -350,3 +350,114 @@ class MidiEditor:
         if etype == ETYPE_GRID:
             return self.edit_grid_note(pattern, ev, new_pad=new_pad)
         return self.edit_tape_note(pattern, ev, new_note=new_pad)
+
+    # ------------------------------------------------------------------
+    # Duplication / Insertion (étape 7i)
+    # ------------------------------------------------------------------
+
+    def duplicate_event(self, pattern, ev):
+        """Duplique un événement à la même position (accord empilé).
+
+        KIT/PATCH : ajoute une copie identique dans _tape à la même clé
+        (plusieurs notes identiques peuvent coexister). GRID : dupliquer sur
+        le même pad au même pas serait un no-op (Pattern.set_cell n'autorise
+        qu'un seul événement par pad et par pas) — la copie va donc sur le
+        pad adjacent (+1, ou -1 si déjà au dernier pad).
+        Retourne le nouvel event_info, ou None si impossible (GRID pad 0
+        seul disponible)."""
+        etype = ev.get("etype")
+        if etype == ETYPE_GRID:
+            pad = ev["pad"]
+            hi  = pattern._num_pads - 1
+            new_pad = pad + 1 if pad < hi else pad - 1
+            if new_pad < 0:
+                return None
+            vel = ev["vel"]
+            pattern.set_cell(ev["track"], new_pad, ev["bar"], ev["step"], vel)
+            dur = (pattern._voices[new_pad]["duration_ms"]
+                   if new_pad < len(pattern._voices) else 500)
+            return {
+                "type":   "note",
+                "etype":  ETYPE_GRID,
+                "track":  ev["track"],
+                "pad":    new_pad,
+                "bar":    ev["bar"],
+                "step":   ev["step"],
+                "offset": ev["offset"],
+                "vel":    vel,
+                "dur":    dur,
+            }
+        if etype in (ETYPE_KIT, ETYPE_PATCH):
+            from pattern import TapeEvent
+            key = (ev["track"], ev["bar"], ev["step"])
+            with pattern._lock:
+                pattern._tape.setdefault(key, []).append(
+                    TapeEvent(etype, ev["pad"], ev["vel"],
+                              ev.get("dur", 500), ev.get("bend", 0))
+                )
+                new_idx = len(pattern._tape[key]) - 1
+            return {
+                "type":      "note",
+                "etype":     etype,
+                "track":     ev["track"],
+                "bar":       ev["bar"],
+                "step":      ev["step"],
+                "offset":    ev["offset"],
+                "pad":       ev["pad"],
+                "vel":       ev["vel"],
+                "dur":       ev.get("dur", 500),
+                "bend":      ev.get("bend", 0),
+                "event_idx": new_idx,
+            }
+        return None
+
+    def insert_note(self, pattern, etype, track, bar, step, pad, vel=100, dur=500, bend=0):
+        """Insère une nouvelle note à (track, bar, step).
+
+        etype GRID : `pad` est un index de pad (borné 0..num_pads-1).
+        etype KIT/PATCH : `pad` est une note MIDI brute (bornée 0..127).
+        Retourne le nouvel event_info, ou None si (track, bar, step) est
+        hors des dimensions actuelles du pattern."""
+        if not (0 <= track < pattern._num_tracks):
+            return None
+        if not (0 <= bar < pattern._num_bars):
+            return None
+        if not (0 <= step < pattern._num_steps):
+            return None
+        vel = max(1, min(127, vel))
+        if etype == ETYPE_GRID:
+            pad = max(0, min(pattern._num_pads - 1, pad))
+            pattern.set_cell(track, pad, bar, step, vel)
+            dur_v = (pattern._voices[pad]["duration_ms"]
+                     if pad < len(pattern._voices) else 500)
+            return {
+                "type":   "note",
+                "etype":  ETYPE_GRID,
+                "track":  track,
+                "pad":    pad,
+                "bar":    bar,
+                "step":   step,
+                "offset": bar * pattern._num_steps + step,
+                "vel":    vel,
+                "dur":    dur_v,
+            }
+        from pattern import TapeEvent
+        pad = max(0, min(127, pad))
+        dur = max(10, dur)
+        key = (track, bar, step)
+        with pattern._lock:
+            pattern._tape.setdefault(key, []).append(TapeEvent(etype, pad, vel, dur, bend))
+            new_idx = len(pattern._tape[key]) - 1
+        return {
+            "type":      "note",
+            "etype":     etype,
+            "track":     track,
+            "bar":       bar,
+            "step":      step,
+            "offset":    bar * pattern._num_steps + step,
+            "pad":       pad,
+            "vel":       vel,
+            "dur":       dur,
+            "bend":      bend,
+            "event_idx": new_idx,
+        }
