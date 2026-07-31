@@ -1211,3 +1211,34 @@ def test_insert_note_clamps_velocity():
     p  = Pattern()
     result = me.insert_note(p, ETYPE_PATCH, 0, 0, 0, 64, vel=200)
     assert result["vel"] == 127
+
+
+# ---------------------------------------------------------------------------
+# insert_between_offset (étape 7n)
+# ---------------------------------------------------------------------------
+
+def test_insert_between_offset_even_gap():
+    me = MidiEditor()
+    assert me.insert_between_offset(0, 4) == 2
+
+
+def test_insert_between_offset_odd_gap():
+    me = MidiEditor()
+    mid = me.insert_between_offset(0, 3)
+    assert mid in (1, 2)
+
+
+def test_insert_between_offset_adjacent_impossible():
+    me = MidiEditor()
+    assert me.insert_between_offset(0, 1) is None
+
+
+def test_insert_between_offset_equal_impossible():
+    me = MidiEditor()
+    assert me.insert_between_offset(5, 5) is None
+
+
+def test_insert_between_offset_single_gap_impossible():
+    me = MidiEditor()
+    # écart de 2 mais round() tombe pile sur une borne : toujours résolu (1)
+    assert me.insert_between_offset(0, 2) == 1
