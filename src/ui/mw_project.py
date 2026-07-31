@@ -29,11 +29,11 @@ class ProjectMixin:
 
     def _new_project(self):
         if self._project_modified:
-            dlg = wx.MessageDialog(
+            from ui.dialogs import SaveConfirmDialog
+            dlg = SaveConfirmDialog(
                 self,
                 "Le projet a été modifié.\nEnregistrer avant de créer un nouveau projet ?",
                 "Nouveau projet",
-                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
             )
             resp = dlg.ShowModal()
             dlg.Destroy()
@@ -129,11 +129,11 @@ class ProjectMixin:
 
     def _open_project(self):
         if self._project_modified:
-            dlg = wx.MessageDialog(
+            from ui.dialogs import SaveConfirmDialog
+            dlg = SaveConfirmDialog(
                 self,
                 "Le projet a été modifié.\nEnregistrer avant d'ouvrir un autre projet ?",
                 "Ouvrir un projet",
-                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
             )
             resp = dlg.ShowModal()
             dlg.Destroy()

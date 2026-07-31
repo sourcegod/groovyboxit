@@ -364,3 +364,49 @@ class UndoHistoryDialog(wx.Dialog):
         """Nombre d'annulations à effectuer (1 = premier, 2 = deuxième, etc.)."""
         sel = self._listbox.GetSelection()
         return sel + 1 if sel != wx.NOT_FOUND else 0
+
+
+class SaveConfirmDialog(wx.Dialog):
+    """Oui/Non/Annuler pour proposer d'enregistrer un projet modifié.
+
+    Raccourcis Y/N (en plus du clic) pour éviter d'avoir à Tab jusqu'au
+    bouton voulu — Échap reste équivalent à Annuler."""
+
+    def __init__(self, parent, message, title):
+        super().__init__(parent, title=title)
+
+        text = wx.StaticText(self, label=message)
+
+        yes_btn    = wx.Button(self, wx.ID_YES,    "Oui")
+        no_btn     = wx.Button(self, wx.ID_NO,     "Non")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        yes_btn.SetDefault()
+
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(yes_btn)
+        btn_sizer.AddButton(no_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(text,      0, wx.ALL, 12)
+        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        yes_btn.SetFocus()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
+    def _on_key(self, evt):
+        ukey = evt.GetUnicodeKey()
+        key  = evt.GetKeyCode()
+        if ukey == ord('y') or key == ord('Y'):
+            self.EndModal(wx.ID_YES)
+            return
+        if ukey == ord('n') or key == ord('N'):
+            self.EndModal(wx.ID_NO)
+            return
+        if key == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        evt.Skip()

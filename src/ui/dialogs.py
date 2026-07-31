@@ -7,6 +7,7 @@ from .dialogs_simple import (
     SavePatternDialog,
     ExplorerDialog,
     UndoHistoryDialog,
+    SaveConfirmDialog,
 )
 from .dialogs_properties import (
     TrackPropertiesDialog,
@@ -35,6 +36,7 @@ __all__ = [
     "SavePatternDialog",
     "ExplorerDialog",
     "UndoHistoryDialog",
+    "SaveConfirmDialog",
     "TrackPropertiesDialog",
     "PatternPropertiesDialog",
     "PadPropertiesDialog",

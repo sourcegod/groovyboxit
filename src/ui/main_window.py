@@ -24,6 +24,7 @@ from ui.dialogs import (
     PadPropertiesDialog,
     ExplorerDialog,
     LoopSelectDialog,
+    SaveConfirmDialog,
 )
 from ui.key_manager import KeyManager
 from ui.midi_handler import MidiHandler
@@ -429,11 +430,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _on_close(self, event):
         if self._project_modified:
-            dlg = wx.MessageDialog(
+            dlg = SaveConfirmDialog(
                 self,
                 "Le projet a été modifié.\nEnregistrer avant de quitter ?",
                 "Quitter",
-                wx.YES_NO | wx.CANCEL | wx.YES_DEFAULT | wx.ICON_QUESTION,
             )
             resp = dlg.ShowModal()
             dlg.Destroy()
