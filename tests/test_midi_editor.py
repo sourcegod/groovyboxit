@@ -1095,3 +1095,119 @@ def test_sync_lims_empty_resets():
     _sim_sync_lims([], set(), te)
     assert te._lim_left  is None
     assert te._lim_right is None
+
+
+# ---------------------------------------------------------------------------
+# duplicate_event (étape 7i)
+# ---------------------------------------------------------------------------
+
+def test_duplicate_event_kit_stacks_at_same_position():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_KIT, 60, 100, 500, 0))
+    ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
+          "offset": 0, "pad": 60, "vel": 100, "dur": 500, "bend": 0, "event_idx": 0}
+    result = me.duplicate_event(p, ev)
+    assert result is not None
+    assert result["bar"] == 0 and result["step"] == 0
+    assert result["pad"] == 60
+    assert len(p._tape[(0, 0, 0)]) == 2
+
+
+def test_duplicate_event_patch_stacks_at_same_position():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape.setdefault((0, 0, 0), []).append(TapeEvent(ETYPE_PATCH, 64, 100, 300, 0))
+    ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
+          "offset": 0, "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+    result = me.duplicate_event(p, ev)
+    assert result["pad"] == 64
+    assert len(p._tape[(0, 0, 0)]) == 2
+
+
+def test_duplicate_event_grid_goes_to_adjacent_pad():
+    me = MidiEditor()
+    p  = Pattern()
+    p.set_cell(0, 0, 0, 0, 100)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0,
+          "step": 0, "offset": 0, "vel": 100}
+    result = me.duplicate_event(p, ev)
+    assert result["pad"] == 1
+    assert p.get_cell(0, 0, 0, 0) == 100   # original intact
+    assert p.get_cell(0, 1, 0, 0) == 100   # doublon sur pad adjacent
+
+
+def test_duplicate_event_grid_falls_back_to_pad_minus_one_at_last_pad():
+    me = MidiEditor()
+    p  = Pattern()
+    last = p._num_pads - 1
+    p.set_cell(0, last, 0, 0, 100)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": last, "bar": 0,
+          "step": 0, "offset": 0, "vel": 100}
+    result = me.duplicate_event(p, ev)
+    assert result["pad"] == last - 1
+
+
+def test_duplicate_event_grid_single_pad_impossible():
+    me = MidiEditor()
+    p  = Pattern()
+    p._num_pads = 1
+    p.set_cell(0, 0, 0, 0, 100)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0,
+          "step": 0, "offset": 0, "vel": 100}
+    assert me.duplicate_event(p, ev) is None
+
+
+# ---------------------------------------------------------------------------
+# insert_note (étape 7i)
+# ---------------------------------------------------------------------------
+
+def test_insert_note_grid():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_GRID, 0, 0, 2, 5, vel=90)
+    assert result["pad"] == 5
+    assert p.get_cell(0, 5, 0, 2) == 90
+
+
+def test_insert_note_patch():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_PATCH, 0, 0, 2, 64, vel=100, dur=250)
+    assert result["pad"] == 64
+    assert result["dur"] == 250
+    tape = p._tape[(0, 0, 2)]
+    assert len(tape) == 1 and tape[0].etype == ETYPE_PATCH and tape[0].note == 64
+
+
+def test_insert_note_kit_clamps_note_to_127():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_KIT, 0, 0, 0, 200)
+    assert result["pad"] == 127
+
+
+def test_insert_note_grid_clamps_pad_to_num_pads():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_GRID, 0, 0, 0, 999)
+    assert result["pad"] == p._num_pads - 1
+
+
+def test_insert_note_out_of_bounds_bar():
+    me = MidiEditor()
+    p  = Pattern()
+    assert me.insert_note(p, ETYPE_GRID, 0, p._num_bars, 0, 5) is None
+
+
+def test_insert_note_out_of_bounds_track():
+    me = MidiEditor()
+    p  = Pattern()
+    assert me.insert_note(p, ETYPE_GRID, p._num_tracks, 0, 0, 5) is None
+
+
+def test_insert_note_clamps_velocity():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_PATCH, 0, 0, 0, 64, vel=200)
+    assert result["vel"] == 127
