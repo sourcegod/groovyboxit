@@ -411,6 +411,15 @@ class MidiEditor:
             }
         return None
 
+    def insert_between_offset(self, cur_offset, nxt_offset):
+        """Calcule le pas (offset entier) médian entre deux offsets, pour
+        l'insertion 'entre deux notes' (étape 7n). Retourne None si aucun
+        pas n'est disponible entre les deux (offsets adjacents ou égaux)."""
+        mid = round((cur_offset + nxt_offset) / 2)
+        if cur_offset < mid < nxt_offset:
+            return mid
+        return None
+
     def insert_note(self, pattern, etype, track, bar, step, pad, vel=100, dur=500, bend=0):
         """Insère une nouvelle note à (track, bar, step).
 

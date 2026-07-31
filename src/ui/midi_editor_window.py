@@ -1118,6 +1118,50 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             self._parent._pop_last_undo()
         dlg.Destroy()
 
+    def _insert_between(self):
+        """A : insère une note entre l'événement courant et le suivant
+        (groupe chronologique suivant, comme →), au pas médian entre les
+        deux offsets. Positionne le curseur sur la nouvelle note. Impossible
+        s'il n'y a pas de groupe suivant, ou si les deux sont sur des pas
+        adjacents (aucun pas disponible entre les deux)."""
+        if not self._events:
+            return
+        cur = self._midi_editor._cur_idx
+        nxt = self._midi_editor.first_of_next_group(self._events, cur)
+        if nxt < 0:
+            self._set_status("Insertion impossible : aucun événement suivant")
+            return
+        cur_ev     = self._events[cur]
+        cur_offset = cur_ev["offset"]
+        nxt_offset = self._events[nxt]["offset"]
+        mid_offset = self._midi_editor.insert_between_offset(cur_offset, nxt_offset)
+        if mid_offset is None:
+            self._set_status("Insertion impossible : pas d'espace entre ces deux notes")
+            return
+        pat   = self._parent._player._pattern
+        track = cur_ev["track"]
+        bar, step  = divmod(mid_offset, pat._num_steps)
+        etype, pad = self._insert_target()
+        vel = self._insert_last_vel if self._insert_last_vel is not None else 100
+        dur = self._insert_last_dur if self._insert_last_dur is not None else round(self._grid_value_ms())
+        self._add_undo("Insérer note (entre)")
+        new_ev = self._midi_editor.insert_note(pat, etype, track, bar, step, pad, vel=vel, dur=dur)
+        if new_ev is None:
+            self._parent._pop_last_undo()
+            self._set_status("Insertion impossible")
+            return
+        self._parent._player._compute_offsets()
+        if self._parent._player.playing:
+            self._parent._player._wakeup.set()
+        self._refresh()
+        found = self._find_event_index(new_ev)
+        if found is not None:
+            self._navigate_to(found)
+            self._play_single_at(found)
+        bbt  = self._bbt_str(new_ev["bar"], new_ev["step"])
+        name = self._event_note_name(new_ev)
+        self._set_status(f"Inséré entre ({name})  {bbt}")
+
     # ------------------------------------------------------------------
     # Édition numpad de l'événement/groupe sélectionné (étape 7d)
     # ------------------------------------------------------------------
@@ -1755,6 +1799,12 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             return
         if not ctrl and not shift and alt and (ukey == ord('i') or key == ord('I')):
             self._quick_insert(False)
+            return
+
+        # A : insérer une note entre l'événement courant et le suivant,
+        # curseur sur la nouvelle note (étape 7n)
+        if not ctrl and not shift and not alt and (ukey == ord('a') or key == ord('A')):
+            self._insert_between()
             return
 
         # Numpad 1/3 : raccourcir/rallonger la durée (KIT/PATCH uniquement)
