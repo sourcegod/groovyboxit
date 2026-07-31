@@ -355,6 +355,7 @@ class ProjectMixin:
         import time
         t = time.time()              # horodatage avant la sérialisation (lente)
         self._undo.add(title, self._capture_state(), timestamp=t)
+        self._mark_modified()
 
     def _pop_last_undo(self):
         """Retire la dernière entrée undo (dialog annulé ou aucun changement)."""

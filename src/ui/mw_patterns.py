@@ -112,7 +112,6 @@ class PatternMixin:
         pat = self._pattern_list[self._cur_pattern_idx]
         self._flush_pattern_to_store(pat)
         self._refresh_pattern_listbox()
-        self._mark_modified()
         self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d} sauvegardé")
 
     def _save_pattern_as(self):
@@ -127,7 +126,6 @@ class PatternMixin:
             self._flush_pattern_to_store(pat)
             self._pattern_cache_dirty.add(idx)   # slot cible modifié hors du courant
             self._refresh_pattern_listbox()
-            self._mark_modified()
             self._show_status(f"Pattern {idx + 1:02d} dupliqué")
         dlg.Destroy()
 

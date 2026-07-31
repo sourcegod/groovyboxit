@@ -411,7 +411,6 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             float(c) for c in range(self.COLS)
             if self._player._pattern.get_cell(self._player._cur_track, row, 0, c)
         ]
-        self._mark_modified()
 
     def _on_bpm_spin(self, event):
         bpm = self._bpm_ctrl.GetValue()
