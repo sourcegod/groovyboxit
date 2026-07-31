@@ -13,24 +13,10 @@ class TransportHandler:
         ctrl  = event.ControlDown()
         shift = event.ShiftDown()
 
-        # Ctrl+Shift+G : Aller à
-        if ctrl and shift and key == ord('G'):
-            win._goto_dialog()
-            return True
-
-        # Ctrl+G : afficher état + position
-        if ctrl and not shift and key == ord('G'):
-            p = win._player
-            if p.playing and getattr(p, 'recording', False):
-                state = "Rec"
-            elif p.playing:
-                state = "Lecture"
-            elif p._resume_offset is not None:
-                state = "Pause"
-            else:
-                state = "Arrêt"
-            win._show_status(f"{state}, Pos: {p.position_str()}")
-            return True
+        # Ctrl+G / Ctrl+Shift+G : Aller à / Grille — désormais interceptés en
+        # amont par chaque fenêtre appelante (MainWindow via CtrlHandler,
+        # MidiEditorWindow/SongWindow via leur propre _goto_dialog/_grid_dialog),
+        # pour que le dialog reste modal à la bonne fenêtre (focus au retour).
 
         # Ctrl+F12 : Panic
         if ctrl and not shift and key == wx.WXK_F12:

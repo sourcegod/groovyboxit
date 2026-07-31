@@ -234,6 +234,45 @@ class SongWindow(wx.Frame):
             self._parent._pop_last_undo()
         dlg.Destroy()
 
+    def _goto_dialog(self):
+        """Ctrl+G depuis la fenêtre Songs (même convention que
+        MidiEditorWindow._goto_dialog : self comme parent wx, pour que
+        Échap/Annuler rende le focus à cette fenêtre, pas à MainWindow)."""
+        from ui.dialogs_temporal import GotoDialog
+        p   = self._parent._player
+        pat = p._pattern
+        dlg = GotoDialog(
+            self,
+            step_idx      = int(p._current_offset()),
+            num_bars      = pat._num_bars,
+            num_beats     = pat._num_beats,
+            num_steps     = pat._num_steps,
+            step_duration = p.step_duration,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            p._go_to_offset(dlg.get_offset())
+            self._set_status(f"Position: {p.position_str()}")
+        dlg.Destroy()
+        self._song_lb.SetFocus()
+
+    def _grid_dialog(self):
+        """Ctrl+Shift+G depuis la fenêtre Songs (voir _goto_dialog)."""
+        from ui.dialogs_simple import GridDialog
+        from pattern import Pattern
+        p       = self._parent._player
+        old_idx = p._grid_idx
+        dlg = GridDialog(self, old_idx)
+        if dlg.ShowModal() == wx.ID_OK:
+            new_idx = dlg.get_grid_idx()
+            if new_idx != old_idx:
+                self._parent._add_undo(
+                    f"Grille : {Pattern.GRID_LABELS[old_idx]} → {Pattern.GRID_LABELS[new_idx]}"
+                )
+                p._grid_idx = new_idx
+            self._set_status(f"Grille : {Pattern.GRID_LABELS[p._grid_idx]}")
+        dlg.Destroy()
+        self._song_lb.SetFocus()
+
     def _on_key(self, evt):
         key   = evt.GetKeyCode()
         ukey  = evt.GetUnicodeKey()
@@ -266,6 +305,15 @@ class SongWindow(wx.Frame):
             if shift and (ukey == ord('g') or key == ord('G')):
                 self._parent._song_goto_end(self._cur_song_idx)
                 return
+
+        # Ctrl+Shift+G : boite de résolution de grille ; Ctrl+G : "Aller à"
+        # (avant le transport partagé, qui a sa propre version obsolète)
+        if ctrl and shift and (ukey == ord('g') or key == ord('G')):
+            self._grid_dialog()
+            return
+        if ctrl and not shift and (ukey == ord('g') or key == ord('G')):
+            self._goto_dialog()
+            return
 
         if self._parent._key_manager.handle_transport(evt):
             return

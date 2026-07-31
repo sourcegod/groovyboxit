@@ -1349,6 +1349,46 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         dlg.Destroy()
         self._event_lb.SetFocus()
 
+    def _goto_dialog(self):
+        """Ctrl+G depuis l'éditeur MIDI (voir _quantize_dialog : le dialog
+        est créé avec self comme parent wxPython afin que ESC/Annuler
+        redonne le focus à l'éditeur et non à la fenêtre principale)."""
+        from ui.dialogs_temporal import GotoDialog
+        p   = self._parent._player
+        pat = p._pattern
+        dlg = GotoDialog(
+            self,
+            step_idx      = int(p._current_offset()),
+            num_bars      = pat._num_bars,
+            num_beats     = pat._num_beats,
+            num_steps     = pat._num_steps,
+            step_duration = p.step_duration,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            p._go_to_offset(dlg.get_offset())
+            self._refresh()
+            self._set_status(f"Position: {self._bbt_str(*divmod(int(p._current_offset()), pat._num_steps))}")
+        dlg.Destroy()
+        self._event_lb.SetFocus()
+
+    def _grid_dialog(self):
+        """Ctrl+Shift+G depuis l'éditeur MIDI (voir _goto_dialog)."""
+        from ui.dialogs_simple import GridDialog
+        from pattern import Pattern
+        p       = self._parent._player
+        old_idx = p._grid_idx
+        dlg = GridDialog(self, old_idx)
+        if dlg.ShowModal() == wx.ID_OK:
+            new_idx = dlg.get_grid_idx()
+            if new_idx != old_idx:
+                self._parent._add_undo(
+                    f"Grille : {Pattern.GRID_LABELS[old_idx]} → {Pattern.GRID_LABELS[new_idx]}"
+                )
+                p._grid_idx = new_idx
+            self._set_status(f"Grille : {Pattern.GRID_LABELS[p._grid_idx]}")
+        dlg.Destroy()
+        self._event_lb.SetFocus()
+
     def _quantize_from_grid(self):
         from pattern import Pattern
         p = self._parent._player
@@ -1852,6 +1892,18 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         # Shift+Q : quantiser avec les derniers paramètres (sans dialog)
         if not ctrl and shift and (ukey == ord('q') or ukey == ord('Q')):
             self._quantize_with_last_params()
+            return
+
+        # Ctrl+Shift+G : boite de résolution de grille (même raccourci que la
+        # fenêtre principale) — avant le transport partagé, qui a sa propre
+        # version (obsolète) de Ctrl+G/Ctrl+Shift+G.
+        if ctrl and shift and (ukey == ord('g') or ukey == ord('G')):
+            self._grid_dialog()
+            return
+
+        # Ctrl+G : boite "Aller à" (même raccourci que la fenêtre principale)
+        if ctrl and not shift and (ukey == ord('g') or ukey == ord('G')):
+            self._goto_dialog()
             return
 
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
