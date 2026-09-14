@@ -229,6 +229,10 @@ class CtrlHandler:
         if shift and not alt and key == ord('L'):         # Ctrl+Shift+L : dialog loop points
             win._loop_select_dialog()
             return True
+        if shift and not alt and key == ord('F'):         # Ctrl+Shift+F : filtre d'événements MIDI
+            win._open_midi_editor_window()
+            win._midi_editor_window._filter_dialog()
+            return True
         if not shift and not alt and key == ord('L'):     # Ctrl+L : loop start à la position courante
             p   = win._player
             pat = p._pattern
