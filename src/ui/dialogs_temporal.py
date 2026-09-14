@@ -573,3 +573,389 @@ class LoopSelectDialog(wx.Dialog):
 
     def get_loop_count(self):
         return self._rep_spin.GetValue()
+
+
+# ---------------------------------------------------------------------------
+
+_EVT_TYPE_LABELS = [
+    "Tous les événements",
+    "Notes",
+    "Pitch Bend",
+    "Mod Wheel (CC1)",
+    "(à venir) CC générique",
+    "(à venir) Program Change",
+    "(à venir) Poly Aftertouch",
+    "(à venir) Channel Pressure",
+    "(à venir) SysEx/Meta",
+]
+_TYPE_ALL   = 0
+_TYPE_NOTE  = 1
+_TYPE_BEND  = 2
+_TYPE_MOD   = 3
+_TYPES_TO_COME = {4, 5, 6, 7, 8}
+_TYPE_KEY = {_TYPE_ALL: "all", _TYPE_NOTE: "note", _TYPE_BEND: "bend", _TYPE_MOD: "mod"}
+
+
+class EventFilterDialog(wx.Dialog):
+    """Filtre/sélection des événements de l'éditeur MIDI par type, note, vélocité,
+    pitch bend et position (Ctrl+Shift+F).
+
+    Le filtre EST le mécanisme de sélection : les boutons non-fermants
+    (Appliquer/Ajouter/Supprimer/Réinitialiser la sélection) invoquent
+    `on_action(action, matched)` pendant que le dialog reste ouvert, plutôt
+    que de passer par le code de retour de ShowModal().
+    """
+
+    def __init__(self, parent, events, num_bars, num_beats, num_steps,
+                 lim_left=None, lim_right=None, view_mode=0, state=None,
+                 on_action=None):
+        super().__init__(parent, title="Filtre d'événements MIDI")
+        self._events    = events
+        self._view_mode = view_mode   # MidiEditorWindow.MODE_NOTES(0)/MODE_ALL(1)
+        self._on_action = on_action
+
+        self._num_steps      = num_steps
+        self._steps_per_beat = max(1, num_steps // num_beats)
+        self._total_steps    = num_bars * num_steps
+        self._bbt             = BBTHelper(num_steps, self._steps_per_beat, self._total_steps)
+
+        state = state or {}
+        default_pos_from = lim_left  if lim_left  is not None else 0
+        default_pos_to   = lim_right if lim_right is not None else self._total_steps - 1
+
+        # --- StaticBox Type d'événement ---
+        type_box   = wx.StaticBox(self, label="Type d'événement")
+        type_sizer = wx.StaticBoxSizer(type_box, wx.VERTICAL)
+        self._type_lb = wx.ListBox(self, choices=_EVT_TYPE_LABELS, style=wx.LB_SINGLE,
+                                   size=(-1, 150))
+        type_sizer.Add(self._type_lb, 1, wx.EXPAND | wx.ALL, 4)
+
+        # --- StaticBox Notes ---
+        notes_box   = wx.StaticBox(self, label="Notes")
+        notes_sizer = wx.StaticBoxSizer(notes_box, wx.VERTICAL)
+        from ui.midi_virtual_keyboard import midi_display_label
+        note_choices = [midi_display_label(i) for i in range(128)]
+
+        note_lo_label = wx.StaticText(self, label="Note Bas :")
+        self._note_lo_lb = wx.ListBox(self, choices=note_choices, style=wx.LB_SINGLE,
+                                      size=(-1, 110))
+        note_hi_label = wx.StaticText(self, label="Note Haut :")
+        self._note_hi_lb = wx.ListBox(self, choices=note_choices, style=wx.LB_SINGLE,
+                                      size=(-1, 110))
+        note_panels = wx.BoxSizer(wx.HORIZONTAL)
+        note_lo_col = wx.BoxSizer(wx.VERTICAL)
+        note_lo_col.Add(note_lo_label,     0, wx.BOTTOM, 2)
+        note_lo_col.Add(self._note_lo_lb,  1, wx.EXPAND)
+        note_hi_col = wx.BoxSizer(wx.VERTICAL)
+        note_hi_col.Add(note_hi_label,     0, wx.BOTTOM, 2)
+        note_hi_col.Add(self._note_hi_lb,  1, wx.EXPAND)
+        note_panels.Add(note_lo_col, 1, wx.EXPAND | wx.RIGHT, 4)
+        note_panels.Add(note_hi_col, 1, wx.EXPAND | wx.LEFT, 4)
+
+        vel_lo_label = wx.StaticText(self, label="Vélocité Bas :")
+        self._vel_lo_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        vel_hi_label = wx.StaticText(self, label="Vélocité Haute :")
+        self._vel_hi_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        vel_row = wx.BoxSizer(wx.HORIZONTAL)
+        vel_row.Add(vel_lo_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        vel_row.Add(self._vel_lo_spin, 0, wx.RIGHT, 12)
+        vel_row.Add(vel_hi_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        vel_row.Add(self._vel_hi_spin, 0)
+
+        notes_sizer.Add(note_panels, 0, wx.EXPAND | wx.ALL, 4)
+        notes_sizer.Add(vel_row,     0, wx.ALL, 4)
+
+        # --- StaticBox Pitch Bend ---
+        bend_box   = wx.StaticBox(self, label="Pitch Bend")
+        bend_sizer = wx.StaticBoxSizer(bend_box, wx.VERTICAL)
+        pitch_lo_label = wx.StaticText(self, label="Pitch Bas :")
+        self._pitch_lo_spin = wx.SpinCtrl(self, min=-8192, max=8191, size=(90, -1))
+        pitch_hi_label = wx.StaticText(self, label="Pitch Haut :")
+        self._pitch_hi_spin = wx.SpinCtrl(self, min=-8192, max=8191, size=(90, -1))
+        pitch_row = wx.BoxSizer(wx.HORIZONTAL)
+        pitch_row.Add(pitch_lo_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        pitch_row.Add(self._pitch_lo_spin, 0, wx.RIGHT, 12)
+        pitch_row.Add(pitch_hi_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        pitch_row.Add(self._pitch_hi_spin, 0)
+        bend_sizer.Add(pitch_row, 0, wx.ALL, 4)
+
+        # --- StaticBox Position de la sélection ---
+        pos_box   = wx.StaticBox(self, label="Position de la sélection")
+        pos_sizer = wx.StaticBoxSizer(pos_box, wx.VERTICAL)
+        pos_from_label = wx.StaticText(self, label="De :")
+        self._pos_from_ctrl = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
+        pos_to_label = wx.StaticText(self, label="A :")
+        self._pos_to_ctrl = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
+        pos_grid = wx.FlexGridSizer(rows=2, cols=2, vgap=4, hgap=8)
+        pos_grid.Add(pos_from_label,      0, wx.ALIGN_CENTER_VERTICAL)
+        pos_grid.Add(self._pos_from_ctrl, 0)
+        pos_grid.Add(pos_to_label,        0, wx.ALIGN_CENTER_VERTICAL)
+        pos_grid.Add(self._pos_to_ctrl,   0)
+        pos_sizer.Add(pos_grid, 0, wx.ALL, 4)
+
+        # --- Checkboxes ---
+        self._active_cb = wx.CheckBox(self, label="Afficher les évènements qui passent le filtre")
+        self._invert_cb = wx.CheckBox(self, label="Inverser la sélection")
+
+        # --- Barre de statut interne ---
+        self._status_ctrl = wx.ListBox(self, choices=[""], style=wx.LB_SINGLE)
+
+        # --- Boutons ---
+        self._ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        self._apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
+        self._cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        self._ok_btn.SetDefault()
+        row1 = wx.BoxSizer(wx.HORIZONTAL)
+        row1.Add(self._ok_btn,     0, wx.RIGHT, 6)
+        row1.Add(self._apply_btn,  0, wx.RIGHT, 6)
+        row1.Add(self._cancel_btn, 0)
+
+        self._add_btn        = wx.Button(self, wx.ID_ANY, "Ajouter à la sélection")
+        self._remove_btn     = wx.Button(self, wx.ID_ANY, "Supprimer de la sélection")
+        self._reset_sel_btn  = wx.Button(self, wx.ID_ANY, "Réinitialiser la sélection")
+        self._clear_btn      = wx.Button(self, wx.ID_ANY, "Effacer le filtre")
+        row2 = wx.BoxSizer(wx.HORIZONTAL)
+        row2.Add(self._add_btn,       0, wx.RIGHT, 6)
+        row2.Add(self._remove_btn,    0, wx.RIGHT, 6)
+        row2.Add(self._reset_sel_btn, 0, wx.RIGHT, 6)
+        row2.Add(self._clear_btn,     0)
+
+        # --- Assemblage ---
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(type_sizer,      0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(notes_sizer,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(bend_sizer,      0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(pos_sizer,       0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._active_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._invert_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._status_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(row1, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(row2, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        self.SetSizer(vbox)
+
+        # --- Valeurs initiales ---
+        self._last_valid_type = _TYPE_ALL
+        self._apply_state(state, default_pos_from, default_pos_to)
+
+        self.Fit()
+        # GTK réinitialise SpinCtrl au layout : reposer les valeurs après Fit()
+        self._apply_spin_values(state, default_pos_from, default_pos_to)
+        self._update_group_enabled()
+
+        # --- Tab order manuel (bug GTK/StaticBoxSizer, cf. TrackSelectDialog) ---
+        self._tab_order_full = [
+            self._type_lb,
+            self._note_lo_lb, self._note_hi_lb, self._vel_lo_spin, self._vel_hi_spin,
+            self._pitch_lo_spin, self._pitch_hi_spin,
+            self._pos_from_ctrl, self._pos_to_ctrl,
+            self._active_cb, self._invert_cb,
+            self._ok_btn, self._apply_btn, self._cancel_btn,
+            self._add_btn, self._remove_btn, self._reset_sel_btn, self._clear_btn,
+        ]
+
+        # --- Liaisons ---
+        self._type_lb.Bind(wx.EVT_LISTBOX, self._on_type_change)
+        self._ok_btn.Bind(wx.EVT_BUTTON,    self._on_ok)
+        self._apply_btn.Bind(wx.EVT_BUTTON, self._on_apply)
+        self._add_btn.Bind(wx.EVT_BUTTON,       self._on_add)
+        self._remove_btn.Bind(wx.EVT_BUTTON,    self._on_remove)
+        self._reset_sel_btn.Bind(wx.EVT_BUTTON, self._on_reset_sel)
+        self._clear_btn.Bind(wx.EVT_BUTTON,     self._on_clear_filter)
+        self._pos_from_ctrl.Bind(wx.EVT_TEXT_ENTER, lambda e: None)
+        self._pos_to_ctrl.Bind(wx.EVT_TEXT_ENTER,   lambda e: None)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
+        self._type_lb.SetFocus()
+
+    # ------------------------------------------------------------------
+    # Compatibilité tests (délèguent à BBTHelper)
+    # ------------------------------------------------------------------
+
+    def _fmt_bbt(self, step):
+        return self._bbt.fmt(step)
+
+    def _parse_bbt(self, s):
+        return self._bbt.parse(s)
+
+    # ------------------------------------------------------------------
+    # État initial / Effacer le filtre
+    # ------------------------------------------------------------------
+
+    def _apply_state(self, state, default_pos_from, default_pos_to):
+        """Positionne les widgets non-SpinCtrl depuis `state` (ou défauts permissifs)."""
+        type_idx = {"all": _TYPE_ALL, "note": _TYPE_NOTE, "bend": _TYPE_BEND,
+                    "mod": _TYPE_MOD}.get(state.get("etype_filter", "all"), _TYPE_ALL)
+        self._type_lb.SetSelection(type_idx)
+        self._last_valid_type = type_idx
+
+        self._active_cb.SetValue(state.get("active", True))
+        self._invert_cb.SetValue(state.get("invert", False))
+
+        pos_from = state.get("pos_from")
+        pos_to   = state.get("pos_to")
+        pos_from = default_pos_from if pos_from is None else pos_from
+        pos_to   = default_pos_to   if pos_to   is None else pos_to
+        self._pos_from_ctrl.SetValue(self._bbt.fmt(pos_from))
+        self._pos_to_ctrl.SetValue(self._bbt.fmt(pos_to))
+
+    def _apply_spin_values(self, state, default_pos_from, default_pos_to):
+        """Repositionne les SpinCtrl (GTK les réinitialise à Fit())."""
+        self._note_lo_lb.SetSelection(state.get("note_lo", 0))
+        self._note_hi_lb.SetSelection(state.get("note_hi", 127))
+        self._vel_lo_spin.SetValue(state.get("vel_lo", 0))
+        self._vel_hi_spin.SetValue(state.get("vel_hi", 127))
+        self._pitch_lo_spin.SetValue(state.get("bend_lo", -8192))
+        self._pitch_hi_spin.SetValue(state.get("bend_hi", 8191))
+
+    def _on_clear_filter(self, event):
+        """Réinitialise tous les champs de critères à un état permissif (pas la sélection)."""
+        self._type_lb.SetSelection(_TYPE_ALL)
+        self._last_valid_type = _TYPE_ALL
+        self._active_cb.SetValue(True)
+        self._invert_cb.SetValue(False)
+        self._note_lo_lb.SetSelection(0)
+        self._note_hi_lb.SetSelection(127)
+        self._vel_lo_spin.SetValue(0)
+        self._vel_hi_spin.SetValue(127)
+        self._pitch_lo_spin.SetValue(-8192)
+        self._pitch_hi_spin.SetValue(8191)
+        self._pos_from_ctrl.SetValue(self._bbt.fmt(0))
+        self._pos_to_ctrl.SetValue(self._bbt.fmt(self._total_steps - 1))
+        self._update_group_enabled()
+        self._set_status("Filtre effacé")
+
+    # ------------------------------------------------------------------
+    # Activation conditionnelle des groupes selon le type
+    # ------------------------------------------------------------------
+
+    def _type_unavailable(self, idx):
+        """True si idx est un type "à venir", ou Bend/Mod alors que le mode
+        courant de l'éditeur (MODE_NOTES=0) ne les produit jamais."""
+        if idx in _TYPES_TO_COME:
+            return True
+        if self._view_mode == 0 and idx in (_TYPE_BEND, _TYPE_MOD):
+            return True
+        return False
+
+    def _update_group_enabled(self):
+        sel = self._type_lb.GetSelection()
+        notes_on = (sel == _TYPE_NOTE)
+        bend_on  = (sel == _TYPE_BEND)
+        for w in (self._note_lo_lb, self._note_hi_lb, self._vel_lo_spin, self._vel_hi_spin):
+            w.Enable(notes_on)
+        for w in (self._pitch_lo_spin, self._pitch_hi_spin):
+            w.Enable(bend_on)
+
+    def _on_type_change(self, event):
+        idx = self._type_lb.GetSelection()
+        if idx == wx.NOT_FOUND:
+            return
+        if self._type_unavailable(idx):
+            self._type_lb.SetSelection(self._last_valid_type)
+            # SetString force l'annonce lecteur d'écran (astuce déjà utilisée
+            # pour le clavier virtuel, cf. VirtualKeyboardMixin/_vk_move).
+            self._type_lb.SetString(self._last_valid_type,
+                                    _EVT_TYPE_LABELS[self._last_valid_type])
+            if idx in (_TYPE_BEND, _TYPE_MOD) and self._view_mode == 0:
+                self._set_status("Type indisponible en mode Notes — Ctrl+2 pour Tous les événements")
+            else:
+                self._set_status("Type indisponible pour le moment — sélection inchangée")
+            return
+        self._last_valid_type = idx
+        self._update_group_enabled()
+
+    # ------------------------------------------------------------------
+    # Statut interne
+    # ------------------------------------------------------------------
+
+    def _set_status(self, msg):
+        self._status_ctrl.SetString(0, msg)
+
+    # ------------------------------------------------------------------
+    # Critères / matching
+    # ------------------------------------------------------------------
+
+    def get_criteria(self):
+        sel = self._type_lb.GetSelection()
+        etype_filter = _TYPE_KEY.get(sel, "all")
+        pos_from = self._bbt.parse(self._pos_from_ctrl.GetValue())
+        pos_to   = self._bbt.parse(self._pos_to_ctrl.GetValue())
+        return {
+            "active":       self._active_cb.GetValue(),
+            "invert":       self._invert_cb.GetValue(),
+            "etype_filter": etype_filter,
+            "note_lo":  self._note_lo_lb.GetSelection() if self._note_lo_lb.GetSelection() != wx.NOT_FOUND else 0,
+            "note_hi":  self._note_hi_lb.GetSelection() if self._note_hi_lb.GetSelection() != wx.NOT_FOUND else 127,
+            "vel_lo":   self._vel_lo_spin.GetValue(),
+            "vel_hi":   self._vel_hi_spin.GetValue(),
+            "bend_lo":  self._pitch_lo_spin.GetValue(),
+            "bend_hi":  self._pitch_hi_spin.GetValue(),
+            "pos_from": pos_from if pos_from is not None else 0,
+            "pos_to":   pos_to   if pos_to   is not None else self._total_steps - 1,
+        }
+
+    def _matched_indices(self):
+        return self._matched_indices_for(self.get_criteria())
+
+    def _matched_indices_for(self, criteria):
+        from midi_editor import MidiEditor
+        return MidiEditor().filter_events(self._events, criteria)
+
+    # ------------------------------------------------------------------
+    # Boutons
+    # ------------------------------------------------------------------
+
+    def _on_ok(self, event):
+        criteria = self.get_criteria()
+        matched  = self._matched_indices_for(criteria)
+        if self._on_action:
+            self._on_action("apply", matched, criteria)
+        self.EndModal(wx.ID_OK)
+
+    def _on_apply(self, event):
+        criteria = self.get_criteria()
+        matched  = self._matched_indices_for(criteria)
+        if self._on_action:
+            self._on_action("apply", matched, criteria)
+        self._set_status(f"Filtre appliqué : {len(matched)} événement(s)")
+
+    def _on_add(self, event):
+        criteria = self.get_criteria()
+        matched  = self._matched_indices_for(criteria)
+        if self._on_action:
+            self._on_action("add", matched, criteria)
+        self._set_status(f"Ajouté à la sélection : {len(matched)} événement(s)")
+
+    def _on_remove(self, event):
+        criteria = self.get_criteria()
+        matched  = self._matched_indices_for(criteria)
+        if self._on_action:
+            self._on_action("remove", matched, criteria)
+        self._set_status(f"Retiré de la sélection : {len(matched)} événement(s)")
+
+    def _on_reset_sel(self, event):
+        if self._on_action:
+            self._on_action("reset_sel", set())
+        self._set_status("Sélection réinitialisée")
+
+    # ------------------------------------------------------------------
+    # Clavier
+    # ------------------------------------------------------------------
+
+    def _on_key(self, event):
+        key   = event.GetKeyCode()
+        shift = event.ShiftDown()
+        if key == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        if key == wx.WXK_TAB:
+            order = [w for w in self._tab_order_full if w.IsEnabled()]
+            focused = wx.Window.FindFocus()
+            if focused in order:
+                idx    = order.index(focused)
+                target = order[idx - 1] if shift else order[(idx + 1) % len(order)]
+            else:
+                target = order[-1] if shift else order[0]
+            wx.CallAfter(target.SetFocus)
+            return
+        event.Skip()
