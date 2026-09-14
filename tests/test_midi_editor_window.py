@@ -213,3 +213,153 @@ def test_change_grid_idx_clamped_at_lower_bound():
     win._change_grid_idx(-1)
     assert win._status_ctrl.last == "Grille: déjà à la borne"
     assert win._parent.undo_titles == []
+
+
+# ---------------------------------------------------------------------------
+# Filtre d'événements MIDI (étape 8a-8/8a-10) — _apply_filter_result()
+# ---------------------------------------------------------------------------
+
+class _FakeFilterPlayer:
+    def __init__(self):
+        self._event_filter_state = None
+
+
+class _FakeFilterParent:
+    def __init__(self):
+        self._player = _FakeFilterPlayer()
+
+
+class _FakeFilterWindow:
+    """Objet minimal exposant _apply_filter_result ; _refresh_labels et
+    _sync_lims_from_selection sont des fakes (leur logique propre est déjà
+    couverte par test_select_all/test_deselect_all)."""
+    _set_status          = mew.MidiEditorWindow._set_status
+    _apply_filter_result = mew.MidiEditorWindow._apply_filter_result
+
+    def __init__(self):
+        self._parent           = _FakeFilterParent()
+        self._status_ctrl      = _FakeStatusCtrl()
+        self._events           = [1, 2, 3, 4]   # contenu peu importe, seuls les indices comptent
+        self._selected_indices = set()
+        self.refresh_calls     = 0
+        self.sync_calls        = 0
+
+    def _refresh_labels(self):
+        self.refresh_calls += 1
+
+    def _sync_lims_from_selection(self):
+        self.sync_calls += 1
+
+
+def test_apply_filter_result_apply_replaces_selection():
+    win = _FakeFilterWindow()
+    win._selected_indices = {0}
+    criteria = {"etype_filter": "note"}
+    win._apply_filter_result("apply", {1, 2}, criteria)
+    assert win._selected_indices == {1, 2}
+    assert win.refresh_calls == 1
+    assert win.sync_calls == 1
+    assert win._parent._player._event_filter_state is criteria
+    assert "2 événement" in win._status_ctrl.last
+
+
+def test_apply_filter_result_add_unions_selection():
+    win = _FakeFilterWindow()
+    win._selected_indices = {0}
+    win._apply_filter_result("add", {1, 2}, {"etype_filter": "note"})
+    assert win._selected_indices == {0, 1, 2}
+
+
+def test_apply_filter_result_remove_subtracts_selection():
+    win = _FakeFilterWindow()
+    win._selected_indices = {0, 1, 2}
+    win._apply_filter_result("remove", {1}, {"etype_filter": "note"})
+    assert win._selected_indices == {0, 2}
+
+
+def test_apply_filter_result_reset_sel_clears_selection_no_persist():
+    win = _FakeFilterWindow()
+    win._selected_indices = {0, 1, 2}
+    win._apply_filter_result("reset_sel", set(), None)
+    assert win._selected_indices == set()
+    assert win._parent._player._event_filter_state is None
+
+
+def test_apply_filter_result_reset_sel_does_not_overwrite_persisted_state():
+    win = _FakeFilterWindow()
+    prev_state = {"etype_filter": "note"}
+    win._parent._player._event_filter_state = prev_state
+    win._apply_filter_result("reset_sel", set(), None)
+    assert win._parent._player._event_filter_state is prev_state
+
+
+def test_apply_filter_result_always_calls_refresh_and_sync():
+    win = _FakeFilterWindow()
+    for action in ("apply", "add", "remove", "reset_sel"):
+        win._apply_filter_result(action, set(), None)
+    assert win.refresh_calls == 4
+    assert win.sync_calls == 4
+
+
+# ---------------------------------------------------------------------------
+# Filtre d'événements MIDI — Ctrl+Shift+F dans _on_key
+# ---------------------------------------------------------------------------
+
+class _FakeFilterKeyEvent:
+    def __init__(self, key, ctrl=False, shift=False, alt=False):
+        self._key   = key
+        self._ctrl  = ctrl
+        self._shift = shift
+        self._alt   = alt
+        self.skipped = False
+
+    def GetKeyCode(self):    return self._key
+    def GetUnicodeKey(self): return self._key
+    def ControlDown(self):   return self._ctrl
+    def ShiftDown(self):     return self._shift
+    def AltDown(self):       return self._alt
+    def Skip(self):          self.skipped = True
+
+
+class _FakeKeyManager:
+    def handle_transport(self, evt):
+        return False   # aucune touche de transport dans ces tests
+
+
+class _FakeKeyParent:
+    def __init__(self):
+        self._key_manager = _FakeKeyManager()
+
+
+class _FakeKeyWindow:
+    """Objet minimal exposant _on_key ; toutes les branches précédant
+    Ctrl+Shift+F ne testent que evt.*Down()/GetKeyCode() (aucun attribut
+    self.* requis avant notre bloc). Après notre bloc, seul le transport
+    partagé (_parent._key_manager.handle_transport, stubé à False ici) est
+    consulté avant evt.Skip()."""
+    _on_key = mew.MidiEditorWindow._on_key
+
+    def __init__(self):
+        self._parent = _FakeKeyParent()
+        self.filter_dialog_calls = 0
+
+    def _filter_dialog(self):
+        self.filter_dialog_calls += 1
+
+
+def test_on_key_ctrl_shift_f_opens_filter_dialog():
+    win = _FakeKeyWindow()
+    evt = _FakeFilterKeyEvent(key=ord('F'), ctrl=True, shift=True)
+    win._on_key(evt)
+    assert win.filter_dialog_calls == 1
+    assert evt.skipped is False
+
+
+def test_on_key_ctrl_f_without_shift_does_not_open_filter_dialog():
+    """Ctrl+F (sans Shift) est un raccourci distinct (Doubler pattern, côté
+    fenêtre principale) ; l'éditeur MIDI ne doit pas réagir à Ctrl+F seul."""
+    win = _FakeKeyWindow()
+    evt = _FakeFilterKeyEvent(key=ord('F'), ctrl=True, shift=False)
+    win._on_key(evt)
+    assert win.filter_dialog_calls == 0
+    assert evt.skipped is True
