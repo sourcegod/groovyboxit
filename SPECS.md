@@ -951,6 +951,13 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
 - Ctrl+A : sélectionner tout / Ctrl+Shift+A : désélectionner
 - Shift+←/→ : sélectionner/désélectionner le groupe + avancer
 - Shift+↑/↓ : sélectionner une note individuelle dans un accord
+- Ctrl+Shift+F : EventFilterDialog — filtre = mécanisme de sélection (pas un affichage
+  séparé) ; type (Notes/Pitch Bend/Mod Wheel, CC/PC/Poly AT/Channel Pressure/SysEx
+  reportés), note/vélocité/pitch bend/position ; Ok/Appliquer remplacent la sélection,
+  Ajouter/Supprimer la modifient, Réinitialiser la vide, Effacer le filtre remet les
+  critères à un état permissif. Dernier état mémorisé en session
+  (`DrumPlayer._event_filter_state`, comme les derniers paramètres de quantisation :
+  survit à l'undo/redo, pas écrit dans le .gvp)
 
 **Édition :**
 - Entrée : éditer la note sélectionnée (dialog pitch / position / longueur / vélocité)
@@ -1083,6 +1090,7 @@ S'applique à toute `wx.ListBox` navigable au clavier (pas les barres de statut
 | `GridDialog` | dialogs_properties | Ctrl+Shift+G | Résolution de grille (4 mes. à 1/128) |
 | `GotoDialog` | dialogs_temporal | Ctrl+G | Aller à une position (bar:beat:tick) |
 | `LoopSelectDialog` | dialogs_temporal | Ctrl+Shift+L | Points de boucle (début, fin, répétitions) |
+| `EventFilterDialog` | dialogs_temporal | Ctrl+Shift+F | Filtre/sélection d'événements MIDI par type, note, vélocité, pitch bend, position |
 | `SavePatternDialog` | dialogs_simple | (interne) | Sauvegarder le pattern sous un nouveau nom |
 | `RenameDialog` | dialogs_simple | F2 | Renommer piste, pattern ou song |
 | `TrackPropertiesDialog` | dialogs_properties | Ctrl+T / Entrée sur piste | Propriétés de la piste (slot, volume, pan, mute, solo) |
@@ -1198,6 +1206,7 @@ Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 |---|---|
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
+| `test_event_filter_dialog.py` | EventFilterDialog : critères, types "à venir", Tab order, on_action (36 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
 | `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
 | `test_key_manager.py` | Raccourcis clavier, transport, ProjectManager |
@@ -1205,6 +1214,7 @@ Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 | `test_loop_points_player.py` | Loop points : DrumPlayer (21 tests) |
 | `test_loop_select_dialog.py` | LoopSelectDialog (42 tests) |
 | `test_midi_editor.py` | MidiEditor : get_note_events, sélection, édition |
+| `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/position (19 tests) |
 | `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
