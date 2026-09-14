@@ -36,6 +36,7 @@ Ctrl+L           Poser le point de début de boucle à la position courante du p
 Shift+L          Poser le point de fin de boucle à la position courante du playhead
 Ctrl+Shift+L     Ouvrir le dialog de points de boucle (début, fin, répétitions)
 Alt+L            Réinitialiser les points de boucle (début et fin) à la longueur du pattern
+Ctrl+Shift+F     Ouvrir l'éditeur MIDI (si besoin) puis le dialog de filtre d'événements
 PageDown         Transport : +1 mesure
 PageUp           Transport : −1 mesure
 Ctrl+PageDown    Transport : +1 battement
@@ -221,6 +222,9 @@ Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
   Shift+←        Sélectionner/désélectionner le groupe et aller au précédent (joue le groupe)
   Shift+→        Sélectionner/désélectionner le groupe et aller au suivant (joue le groupe)
   Shift+↑/↓      Sélectionner / désélectionner la note individuelle dans l'accord
+  Ctrl+Shift+F   Ouvrir le dialog de filtre d'événements (type, note, vélocité, pitch
+                 bend, position ; Ok/Appliquer/Ajouter/Supprimer/Réinitialiser la
+                 sélection/Effacer le filtre — le dernier état est mémorisé en session)
 
   -- Édition --
   Ctrl+Q         Quantiser le pattern depuis la grille courante (sans dialog)
