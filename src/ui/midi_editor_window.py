@@ -1433,6 +1433,50 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         dlg.Destroy()
         self._event_lb.SetFocus()
 
+    def _filter_dialog(self):
+        """Ctrl+Shift+F depuis l'éditeur MIDI (voir _goto_dialog : le dialog
+        est créé avec self comme parent wxPython afin que ESC/Annuler
+        redonne le focus à l'éditeur et non à la fenêtre principale)."""
+        from ui.dialogs_temporal import EventFilterDialog
+        p   = self._parent._player
+        pat = p._pattern
+        te  = self._parent._track_editor
+        dlg = EventFilterDialog(
+            self,
+            events     = self._events,
+            num_bars   = pat._num_bars,
+            num_beats  = pat._num_beats,
+            num_steps  = pat._num_steps,
+            lim_left   = te._lim_left,
+            lim_right  = te._lim_right,
+            view_mode  = self._view_mode,
+            state      = p._event_filter_state,
+            on_action  = self._apply_filter_result,
+        )
+        dlg.ShowModal()
+        dlg.Destroy()
+        self._event_lb.SetFocus()
+
+    def _apply_filter_result(self, action, matched, criteria=None):
+        """Callback EventFilterDialog : applique le résultat du filtre à la
+        sélection courante et mémorise l'état en session (persistance
+        Ctrl+Shift+F, voir DrumPlayer._event_filter_state)."""
+        if action == "apply":
+            self._selected_indices = set(matched)
+        elif action == "add":
+            self._selected_indices |= matched
+        elif action == "remove":
+            self._selected_indices -= matched
+        elif action == "reset_sel":
+            self._selected_indices = set()
+
+        if action in ("apply", "add", "remove") and criteria is not None:
+            self._parent._player._event_filter_state = criteria
+
+        self._refresh_labels()
+        self._sync_lims_from_selection()
+        self._set_status(f"Filtre: {len(self._selected_indices)} événement(s) sélectionné(s)")
+
     def _quantize_from_grid(self):
         from pattern import Pattern
         p = self._parent._player
@@ -1954,6 +1998,12 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         # Ctrl+G : boite "Aller à" (même raccourci que la fenêtre principale)
         if ctrl and not shift and (ukey == ord('g') or ukey == ord('G')):
             self._goto_dialog()
+            return
+
+        # Ctrl+Shift+F : boite de filtre d'événements (même raccourci que la
+        # fenêtre principale)
+        if ctrl and shift and (ukey == ord('f') or ukey == ord('F')):
+            self._filter_dialog()
             return
 
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)

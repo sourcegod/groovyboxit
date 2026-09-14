@@ -59,6 +59,8 @@ class DrumPlayer:
         self._quant_starts       = True
         self._quant_durations    = False
         self._quant_direction_idx = 0   # 0=Proche, 1=Précédente, 2=Suivante
+        # État du dialog Filtre d'événements (Ctrl+Shift+F, éditeur MIDI)
+        self._event_filter_state = None   # dict de critères, ou None = jamais ouvert
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
         self._nr_quant_idx       = 7
         self._nr_get_pad         = None
