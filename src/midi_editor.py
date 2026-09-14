@@ -127,6 +127,65 @@ class MidiEditor:
         return events
 
     # ------------------------------------------------------------------
+    # Filtre / sélection par critères
+    # ------------------------------------------------------------------
+
+    def filter_events(self, events, criteria):
+        """Retourne l'ensemble des indices de `events` qui passent `criteria`.
+
+        criteria (dict) :
+            active       bool  — interrupteur maître ; False = tout passe
+            invert       bool  — inverse le résultat (appliqué en dernier)
+            etype_filter str   — "all" | "note" | "bend" | "mod"
+            note_lo/hi   int   — bornes sur e["pad"], type "note" seulement
+            vel_lo/hi    int   — bornes sur e["vel"], type "note" seulement
+            bend_lo/hi   int   — bornes sur e["value"], type "bend" seulement
+            pos_from/to  num   — bornes sur e["offset"], tous types
+        """
+        if not criteria.get("active", True):
+            matched = set(range(len(events)))
+            if criteria.get("invert", False):
+                matched = set(range(len(events))) - matched
+            return matched
+
+        etype_filter = criteria.get("etype_filter", "all")
+        pos_from     = criteria.get("pos_from")
+        pos_to       = criteria.get("pos_to")
+        note_lo      = criteria.get("note_lo", 0)
+        note_hi      = criteria.get("note_hi", 127)
+        vel_lo       = criteria.get("vel_lo", 0)
+        vel_hi       = criteria.get("vel_hi", 127)
+        bend_lo      = criteria.get("bend_lo", -8192)
+        bend_hi      = criteria.get("bend_hi", 8191)
+
+        matched = set()
+        for i, e in enumerate(events):
+            offset = e["offset"]
+            if pos_from is not None and offset < pos_from:
+                continue
+            if pos_to is not None and offset > pos_to:
+                continue
+
+            if etype_filter != "all" and e["type"] != etype_filter:
+                continue
+
+            if e["type"] == "note" and etype_filter == "note":
+                if not (note_lo <= e["pad"] <= note_hi):
+                    continue
+                if not (vel_lo <= e["vel"] <= vel_hi):
+                    continue
+            elif e["type"] == "bend" and etype_filter == "bend":
+                if not (bend_lo <= e["value"] <= bend_hi):
+                    continue
+
+            matched.add(i)
+
+        if criteria.get("invert", False):
+            matched = set(range(len(events))) - matched
+
+        return matched
+
+    # ------------------------------------------------------------------
     # Opérations d'édition
     # ------------------------------------------------------------------
 
