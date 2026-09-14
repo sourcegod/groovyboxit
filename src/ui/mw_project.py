@@ -260,6 +260,7 @@ class ProjectMixin:
                 "quant_durations":p._quant_durations,
                 "grid_idx":       p._grid_idx,
             },
+            "event_filter_params": p._event_filter_state,
         }
 
     def _clipboard_to_dict(self):
@@ -339,6 +340,7 @@ class ProjectMixin:
             p._quant_starts      = qp.get("quant_starts",    True)
             p._quant_durations   = qp.get("quant_durations", False)
             p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
+        self._player._event_filter_state = state.get("event_filter_params")
         self._pattern_listbox.SetSelection(self._cur_pattern_idx)
         self._refresh_pattern_listbox()
         self._refresh_grid()
