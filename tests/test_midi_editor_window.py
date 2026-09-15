@@ -287,6 +287,198 @@ def test_event_pitch_number_grid_kit_is_pad_index_1based():
 
 
 # ---------------------------------------------------------------------------
+# Correctif accessibilité (2026-09-15) — Haut/Bas non annoncé par Orca sous
+# SetSelection() programmatique (EVT_CHAR_HOOK) : MODE_ALL (Ctrl+2, liste
+# plate) doit laisser GTK naviguer nativement (evt.Skip()) au lieu d'appeler
+# _move_up_in_group/_move_down_in_group ; MODE_NOTES (Ctrl+1, piano roll)
+# garde la navigation groupée programmatique (clamp dans l'accord, différent
+# du pas-à-pas natif). Voir project_event_list_window_todo.
+# ---------------------------------------------------------------------------
+
+import wx
+
+
+class _FakeNavKeyEvent:
+    def __init__(self, key, ctrl=False, shift=False, alt=False):
+        self._key   = key
+        self._ctrl  = ctrl
+        self._shift = shift
+        self._alt   = alt
+        self.skipped = False
+
+    def GetKeyCode(self):    return self._key
+    def GetUnicodeKey(self): return self._key
+    def ControlDown(self):   return self._ctrl
+    def ShiftDown(self):     return self._shift
+    def AltDown(self):       return self._alt
+    def Skip(self):          self.skipped = True
+
+
+class _FakeVkLb:
+    def __init__(self, has_focus=False):
+        self._has_focus = has_focus
+
+    def HasFocus(self):
+        return self._has_focus
+
+
+class _FakeNavWindow:
+    """Objet minimal exposant _on_key ; suffisant pour atteindre la branche
+    ↑/↓ sans dépendre des branches précédentes (Ctrl+1/2, ←/→, Shift+←/→
+    court-circuitent toutes sur ctrl/shift/key avant de toucher self.*)."""
+    MODE_NOTES = mew.MidiEditorWindow.MODE_NOTES
+    MODE_ALL   = mew.MidiEditorWindow.MODE_ALL
+    _on_key    = mew.MidiEditorWindow._on_key
+
+    def __init__(self, view_mode, vk_focus=False):
+        self._parent    = _FakeKeyParent()
+        self._vk_lb     = _FakeVkLb(vk_focus)
+        self._view_mode = view_mode
+        self.up_in_group_calls   = 0
+        self.down_in_group_calls = 0
+
+    def _move_up_in_group(self):
+        self.up_in_group_calls += 1
+
+    def _move_down_in_group(self):
+        self.down_in_group_calls += 1
+
+
+def test_on_key_up_mode_all_skips_native_navigation():
+    win = _FakeNavWindow(view_mode=mew.MidiEditorWindow.MODE_ALL)
+    evt = _FakeNavKeyEvent(key=wx.WXK_UP)
+    win._on_key(evt)
+    assert evt.skipped is True
+    assert win.up_in_group_calls == 0
+
+
+def test_on_key_down_mode_all_skips_native_navigation():
+    win = _FakeNavWindow(view_mode=mew.MidiEditorWindow.MODE_ALL)
+    evt = _FakeNavKeyEvent(key=wx.WXK_DOWN)
+    win._on_key(evt)
+    assert evt.skipped is True
+    assert win.down_in_group_calls == 0
+
+
+def test_on_key_up_mode_notes_uses_group_navigation_not_native():
+    win = _FakeNavWindow(view_mode=mew.MidiEditorWindow.MODE_NOTES)
+    evt = _FakeNavKeyEvent(key=wx.WXK_UP)
+    win._on_key(evt)
+    assert win.up_in_group_calls == 1
+    assert evt.skipped is False
+
+
+def test_on_key_down_mode_notes_uses_group_navigation_not_native():
+    win = _FakeNavWindow(view_mode=mew.MidiEditorWindow.MODE_NOTES)
+    evt = _FakeNavKeyEvent(key=wx.WXK_DOWN)
+    win._on_key(evt)
+    assert win.down_in_group_calls == 1
+    assert evt.skipped is False
+
+
+def test_on_key_up_virtual_keyboard_focus_always_skips_regardless_of_mode():
+    win = _FakeNavWindow(view_mode=mew.MidiEditorWindow.MODE_NOTES, vk_focus=True)
+    evt = _FakeNavKeyEvent(key=wx.WXK_UP)
+    win._on_key(evt)
+    assert evt.skipped is True
+    assert win.up_in_group_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# _on_listbox_select — MODE_ALL synchronise le playhead et joue la note
+# (déclenché par la navigation native ci-dessus ou un clic) ; MODE_NOTES
+# inchangé (pas de synchro/lecture depuis ce handler, comme avant ce
+# correctif) ; le flag _skip_listbox_announce coupe tout court-circuit.
+# ---------------------------------------------------------------------------
+
+class _FakeSelectEventLb:
+    def __init__(self, selection):
+        self._selection = selection
+
+    def GetSelection(self):
+        return self._selection
+
+
+class _FakeSelectMidiEditor:
+    def __init__(self):
+        self._cur_idx = None
+
+
+class _FakeSelectPlayer:
+    def __init__(self):
+        self.offsets = []
+
+    def _go_to_offset(self, offset):
+        self.offsets.append(offset)
+
+
+class _FakeSelectParent:
+    def __init__(self):
+        self._player = _FakeSelectPlayer()
+
+
+class _FakeSelectWindow:
+    MODE_NOTES = mew.MidiEditorWindow.MODE_NOTES
+    MODE_ALL   = mew.MidiEditorWindow.MODE_ALL
+    _on_listbox_select = mew.MidiEditorWindow._on_listbox_select
+
+    def __init__(self, view_mode, events, selection, skip_announce=False):
+        self._view_mode             = view_mode
+        self._events                = events
+        self._event_lb              = _FakeSelectEventLb(selection)
+        self._midi_editor           = _FakeSelectMidiEditor()
+        self._skip_listbox_announce = skip_announce
+        self._parent                = _FakeSelectParent()
+        self.play_calls             = []
+        self.announce_calls         = []
+
+    def _play_single_at(self, idx):
+        self.play_calls.append(idx)
+
+    def _announce_event(self, idx):
+        self.announce_calls.append(idx)
+
+
+def test_on_listbox_select_mode_all_syncs_playhead_and_plays_note():
+    win = _FakeSelectWindow(mew.MidiEditorWindow.MODE_ALL,
+                             events=[{"offset": 5}], selection=0)
+    win._on_listbox_select(None)
+    assert win._parent._player.offsets == [5.0]
+    assert win.play_calls == [0]
+    assert win.announce_calls == [0]
+    assert win._midi_editor._cur_idx == 0
+
+
+def test_on_listbox_select_mode_notes_does_not_sync_or_play():
+    win = _FakeSelectWindow(mew.MidiEditorWindow.MODE_NOTES,
+                             events=[{"offset": 5}], selection=0)
+    win._on_listbox_select(None)
+    assert win._parent._player.offsets == []
+    assert win.play_calls == []
+    assert win.announce_calls == [0]   # annonce déjà existante avant ce correctif
+
+
+def test_on_listbox_select_skip_flag_suppresses_side_effects_and_resets():
+    win = _FakeSelectWindow(mew.MidiEditorWindow.MODE_ALL,
+                             events=[{"offset": 5}], selection=0, skip_announce=True)
+    win._on_listbox_select(None)
+    assert win._parent._player.offsets == []
+    assert win.play_calls == []
+    assert win.announce_calls == []
+    assert win._skip_listbox_announce is False   # flag consommé
+    assert win._midi_editor._cur_idx == 0        # _cur_idx mis à jour malgré tout
+
+
+def test_on_listbox_select_not_found_returns_early():
+    win = _FakeSelectWindow(mew.MidiEditorWindow.MODE_ALL,
+                             events=[{"offset": 5}], selection=wx.NOT_FOUND)
+    win._on_listbox_select(None)
+    assert win._midi_editor._cur_idx is None
+    assert win.play_calls == []
+    assert win.announce_calls == []
+
+
+# ---------------------------------------------------------------------------
 # Grille courante (étape 7d) — _grid_idx vit sur le player, pas sur Pattern
 # (régression : une version précédente lisait/écrivait _parent._player._pattern._grid_idx)
 # ---------------------------------------------------------------------------
