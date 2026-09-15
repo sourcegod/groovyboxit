@@ -704,6 +704,13 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         if self._skip_listbox_announce:
             self._skip_listbox_announce = False
             return
+        if self._view_mode == self.MODE_ALL:
+            # Navigation native (Haut/Bas via evt.Skip(), ou clic) : la
+            # ListBox est déjà lue par Orca (label = format complet), il
+            # reste à synchroniser le playhead et jouer la note le cas
+            # échéant (silencieux sur CC/Bend, voir _play_event).
+            self._parent._player._go_to_offset(float(self._events[idx]["offset"]))
+            self._play_single_at(idx)
         self._announce_event(idx)
 
     def _navigate_to(self, idx):
@@ -789,36 +796,6 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
                 target = group[0]
         self._play_single_at(target)
         wx.CallAfter(self._announce_note, target)
-
-    def _move_down_flat(self):
-        """↓ en MODE_ALL : événement suivant dans la liste plate (sans
-        regroupement par offset) ; joue la note si c'en est une, annonce
-        toujours."""
-        if not self._events:
-            return
-        cur = self._midi_editor._cur_idx
-        if cur >= len(self._events) - 1:
-            self._set_status("Dernier événement")
-            return
-        target = cur + 1
-        self._navigate_to(target)
-        self._play_single_at(target)
-        wx.CallAfter(self._announce_event, target)
-
-    def _move_up_flat(self):
-        """↑ en MODE_ALL : événement précédent dans la liste plate (sans
-        regroupement par offset) ; joue la note si c'en est une, annonce
-        toujours."""
-        if not self._events:
-            return
-        cur = self._midi_editor._cur_idx
-        if cur <= 0:
-            self._set_status("Premier événement")
-            return
-        target = cur - 1
-        self._navigate_to(target)
-        self._play_single_at(target)
-        wx.CallAfter(self._announce_event, target)
 
     # ------------------------------------------------------------------
     # Undo / Redo — délégation vers la fenêtre principale
@@ -1836,25 +1813,29 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         # ↑/↓ : MODE_NOTES = navigation dans l'accord courant (groupée) ;
         # MODE_ALL = navigation événement par événement dans la liste plate
         # (sans regroupement), met à jour l'index affiché en tête de ligne.
-        # Sur le clavier virtuel (7f) quand il a le focus : laisser GTK
-        # naviguer nativement dans la ListBox (evt.Skip()) plutôt que
-        # d'appeler SetSelection() par programme — la navigation native
-        # déclenche EVT_LISTBOX (_on_vk_listbox_select) ET l'annonce Orca
-        # correctement, ce qu'un SetSelection() programmatique ne garantit
-        # pas de façon fiable (cf. SPECS.md accessibilité).
+        # MODE_ALL : liste plate == exactement la navigation native d'une
+        # ListBox (une ligne à la fois), donc on laisse GTK naviguer
+        # nativement (evt.Skip()) plutôt que d'appeler SetSelection() par
+        # programme — un SetSelection() programmatique sous EVT_CHAR_HOOK
+        # (niveau fenêtre) n'est PAS annoncé par Orca pour cette ListBox,
+        # même combiné à SetString() (essayé et écarté, cf. mémoire
+        # accessibilité), alors que la navigation native déclenche
+        # EVT_LISTBOX ET l'annonce Orca correctement (même trick que le
+        # clavier virtuel 7f, _on_vk_listbox_select). MODE_NOTES garde la
+        # navigation groupée par accord (SetSelection() programmatique
+        # nécessaire ici car le comportement diffère du pas-à-pas natif :
+        # Haut/Bas reste dans l'accord, Gauche/Droite change de groupe) —
+        # annoncée via le canal de secours _set_status (cf. SPECS.md
+        # accessibilité).
         if not ctrl and not shift and key == wx.WXK_UP:
-            if self._vk_lb.HasFocus():
+            if self._vk_lb.HasFocus() or self._view_mode == self.MODE_ALL:
                 evt.Skip()
-            elif self._view_mode == self.MODE_ALL:
-                self._move_up_flat()
             else:
                 self._move_up_in_group()
             return
         if not ctrl and not shift and key == wx.WXK_DOWN:
-            if self._vk_lb.HasFocus():
+            if self._vk_lb.HasFocus() or self._view_mode == self.MODE_ALL:
                 evt.Skip()
-            elif self._view_mode == self.MODE_ALL:
-                self._move_down_flat()
             else:
                 self._move_down_in_group()
             return

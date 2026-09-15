@@ -957,9 +957,13 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
 - Mode Notes (Ctrl+1) : ←/→ = groupe temporel (accord) précédent/suivant
   (joue la note) ; ↑/↓ = note précédente/suivante dans l'accord courant
 - Mode Tous les événements (Ctrl+2) : ←/→ inactifs (pas de notion de groupe
-  en liste plate) ; ↑/↓ = événement précédent/suivant dans la liste, un par
-  un, met à jour l'index affiché en tête de ligne — joue la note si
-  l'événement en est une, silencieux sinon (CC/Bend)
+  en liste plate) ; ↑/↓ = navigation **native** de la ListBox (`evt.Skip()`,
+  pas de `SetSelection()` programmatique — nécessaire pour qu'Orca annonce
+  la ligne, cf. section accessibilité ci-dessous) — événement précédent/
+  suivant un par un, index affiché en tête de ligne mis à jour par la
+  navigation elle-même ; `EVT_LISTBOX` (`_on_listbox_select`) synchronise le
+  playhead et joue la note si l'événement en est une, silencieux sinon
+  (CC/Bend)
 - Home/End : premier/dernier événement (les deux modes)
 
 **Sélection :**
@@ -1092,6 +1096,14 @@ comparant avec ce widget que le bug a été identifié.
 
 S'applique à toute `wx.ListBox` navigable au clavier (pas les barres de statut
 à un seul item, qui suivent l'astuce précédente).
+
+**Autres applications dans ce projet :** clavier virtuel de `MidiEditorWindow`
+(`_vk_lb`, étape 7f) ; `_event_lb` en mode Ctrl+2 « Tous les événements »
+(étape 10c, liste plate — navigation strictement pas-à-pas, cas pur de
+`evt.Skip()`). Le mode Ctrl+1 « Notes » (piano roll) du même `_event_lb`
+reste dans le cas précédent (`SetSelection()` nécessaire) car Haut/Bas doit
+rester **dans** l'accord courant (Gauche/Droite change de groupe) — un
+comportement qui diffère volontairement du pas-à-pas natif.
 
 ---
 
