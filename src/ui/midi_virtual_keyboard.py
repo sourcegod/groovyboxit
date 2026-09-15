@@ -12,7 +12,6 @@ import wx
 from rack import InstrumentType
 
 _NOTE_NAMES_C0 = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-_NOTE_NAMES_FR = ["Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"]
 
 
 def midi_display_name(midi):
@@ -21,9 +20,9 @@ def midi_display_name(midi):
 
 
 def midi_display_label(midi):
-    """Nom complet anglo + solfège FR pour la listbox du clavier virtuel : 'C#4: Do#4'."""
+    """Numéro (1-based) + nom anglo pour la listbox du clavier virtuel : '50: C#4'."""
     octave = midi // 12
-    return f"{_NOTE_NAMES_C0[midi % 12]}{octave}: {_NOTE_NAMES_FR[midi % 12]}{octave}"
+    return f"{midi + 1}: {_NOTE_NAMES_C0[midi % 12]}{octave}"
 
 
 class VirtualKeyboardMixin:
