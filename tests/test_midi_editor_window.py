@@ -136,6 +136,157 @@ def test_toggle_mute_and_solo_are_independent():
 
 
 # ---------------------------------------------------------------------------
+# _event_label — Ctrl+1 (MODE_NOTES) garde l'ancien format ; Ctrl+2 (MODE_ALL)
+# utilise le nouveau format "index: position, canal, type, numéro, val1, val2"
+# (décidé avec l'utilisateur le 2026-09-15 : canal = numéro de piste, Bend
+# inchangé, vélocité conservée en plus pour les notes — voir
+# project_event_list_window_todo).
+# ---------------------------------------------------------------------------
+
+from rack import InstrumentType
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from synth_engine import midi_to_note_name
+
+
+class _FakeLabelPattern:
+    def __init__(self, num_steps=16, num_beats=4):
+        self._num_steps = num_steps
+        self._num_beats = num_beats
+
+
+class _FakeLabelPlayer:
+    def __init__(self):
+        self._pattern = _FakeLabelPattern()
+
+
+class _FakeSlot:
+    def __init__(self, type_):
+        self.type = type_
+
+
+class _FakeLabelRouter:
+    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
+        self.kb_notes_input = kb_notes_input or []
+
+    def slot_for_track(self, track_idx):
+        return 0
+
+
+class _FakeLabelRack:
+    def __init__(self, slot_type=InstrumentType.SYNTH):
+        self._slot = _FakeSlot(slot_type)
+
+    def get_slot(self, slot_idx):
+        return self._slot
+
+
+class _FakeLabelParent:
+    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
+        self._player = _FakeLabelPlayer()
+        self._router = _FakeLabelRouter(slot_type, kb_notes_input)
+        self._rack   = _FakeLabelRack(slot_type)
+
+
+class _FakeEventLabelWindow:
+    """Objet minimal exposant les vraies méthodes de formatage de MidiEditorWindow."""
+    MODE_NOTES           = mew.MidiEditorWindow.MODE_NOTES
+    MODE_ALL             = mew.MidiEditorWindow.MODE_ALL
+    _event_label         = mew.MidiEditorWindow._event_label
+    _event_label_notes   = mew.MidiEditorWindow._event_label_notes
+    _event_label_all     = mew.MidiEditorWindow._event_label_all
+    _event_pitch_number  = mew.MidiEditorWindow._event_pitch_number
+    _event_note_name     = mew.MidiEditorWindow._event_note_name
+    _bbt_str             = mew.MidiEditorWindow._bbt_str
+    _pad_name            = lambda self, pad: f"Pad{pad+1:02d}"
+
+    def __init__(self, view_mode=None, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
+        self._parent    = _FakeLabelParent(slot_type, kb_notes_input)
+        self._view_mode = self.MODE_ALL if view_mode is None else view_mode
+
+
+def _note_ev(track=0, pad=60, vel=100, dur=500, etype=ETYPE_PATCH):
+    return {"type": "note", "etype": etype, "track": track, "bar": 0, "step": 0,
+            "pad": pad, "vel": vel, "dur": dur}
+
+
+def test_event_label_mode_notes_keeps_old_format():
+    win = _FakeEventLabelWindow(view_mode=mew.MidiEditorWindow.MODE_NOTES)
+    ev  = {"type": "note", "etype": ETYPE_GRID, "track": 0, "bar": 0, "step": 0,
+           "pad": 3, "vel": 100, "dur": 500}
+    label = win._event_label(0, ev)
+    assert label == win._event_label_notes(ev)
+    assert "Canal" not in label   # ancien format : pas de champ "Canal"
+
+
+def test_event_label_mode_all_uses_new_format():
+    win = _FakeEventLabelWindow(view_mode=mew.MidiEditorWindow.MODE_ALL)
+    ev  = _note_ev()
+    assert win._event_label(0, ev) == win._event_label_all(0, ev)
+
+
+def test_event_label_all_note_patch_format():
+    win  = _FakeEventLabelWindow()
+    ev   = _note_ev(track=0, pad=60, vel=100, dur=500)
+    name = midi_to_note_name(60)
+    assert win._event_label_all(0, ev) == \
+        f"    1: 1:1:1, Canal 1, Note, 60 ({name}), Durée 500ms, Vel 100"
+
+
+def test_event_label_all_note_selected_marks_line():
+    win = _FakeEventLabelWindow()
+    ev  = _note_ev()
+    assert win._event_label_all(0, ev, selected=True).startswith("[*] 1: ")
+
+
+def test_event_label_all_note_canal_is_track_number_1based():
+    win = _FakeEventLabelWindow()
+    ev  = _note_ev(track=4)
+    assert "Canal 5" in win._event_label_all(0, ev)
+
+
+def test_event_label_all_note_index_is_list_position():
+    win = _FakeEventLabelWindow()
+    ev  = _note_ev()
+    assert win._event_label_all(3, ev).strip().startswith("4:")
+
+
+def test_event_label_all_mod_cc_format():
+    win = _FakeEventLabelWindow()
+    ev  = {"type": "mod", "track": 1, "bar": 0, "step": 0, "value": 90}
+    assert win._event_label_all(2, ev) == "    3: 1:1:1, Canal 2, CC, Numéro 1, Valeur 90"
+
+
+def test_event_label_all_bend_format_unchanged():
+    win = _FakeEventLabelWindow()
+    ev  = {"type": "bend", "track": 0, "bar": 0, "step": 0, "value": 500}
+    assert win._event_label_all(0, ev) == "    1:1:1  Tr01  Bend:+500"
+
+
+def test_event_pitch_number_patch_is_raw_midi_note():
+    win = _FakeEventLabelWindow()
+    ev  = {"etype": ETYPE_PATCH, "pad": 60, "track": 0}
+    assert win._event_pitch_number(ev) == 60
+
+
+def test_event_pitch_number_kit_is_pad_index_1based():
+    win = _FakeEventLabelWindow()
+    ev  = {"etype": ETYPE_KIT, "pad": 3, "track": 0}
+    assert win._event_pitch_number(ev) == 4
+
+
+def test_event_pitch_number_grid_synth_resolves_real_midi_note():
+    win = _FakeEventLabelWindow(slot_type=InstrumentType.SYNTH, kb_notes_input=[36, 38, 40])
+    ev  = {"etype": ETYPE_GRID, "pad": 1, "track": 0}
+    assert win._event_pitch_number(ev) == 38
+
+
+def test_event_pitch_number_grid_kit_is_pad_index_1based():
+    win = _FakeEventLabelWindow(slot_type=InstrumentType.KIT)
+    ev  = {"etype": ETYPE_GRID, "pad": 2, "track": 0}
+    assert win._event_pitch_number(ev) == 3
+
+
+# ---------------------------------------------------------------------------
 # Grille courante (étape 7d) — _grid_idx vit sur le player, pas sur Pattern
 # (régression : une version précédente lisait/écrivait _parent._player._pattern._grid_idx)
 # ---------------------------------------------------------------------------
