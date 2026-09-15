@@ -138,19 +138,19 @@ def test_midi_display_name_sharp():
 
 
 # ---------------------------------------------------------------------------
-# midi_display_label (anglo + solfège FR, pour la listbox et les annonces)
+# midi_display_label (numéro 1-based + nom anglo, pour la listbox et les annonces)
 # ---------------------------------------------------------------------------
 
 def test_midi_display_label_c4():
-    assert vkmod.midi_display_label(48) == "C4: Do4"
+    assert vkmod.midi_display_label(48) == "49: C4"
 
 
 def test_midi_display_label_sharp():
-    assert vkmod.midi_display_label(49) == "C#4: Do#4"
+    assert vkmod.midi_display_label(49) == "50: C#4"
 
 
 def test_midi_display_label_c5():
-    assert vkmod.midi_display_label(60) == "C5: Do5"
+    assert vkmod.midi_display_label(60) == "61: C5"
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +221,7 @@ def test_vk_move_up_plays_and_updates_selection():
     assert win._vk_note == 49
     assert win._vk_lb.GetSelection() == 49
     assert parent._router.synth.played == [(49, 1.0, 500)]
-    assert win._status_ctrl.last == "Clavier virtuel: (C#4: Do#4)"
+    assert win._status_ctrl.last == "Clavier virtuel: (50: C#4)"
 
 
 def test_vk_move_forces_name_change_via_set_string():
@@ -230,7 +230,7 @@ def test_vk_move_forces_name_change_via_set_string():
     parent = _FakeParent(InstrumentType.SYNTH)
     win = _FakeVkWindow(parent, vk_note=48)
     win._vk_move(1)
-    assert win._vk_lb.set_string_calls == [(49, "C#4: Do#4")]
+    assert win._vk_lb.set_string_calls == [(49, "50: C#4")]
 
 
 def test_vk_move_down():
@@ -275,7 +275,7 @@ def test_on_vk_listbox_select_plays_and_updates_note():
     win._on_vk_listbox_select(None)
     assert win._vk_note == 60
     assert parent._router.synth.played == [(60, 1.0, 500)]
-    assert win._status_ctrl.last == "Clavier virtuel: (C5: Do5)"
+    assert win._status_ctrl.last == "Clavier virtuel: (61: C5)"
 
 
 def test_on_vk_listbox_select_skips_announce_once():
