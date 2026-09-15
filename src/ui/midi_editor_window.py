@@ -448,7 +448,7 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             self._events = me.get_all_events(pat, sel, lim_l, lim_r)
 
         self._selected_indices.clear()
-        labels = [self._event_label(e, False) for e in self._events]
+        labels = [self._event_label(i, e, False) for i, e in enumerate(self._events)]
         self._event_lb.Set(labels)
         if self._events:
             cur = min(me._cur_idx, len(self._events) - 1)
@@ -457,7 +457,39 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             self._event_lb.SetSelection(cur)
         self._update_mode_label()
 
-    def _event_label(self, e, selected=False):
+    def _event_pitch_number(self, e):
+        """Numéro affiché à côté du nom (_event_note_name) : note MIDI brute
+        (0-127) pour PATCH et GRID/synth, numéro de pad 1-based sinon —
+        même logique de branchement que _event_note_name (canal/pitch réel
+        par piste non modélisé pour l'instant, voir
+        project_event_list_window_todo)."""
+        etype   = e.get("etype", ETYPE_GRID)
+        pad_val = e["pad"]
+        if etype == ETYPE_PATCH:
+            return pad_val
+        if etype == ETYPE_KIT:
+            return pad_val + 1
+        track_idx = e["track"]
+        slot_idx  = self._parent._router.slot_for_track(track_idx)
+        slot      = self._parent._rack.get_slot(slot_idx)
+        if slot.type == InstrumentType.SYNTH:
+            kb = self._parent._router.kb_notes_input
+            if pad_val < len(kb):
+                return kb[pad_val]
+        return pad_val + 1
+
+    def _event_label(self, i, e, selected=False):
+        """i = position (0-based) de l'événement dans self._events.
+
+        MODE_NOTES (Ctrl+1, piano roll) : ancien format inchangé.
+        MODE_ALL (Ctrl+2, liste plate) : nouveau format
+        "index: position, canal, type, numéro, val1, val2"."""
+        if self._view_mode == self.MODE_NOTES:
+            return self._event_label_notes(e, selected)
+        return self._event_label_all(i, e, selected)
+
+    def _event_label_notes(self, e, selected=False):
+        """Format historique du mode Notes (Ctrl+1) — inchangé."""
         mark = "[*] " if selected else "    "
         if e["type"] == "note":
             name = self._event_note_name(e)
@@ -477,17 +509,40 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             return f"{mark}{bbt}  Tr{e['track']+1:02d}  Mod:{e['value']}"
         return str(e)
 
+    def _event_label_all(self, i, e, selected=False):
+        """Format du mode Tous les événements (Ctrl+2) — liste plate,
+        "index: position, canal, type, numéro, val1, val2". i = position
+        0-based dans self._events, affichée en index 1-based en tête de
+        ligne. Canal = numéro de piste (substitut en attendant un vrai
+        canal MIDI par piste — voir project_event_list_window_todo,
+        généralisation reportée après
+        project_event_structure_standardization_todo)."""
+        mark  = "[*] " if selected else "    "
+        bbt   = self._bbt_str(e["bar"], e["step"])
+        canal = e["track"] + 1
+        if e["type"] == "note":
+            name   = self._event_note_name(e)
+            number = self._event_pitch_number(e)
+            return (f"{mark}{i+1}: {bbt}, Canal {canal}, Note, "
+                    f"{number} ({name}), Durée {e['dur']}ms, Vel {e['vel']}")
+        elif e["type"] == "bend":
+            return f"{mark}{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
+        elif e["type"] == "mod":
+            return (f"{mark}{i+1}: {bbt}, Canal {canal}, CC, "
+                    f"Numéro 1, Valeur {e['value']}")
+        return str(e)
+
     def _update_label(self, idx):
         """Met à jour le label d'un seul item dans la ListBox."""
         if 0 <= idx < len(self._events):
             self._event_lb.SetString(
-                idx, self._event_label(self._events[idx], idx in self._selected_indices)
+                idx, self._event_label(idx, self._events[idx], idx in self._selected_indices)
             )
 
     def _refresh_labels(self):
         """Remet à jour tous les labels (après changement de sélection globale)."""
         for i, e in enumerate(self._events):
-            self._event_lb.SetString(i, self._event_label(e, i in self._selected_indices))
+            self._event_lb.SetString(i, self._event_label(i, e, i in self._selected_indices))
 
     def _set_status(self, msg):
         self._status_ctrl.SetString(0, msg)
@@ -734,6 +789,36 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
                 target = group[0]
         self._play_single_at(target)
         wx.CallAfter(self._announce_note, target)
+
+    def _move_down_flat(self):
+        """↓ en MODE_ALL : événement suivant dans la liste plate (sans
+        regroupement par offset) ; joue la note si c'en est une, annonce
+        toujours."""
+        if not self._events:
+            return
+        cur = self._midi_editor._cur_idx
+        if cur >= len(self._events) - 1:
+            self._set_status("Dernier événement")
+            return
+        target = cur + 1
+        self._navigate_to(target)
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_event, target)
+
+    def _move_up_flat(self):
+        """↑ en MODE_ALL : événement précédent dans la liste plate (sans
+        regroupement par offset) ; joue la note si c'en est une, annonce
+        toujours."""
+        if not self._events:
+            return
+        cur = self._midi_editor._cur_idx
+        if cur <= 0:
+            self._set_status("Premier événement")
+            return
+        target = cur - 1
+        self._navigate_to(target)
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_event, target)
 
     # ------------------------------------------------------------------
     # Undo / Redo — délégation vers la fenêtre principale
@@ -1729,12 +1814,15 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             self._set_status("Mode : Tous les événements MIDI")
             return
 
-        # ←/→ : navigation entre groupes temporels
+        # ←/→ : navigation entre groupes temporels — MODE_NOTES uniquement ;
+        # en MODE_ALL (liste plate, Ctrl+2) la navigation se fait au ↑/↓ seul.
         if not ctrl and not shift and key == wx.WXK_LEFT:
-            self._move_left()
+            if self._view_mode == self.MODE_NOTES:
+                self._move_left()
             return
         if not ctrl and not shift and key == wx.WXK_RIGHT:
-            self._move_right()
+            if self._view_mode == self.MODE_NOTES:
+                self._move_right()
             return
 
         # Shift+←/→ : navigation + sélection du groupe
@@ -1745,21 +1833,28 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             self._select_move_right()
             return
 
-        # ↑/↓ : navigation dans l'accord courant ; sur le clavier virtuel (7f)
-        # quand il a le focus : laisser GTK naviguer nativement dans la ListBox
-        # (evt.Skip()) plutôt que d'appeler SetSelection() par programme — la
-        # navigation native déclenche EVT_LISTBOX (_on_vk_listbox_select) ET
-        # l'annonce Orca correctement, ce qu'un SetSelection() programmatique
-        # ne garantit pas de façon fiable (cf. SPECS.md accessibilité).
+        # ↑/↓ : MODE_NOTES = navigation dans l'accord courant (groupée) ;
+        # MODE_ALL = navigation événement par événement dans la liste plate
+        # (sans regroupement), met à jour l'index affiché en tête de ligne.
+        # Sur le clavier virtuel (7f) quand il a le focus : laisser GTK
+        # naviguer nativement dans la ListBox (evt.Skip()) plutôt que
+        # d'appeler SetSelection() par programme — la navigation native
+        # déclenche EVT_LISTBOX (_on_vk_listbox_select) ET l'annonce Orca
+        # correctement, ce qu'un SetSelection() programmatique ne garantit
+        # pas de façon fiable (cf. SPECS.md accessibilité).
         if not ctrl and not shift and key == wx.WXK_UP:
             if self._vk_lb.HasFocus():
                 evt.Skip()
+            elif self._view_mode == self.MODE_ALL:
+                self._move_up_flat()
             else:
                 self._move_up_in_group()
             return
         if not ctrl and not shift and key == wx.WXK_DOWN:
             if self._vk_lb.HasFocus():
                 evt.Skip()
+            elif self._view_mode == self.MODE_ALL:
+                self._move_down_flat()
             else:
                 self._move_down_in_group()
             return

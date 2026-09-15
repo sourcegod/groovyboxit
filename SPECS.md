@@ -939,13 +939,28 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
 Fenêtre d'édition liste des événements MIDI du pattern courant.
 
 **Modes d'affichage :**
-- Ctrl+1 : piste courante seulement
-- Ctrl+2 : tous les événements du pattern
+- Ctrl+1 (MODE_NOTES, mode par défaut) : piste courante seulement, groupée par
+  accord (format historique : `BBT  TrNN  Nom  Vel:NNN  [Dur:NNNms]`)
+- Ctrl+2 (MODE_ALL) : tous les événements des pistes sélectionnées (grille +
+  tape KIT/PATCH + CC), en **liste plate, sans regroupement**, un événement
+  par ligne :
+  - Note : `index: position, Canal N, Note, numéro (nom), Durée NNNms, Vel NNN`
+  - CC (mod wheel, seul CC enregistré pour l'instant) :
+    `index: position, Canal N, CC, Numéro 1, Valeur NNN`
+  - Pitch Bend : format inchangé (`BBT  TrNN  Bend:+NNN`), pas encore intégré
+    au format Note/CC ci-dessus
+  - `index` = position 1-based de la ligne dans la liste affichée (pas un
+    compteur d'accord) ; `Canal` = numéro de piste (aucun canal MIDI par
+    piste dans le modèle actuel — voir généralisation TapeEvent à venir)
 
 **Navigation :**
-- ←/→ : événement ou groupe temporel précédent/suivant (joue la note)
-- ↑/↓ : naviguer dans un accord (notes simultanées)
-- Home/End : premier/dernier événement
+- Mode Notes (Ctrl+1) : ←/→ = groupe temporel (accord) précédent/suivant
+  (joue la note) ; ↑/↓ = note précédente/suivante dans l'accord courant
+- Mode Tous les événements (Ctrl+2) : ←/→ inactifs (pas de notion de groupe
+  en liste plate) ; ↑/↓ = événement précédent/suivant dans la liste, un par
+  un, met à jour l'index affiché en tête de ligne — joue la note si
+  l'événement en est une, silencieux sinon (CC/Bend)
+- Home/End : premier/dernier événement (les deux modes)
 
 **Sélection :**
 - Ctrl+A : sélectionner tout / Ctrl+Shift+A : désélectionner
