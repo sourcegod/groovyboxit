@@ -339,6 +339,97 @@ def test_edit_grid_out_of_bounds_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# edit_bend_event / edit_mod_event
+# ---------------------------------------------------------------------------
+
+def _bend_ev(p, offset=2, value=100):
+    return {"type": "bend", "track": 0, "bar": offset // p._num_steps,
+            "step": offset % p._num_steps, "offset": offset, "value": value}
+
+
+def _mod_ev(p, offset=1, value=64):
+    return {"type": "mod", "track": 0, "bar": offset // p._num_steps,
+            "step": offset % p._num_steps, "offset": offset, "value": value}
+
+
+def test_edit_bend_value():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _bend_ev(p)
+    result = me.edit_bend_event(p, ev, new_value=500)
+    assert result is not None
+    assert result["value"] == 500
+    assert (2, 100) not in p._bend_tape[0]
+    assert (2, 500) in p._bend_tape[0]
+
+
+def test_edit_bend_move_position():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _bend_ev(p)
+    result = me.edit_bend_event(p, ev, new_bar=1, new_step=3)
+    assert result["bar"]    == 1
+    assert result["step"]   == 3
+    assert result["offset"] == 1 * p._num_steps + 3
+    assert (2, 100) not in p._bend_tape[0]
+    assert (result["offset"], 100) in p._bend_tape[0]
+
+
+def test_edit_bend_value_clamped():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _bend_ev(p)
+    result = me.edit_bend_event(p, ev, new_value=999999)
+    assert result["value"] == 8191
+    result2 = me.edit_bend_event(p, result, new_value=-999999)
+    assert result2["value"] == -8192
+
+
+def test_edit_bend_out_of_bounds_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _bend_ev(p)
+    assert me.edit_bend_event(p, ev, new_bar=999) is None
+    assert (2, 100) in p._bend_tape[0]   # inchangé
+
+
+def test_edit_bend_not_found_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _bend_ev(p, offset=99, value=1)
+    assert me.edit_bend_event(p, ev, new_value=50) is None
+
+
+def test_edit_mod_value():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _mod_ev(p)
+    result = me.edit_mod_event(p, ev, new_value=100)
+    assert result is not None
+    assert result["value"] == 100
+    assert (1, 64) not in p._mod_tape[0]
+    assert (1, 100) in p._mod_tape[0]
+
+
+def test_edit_mod_value_clamped():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _mod_ev(p)
+    result = me.edit_mod_event(p, ev, new_value=999)
+    assert result["value"] == 127
+    result2 = me.edit_mod_event(p, result, new_value=-5)
+    assert result2["value"] == 0
+
+
+def test_edit_mod_out_of_bounds_returns_none():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = _mod_ev(p)
+    assert me.edit_mod_event(p, ev, new_step=999) is None
+    assert (1, 64) in p._mod_tape[0]   # inchangé
+
+
+# ---------------------------------------------------------------------------
 # move_event (étape 7d — Numpad 4/6)
 # ---------------------------------------------------------------------------
 

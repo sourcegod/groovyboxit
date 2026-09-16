@@ -287,6 +287,72 @@ def test_event_pitch_number_grid_kit_is_pad_index_1based():
 
 
 # ---------------------------------------------------------------------------
+# _dialog_note_choices — présélection du listbox « Note » dans le dialog
+# d'édition (Entrée sur un événement). Doit refléter la même convention
+# pad/note que _event_note_name/_event_pitch_number : bug signalé où GRID
+# traitait "pad" comme une note MIDI brute (0-127) au lieu d'un index de pad,
+# désynchronisant la présélection (ex. note affichée "A3" dans la liste, mais
+# un autre item présélectionné dans le dialog) — voir project_event_list_window_todo.
+# ---------------------------------------------------------------------------
+
+class _FakeDialogPattern:
+    def __init__(self, num_pads=16):
+        self._num_pads = num_pads
+
+
+class _FakeDialogChoicesWindow:
+    _dialog_note_choices = mew.MidiEditorWindow._dialog_note_choices
+    _pad_names_list      = mew.MidiEditorWindow._pad_names_list
+    _pad_name            = lambda self, pad: f"Pad{pad+1:02d}"
+
+    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
+        self._parent = _FakeLabelParent(slot_type, kb_notes_input)
+
+
+def test_dialog_note_choices_patch_is_raw_midi_note():
+    win = _FakeDialogChoicesWindow()
+    ev  = {"etype": ETYPE_PATCH, "pad": 57, "track": 0}
+    choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern())
+    assert sel == 57
+    assert len(choices) == 128
+    assert midi_to_note_name(57) in choices[57]
+
+
+def test_dialog_note_choices_kit_is_pad_index():
+    win = _FakeDialogChoicesWindow()
+    ev  = {"etype": ETYPE_KIT, "pad": 3, "track": 0}
+    choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern())
+    assert sel == 3
+    assert len(choices) == 128
+    assert "Pad04" in choices[3]
+
+
+def test_dialog_note_choices_grid_synth_resolves_real_note():
+    win = _FakeDialogChoicesWindow(slot_type=InstrumentType.SYNTH, kb_notes_input=[36, 38, 40])
+    ev  = {"etype": ETYPE_GRID, "pad": 1, "track": 0}
+    choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern(num_pads=3))
+    assert sel == 1
+    assert len(choices) == 3
+    assert midi_to_note_name(38) in choices[1]
+
+
+def test_dialog_note_choices_grid_kit_uses_pad_name():
+    win = _FakeDialogChoicesWindow(slot_type=InstrumentType.KIT)
+    ev  = {"etype": ETYPE_GRID, "pad": 2, "track": 0}
+    choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern(num_pads=16))
+    assert sel == 2
+    assert "Pad03" in choices[2]
+
+
+def test_dialog_note_choices_grid_clamped_to_num_pads():
+    win = _FakeDialogChoicesWindow(slot_type=InstrumentType.KIT)
+    ev  = {"etype": ETYPE_GRID, "pad": 999, "track": 0}
+    choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern(num_pads=16))
+    assert sel == 15
+    assert len(choices) == 16
+
+
+# ---------------------------------------------------------------------------
 # Correctif accessibilité (2026-09-15) — Haut/Bas non annoncé par Orca sous
 # SetSelection() programmatique (EVT_CHAR_HOOK) : MODE_ALL (Ctrl+2, liste
 # plate) doit laisser GTK naviguer nativement (evt.Skip()) au lieu d'appeler
