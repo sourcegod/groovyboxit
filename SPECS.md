@@ -979,7 +979,14 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   survit à l'undo/redo, pas écrit dans le .gvp)
 
 **Édition :**
-- Entrée : éditer la note sélectionnée (dialog pitch / position / longueur / vélocité)
+- Entrée sur une note : dialog pitch / position (Bar/Beat/Tick) / longueur / vélocité
+  (`_MidiEventEditDialog`) — le listbox de note/pad reflète la même convention que
+  la liste (`_dialog_note_choices`) : PATCH → note MIDI brute, KIT → nom de pad,
+  GRID → résolu selon le slot (pitch réel si synthé, nom de pad sinon)
+- Entrée sur un événement Pitch Bend ou CC (mod wheel), en MODE_ALL (Ctrl+2)
+  uniquement : dialog dédié position (Bar/Beat/Tick) + valeur
+  (`_CcEventEditDialog`, bend -8192..8191 ou CC 0..127) — `edit_bend_event`/
+  `edit_mod_event` dans `MidiEditor`
 - Suppr : supprimer l'événement
 - Ctrl+C/X/V : presse-papier événements (cross-pistes)
 - Ctrl+Z / Shift+Z : Undo/Redo
@@ -991,6 +998,19 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
 **Transport partagé :** Espace, g, Shift+G, PageDown/Up, w, b, l, U, Ctrl+G, Ctrl+Shift+G, Ctrl+F12 identiques à la fenêtre principale.
 
 Le mode d'affichage (piste seule / tout) est mémorisé entre les ouvertures (Alt+4 rouvre dans le dernier mode).
+
+**Statut MIDI live :** `_midi_status_ctrl` (ListBox à un item, distincte de
+`_status_ctrl` utilisée pour les annonces de navigation/sélection) affiche en
+temps réel le dernier message MIDI reçu du clavier externe (Note On/Off, CC,
+Pitch Bend), tant que la fenêtre est ouverte. `format_midi_status()`/
+`CC_NAMES`/`MidiHandler._notify_editor_midi()` dans `ui/midi_handler.py`,
+branché en tête de `on_note_on`/`on_note_off`/`on_cc`/`on_pitch_bend`. Chan
+1-based ; `Num` affiche le nom standard MIDI 1.0 du contrôleur entre
+parenthèses s'il est connu (`CC_NAMES`), sinon le numéro seul :
+- Note On  : `Note: On, Chan: 10, Pitch: 48 (C4), Vel: 100`
+- Note Off : `Note: Off, Chan: 1, Pitch: 60 (C4)` (pas de vélocité — non transmise par `MidiManager`)
+- CC       : `CC, Chan: 1, Num: 64 (Sustain Pedal), Val: 126`
+- Pitch Bend : `Pitch Bend, Chan: 1, Val: +500`
 
 ### Gestion du focus et Enter sur ListBox (GTK)
 
@@ -1020,6 +1040,11 @@ S'applique à toute `wx.ListBox` ou `wx.CheckListBox` dont le contenu est mis à
 #### SpinCtrl : seul widget annoncé en temps réel
 
 `wx.SpinCtrl` est le seul widget wxPython/GTK annoncé par Orca lors de chaque changement de valeur, même par programme. À préférer pour tout paramètre numérique éditable (BPM, volume, pan…).
+
+Un `SpinCtrl` isolé n'annonce que sa valeur, jamais le `wx.StaticText` voisin
+— quand plusieurs `SpinCtrl` se suivent dans le même groupe (ex. Bar/Beat/Tick
+dans `_MidiEventEditDialog`/`_CcEventEditDialog`), donner un nom accessible
+distinct à chacun via `SetName("Bar")`/`SetName("Beat")`/`SetName("Tick")`.
 
 #### Barre de statut — `wx.ListBox` à un item + `SetString`
 
