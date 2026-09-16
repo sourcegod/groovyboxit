@@ -4,7 +4,7 @@ from midi_editor import MidiEditor
 from synth_engine import midi_to_note_name
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
-from ui.midi_virtual_keyboard import VirtualKeyboardMixin, midi_display_name
+from ui.midi_virtual_keyboard import VirtualKeyboardMixin
 
 
 class _NoteEditDialog(wx.Dialog):
@@ -144,12 +144,11 @@ class _MidiEventEditDialog(wx.Dialog):
         super().__init__(parent, title="Éditer événement MIDI",
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
 
-        # --- Note (C0=MIDI 0 … G10=MIDI 127) ---
-        note_choices  = [f"{i:3d}  {midi_display_name(i)}" for i in range(128)]
-        note_lbl      = wx.StaticText(self, label="Note :")
+        # --- Note / pad (choix selon etype — voir _dialog_note_choices) ---
+        note_choices, sel = parent._dialog_note_choices(ev, pattern)
+        note_lbl      = wx.StaticText(self, label="Pad :" if etype == ETYPE_GRID else "Note :")
         self._note_lb = wx.ListBox(self, choices=note_choices,
                                    style=wx.LB_SINGLE, size=(160, 240))
-        sel = min(max(ev.get("pad", 0), 0), 127)
         self._note_lb.SetSelection(sel)
         self._note_lb.SetFirstItem(max(0, sel - 4))
         self._note_lb.Bind(wx.EVT_LISTBOX,       self._on_note_select)
@@ -157,12 +156,18 @@ class _MidiEventEditDialog(wx.Dialog):
 
         # --- Position ---
         pos_lbl       = wx.StaticText(self, label="Position :")
-        bar_lbl       = wx.StaticText(self, label="Mes.")
-        beat_lbl      = wx.StaticText(self, label="Batt.")
-        tick_lbl      = wx.StaticText(self, label="Tck")
+        bar_lbl       = wx.StaticText(self, label="Bar")
+        beat_lbl      = wx.StaticText(self, label="Beat")
+        tick_lbl      = wx.StaticText(self, label="Tick")
         self._bar_sp  = wx.SpinCtrl(self, min=1, max=num_bars,       initial=bar+1,  size=(55, -1))
         self._beat_sp = wx.SpinCtrl(self, min=1, max=num_beats,      initial=beat+1, size=(55, -1))
         self._tick_sp = wx.SpinCtrl(self, min=1, max=steps_per_beat, initial=tick+1, size=(55, -1))
+        # Noms accessibles distincts (lecteur d'écran) : un SpinCtrl seul
+        # n'annonce que sa valeur, jamais le StaticText voisin — voir
+        # feedback_accessibility_spinctrl.
+        self._bar_sp.SetName("Bar")
+        self._beat_sp.SetName("Beat")
+        self._tick_sp.SetName("Tick")
         bbt_lbl       = wx.StaticText(self, label="bar:batt:tck :")
         self._pos_txt = wx.TextCtrl(self, value=f"{bar+1}:{beat+1}:{tick+1}",
                                     size=(90, -1), style=wx.TE_PROCESS_ENTER)
@@ -297,6 +302,136 @@ class _MidiEventEditDialog(wx.Dialog):
         return self._vel_sp.GetValue()
 
 
+class _CcEventEditDialog(wx.Dialog):
+    """Dialog d'édition d'un événement d'automation (bend/mod) : position BBT + valeur."""
+
+    def __init__(self, parent, ev, pattern):
+        num_bars       = pattern._num_bars
+        num_steps      = pattern._num_steps
+        num_beats      = pattern._num_beats
+        steps_per_beat = max(1, num_steps // num_beats)
+
+        bar  = ev["bar"]
+        step = ev["step"]
+        beat = step // steps_per_beat
+        tick = step % steps_per_beat
+
+        self._steps_per_beat = steps_per_beat
+        self._updating       = False
+
+        is_bend = ev["type"] == "bend"
+        title   = "Éditer pitch bend" if is_bend else "Éditer CC (mod wheel)"
+        super().__init__(parent, title=title,
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+
+        # --- Position ---
+        pos_lbl       = wx.StaticText(self, label="Position :")
+        bar_lbl       = wx.StaticText(self, label="Bar")
+        beat_lbl      = wx.StaticText(self, label="Beat")
+        tick_lbl      = wx.StaticText(self, label="Tick")
+        self._bar_sp  = wx.SpinCtrl(self, min=1, max=num_bars,       initial=bar+1,  size=(55, -1))
+        self._beat_sp = wx.SpinCtrl(self, min=1, max=num_beats,      initial=beat+1, size=(55, -1))
+        self._tick_sp = wx.SpinCtrl(self, min=1, max=steps_per_beat, initial=tick+1, size=(55, -1))
+        # Noms accessibles distincts (lecteur d'écran) : un SpinCtrl seul
+        # n'annonce que sa valeur, jamais le StaticText voisin — voir
+        # feedback_accessibility_spinctrl.
+        self._bar_sp.SetName("Bar")
+        self._beat_sp.SetName("Beat")
+        self._tick_sp.SetName("Tick")
+        bbt_lbl       = wx.StaticText(self, label="bar:batt:tck :")
+        self._pos_txt = wx.TextCtrl(self, value=f"{bar+1}:{beat+1}:{tick+1}",
+                                    size=(90, -1), style=wx.TE_PROCESS_ENTER)
+
+        self._bar_sp.Bind(wx.EVT_SPINCTRL,   self._on_spin_change)
+        self._beat_sp.Bind(wx.EVT_SPINCTRL,  self._on_spin_change)
+        self._tick_sp.Bind(wx.EVT_SPINCTRL,  self._on_spin_change)
+        self._pos_txt.Bind(wx.EVT_TEXT_ENTER, self._on_pos_confirm)
+        self._pos_txt.Bind(wx.EVT_KILL_FOCUS, self._on_pos_confirm)
+
+        # --- Valeur ---
+        if is_bend:
+            val_lbl      = wx.StaticText(self, label="Bend (-8192..8191) :")
+            self._val_sp = wx.SpinCtrl(self, min=-8192, max=8191,
+                                       initial=ev["value"], size=(90, -1))
+        else:
+            val_lbl      = wx.StaticText(self, label="Valeur CC (0..127) :")
+            self._val_sp = wx.SpinCtrl(self, min=0, max=127,
+                                       initial=ev["value"], size=(90, -1))
+
+        # --- Boutons ---
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        # --- Layout ---
+        spin_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        spin_hbox.Add(bar_lbl,        0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 2)
+        spin_hbox.Add(self._bar_sp,   0, wx.RIGHT, 6)
+        spin_hbox.Add(beat_lbl,       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 2)
+        spin_hbox.Add(self._beat_sp,  0, wx.RIGHT, 6)
+        spin_hbox.Add(tick_lbl,       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 2)
+        spin_hbox.Add(self._tick_sp,  0)
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(pos_lbl,        0, wx.ALL, 6)
+        vbox.Add(spin_hbox,      0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(bbt_lbl,        0, wx.LEFT | wx.RIGHT, 6)
+        vbox.Add(self._pos_txt,  0, wx.ALL, 6)
+        vbox.Add(val_lbl,        0, wx.LEFT | wx.RIGHT, 6)
+        vbox.Add(self._val_sp,   0, wx.ALL, 6)
+        vbox.Add(btn_sizer,      0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._val_sp.SetFocus()
+
+    def _on_spin_change(self, evt):
+        if self._updating:
+            return
+        self._updating = True
+        bar  = self._bar_sp.GetValue()
+        beat = self._beat_sp.GetValue()
+        tick = self._tick_sp.GetValue()
+        self._pos_txt.ChangeValue(f"{bar}:{beat}:{tick}")
+        self._updating = False
+
+    def _on_pos_confirm(self, evt):
+        if self._updating:
+            evt.Skip()
+            return
+        self._updating = True
+        parts = self._pos_txt.GetValue().strip().split(":")
+        if len(parts) == 3:
+            try:
+                bar  = int(parts[0])
+                beat = int(parts[1])
+                tick = int(parts[2])
+                if (1 <= bar  <= self._bar_sp.GetMax() and
+                        1 <= beat <= self._beat_sp.GetMax() and
+                        1 <= tick <= self._steps_per_beat):
+                    self._bar_sp.SetValue(bar)
+                    self._beat_sp.SetValue(beat)
+                    self._tick_sp.SetValue(tick)
+            except ValueError:
+                pass
+        self._updating = False
+        evt.Skip()
+
+    def get_bar(self):
+        return self._bar_sp.GetValue() - 1
+
+    def get_step(self):
+        beat = self._beat_sp.GetValue() - 1
+        tick = self._tick_sp.GetValue() - 1
+        return beat * self._steps_per_beat + tick
+
+    def get_value(self):
+        return self._val_sp.GetValue()
+
+
 class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
     """Fenêtre d'éditeur MIDI — deux modes : notes (Ctrl+1) et tous les événements (Ctrl+2).
 
@@ -405,6 +540,37 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             return [midi_to_note_name(kb[i]) if i < len(kb) else f"Note_{i+1:02d}"
                     for i in range(num_pads)]
         return [self._pad_name(i) for i in range(num_pads)]
+
+    def _dialog_note_choices(self, ev, pattern):
+        """Choix + sélection initiale du listbox « Note » du dialog d'édition
+        (Entrée) — même convention que _event_note_name/_event_pitch_number :
+        GRID → pad["pad"] est un index de pad (résolu en note réelle pour un
+        slot synthé, en nom de pad sinon), KIT/PATCH → pad["pad"] est déjà la
+        valeur brute affichée directement (nom de pad pour KIT, note MIDI pour
+        PATCH). Avant ce correctif, le dialog traitait toujours "pad" comme
+        une note MIDI brute 0-127, ce qui désynchronisait la présélection
+        pour GRID (bug signalé : la note affichée dans la liste, ex. « A3 »,
+        ne correspondait pas à l'item présélectionné dans le dialog)."""
+        etype   = ev.get("etype", ETYPE_GRID)
+        pad_val = ev.get("pad", 0)
+        if etype == ETYPE_GRID:
+            num_pads  = pattern._num_pads
+            names     = self._pad_names_list(num_pads, ev["track"])
+            choices   = [f"{i+1:3d}  {name}" for i, name in enumerate(names)]
+            sel       = min(max(pad_val, 0), num_pads - 1)
+        elif etype == ETYPE_KIT:
+            choices   = [f"{i:3d}  {self._pad_name(i)}" for i in range(128)]
+            sel       = min(max(pad_val, 0), 127)
+        else:  # ETYPE_PATCH : note MIDI brute — même fonction de nommage
+               # que _event_note_name (midi_to_note_name, C4=60), PAS
+               # midi_display_name (C0=0, convention différente du clavier
+               # virtuel) : sinon la note présélectionnée dans ce dialog
+               # n'affiche pas le même nom que celui vu dans la liste des
+               # événements (ex. MIDI 57 = "A3" dans la liste vs "A4" avec
+               # midi_display_name — bug signalé).
+            choices   = [f"{i:3d}  {midi_to_note_name(i)}" for i in range(128)]
+            sel       = min(max(pad_val, 0), 127)
+        return choices, sel
 
     def _bbt_str(self, bar, step):
         """Formate (bar, step) en 'Bar:Beat:Tick' 1-based."""
@@ -975,6 +1141,9 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
             return
         cur = self._midi_editor._cur_idx
         ev  = self._events[cur]
+        if ev.get("type") in ("bend", "mod"):
+            self._edit_cc_dialog(ev)
+            return
         if ev.get("type") != "note":
             self._set_status("Pas une note — édition non disponible")
             return
@@ -1026,6 +1195,46 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
                 bbt  = self._bbt_str(new_ev["bar"], new_ev["step"])
                 name = self._event_note_name(new_ev)
                 self._set_status(f"Note modifiée → ({name})  {bbt}  Vel:{new_ev['vel']}")
+            else:
+                self._parent._pop_last_undo()
+                self._set_status("Édition annulée (hors limites)")
+        else:
+            self._parent._pop_last_undo()
+        dlg.Destroy()
+
+    def _edit_cc_dialog(self, ev):
+        """Édition d'un événement d'automation (bend/mod) via Entrée — MODE_ALL."""
+        pat    = self._parent._player._pattern
+        is_bend = ev["type"] == "bend"
+        label   = "Bend" if is_bend else "Mod"
+        self._add_undo(
+            f"Éditer {label} Tr{ev['track']+1} B{ev['bar']+1}:S{ev['step']+1}"
+        )
+        dlg = _CcEventEditDialog(self, ev, pat)
+        if dlg.ShowModal() == wx.ID_OK:
+            edit_fn = self._midi_editor.edit_bend_event if is_bend else self._midi_editor.edit_mod_event
+            new_ev = edit_fn(
+                pat, ev,
+                new_value = dlg.get_value(),
+                new_bar   = dlg.get_bar(),
+                new_step  = dlg.get_step(),
+            )
+            if new_ev:
+                if self._parent._player.playing:
+                    self._parent._player._wakeup.set()
+                self._refresh()
+                found = None
+                for i, e in enumerate(self._events):
+                    if (e["type"]  == new_ev["type"] and
+                            e["track"]  == new_ev["track"] and
+                            e["offset"] == new_ev["offset"] and
+                            e["value"]  == new_ev["value"]):
+                        found = i
+                        break
+                if found is not None:
+                    self._navigate_to(found)
+                bbt = self._bbt_str(new_ev["bar"], new_ev["step"])
+                self._set_status(f"{label} modifié → {bbt}  Valeur:{new_ev['value']}")
             else:
                 self._parent._pop_last_undo()
                 self._set_status("Édition annulée (hors limites)")

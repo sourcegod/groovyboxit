@@ -353,6 +353,64 @@ class MidiEditor:
             "dur":    dur,
         }
 
+    def edit_bend_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
+        """Modifie un point d'automation pitch bend (_bend_tape). Retourne le nouvel event_info ou None."""
+        t = ev["track"]
+        if not (0 <= t < len(pattern._bend_tape)):
+            return None
+        n_bar  = new_bar   if new_bar   is not None else ev["bar"]
+        n_step = new_step  if new_step  is not None else ev["step"]
+        n_val  = new_value if new_value is not None else ev["value"]
+        if not (0 <= n_bar < pattern._num_bars):
+            return None
+        if not (0 <= n_step < pattern._num_steps):
+            return None
+        n_val = max(-8192, min(8191, n_val))
+        lst   = pattern._bend_tape[t]
+        try:
+            lst.remove((ev["offset"], ev["value"]))
+        except ValueError:
+            return None
+        n_off = n_bar * pattern._num_steps + n_step
+        lst.append((n_off, n_val))
+        return {
+            "type":   "bend",
+            "track":  t,
+            "bar":    n_bar,
+            "step":   n_step,
+            "offset": n_off,
+            "value":  n_val,
+        }
+
+    def edit_mod_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
+        """Modifie un point d'automation mod wheel (_mod_tape). Retourne le nouvel event_info ou None."""
+        t = ev["track"]
+        if not (0 <= t < len(pattern._mod_tape)):
+            return None
+        n_bar  = new_bar   if new_bar   is not None else ev["bar"]
+        n_step = new_step  if new_step  is not None else ev["step"]
+        n_val  = new_value if new_value is not None else ev["value"]
+        if not (0 <= n_bar < pattern._num_bars):
+            return None
+        if not (0 <= n_step < pattern._num_steps):
+            return None
+        n_val = max(0, min(127, n_val))
+        lst   = pattern._mod_tape[t]
+        try:
+            lst.remove((ev["offset"], ev["value"]))
+        except ValueError:
+            return None
+        n_off = n_bar * pattern._num_steps + n_step
+        lst.append((n_off, n_val))
+        return {
+            "type":   "mod",
+            "track":  t,
+            "bar":    n_bar,
+            "step":   n_step,
+            "offset": n_off,
+            "value":  n_val,
+        }
+
     # ------------------------------------------------------------------
     # Édition numpad (étape 7d)
     # ------------------------------------------------------------------
