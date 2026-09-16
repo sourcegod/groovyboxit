@@ -58,12 +58,14 @@ class _FakeParent:
 class _FakeMidiEditorWindow:
     """Objet minimal exposant les vraies méthodes de MidiEditorWindow."""
     _set_status          = mew.MidiEditorWindow._set_status
+    _set_midi_status     = mew.MidiEditorWindow._set_midi_status
     _toggle_track_solo   = mew.MidiEditorWindow._toggle_track_solo
     _toggle_track_mute   = mew.MidiEditorWindow._toggle_track_mute
 
     def __init__(self):
-        self._parent      = _FakeParent()
-        self._status_ctrl = _FakeStatusCtrl()
+        self._parent           = _FakeParent()
+        self._status_ctrl      = _FakeStatusCtrl()
+        self._midi_status_ctrl = _FakeStatusCtrl()
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +135,17 @@ def test_toggle_mute_and_solo_are_independent():
     win._toggle_track_solo()
     assert win._parent._router._mutes[0] is True
     assert win._parent._router._solos[0] is True
+
+
+# ---------------------------------------------------------------------------
+# _set_midi_status — statut MIDI live, distinct de _set_status
+# ---------------------------------------------------------------------------
+
+def test_set_midi_status_updates_dedicated_ctrl_not_status_ctrl():
+    win = _FakeMidiEditorWindow()
+    win._set_midi_status("Note On  Canal 1  Note 60 (C4)  Vel 100")
+    assert win._midi_status_ctrl.last == "Note On  Canal 1  Note 60 (C4)  Vel 100"
+    assert win._status_ctrl.last is None
 
 
 # ---------------------------------------------------------------------------
