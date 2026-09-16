@@ -23,6 +23,59 @@ from rack import InstrumentType
 from synth_engine import midi_to_note_name
 
 
+# Noms des Control Change standard MIDI 1.0 (CC non listés : sans nom).
+CC_NAMES = {
+    0: "Bank Select", 1: "Modulation Wheel", 2: "Breath Controller",
+    4: "Foot Controller", 5: "Portamento Time", 6: "Data Entry MSB",
+    7: "Channel Volume", 8: "Balance", 10: "Pan", 11: "Expression Controller",
+    12: "Effect Control 1", 13: "Effect Control 2",
+    16: "General Purpose 1", 17: "General Purpose 2",
+    18: "General Purpose 3", 19: "General Purpose 4",
+    32: "Bank Select LSB", 33: "Modulation Wheel LSB",
+    34: "Breath Controller LSB", 36: "Foot Controller LSB",
+    37: "Portamento Time LSB", 38: "Data Entry LSB",
+    39: "Channel Volume LSB", 40: "Balance LSB", 42: "Pan LSB",
+    43: "Expression Controller LSB",
+    64: "Sustain Pedal", 65: "Portamento On/Off", 66: "Sostenuto",
+    67: "Soft Pedal", 68: "Legato Footswitch", 69: "Hold 2",
+    70: "Sound Variation", 71: "Timbre/Harmonic Intensity",
+    72: "Release Time", 73: "Attack Time", 74: "Brightness",
+    75: "Sound Controller 6", 76: "Sound Controller 7",
+    77: "Sound Controller 8", 78: "Sound Controller 9",
+    79: "Sound Controller 10",
+    80: "General Purpose 5", 81: "General Purpose 6",
+    82: "General Purpose 7", 83: "General Purpose 8",
+    84: "Portamento Control", 88: "High Resolution Velocity Prefix",
+    91: "Reverb Depth", 92: "Tremolo Depth", 93: "Chorus Depth",
+    94: "Detune Depth", 95: "Phaser Depth",
+    96: "Data Increment", 97: "Data Decrement",
+    98: "NRPN LSB", 99: "NRPN MSB", 100: "RPN LSB", 101: "RPN MSB",
+    120: "All Sound Off", 121: "Reset All Controllers", 122: "Local Control",
+    123: "All Notes Off", 124: "Omni Mode Off", 125: "Omni Mode On",
+    126: "Mono Mode On", 127: "Poly Mode On",
+}
+
+
+def format_midi_status(kind, channel, **kwargs):
+    """Formate un message MIDI entrant pour le statut live de l'éditeur MIDI
+    (canal, type, val1, val2) — voir MidiHandler._notify_editor_midi."""
+    ch = channel + 1
+    if kind == "note_on":
+        note, vel = kwargs["note"], kwargs["velocity"]
+        return f"Note: On, Chan: {ch}, Pitch: {note} ({midi_to_note_name(note)}), Vel: {vel}"
+    if kind == "note_off":
+        note = kwargs["note"]
+        return f"Note: Off, Chan: {ch}, Pitch: {note} ({midi_to_note_name(note)})"
+    if kind == "cc":
+        cc_num = kwargs["cc_num"]
+        name   = CC_NAMES.get(cc_num)
+        num    = f"{cc_num} ({name})" if name else str(cc_num)
+        return f"CC, Chan: {ch}, Num: {num}, Val: {kwargs['value']}"
+    if kind == "pitch_bend":
+        return f"Pitch Bend, Chan: {ch}, Val: {kwargs['bend']:+d}"
+    return ""
+
+
 class MidiHandler:
     """Traite les événements MIDI entrants pour MainWindow."""
 
@@ -139,11 +192,23 @@ class MidiHandler:
         win._player._erase_active_midi_notes = set(range(min(notes), max(notes) + 1))
 
     # ------------------------------------------------------------------
+    # Statut MIDI live (éditeur MIDI, Alt+4)
+    # ------------------------------------------------------------------
+
+    def _notify_editor_midi(self, kind, channel, **kwargs):
+        """Répercute un message MIDI entrant vers le statut live de
+        MidiEditorWindow si elle est ouverte (voir project_event_list_window_todo)."""
+        ed = self._win._midi_editor_window
+        if ed is not None:
+            ed._set_midi_status(format_midi_status(kind, channel, **kwargs))
+
+    # ------------------------------------------------------------------
     # Control Change
     # ------------------------------------------------------------------
 
     def on_pitch_bend(self, bend, channel):
         """Pitch Bend MIDI (-8192..+8191, 0=centre) — temps réel sur les voix actives."""
+        self._notify_editor_midi("pitch_bend", channel, bend=bend)
         win = self._win
         if not win._router.synth_ready():
             return
@@ -165,6 +230,7 @@ class MidiHandler:
 
     def on_cc(self, cc_num, value, channel):
         """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#64 = Sustain, CC#123 = All Notes Off."""
+        self._notify_editor_midi("cc", channel, cc_num=cc_num, value=value)
         win = self._win
         if cc_num == 120:                          # CC#120 : All Sounds Off
             win._router.stop_all_sounds()
@@ -218,6 +284,7 @@ class MidiHandler:
 
     def on_note_on(self, note, velocity, channel):
         """Note On MIDI reçue — jouée et enregistrée/effacée si mode Rec/Erase actif."""
+        self._notify_editor_midi("note_on", channel, note=note, velocity=velocity)
         win      = self._win
         velocity = self._apply_vel_level(velocity)
         slot     = win._rack.get_slot(win._cur_slot)
@@ -371,6 +438,7 @@ class MidiHandler:
 
     def on_note_off(self, note, channel):
         """Note Off MIDI — coupe la note tenue (Synth) ou arrête l'effacement (Erase)."""
+        self._notify_editor_midi("note_off", channel, note=note)
         win = self._win
         if win._note_repeat and win._nr_midi_note == note:
             win._player.stop_note_repeat()

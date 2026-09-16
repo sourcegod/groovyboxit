@@ -491,6 +491,12 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         self._status_ctrl = wx.ListBox(panel, choices=[""], style=wx.LB_SINGLE)
         vbox.Add(self._status_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
 
+        # ListBox statut MIDI live (messages entrants du clavier externe),
+        # distincte de _status_ctrl (annonces de navigation/sélection) —
+        # même astuce SetString pour l'annonce Orca (feedback_accessibility_spinctrl).
+        self._midi_status_ctrl = wx.ListBox(panel, choices=[""], style=wx.LB_SINGLE)
+        vbox.Add(self._midi_status_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+
         panel.SetSizer(vbox)
         self._event_lb.SetFocus()
 
@@ -712,6 +718,11 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
 
     def _set_status(self, msg):
         self._status_ctrl.SetString(0, msg)
+
+    def _set_midi_status(self, msg):
+        """Statut MIDI live — appelé depuis MidiHandler à chaque message entrant
+        (Note On/Off, CC, Pitch Bend) tant que cette fenêtre est ouverte."""
+        self._midi_status_ctrl.SetString(0, msg)
 
     # ------------------------------------------------------------------
     # Solo / Mute piste
