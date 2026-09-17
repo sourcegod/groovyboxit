@@ -1160,10 +1160,21 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
     def _select_move_up_flat(self):
         """Shift+↑ en liste plate (MODE_ALL) : événement précédent + toggle
         sélection — un événement à la fois, sans regroupement par offset
-        (contrairement à _select_move_up, dédiée au piano roll MODE_NOTES)."""
+        (contrairement à _select_move_up, dédiée au piano roll MODE_NOTES).
+
+        Si l'événement courant n'est pas encore sélectionné (première
+        pression, ou retour à la position de départ après navigation libre),
+        on le sélectionne d'abord SANS bouger — sinon le point de départ
+        n'est jamais inclus dans la sélection (bug signalé : le tout premier
+        événement, index 1, restait toujours désélectionné)."""
         if not self._events:
             return
-        cur    = self._midi_editor._cur_idx
+        cur = self._midi_editor._cur_idx
+        if cur not in self._selected_indices:
+            self._toggle_note_selection(cur)
+            self._play_single_at(cur)
+            wx.CallAfter(self._announce_event_selected, cur)
+            return
         target = max(cur - 1, 0)
         if target != cur:
             self._navigate_to(target)
@@ -1174,10 +1185,18 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
     def _select_move_down_flat(self):
         """Shift+↓ en liste plate (MODE_ALL) : événement suivant + toggle
         sélection — un événement à la fois, sans regroupement par offset
-        (contrairement à _select_move_down, dédiée au piano roll MODE_NOTES)."""
+        (contrairement à _select_move_down, dédiée au piano roll MODE_NOTES).
+
+        Même ancrage que _select_move_up_flat : sélectionne d'abord
+        l'événement courant sans bouger s'il n'est pas déjà sélectionné."""
         if not self._events:
             return
-        cur    = self._midi_editor._cur_idx
+        cur = self._midi_editor._cur_idx
+        if cur not in self._selected_indices:
+            self._toggle_note_selection(cur)
+            self._play_single_at(cur)
+            wx.CallAfter(self._announce_event_selected, cur)
+            return
         target = min(cur + 1, len(self._events) - 1)
         if target != cur:
             self._navigate_to(target)

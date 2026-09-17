@@ -975,7 +975,12 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   regroupement par offset (`_select_move_up_flat`/`_select_move_down_flat` —
   la version groupée par accord ne convient pas à une liste plate). Shift+←/→
   non adapté pour ce mode (←/→ déjà neutralisés hors sélection, cf. Navigation
-  ci-dessus) — pas de besoin identifié pour l'instant
+  ci-dessus) — pas de besoin identifié pour l'instant.
+  **Ancrage** : si l'événement courant n'est pas encore sélectionné (première
+  pression, ou après une navigation libre sans Shift), il est d'abord
+  sélectionné sans déplacer le curseur, avant que les pressions suivantes
+  n'étendent la sélection événement par événement — sinon le tout premier
+  événement visité n'est jamais inclus dans la sélection (bug corrigé).
 - Ctrl+Shift+F : EventFilterDialog — filtre = mécanisme de sélection (pas un affichage
   séparé) ; type (Notes/Pitch Bend/Mod Wheel, CC/PC/Poly AT/Channel Pressure/SysEx
   reportés), note/vélocité/pitch bend/position ; Ok/Appliquer remplacent la sélection,
