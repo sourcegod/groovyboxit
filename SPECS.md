@@ -1057,6 +1057,42 @@ Un `SpinCtrl` isolé n'annonce que sa valeur, jamais le `wx.StaticText` voisin
 dans `_MidiEventEditDialog`/`_CcEventEditDialog`), donner un nom accessible
 distinct à chacun via `SetName("Bar")`/`SetName("Beat")`/`SetName("Tick")`.
 
+#### EVT_CHAR_HOOK sur un dialog à boutons : Entrée casse l'activation native
+
+Un `wx.Dialog` avec `EVT_CHAR_HOOK` bindé au niveau du dialog (ex. pour des
+raccourcis lettres sur ses boutons — `SaveConfirmDialog`, Oui/Non/Annuler)
+**empêche l'activation native du bouton focusé par Entrée**, même en
+appelant `evt.Skip()` pour les touches non gérées explicitement : sur GTK,
+`EVT_CHAR_HOOK` intercepte la touche avant que le bouton focusé (ou le
+bouton par défaut via `SetDefault()`) ne la reçoive, et `Skip()` ne restaure
+pas ce chemin natif de façon fiable.
+
+**Fix :** gérer Entrée (`wx.WXK_RETURN`/`wx.WXK_NUMPAD_ENTER`) explicitement
+dans le handler `EVT_CHAR_HOOK` — retrouver le bouton qui a le focus via
+`wx.Window.FindFocus()` et terminer le dialog avec son ID, plutôt que de
+compter sur le fallback natif :
+
+```python
+if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+    focus = wx.Window.FindFocus()
+    for btn in (self._yes_btn, self._no_btn, self._cancel_btn):
+        if focus is btn:
+            self._end(btn.GetId())
+            return
+    self._end(wx.ID_YES)   # aucun bouton focus : action par défaut
+    return
+```
+
+**Garde-fou complémentaire :** faire passer clic ET raccourcis clavier par
+une méthode `_end(result_id)` unique avec un flag `self._answered` évite
+qu'un double événement (quasi simultané, ou résiduel du bug ci-dessus)
+n'écrase silencieusement le résultat déjà renvoyé par `ShowModal()`.
+
+**Why:** Bug d'origine de `SaveConfirmDialog` (introduit étape 7l, jamais
+couvert par des tests) signalé par l'utilisateur (Phase 6 étape 11) : Entrée
+ne validait aucun bouton, seuls Y/N fonctionnaient au clavier mais sans
+appliquer l'action attendue, et les raccourcis français (o/a) manquaient.
+
 #### Barre de statut — `wx.ListBox` à un item + `SetString`
 
 `wx.TextCtrl(style=wx.TE_READONLY)` ne convient **pas** pour une barre de statut accessible : `SetValue()` n'émet aucun événement AT-SPI, Orca n'annonce rien sans déplacer le focus.

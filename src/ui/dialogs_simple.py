@@ -369,23 +369,24 @@ class UndoHistoryDialog(wx.Dialog):
 class SaveConfirmDialog(wx.Dialog):
     """Oui/Non/Annuler pour proposer d'enregistrer un projet modifié.
 
-    Raccourcis Y/N (en plus du clic) pour éviter d'avoir à Tab jusqu'au
-    bouton voulu — Échap reste équivalent à Annuler."""
+    Entrée valide le bouton qui a le focus (comportement natif restauré
+    explicitement — voir _on_key). Raccourcis O/Y = Oui, N = Non,
+    A/C = Annuler (en plus du clic), Échap = Annuler."""
 
     def __init__(self, parent, message, title):
         super().__init__(parent, title=title)
 
         text = wx.StaticText(self, label=message)
 
-        yes_btn    = wx.Button(self, wx.ID_YES,    "Oui")
-        no_btn     = wx.Button(self, wx.ID_NO,     "Non")
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
-        yes_btn.SetDefault()
+        self._yes_btn    = wx.Button(self, wx.ID_YES,    "Oui")
+        self._no_btn     = wx.Button(self, wx.ID_NO,     "Non")
+        self._cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        self._yes_btn.SetDefault()
 
         btn_sizer = wx.StdDialogButtonSizer()
-        btn_sizer.AddButton(yes_btn)
-        btn_sizer.AddButton(no_btn)
-        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.AddButton(self._yes_btn)
+        btn_sizer.AddButton(self._no_btn)
+        btn_sizer.AddButton(self._cancel_btn)
         btn_sizer.Realize()
 
         vbox = wx.BoxSizer(wx.VERTICAL)
@@ -393,20 +394,49 @@ class SaveConfirmDialog(wx.Dialog):
         vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
-        yes_btn.SetFocus()
+        self._yes_btn.SetFocus()
 
+        # EVT_BUTTON explicite (plutôt que de compter sur la fin de modal
+        # automatique de wx.Dialog pour les ID standard) : passe par _end()
+        # comme le clavier, pour partager le garde-fou anti double appel.
+        for btn in (self._yes_btn, self._no_btn, self._cancel_btn):
+            btn.Bind(wx.EVT_BUTTON, lambda evt: self._end(evt.GetId()))
+
+        self._answered = False
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
 
+    def _end(self, result_id):
+        """Termine le dialog une seule fois — un second appel (clic + touche
+        quasi simultanés, ou double événement clavier) est ignoré au lieu
+        d'écraser silencieusement le résultat déjà renvoyé par ShowModal()."""
+        if self._answered:
+            return
+        self._answered = True
+        self.EndModal(result_id)
+
     def _on_key(self, evt):
-        ukey = evt.GetUnicodeKey()
-        key  = evt.GetKeyCode()
-        if ukey == ord('y') or key == ord('Y'):
-            self.EndModal(wx.ID_YES)
+        key = evt.GetKeyCode()
+
+        # Entrée : valide le bouton qui a le focus (comportement natif
+        # attendu pour un wx.Button focusé) — géré explicitement ici car
+        # EVT_CHAR_HOOK, une fois bindé sur ce dialog, empêche l'activation
+        # native du bouton par défaut sur GTK même avec evt.Skip() (bug
+        # d'origine de ce dialog : Entrée ne validait plus aucun bouton).
+        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            focus = wx.Window.FindFocus()
+            for btn in (self._yes_btn, self._no_btn, self._cancel_btn):
+                if focus is btn:
+                    self._end(btn.GetId())
+                    return
+            self._end(wx.ID_YES)   # aucun bouton focus : action par défaut
             return
-        if ukey == ord('n') or key == ord('N'):
-            self.EndModal(wx.ID_NO)
+        if key == wx.WXK_ESCAPE or key == ord('C') or key == ord('A'):
+            self._end(wx.ID_CANCEL)
             return
-        if key == wx.WXK_ESCAPE:
-            self.EndModal(wx.ID_CANCEL)
+        if key == ord('O') or key == ord('Y'):
+            self._end(wx.ID_YES)
+            return
+        if key == ord('N'):
+            self._end(wx.ID_NO)
             return
         evt.Skip()
