@@ -968,8 +968,14 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
 
 **Sélection :**
 - Ctrl+A : sélectionner tout / Ctrl+Shift+A : désélectionner
-- Shift+←/→ : sélectionner/désélectionner le groupe + avancer
-- Shift+↑/↓ : sélectionner une note individuelle dans un accord
+- Mode Notes (Ctrl+1) : Shift+←/→ = sélectionner/désélectionner le groupe (accord)
+  + avancer ; Shift+↑/↓ = sélectionner une note individuelle dans l'accord
+- Mode Tous les événements (Ctrl+2, liste plate) : Shift+↑/↓ = sélectionner/
+  désélectionner l'événement précédent/suivant, un à la fois, **sans**
+  regroupement par offset (`_select_move_up_flat`/`_select_move_down_flat` —
+  la version groupée par accord ne convient pas à une liste plate). Shift+←/→
+  non adapté pour ce mode (←/→ déjà neutralisés hors sélection, cf. Navigation
+  ci-dessus) — pas de besoin identifié pour l'instant
 - Ctrl+Shift+F : EventFilterDialog — filtre = mécanisme de sélection (pas un affichage
   séparé) ; type (Notes/Pitch Bend/Mod Wheel, CC/PC/Poly AT/Channel Pressure/SysEx
   reportés), note/vélocité/pitch bend/position ; Ok/Appliquer remplacent la sélection,

@@ -1143,6 +1143,48 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
         self._play_single_at(target)
         wx.CallAfter(self._announce_note, target)
 
+    def _announce_event_selected(self, idx):
+        """Annonce Shift+↑/↓ en liste plate (MODE_ALL) : nom/valeur + position
+        + nombre d'événements sélectionnés — équivalent flat de _announce_note."""
+        if not self._events or idx >= len(self._events):
+            return
+        e   = self._events[idx]
+        bbt = self._bbt_str(e["bar"], e["step"])
+        suf = self._sel_status_suffix()
+        if e["type"] == "note":
+            name = self._event_note_name(e)
+            self._set_status(f"({name})  {bbt}{suf}")
+        else:
+            self._set_status(f"{e['type'].capitalize()}:{e['value']}  {bbt}{suf}")
+
+    def _select_move_up_flat(self):
+        """Shift+↑ en liste plate (MODE_ALL) : événement précédent + toggle
+        sélection — un événement à la fois, sans regroupement par offset
+        (contrairement à _select_move_up, dédiée au piano roll MODE_NOTES)."""
+        if not self._events:
+            return
+        cur    = self._midi_editor._cur_idx
+        target = max(cur - 1, 0)
+        if target != cur:
+            self._navigate_to(target)
+        self._toggle_note_selection(target)
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_event_selected, target)
+
+    def _select_move_down_flat(self):
+        """Shift+↓ en liste plate (MODE_ALL) : événement suivant + toggle
+        sélection — un événement à la fois, sans regroupement par offset
+        (contrairement à _select_move_down, dédiée au piano roll MODE_NOTES)."""
+        if not self._events:
+            return
+        cur    = self._midi_editor._cur_idx
+        target = min(cur + 1, len(self._events) - 1)
+        if target != cur:
+            self._navigate_to(target)
+        self._toggle_note_selection(target)
+        self._play_single_at(target)
+        wx.CallAfter(self._announce_event_selected, target)
+
     # ------------------------------------------------------------------
     # Édition
     # ------------------------------------------------------------------
@@ -2060,12 +2102,20 @@ class MidiEditorWindow(VirtualKeyboardMixin, wx.Frame):
                 self._move_down_in_group()
             return
 
-        # Shift+↑/↓ : navigation + sélection de la note
+        # Shift+↑/↓ : navigation + sélection — MODE_NOTES = regroupée par
+        # accord (_select_move_up/down) ; MODE_ALL = liste plate, un
+        # événement à la fois (_select_move_up_flat/down_flat).
         if not ctrl and shift and key == wx.WXK_UP:
-            self._select_move_up()
+            if self._view_mode == self.MODE_ALL:
+                self._select_move_up_flat()
+            else:
+                self._select_move_up()
             return
         if not ctrl and shift and key == wx.WXK_DOWN:
-            self._select_move_down()
+            if self._view_mode == self.MODE_ALL:
+                self._select_move_down_flat()
+            else:
+                self._select_move_down()
             return
 
         # Ctrl+A : sélectionner tout
