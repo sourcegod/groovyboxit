@@ -300,6 +300,48 @@ def test_event_pitch_number_grid_kit_is_pad_index_1based():
 
 
 # ---------------------------------------------------------------------------
+# _announce_event_selected — Shift+↑/↓ en liste plate (MODE_ALL) : nom/valeur
+# + position + nombre d'événements sélectionnés (équivalent flat de
+# _announce_note, sans regroupement par offset) — voir
+# project_event_list_window_todo.
+# ---------------------------------------------------------------------------
+
+class _FakeAnnounceWindow:
+    _announce_event_selected = mew.MidiEditorWindow._announce_event_selected
+    _event_note_name         = mew.MidiEditorWindow._event_note_name
+    _bbt_str                 = mew.MidiEditorWindow._bbt_str
+    _set_status              = mew.MidiEditorWindow._set_status
+    _sel_status_suffix       = mew.MidiEditorWindow._sel_status_suffix
+
+    def __init__(self, events, selected_indices=()):
+        self._events           = events
+        self._selected_indices = set(selected_indices)
+        self._status_ctrl      = _FakeStatusCtrl()
+        self._parent           = _FakeLabelParent()
+
+
+def test_announce_event_selected_note_shows_name_and_selection_count():
+    ev  = _note_ev(pad=60, etype=ETYPE_PATCH)
+    win = _FakeAnnounceWindow([ev], selected_indices={0})
+    win._announce_event_selected(0)
+    assert win._status_ctrl.last == f"({midi_to_note_name(60)})  1:1:1  [1 sél.]"
+
+
+def test_announce_event_selected_note_no_suffix_when_nothing_selected():
+    ev  = _note_ev(pad=60, etype=ETYPE_PATCH)
+    win = _FakeAnnounceWindow([ev])
+    win._announce_event_selected(0)
+    assert win._status_ctrl.last == f"({midi_to_note_name(60)})  1:1:1"
+
+
+def test_announce_event_selected_cc_shows_type_and_value():
+    ev  = {"type": "mod", "track": 0, "bar": 0, "step": 0, "value": 64}
+    win = _FakeAnnounceWindow([ev], selected_indices={0, 1})
+    win._announce_event_selected(0)
+    assert win._status_ctrl.last == "Mod:64  1:1:1  [2 sél.]"
+
+
+# ---------------------------------------------------------------------------
 # _dialog_note_choices — présélection du listbox « Note » dans le dialog
 # d'édition (Entrée sur un événement). Doit refléter la même convention
 # pad/note que _event_note_name/_event_pitch_number : bug signalé où GRID
