@@ -10,6 +10,7 @@
 """
 import sys
 import os
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -339,6 +340,112 @@ def test_announce_event_selected_cc_shows_type_and_value():
     win = _FakeAnnounceWindow([ev], selected_indices={0, 1})
     win._announce_event_selected(0)
     assert win._status_ctrl.last == "Mod:64  1:1:1  [2 sél.]"
+
+
+# ---------------------------------------------------------------------------
+# _select_move_up_flat / _select_move_down_flat — ancrage sur l'événement de
+# départ (bug signalé : le tout premier événement, index 1, restait toujours
+# désélectionné — la première pression de Shift+↓/↑ sautait directement sur
+# l'événement suivant/précédent sans jamais sélectionner le point de départ).
+# ---------------------------------------------------------------------------
+
+class _FakeFlatEventLb:
+    def SetSelection(self, idx):
+        pass
+
+
+class _FakeFlatPlayer:
+    def __init__(self):
+        self.offsets = []
+
+    def _go_to_offset(self, offset):
+        self.offsets.append(offset)
+
+
+class _FakeFlatParent:
+    def __init__(self):
+        self._player = _FakeFlatPlayer()
+
+
+class _FakeFlatMidiEditor:
+    def __init__(self, cur_idx):
+        self._cur_idx = cur_idx
+
+
+class _FakeFlatSelectWindow:
+    _select_move_up_flat   = mew.MidiEditorWindow._select_move_up_flat
+    _select_move_down_flat = mew.MidiEditorWindow._select_move_down_flat
+    _toggle_note_selection = mew.MidiEditorWindow._toggle_note_selection
+    _navigate_to           = mew.MidiEditorWindow._navigate_to
+
+    def __init__(self, n_events, cur_idx=0, selected=()):
+        self._events                 = [{"offset": i} for i in range(n_events)]
+        self._midi_editor            = _FakeFlatMidiEditor(cur_idx)
+        self._selected_indices       = set(selected)
+        self._event_lb               = _FakeFlatEventLb()
+        self._parent                 = _FakeFlatParent()
+        self._skip_listbox_announce  = False
+        self.play_calls              = []
+
+    def _play_single_at(self, idx):
+        self.play_calls.append(idx)
+
+    def _update_label(self, idx):
+        pass
+
+    def _sync_lims_from_selection(self):
+        pass
+
+    def _announce_event_selected(self, idx):
+        pass
+
+
+# wx.CallAfter (annonce Orca) exige un wx.App "courant" au sens de wx.GetApp()
+# — la fixture session conftest.wx_app en crée un, mais d'autres fichiers de
+# tests instancient/détruisent leur propre wx.App(False) localement, ce qui
+# laisse wx.GetApp() à None selon l'ordre d'exécution complet de la suite.
+# On neutralise CallAfter (exécution synchrone) pour rendre ces tests
+# indépendants de cet état global fragile.
+@pytest.fixture
+def sync_call_after(monkeypatch):
+    monkeypatch.setattr(mew.wx, "CallAfter", lambda fn, *a, **kw: fn(*a, **kw))
+
+
+def test_select_move_down_flat_first_press_selects_current_without_moving(sync_call_after):
+    win = _FakeFlatSelectWindow(n_events=3, cur_idx=0)
+    win._select_move_down_flat()
+    assert win._selected_indices == {0}
+    assert win._midi_editor._cur_idx == 0
+    assert win.play_calls == [0]
+
+
+def test_select_move_down_flat_extends_after_anchor(sync_call_after):
+    win = _FakeFlatSelectWindow(n_events=3, cur_idx=0, selected={0})
+    win._select_move_down_flat()
+    assert win._selected_indices == {0, 1}
+    assert win._midi_editor._cur_idx == 1
+
+
+def test_select_move_down_flat_repeated_selects_all_including_first(sync_call_after):
+    win = _FakeFlatSelectWindow(n_events=3, cur_idx=0)
+    win._select_move_down_flat()
+    win._select_move_down_flat()
+    win._select_move_down_flat()
+    assert win._selected_indices == {0, 1, 2}
+
+
+def test_select_move_up_flat_first_press_selects_current_without_moving(sync_call_after):
+    win = _FakeFlatSelectWindow(n_events=3, cur_idx=2)
+    win._select_move_up_flat()
+    assert win._selected_indices == {2}
+    assert win._midi_editor._cur_idx == 2
+
+
+def test_select_move_up_flat_extends_after_anchor(sync_call_after):
+    win = _FakeFlatSelectWindow(n_events=3, cur_idx=2, selected={2})
+    win._select_move_up_flat()
+    assert win._selected_indices == {1, 2}
+    assert win._midi_editor._cur_idx == 1
 
 
 # ---------------------------------------------------------------------------
