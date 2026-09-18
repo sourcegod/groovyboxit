@@ -57,6 +57,9 @@ class TapeEvent:
         return (self.etype == other.etype and self.dur == other.dur
                 and self.channel == other.channel and self.payload == other.payload)
 
+    def __hash__(self):
+        return hash((self.etype, self.dur, self.channel, tuple(sorted(self.payload.items()))))
+
     def __repr__(self):
         return (f"TapeEvent({self.etype!r}, time={self.time!r}, dur={self.dur!r}, "
                 f"channel={self.channel!r}, payload={self.payload!r})")
