@@ -117,3 +117,33 @@ Revenir sur l'affichage de la liste d'événements de `MidiEditorWindow`
 format de ligne par type (note/CC/etc.) et le champ « canal », qui n'existe
 pas encore dans le modèle actuel. Ne pas retravailler ce format avant que
 cette standardisation soit faite.
+
+---
+
+## Phase 7 étape 1b — Format `.gvp` et découpage en commits
+
+### Format `.gvp` (nouveau)
+
+- Nouvelle clé `"tape_v2"` : liste par piste (même convention que
+  `bend_tape`/`mod_tape`), chaque piste = liste d'événements
+  `[time, etype, dur, channel, payload]`.
+- `payload` est un dict JSON-natif : `{"pad": int, "vel": int}` pour GRID,
+  `{"note": int, "vel": int}` pour KIT, `{"note": int, "vel": int, "bend":
+  int}` pour PATCH.
+- `to_dict()` n'écrit **plus** `curpattern`/`kit_tape`/`patch_tape` une fois
+  la bascule faite — un seul format en écriture, pas de dual-write
+  permanent.
+- `from_dict()` : si `"tape_v2"` présent → chargement direct. Sinon (vieux
+  fichier) → upgrade en mémoire depuis `curpattern`/`kit_tape`/`patch_tape`
+  comme aujourd'hui, avec `channel=0` et la même règle `dur=0` pour GRID
+  (fallback voix).
+
+### Découpage en commits
+
+| Étape | Contenu | Fichiers/tests touchés |
+|---|---|---|
+| **1c** | `Pattern` : dataclass `TapeEvent` + `_tape` → liste plate par piste + index `{(track,time): [...]}` pour perf grille. API publique de `Pattern` inchangée en signature (aucun appelant externe cassé à ce stade). | `pattern.py`, `test_pattern.py`, `test_pattern_grid_api.py`, `test_pattern_properties_bug.py`, `test_tape.py` |
+| **1d** | `to_dict`/`from_dict` : écriture `tape_v2`, lecture rétrocompat ancien format + test explicite de rétrocompat (charger un vieux dict/fichier). | `pattern.py` + fixture de test dédiée |
+| **1e** | Migration des 5 consommateurs directs (`ev.note`/`ev.vel`/`ev.bend` → `ev.payload[...]`, nouveau `ev.channel`), un fichier à la fois, tests après chacun. | `drum_player.py`, `track_editor.py`, `midi_editor.py`, `quantize_manager.py`, `ui/mw_project.py` + `test_midi_editor.py`, `test_quantize.py`, `test_track_editor.py`, `test_transport.py` |
+| **1f** | Brancher `channel` côté UI là où c'est pertinent (à évaluer une fois 1c-1e faits). | à déterminer |
+| **1g** | Durée GRID par événement (override Numpad1/3) — le vrai déclencheur initial de ce chantier (étape 7d, 2026-07-24). | `midi_editor.py` + `mew_numpad.py` |
