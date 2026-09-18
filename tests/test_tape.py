@@ -16,6 +16,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from drum_player import DrumPlayer
+from tape_test_utils import (
+    tape_at, has_tape_at, set_tape_at, add_tape_at, all_tape_events,
+    assign_tape, flush_tape, tapes_equal_strict, tape_positions, same_events,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +57,7 @@ def _P(note, vel=100, dur=0, bend=0):
 
 def test_pattern_tape_initially_empty():
     p = Pattern()
-    assert p._tape == {}
+    assert p.is_empty()
     print("  _tape vide à l'init : OK")
 
 
@@ -63,16 +67,16 @@ def test_pattern_tape_initially_empty():
 
 def test_new_pattern_resets_tape():
     p = Pattern()
-    p._tape = {(0, 0, 0): [_K(36)], (0, 0, 3): [_P(60)]}
+    assign_tape(p, {(0, 0, 0): [_K(36)], (0, 0, 3): [_P(60)]})
     p.new_pattern()
-    assert p._tape == {}
+    assert p.is_empty()
     print("  new_pattern efface _tape : OK")
 
 def test_reset_pattern_clears_tape():
     p = Pattern()
-    p._tape = {(0, 0, 5): [_K(38)], (1, 0, 8): [_P(64)]}
+    assign_tape(p, {(0, 0, 5): [_K(38)], (1, 0, 8): [_P(64)]})
     p.reset_pattern()
-    assert p._tape == {}
+    assert p.is_empty()
     print("  reset_pattern efface _tape : OK")
 
 
@@ -83,31 +87,31 @@ def test_reset_pattern_clears_tape():
 def test_double_bars_duplicates_kit_events():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._tape = {(0, 0, 3): [_K(36)], (0, 1, 7): [_K(38, 80)]}
+    assign_tape(p, {(0, 0, 3): [_K(36)], (0, 1, 7): [_K(38, 80)]})
     p.double_bars()
-    assert (0, 2, 3) in p._tape, "bar 0 dupliquée en bar 2"
-    assert (0, 3, 7) in p._tape, "bar 1 dupliquée en bar 3"
-    assert p._tape[(0, 2, 3)] == [_K(36)]
-    assert p._tape[(0, 3, 7)] == [_K(38, 80)]
+    assert has_tape_at(p, 0, 2, 3), "bar 0 dupliquée en bar 2"
+    assert has_tape_at(p, 0, 3, 7), "bar 1 dupliquée en bar 3"
+    assert tape_at(p, 0, 2, 3) == [_K(36)]
+    assert tape_at(p, 0, 3, 7) == [_K(38, 80)]
     print("  double_bars duplique les événements K dans _tape : OK")
 
 def test_double_bars_preserves_original_kit_events():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._tape = {(0, 0, 1): [_K(42)]}
+    assign_tape(p, {(0, 0, 1): [_K(42)]})
     p.double_bars()
-    assert (0, 0, 1) in p._tape, "entrée originale conservée"
+    assert has_tape_at(p, 0, 0, 1), "entrée originale conservée"
     print("  double_bars conserve les entrées originales de _tape : OK")
 
 def test_double_bars_duplicates_patch_events():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._tape = {(0, 0, 5): [_P(60, 100, 400)], (0, 1, 10): [_P(62, 90, 200)]}
+    assign_tape(p, {(0, 0, 5): [_P(60, 100, 400)], (0, 1, 10): [_P(62, 90, 200)]})
     p.double_bars()
-    assert (0, 2, 5)  in p._tape
-    assert (0, 3, 10) in p._tape
-    assert p._tape[(0, 2, 5)]  == [_P(60, 100, 400)]
-    assert p._tape[(0, 3, 10)] == [_P(62, 90, 200)]
+    assert has_tape_at(p, 0, 2, 5)
+    assert has_tape_at(p, 0, 3, 10)
+    assert tape_at(p, 0, 2, 5)  == [_P(60, 100, 400)]
+    assert tape_at(p, 0, 3, 10) == [_P(62, 90, 200)]
     print("  double_bars duplique les événements P dans _tape : OK")
 
 
@@ -118,29 +122,29 @@ def test_double_bars_duplicates_patch_events():
 def test_halve_bars_removes_second_half_kit_events():
     p = Pattern()
     p.new_pattern(4, 16)
-    p._tape = {
+    assign_tape(p, {
         (0, 0, 0): [_K(36)],   # bar 0 → conservé
         (0, 1, 0): [_K(38)],   # bar 1 → conservé
         (0, 2, 0): [_K(42)],   # bar 2 → supprimé
         (0, 3, 0): [_K(46)],   # bar 3 → supprimé
-    }
+    })
     p.halve_bars()
-    assert (0, 0, 0) in p._tape
-    assert (0, 1, 0) in p._tape
-    assert (0, 2, 0) not in p._tape
-    assert (0, 3, 0) not in p._tape
+    assert has_tape_at(p, 0, 0, 0)
+    assert has_tape_at(p, 0, 1, 0)
+    assert not has_tape_at(p, 0, 2, 0)
+    assert not has_tape_at(p, 0, 3, 0)
     print("  halve_bars filtre les événements K hors de la 1ère moitié : OK")
 
 def test_halve_bars_removes_second_half_patch_events():
     p = Pattern()
     p.new_pattern(4, 16)
-    p._tape = {
+    assign_tape(p, {
         (0, 0, 5): [_P(60, 100, 300)],
         (0, 3, 5): [_P(65, 80, 150)],
-    }
+    })
     p.halve_bars()
-    assert (0, 0, 5) in p._tape
-    assert (0, 3, 5) not in p._tape
+    assert has_tape_at(p, 0, 0, 5)
+    assert not has_tape_at(p, 0, 3, 5)
     print("  halve_bars filtre les événements P hors de la 1ère moitié : OK")
 
 
@@ -151,39 +155,39 @@ def test_halve_bars_removes_second_half_patch_events():
 def test_resize_filters_kit_events_out_of_range():
     p = Pattern()
     p.new_pattern(4, 16)
-    p._tape = {
+    assign_tape(p, {
         (0, 0, 3):  [_K(36)],   # conservé
         (0, 1, 15): [_K(38)],   # conservé
         (0, 2, 5):  [_K(42)],   # supprimé (bar >= 2)
-    }
+    })
     p.resize(2, 16)
-    assert (0, 0, 3)  in p._tape
-    assert (0, 1, 15) in p._tape
-    assert (0, 2, 5)  not in p._tape
+    assert has_tape_at(p, 0, 0, 3)
+    assert has_tape_at(p, 0, 1, 15)
+    assert not has_tape_at(p, 0, 2, 5)
     print("  resize filtre les événements K (bars hors limites) : OK")
 
 def test_resize_filters_patch_events_out_of_range():
     p = Pattern()
     p.new_pattern(2, 32)
-    p._tape = {
+    assign_tape(p, {
         (0, 0, 31): [_P(60, 100, 200)],   # conservé
         (0, 1, 5):  [_P(62, 90, 150)],    # supprimé (bar >= 1)
-    }
+    })
     p.resize(1, 32)
-    assert (0, 0, 31) in p._tape
-    assert (0, 1, 5)  not in p._tape
+    assert has_tape_at(p, 0, 0, 31)
+    assert not has_tape_at(p, 0, 1, 5)
     print("  resize filtre les événements P (bars hors limites) : OK")
 
 def test_resize_filters_kit_events_steps_out_of_range():
     p = Pattern()
     p.new_pattern(1, 32)
-    p._tape = {
+    assign_tape(p, {
         (0, 0, 15): [_K(36)],   # conservé
         (0, 0, 16): [_K(38)],   # supprimé (step >= 16)
-    }
+    })
     p.resize(1, 16)
-    assert (0, 0, 15) in p._tape
-    assert (0, 0, 16) not in p._tape
+    assert has_tape_at(p, 0, 0, 15)
+    assert not has_tape_at(p, 0, 0, 16)
     print("  resize filtre les événements K (steps hors limites) : OK")
 
 
@@ -193,7 +197,7 @@ def test_resize_filters_kit_events_steps_out_of_range():
 
 def test_to_dict_kit_tape_6_columns():
     p = Pattern()
-    p._tape = {(0, 0, 3): [_K(36)]}
+    assign_tape(p, {(0, 0, 3): [_K(36)]})
     rec = p.to_dict()["kit_tape"]
     assert len(rec) == 1
     assert rec[0] == [0, 0, 3, 36, 100, 0]
@@ -201,7 +205,7 @@ def test_to_dict_kit_tape_6_columns():
 
 def test_to_dict_patch_tape_7_columns():
     p = Pattern()
-    p._tape = {(1, 0, 7): [_P(60, 90, 350, 2048)]}
+    assign_tape(p, {(1, 0, 7): [_P(60, 90, 350, 2048)]})
     rec = p.to_dict()["patch_tape"]
     assert len(rec) == 1
     assert rec[0] == [1, 0, 7, 60, 90, 350, 2048]
@@ -209,42 +213,42 @@ def test_to_dict_patch_tape_7_columns():
 
 def test_roundtrip_kit_tape():
     src = Pattern()
-    src._tape = {
+    assign_tape(src, {
         (0, 0, 2): [_K(36), _K(42, 80)],
         (1, 0, 8): [_K(38, 127)],
-    }
+    })
     dst = Pattern()
     dst.from_dict(src.to_dict())
-    assert dst._tape == src._tape
+    assert tapes_equal_strict(dst._tape, src._tape)
     print("  to_dict → from_dict kit events round-trip : OK")
 
 def test_roundtrip_patch_tape():
     src = Pattern()
-    src._tape = {
+    assign_tape(src, {
         (0, 0, 4): [_P(60, 100, 500), _P(64, 90, 250)],
         (0, 1, 0): [_P(67, 80, 300)],
-    }
+    })
     dst = Pattern()
     dst.from_dict(src.to_dict())
-    assert dst._tape == src._tape
+    assert tapes_equal_strict(dst._tape, src._tape)
     print("  to_dict → from_dict patch events round-trip : OK")
 
 def test_roundtrip_patch_tape_with_bend():
     """Régression : to_dict levait ValueError sur les 4-tuples."""
     src = Pattern()
-    src._tape = {
+    assign_tape(src, {
         (0, 0, 0): [_P(60, 100, 500, 4096), _P(62, 90, 300, -2000)],
         (1, 0, 4): [_P(67, 80, 200)],
-    }
+    })
     try:
         d = src.to_dict()
     except ValueError as e:
         assert False, f"to_dict lève ValueError sur _tape : {e}"
     dst = Pattern()
     dst.from_dict(d)
-    assert dst._tape[(0, 0, 0)][0] == _P(60, 100, 500, 4096)
-    assert dst._tape[(0, 0, 0)][1] == _P(62, 90, 300, -2000)
-    assert dst._tape[(1, 0, 4)][0] == _P(67, 80, 200)
+    assert tape_at(dst, 0, 0, 0)[0] == _P(60, 100, 500, 4096)
+    assert tape_at(dst, 0, 0, 0)[1] == _P(62, 90, 300, -2000)
+    assert tape_at(dst, 1, 0, 4)[0] == _P(67, 80, 200)
     print("  to_dict → from_dict patch 4-tuples avec bend (régression) : OK")
 
 def test_from_dict_kit_tape_backward_compat_5_columns():
@@ -255,8 +259,8 @@ def test_from_dict_kit_tape_backward_compat_5_columns():
     }
     p = Pattern()
     p.from_dict(old)
-    assert (0, 0, 3) in p._tape
-    assert p._tape[(0, 0, 3)] == [_K(36)]
+    assert has_tape_at(p, 0, 0, 3)
+    assert tape_at(p, 0, 0, 3) == [_K(36)]
     print("  from_dict kit rétro-compat 5 colonnes → dur=0 : OK")
 
 def test_from_dict_patch_tape_backward_compat_5_columns():
@@ -267,8 +271,8 @@ def test_from_dict_patch_tape_backward_compat_5_columns():
     }
     p = Pattern()
     p.from_dict(old)
-    assert (0, 0, 7) in p._tape
-    assert p._tape[(0, 0, 7)] == [_P(60, 90, 0, 0)]
+    assert has_tape_at(p, 0, 0, 7)
+    assert tape_at(p, 0, 0, 7) == [_P(60, 90, 0, 0)]
     print("  from_dict patch rétro-compat 5 colonnes → dur=0, bend=0 : OK")
 
 def test_from_dict_patch_tape_backward_compat_6_columns():
@@ -279,13 +283,13 @@ def test_from_dict_patch_tape_backward_compat_6_columns():
     }
     p = Pattern()
     p.from_dict(old)
-    assert p._tape[(0, 0, 3)] == [_P(60, 100, 500, 0)]
+    assert tape_at(p, 0, 0, 3) == [_P(60, 100, 500, 0)]
     print("  from_dict patch rétro-compat 6 colonnes → bend=0 : OK")
 
 def test_from_dict_empty_tapes():
     p = Pattern()
     p.from_dict({"curpattern": Pattern().to_dense_grid()})
-    assert p._tape == {}
+    assert p.is_empty()
     print("  from_dict sans kit_tape/patch_tape → _tape vide : OK")
 
 def test_from_dict_mixed_kit_and_patch_same_step():
@@ -297,7 +301,7 @@ def test_from_dict_mixed_kit_and_patch_same_step():
     }
     p = Pattern()
     p.from_dict(old)
-    events = p._tape.get((0, 0, 4), [])
+    events = tape_at(p, 0, 0, 4)
     etypes = [ev.etype for ev in events]
     assert ETYPE_KIT in etypes and ETYPE_PATCH in etypes
     print("  from_dict kit+patch au même step → cohabitent dans _tape : OK")
@@ -310,7 +314,7 @@ def test_from_dict_mixed_kit_and_patch_same_step():
 def test_record_kit_note_stores_event():
     pl = _make_player()
     pl.record_kit_note(36, 100)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert len(events) == 1
     ev = events[0]
     assert ev.etype == ETYPE_KIT
@@ -323,7 +327,7 @@ def test_record_kit_note_no_duplicate_same_note():
     pl = _make_player()
     pl.record_kit_note(36, 100)
     pl.record_kit_note(36, 127)   # même note, même position → pas de doublon
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     kit_notes = [e.note for e in events if e.etype == ETYPE_KIT]
     assert kit_notes.count(36) == 1, "note 36 ne doit apparaître qu'une fois"
     print("  record_kit_note : pas de doublon sur même note : OK")
@@ -333,7 +337,7 @@ def test_record_kit_note_two_different_notes_same_step():
     pl = _make_player()
     pl.record_kit_note(36, 100)
     pl.record_kit_note(38, 80)
-    all_events = [e for lst in pl._pattern._tape.values() for e in lst]
+    all_events = all_tape_events(pl._pattern)
     notes = [e.note for e in all_events if e.etype == ETYPE_KIT]
     assert 36 in notes
     assert 38 in notes
@@ -351,14 +355,14 @@ def test_record_kit_note_returns_bar_step():
 def test_record_kit_note_velocity_clamped():
     pl = _make_player()
     pl.record_kit_note(36, 200)   # > 127
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert events[0].vel == 127
     print("  record_kit_note clamp vélocité à 127 : OK")
 
 def test_record_kit_note_velocity_minimum_one():
     pl = _make_player()
     pl.record_kit_note(36, 0)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert events[0].vel == 1
     print("  record_kit_note vélocité 0 → 1 : OK")
 
@@ -370,7 +374,7 @@ def test_record_kit_note_velocity_minimum_one():
 def test_record_patch_note_fixed_duration():
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert len(events) == 1
     ev = events[0]
     assert ev.etype == ETYPE_PATCH
@@ -388,7 +392,7 @@ def test_record_patch_note_fixed_duration_no_pending():
 def test_record_patch_note_zero_duration():
     pl = _make_player()
     pl.record_patch_note(60, 100, 0)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert events[0].dur == 0
     print("  record_patch_note duration_ms=0 stocké : OK")
 
@@ -396,7 +400,7 @@ def test_record_patch_note_replaces_same_note_at_same_step():
     pl = _make_player()
     pl.record_patch_note(60, 100, 300)
     pl.record_patch_note(60, 90, 400)   # même note, même step → remplace
-    all_events = [e for lst in pl._pattern._tape.values() for e in lst if e.etype == ETYPE_PATCH]
+    all_events = [e for e in all_tape_events(pl._pattern) if e.etype == ETYPE_PATCH]
     notes = [e.note for e in all_events]
     assert notes.count(60) == 1, "note 60 ne doit apparaître qu'une fois"
     assert all_events[0].dur == 400, "durée mise à jour"
@@ -419,7 +423,7 @@ def test_record_patch_note_returns_bar_step():
 def test_record_patch_note_midi_provisional_duration_zero():
     pl = _make_player()
     pl.record_patch_note(60, 100)   # duration_ms=None → MIDI
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert events[0].dur == 0, "durée provisoire = 0"
     print("  record_patch_note MIDI → durée provisoire 0 : OK")
 
@@ -431,11 +435,11 @@ def test_record_patch_note_midi_registers_pending():
 
 def test_record_patch_note_off_updates_duration():
     pl = _make_player()
-    pl.record_patch_note(60, 100)
-    key, entry_idx, _ = pl._pending_patch[60]
-    pl._pending_patch[60] = (key, entry_idx, time.perf_counter() - 0.300)
+    bar_idx, step_idx = pl.record_patch_note(60, 100)
+    track, target_ev, _ = pl._pending_patch[60]
+    pl._pending_patch[60] = (track, target_ev, time.perf_counter() - 0.300)
     pl.record_patch_note_off(60)
-    ev = pl._pattern._tape[key][entry_idx]
+    ev = tape_at(pl._pattern, track, bar_idx, step_idx)[0]
     assert ev.dur >= 290, f"durée attendue ≥ 290 ms, obtenu {ev.dur}"
     print(f"  record_patch_note_off met à jour la durée ({ev.dur} ms) : OK")
 
@@ -472,10 +476,10 @@ def test_record_patch_note_midi_then_fixed_cancels_pending():
 def test_erase_patch_tape_note_removes_event():
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     result = pl.erase_patch_tape_note(0, 60)
     assert result is not None
-    assert key not in pl._pattern._tape, "clé supprimée quand liste vide"
+    assert not has_tape_at(pl._pattern, *key), "clé supprimée quand liste vide"
     print("  erase_patch_tape_note supprime l'événement et la clé vide : OK")
 
 def test_erase_patch_tape_note_returns_bar_step():
@@ -507,9 +511,9 @@ def test_erase_patch_tape_note_keeps_other_note_at_same_step():
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
     pl.record_patch_note(64, 90, 400)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     pl.erase_patch_tape_note(0, 60)
-    remaining = [e.note for e in pl._pattern._tape.get(key, []) if e.etype == ETYPE_PATCH]
+    remaining = [e.note for e in tape_at(pl._pattern, *key) if e.etype == ETYPE_PATCH]
     assert 64 in remaining, "note 64 doit rester"
     assert 60 not in remaining
     print("  erase_patch_tape_note ne touche pas les autres notes du même step : OK")
@@ -521,7 +525,7 @@ def test_erase_patch_tape_note_twice_removes_both():
     pl.record_patch_note(64, 90, 400)
     pl.erase_patch_tape_note(0, 60)
     pl.erase_patch_tape_note(0, 64)
-    assert pl._pattern._tape == {}, "_tape vide après deux effacements"
+    assert pl._pattern.is_empty(), "_tape vide après deux effacements"
     print("  erase_patch_tape_note deux effacements successifs : OK")
 
 def test_erase_patch_tape_note_empty_tape_returns_none():
@@ -621,13 +625,13 @@ def test_erase_tape_event_removes_kit_note():
     """_erase_tape_event supprime la note K ciblée dans _tape."""
     pl = _make_player()
     pl.record_kit_note(36, 100)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
     pl._erase_tape_event(0, 36, t_sec, ETYPE_KIT)
 
-    assert key not in pl._pattern._tape
+    assert not has_tape_at(pl._pattern, *key)
     print("  _erase_tape_event supprime l'événement K : OK")
 
 def test_erase_tape_event_keeps_other_kit_notes():
@@ -635,13 +639,13 @@ def test_erase_tape_event_keeps_other_kit_notes():
     pl = _make_player()
     pl.record_kit_note(36, 100)
     pl.record_kit_note(38, 80)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
     pl._erase_tape_event(0, 36, t_sec, ETYPE_KIT)
 
-    remaining = [e.note for e in pl._pattern._tape.get(key, []) if e.etype == ETYPE_KIT]
+    remaining = [e.note for e in tape_at(pl._pattern, *key) if e.etype == ETYPE_KIT]
     assert 38 in remaining
     assert 36 not in remaining
     print("  _erase_tape_event conserve les autres notes K du step : OK")
@@ -650,7 +654,7 @@ def test_run_thread_auto_erase_kit_tape():
     """Simule la logique _run_thread pour KIT_TAPE_EVENT en mode Erase."""
     pl = _make_player()
     pl.record_kit_note(36, 100)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
@@ -662,20 +666,20 @@ def test_run_thread_auto_erase_kit_tape():
             and midi_note in pl._erase_active_midi_notes:
         pl._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_KIT)
 
-    assert key not in pl._pattern._tape
+    assert not has_tape_at(pl._pattern, *key)
     print("  _run_thread logique : KIT_TAPE_EVENT effacé si note active en Erase : OK")
 
 def test_erase_tape_event_removes_patch_note():
     """_erase_tape_event supprime la note P ciblée dans _tape."""
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
     pl._erase_tape_event(0, 60, t_sec, ETYPE_PATCH)
 
-    assert key not in pl._pattern._tape, "clé supprimée après effacement"
+    assert not has_tape_at(pl._pattern, *key), "clé supprimée après effacement"
     print("  _erase_tape_event supprime l'événement P et la clé vide : OK")
 
 def test_erase_tape_event_keeps_other_patch_notes():
@@ -683,13 +687,13 @@ def test_erase_tape_event_keeps_other_patch_notes():
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
     pl.record_patch_note(64, 90, 400)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
     pl._erase_tape_event(0, 60, t_sec, ETYPE_PATCH)
 
-    remaining = [e.note for e in pl._pattern._tape.get(key, []) if e.etype == ETYPE_PATCH]
+    remaining = [e.note for e in tape_at(pl._pattern, *key) if e.etype == ETYPE_PATCH]
     assert 64 in remaining, "note 64 doit rester"
     assert 60 not in remaining
     print("  _erase_tape_event ne touche pas les autres notes P du step : OK")
@@ -708,13 +712,13 @@ def test_erase_tape_event_etype_discriminates():
     pl = _make_player()
     pl.record_kit_note(60, 100)    # K note 60
     pl.record_patch_note(60, 100, 500)  # P note 60 (même note, même step)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
     pl._erase_tape_event(0, 60, t_sec, ETYPE_KIT)   # efface seulement K
 
-    events = pl._pattern._tape.get(key, [])
+    events = tape_at(pl._pattern, *key)
     etypes = [e.etype for e in events]
     assert ETYPE_KIT not in etypes
     assert ETYPE_PATCH in etypes
@@ -724,7 +728,7 @@ def test_run_thread_auto_erase_uses_erase_active_midi_notes():
     """Simule la logique _run_thread : PATCH_TAPE_EVENT efface si note dans _erase_active_midi_notes."""
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
@@ -736,14 +740,14 @@ def test_run_thread_auto_erase_uses_erase_active_midi_notes():
             and midi_note in pl._erase_active_midi_notes:
         pl._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_PATCH)
 
-    assert key not in pl._pattern._tape
+    assert not has_tape_at(pl._pattern, *key)
     print("  _run_thread logique : PATCH_TAPE_EVENT effacé si note active en Erase : OK")
 
 def test_run_thread_no_erase_if_note_not_active():
     """Si la note n'est pas dans _erase_active_midi_notes, elle n'est pas effacée."""
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
     t_sec = (bar_idx * pl._pattern._num_steps + step_idx) * pl.step_duration
 
@@ -761,7 +765,7 @@ def test_run_thread_no_erase_if_note_not_active():
         pl._on_patch_tape_cb(t_idx, midi_note, 100, dur)
 
     assert 60 in played, "la note doit être jouée, pas effacée"
-    assert key in pl._pattern._tape, "l'événement ne doit pas être supprimé"
+    assert has_tape_at(pl._pattern, *key), "l'événement ne doit pas être supprimé"
     print("  _run_thread logique : PATCH_TAPE_EVENT joué si note pas active en Erase : OK")
 
 
@@ -779,8 +783,8 @@ def test_tape_snapshot_safe_during_concurrent_erase():
     collected = []
     try:
         with pl._pattern._lock:
-            snap = {k: list(v) for k, v in pl._pattern._tape.items()}
-        for (t_idx, b, s), note_list in snap.items():
+            snap = [list(track_list) for track_list in pl._pattern._tape]
+        for t_idx, note_list in enumerate(snap):
             pl.erase_patch_tape_note(0, 60)
             for ev in note_list:
                 if ev.etype == ETYPE_PATCH:
@@ -790,17 +794,17 @@ def test_tape_snapshot_safe_during_concurrent_erase():
     print("  snapshot _tape immunise contre la modification concurrente : OK")
 
 def test_tape_snapshot_safe_during_concurrent_kit_delete():
-    """Suppression de clé pendant l'itération ne lève pas RuntimeError."""
+    """Suppression d'une piste pendant l'itération ne lève pas RuntimeError."""
     pl = _make_player()
     pl.record_kit_note(36, 100)
     pl.record_kit_note(38, 100)
 
     try:
         with pl._pattern._lock:
-            snap = {k: list(v) for k, v in pl._pattern._tape.items()}
-        for (t_idx, b, s), note_list in snap.items():
-            for k in list(pl._pattern._tape.keys()):
-                del pl._pattern._tape[k]
+            snap = [list(track_list) for track_list in pl._pattern._tape]
+        for t_idx, note_list in enumerate(snap):
+            for t in range(len(pl._pattern._tape)):
+                pl._pattern._tape[t] = []
                 break
             for ev in note_list:
                 pass
@@ -863,7 +867,7 @@ def test_record_patch_note_stores_bend():
     pl = _make_player()
     bend_val = 4096
     pl.record_patch_note(60, 100, 500, bend=bend_val)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert len(events) == 1
     ev = events[0]
     assert ev.etype == ETYPE_PATCH
@@ -875,7 +879,7 @@ def test_record_patch_note_bend_zero_by_default():
     """Sans pitch bend actif, TapeEvent.bend doit être 0."""
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     assert events[0].bend == 0
     print("  record_patch_note sans bend → TapeEvent.bend = 0 : OK")
 
@@ -885,7 +889,7 @@ def test_record_patch_note_off_preserves_bend():
     bend_val = -8192
     pl.record_patch_note(60, 100, bend=bend_val)   # duration_ms=None → pending
     pl.record_patch_note_off(60)
-    events = list(pl._pattern._tape.values())[0]
+    events = pl._pattern._tape[0]
     ev = events[0]
     assert ev.bend == bend_val, f"bend {bend_val} doit être conservé après note_off"
     assert ev.dur > 0, "durée doit être > 0 après note_off"
@@ -899,10 +903,10 @@ def test_run_thread_dispatch_passes_bend_to_callback():
 
     bend_val = 8191
     pl.record_patch_note(60, 100, 500, bend=bend_val)
-    key = list(pl._pattern._tape.keys())[0]
+    key = tape_positions(pl._pattern, track=0)[0]
     _, bar_idx, step_idx = key
 
-    note_list = pl._pattern._tape[key]
+    note_list = tape_at(pl._pattern, *key)
     for ev in list(note_list):
         if ev.etype != ETYPE_PATCH:
             continue
@@ -1096,12 +1100,12 @@ def test_run_thread_build_bend_tape_events():
 
 def _flush_pattern_to_store(pat, player_pattern):
     """Simule _flush_pattern_to_store de MainWindow."""
-    pat._tape      = dict(player_pattern._tape)
+    flush_tape(pat, player_pattern)
     pat._bend_tape = [list(t) for t in player_pattern._bend_tape]
 
 def _apply_pattern_from_store(player_pattern, store_pat):
     """Simule _apply_pattern_from_store de MainWindow."""
-    player_pattern._tape      = dict(store_pat._tape)
+    flush_tape(player_pattern, store_pat)
     player_pattern._bend_tape = [list(t) for t in store_pat._bend_tape]
 
 def test_flush_and_apply_preserve_bend_tape():
@@ -1188,7 +1192,7 @@ def test_integration_record_json_reload():
     pl.record_bend(-2048)
 
     store = Pattern()
-    store._tape      = dict(pl._pattern._tape)
+    flush_tape(store, pl._pattern)
     store._bend_tape = [list(t) for t in pl._pattern._bend_tape]
 
     try:
@@ -1200,10 +1204,10 @@ def test_integration_record_json_reload():
     restored.from_dict(_json.loads(json_str))
 
     pl2 = _make_player()
-    pl2._pattern._tape      = dict(restored._tape)
+    flush_tape(pl2._pattern, restored)
     pl2._pattern._bend_tape = [list(t) for t in restored._bend_tape]
 
-    assert pl2._pattern._tape      == pl._pattern._tape,      "_tape perdu"
+    assert tapes_equal_strict(pl2._pattern._tape, pl._pattern._tape), "_tape perdu"
     assert pl2._pattern._bend_tape == pl._pattern._bend_tape, "bend_tape perdu"
     print("  intégration record→JSON→rechargement préserve _tape + _bend_tape : OK")
 
@@ -1217,17 +1221,17 @@ def test_integration_record_json_reload_all_tracks():
     pl._cur_track = 3; pl.record_patch_note(67, 80, 200, bend=-500)
 
     store = Pattern()
-    store._tape      = dict(pl._pattern._tape)
+    flush_tape(store, pl._pattern)
     store._bend_tape = [list(t) for t in pl._pattern._bend_tape]
 
     restored = Pattern()
     restored.from_dict(_json.loads(_json.dumps(store.to_dict(), separators=(',', ':'))))
 
     pl2 = _make_player()
-    pl2._pattern._tape      = dict(restored._tape)
+    flush_tape(pl2._pattern, restored)
     pl2._pattern._bend_tape = [list(t) for t in restored._bend_tape]
 
-    assert pl2._pattern._tape      == pl._pattern._tape
+    assert tapes_equal_strict(pl2._pattern._tape, pl._pattern._tape)
     assert pl2._pattern._bend_tape == pl._pattern._bend_tape
     print("  intégration multi-pistes record→JSON→rechargement : OK")
 
@@ -1456,7 +1460,7 @@ def test_integration_record_json_reload_with_mod():
     pl.record_mod(127)
 
     store = Pattern()
-    store._tape      = dict(pl._pattern._tape)
+    flush_tape(store, pl._pattern)
     store._bend_tape = [list(t) for t in pl._pattern._bend_tape]
     store._mod_tape  = [list(t) for t in pl._pattern._mod_tape]
 
@@ -1469,11 +1473,11 @@ def test_integration_record_json_reload_with_mod():
     restored.from_dict(_json.loads(json_str))
 
     pl2 = _make_player()
-    pl2._pattern._tape      = dict(restored._tape)
+    flush_tape(pl2._pattern, restored)
     pl2._pattern._bend_tape = [list(t) for t in restored._bend_tape]
     pl2._pattern._mod_tape  = [list(t) for t in restored._mod_tape]
 
-    assert pl2._pattern._tape      == pl._pattern._tape,      "_tape perdu"
+    assert tapes_equal_strict(pl2._pattern._tape, pl._pattern._tape), "_tape perdu"
     assert pl2._pattern._bend_tape == pl._pattern._bend_tape, "bend_tape perdu"
     assert pl2._pattern._mod_tape  == pl._pattern._mod_tape,  "mod_tape perdu"
     print("  intégration record→JSON→rechargement préserve _tape+bend+mod : OK")
@@ -1502,20 +1506,20 @@ def test_compute_offsets_reflects_existing_G_events():
 def test_compute_offsets_does_not_mutate_tape():
     """_compute_offsets est une projection en lecture seule : elle ne modifie plus _tape."""
     pl = _make_player()
-    pl._pattern._tape[(0, 0, 5)] = [TapeEvent(ETYPE_GRID, 2, 100, 0, 0)]
+    set_tape_at(pl._pattern, 0, 0, 5, [TapeEvent(ETYPE_GRID, 2, 100, 0, 0)])
     pl._compute_offsets()
-    assert (0, 0, 5) in pl._pattern._tape, "compute_offsets ne doit plus supprimer d'entrées _tape"
+    assert has_tape_at(pl._pattern, 0, 0, 5), "compute_offsets ne doit plus supprimer d'entrées _tape"
     print("  _compute_offsets ne mute plus _tape (lecture seule) : OK")
 
 
 def test_compute_offsets_preserves_K_and_P():
     """_compute_offsets ne touche pas les événements K et P existants."""
     pl = _make_player()
-    pl._pattern._tape[(0, 0, 3)] = [TapeEvent(ETYPE_KIT, 36, 100, 0, 0),
-                                     TapeEvent(ETYPE_PATCH, 60, 90, 400, 0)]
+    set_tape_at(pl._pattern, 0, 0, 3, [TapeEvent(ETYPE_KIT, 36, 100, 0, 0),
+                                        TapeEvent(ETYPE_PATCH, 60, 90, 400, 0)])
     pl._compute_offsets()   # lecture seule : ne mute pas _tape
-    assert (0, 0, 3) in pl._pattern._tape, "clé (0,0,3) ne doit pas disparaître"
-    etypes = [ev.etype for ev in pl._pattern._tape[(0, 0, 3)]]
+    assert has_tape_at(pl._pattern, 0, 0, 3), "clé (0,0,3) ne doit pas disparaître"
+    etypes = [ev.etype for ev in tape_at(pl._pattern, 0, 0, 3)]
     assert ETYPE_KIT in etypes, "K doit rester"
     assert ETYPE_PATCH in etypes, "P doit rester"
     print("  _compute_offsets préserve les événements K et P : OK")
@@ -1526,8 +1530,8 @@ def test_record_hit_adds_G_to_tape():
     pl = _make_player()
     bar_idx, step_idx = pl.record_hit(5, 90)
     key = (0, bar_idx, step_idx)
-    assert key in pl._pattern._tape, "clé absente de _tape après record_hit"
-    g_events = [ev for ev in pl._pattern._tape[key]
+    assert has_tape_at(pl._pattern, *key), "clé absente de _tape après record_hit"
+    g_events = [ev for ev in tape_at(pl._pattern, *key)
                 if ev.etype == ETYPE_GRID and ev.note == 5]
     assert len(g_events) == 1, f"attendu 1 'G' pour pad 5, obtenu {len(g_events)}"
     assert g_events[0].vel == 90
@@ -1539,7 +1543,7 @@ def test_record_hit_G_velocity_clamped():
     pl = _make_player()
     bar_idx, step_idx = pl.record_hit(0, 200)
     key = (0, bar_idx, step_idx)
-    g_events = [ev for ev in pl._pattern._tape[key] if ev.etype == ETYPE_GRID]
+    g_events = [ev for ev in tape_at(pl._pattern, *key) if ev.etype == ETYPE_GRID]
     assert g_events[0].vel == 127
     print("  record_hit clamp vélocité 'G' à 127 : OK")
 
@@ -1550,7 +1554,7 @@ def test_record_hit_replaces_existing_G():
     pl.record_hit(2, 80)
     pl.record_hit(2, 120)   # même position (_measure_start=None → step 0)
     key = (0, 0, 0)
-    g_events = [ev for ev in pl._pattern._tape[key]
+    g_events = [ev for ev in tape_at(pl._pattern, *key)
                 if ev.etype == ETYPE_GRID and ev.note == 2]
     assert len(g_events) == 1, f"doublon 'G' interdit, obtenu {len(g_events)}"
     assert g_events[0].vel == 120, "vélocité doit être mise à jour"
@@ -1562,8 +1566,8 @@ def test_record_nr_hit_adds_G_to_tape():
     pl = _make_player()
     pl._record_nr_hit(7, 4.0)   # pad 7, offset flottant 4.0 → step 4
     key = (0, 0, 4)
-    assert key in pl._pattern._tape, "clé (0,0,4) absente après _record_nr_hit"
-    g_events = [ev for ev in pl._pattern._tape[key]
+    assert has_tape_at(pl._pattern, *key), "clé (0,0,4) absente après _record_nr_hit"
+    g_events = [ev for ev in tape_at(pl._pattern, *key)
                 if ev.etype == ETYPE_GRID and ev.note == 7]
     assert len(g_events) == 1
     assert g_events[0].vel == 100
@@ -1575,9 +1579,9 @@ def test_erase_hit_removes_G_from_tape():
     pl = _make_player()
     bar_idx, step_idx = pl.record_hit(3, 100)
     key = (0, bar_idx, step_idx)
-    assert key in pl._pattern._tape, "précondition : 'G' présent"
+    assert has_tape_at(pl._pattern, *key), "précondition : 'G' présent"
     pl.erase_hit(3)
-    g_after = [ev for ev in pl._pattern._tape.get(key, [])
+    g_after = [ev for ev in tape_at(pl._pattern, *key)
                if ev.etype == ETYPE_GRID and ev.note == 3]
     assert len(g_after) == 0, "'G' doit être supprimé après erase_hit"
     print("  erase_hit supprime TapeEvent('G') de _tape : OK")
@@ -1588,9 +1592,9 @@ def test_clear_offset_removes_G_from_tape():
     pl = _make_player()
     pl._record_nr_hit(6, 2.0)   # pad 6, step 2
     key = (0, 0, 2)
-    assert key in pl._pattern._tape, "précondition : 'G' présent"
+    assert has_tape_at(pl._pattern, *key), "précondition : 'G' présent"
     pl._clear_offset(6, 2.0)
-    g_after = [ev for ev in pl._pattern._tape.get(key, [])
+    g_after = [ev for ev in tape_at(pl._pattern, *key)
                if ev.etype == ETYPE_GRID and ev.note == 6]
     assert len(g_after) == 0, "'G' doit être supprimé après _clear_offset"
     print("  _clear_offset supprime TapeEvent('G') de _tape : OK")
@@ -1612,7 +1616,7 @@ def test_G_and_K_coexist_at_same_step():
     pl.record_hit(0, 100)          # 'G' note=0 → key = (0, 0, 0)
     pl.record_kit_note(36, 100)    # 'K' note=36 → même key = (0, 0, 0)
     key = (0, 0, 0)
-    etypes = [ev.etype for ev in pl._pattern._tape.get(key, [])]
+    etypes = [ev.etype for ev in tape_at(pl._pattern, *key)]
     assert ETYPE_GRID in etypes, "'G' doit être présent"
     assert ETYPE_KIT in etypes, "'K' doit être présent"
     print("  'G' et 'K' cohabitent au même (track, bar, step) : OK")
@@ -1623,7 +1627,7 @@ def test_run_thread_GRID_EVENT_dispatch():
     pl = _make_player()
     pl.record_hit(5, 90)
     key = (0, 0, 0)
-    note_list = pl._pattern._tape.get(key, [])
+    note_list = tape_at(pl._pattern, *key)
 
     events = []
     for ev in note_list:

@@ -14,6 +14,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at, same_events
 
 
 def _K(note, vel=100, dur=0):
@@ -38,7 +39,7 @@ def test_set_cell_then_get_cell():
     p = Pattern()
     p.set_cell(0, 3, 0, 5, 100)
     assert p.get_cell(0, 3, 0, 5) == 100
-    assert p._tape[(0, 0, 5)] == [TapeEvent(ETYPE_GRID, 3, 100, 0, 0)]
+    assert tape_at(p, 0, 0, 5) == [TapeEvent(ETYPE_GRID, 3, 100, 0, 0)]
     print("  set_cell → get_cell : OK")
 
 
@@ -58,7 +59,7 @@ def test_set_cell_zero_removes_event():
     p.set_cell(0, 0, 0, 0, 100)
     p.set_cell(0, 0, 0, 0, 0)
     assert p.get_cell(0, 0, 0, 0) == 0
-    assert (0, 0, 0) not in p._tape
+    assert not has_tape_at(p, 0, 0, 0)
     print("  set_cell(0) supprime l'event : OK")
 
 
@@ -67,7 +68,7 @@ def test_set_cell_overwrites_same_pad():
     p.set_cell(0, 0, 0, 0, 100)
     p.set_cell(0, 0, 0, 0, 50)
     assert p.get_cell(0, 0, 0, 0) == 50
-    assert len(p._tape[(0, 0, 0)]) == 1
+    assert len(tape_at(p, 0, 0, 0)) == 1
     print("  set_cell réécrit (pas de doublon) : OK")
 
 
@@ -77,21 +78,20 @@ def test_multiple_pads_same_offset():
     p.set_cell(0, 7, 0, 4, 110)
     assert p.get_cell(0, 2, 0, 4) == 80
     assert p.get_cell(0, 7, 0, 4) == 110
-    assert len(p._tape[(0, 0, 4)]) == 2
+    assert len(tape_at(p, 0, 0, 4)) == 2
     print("  plusieurs pads au même offset : OK")
 
 
 def test_set_cell_coexists_with_kp_events():
     p = Pattern()
-    key = (0, 0, 4)
-    p._tape[key] = [_K(60, 90), _P(61, 70, 200, 50)]
+    set_tape_at(p, 0, 0, 4, [_K(60, 90), _P(61, 70, 200, 50)])
     p.set_cell(0, 3, 0, 4, 100)
-    assert set(p._tape[key]) == {
+    assert same_events(tape_at(p, 0, 0, 4), [
         _K(60, 90), _P(61, 70, 200, 50), TapeEvent(ETYPE_GRID, 3, 100, 0, 0)
-    }
+    ])
     # Effacer la note G ne touche pas K/P
     p.set_cell(0, 3, 0, 4, 0)
-    assert set(p._tape[key]) == {_K(60, 90), _P(61, 70, 200, 50)}
+    assert same_events(tape_at(p, 0, 0, 4), [_K(60, 90), _P(61, 70, 200, 50)])
     print("  set_cell coexiste avec K/P sur la même clé : OK")
 
 
@@ -113,11 +113,10 @@ def test_clear_grid_pad_only_removes_matching_pad():
 
 def test_clear_grid_pad_preserves_kp():
     p = Pattern()
-    key = (0, 0, 0)
-    p._tape[key] = [_K(60, 90)]
+    set_tape_at(p, 0, 0, 0, [_K(60, 90)])
     p.set_cell(0, 1, 0, 0, 100)
     p.clear_grid_pad(0, 1)
-    assert p._tape[key] == [_K(60, 90)]
+    assert tape_at(p, 0, 0, 0) == [_K(60, 90)]
     print("  clear_grid_pad préserve K/P : OK")
 
 
@@ -126,12 +125,12 @@ def test_clear_grid_box_range_and_kp_preserved():
     p.set_cell(0, 0, 0, 0, 100)
     p.set_cell(0, 1, 0, 5, 100)
     p.set_cell(0, 0, 0, 10, 100)   # hors plage
-    p._tape.setdefault((0, 0, 5), []).append(_K(64, 90))
+    add_tape_at(p, 0, 0, 5, _K(64, 90))
     p.clear_grid_box(tracks=[0], bars=[0], steps=range(0, 8))
     assert p.get_cell(0, 0, 0, 0) == 0
     assert p.get_cell(0, 1, 0, 5) == 0
     assert p.get_cell(0, 0, 0, 10) == 100   # hors plage : conservé
-    assert any(ev.etype == ETYPE_KIT for ev in p._tape.get((0, 0, 5), []))
+    assert any(ev.etype == ETYPE_KIT for ev in tape_at(p, 0, 0, 5))
     print("  clear_grid_box respecte la plage et préserve K/P : OK")
 
 
@@ -166,7 +165,7 @@ def test_iter_grid_filters_by_track_and_etype():
     p = Pattern()
     p.set_cell(0, 1, 0, 0, 100)
     p.set_cell(1, 2, 0, 3, 80)
-    p._tape.setdefault((0, 0, 0), []).append(_K(60, 90))
+    add_tape_at(p, 0, 0, 0, _K(60, 90))
     all_g = sorted(p.iter_grid())
     assert all_g == [(0, 1, 0, 0, 100), (1, 2, 0, 3, 80)]
     track0_only = sorted(p.iter_grid(track=0))
@@ -202,7 +201,7 @@ def test_copy_from_copies_dims_tape_bend_mod():
     src = Pattern()
     src.resize(3, 32)
     src.set_cell(0, 1, 2, 10, 90)
-    src._tape.setdefault((0, 2, 10), []).append(_K(60, 90))
+    add_tape_at(src, 0, 2, 10, _K(60, 90))
     src._bend_tape[0].append((5.0, 1000))
     src._mod_tape[0].append((5.0, 64))
 
@@ -212,7 +211,7 @@ def test_copy_from_copies_dims_tape_bend_mod():
     assert dst._num_bars  == 3
     assert dst._num_steps == 32
     assert dst.get_cell(0, 1, 2, 10) == 90
-    assert any(ev.etype == ETYPE_KIT for ev in dst._tape[(0, 2, 10)])
+    assert any(ev.etype == ETYPE_KIT for ev in tape_at(dst, 0, 2, 10))
     assert dst._bend_tape[0] == [(5.0, 1000)]
     assert dst._mod_tape[0]  == [(5.0, 64)]
     print("  copy_from copie dims + tape + bend + mod : OK")

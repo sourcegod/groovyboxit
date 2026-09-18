@@ -442,17 +442,15 @@ def test_quant_window_0_leaves_off_grid_note():
 # ---------------------------------------------------------------------------
 
 from pattern import TapeEvent as _TapeEvent, ETYPE_KIT as _ETYPE_KIT
+from tape_test_utils import add_tape_at, tape_at, tape_positions
 
 def _add_K(player, bar, step, dur=500):
     """Ajoute un TapeEvent K sur la piste 0."""
-    key = (0, bar, step)
-    player._pattern._tape.setdefault(key, []).append(
-        _TapeEvent(_ETYPE_KIT, 0, 100, dur, 0)
-    )
+    add_tape_at(player._pattern, 0, bar, step, _TapeEvent(_ETYPE_KIT, 0, 100, dur, 0))
 
 def _tape_pos(player):
     """Retourne les positions (bar, step) des événements sur la piste 0."""
-    return {(b, s) for (t, b, s) in player._pattern._tape if t == 0}
+    return {(b, s) for (t, b, s) in tape_positions(player._pattern) if t == 0}
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +493,7 @@ def test_quant_tape_durations_snaps_duration():
     _add_K(player, 0, 0, dur=250)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    quant_starts=False, quant_durations=True)
-    evs = player._pattern._tape.get((0, 0, 0), [])
+    evs = tape_at(player._pattern, 0, 0, 0)
     assert evs and evs[0].dur == 500
     print("  tape quant_durations=True : dur 250ms → 500ms : OK")
 
@@ -506,10 +504,7 @@ def test_quant_tape_durations_false_leaves_duration():
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    quant_starts=True, quant_durations=False)
     # position snappée (step 0 → step 0, nearest grid), durée inchangée
-    evs = []
-    for (t, b, s), lst in player._pattern._tape.items():
-        if t == 0:
-            evs.extend(lst)
+    evs = list(player._pattern._tape[0])
     assert evs and evs[0].dur == 250
     print("  tape quant_durations=False : dur 250ms inchangée : OK")
 
