@@ -12,8 +12,8 @@ from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 class MidiEditor:
     """Logique d'édition des événements MIDI d'un pattern.
 
-    Source unique : _tape[(track, bar, step)] = [TapeEvent], etype
-    ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH.
+    Source unique : _tape[track] = [TapeEvent, ...] (liste plate, position =
+    TapeEvent.time), etype ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH.
     Mode étendu (VIEW_ALL) : _tape (idem) + _bend_tape + _mod_tape.
     """
 
@@ -29,25 +29,34 @@ class MidiEditor:
     # ------------------------------------------------------------------
 
     def get_note_events(self, pattern, track_idx, lim_left=None, lim_right=None):
-        """Retourne toutes les notes (GRID/KIT/PATCH) d'une piste, depuis _tape."""
-        events = []
+        """Retourne toutes les notes (GRID/KIT/PATCH) d'une piste, depuis _tape.
 
-        for (t, b, s), tape_list in sorted(pattern._tape.items()):
-            if t != track_idx:
-                continue
-            offset = b * pattern._num_steps + s
+        event_idx : position de l'événement parmi ceux à la même position
+        (time) sur cette piste — recalculé de la même façon dans
+        _delete_tape_event/edit_tape_note/duplicate_event/insert_note.
+        """
+        events = []
+        if track_idx >= len(pattern._tape):
+            return events
+
+        by_time = {}
+        for ev in pattern._tape[track_idx]:
+            by_time.setdefault(ev.time, []).append(ev)
+
+        for offset in sorted(by_time):
             if lim_left  is not None and offset < lim_left:
                 continue
             if lim_right is not None and offset > lim_right:
                 continue
-            for i, ev in enumerate(tape_list):
+            b, s = pattern._time_to_bar_step(offset)
+            for i, ev in enumerate(by_time[offset]):
                 if ev.etype == ETYPE_GRID:
                     dur = (pattern._voices[ev.note]["duration_ms"]
                            if ev.note < len(pattern._voices) else 500)
                     events.append({
                         "type":      "note",
                         "etype":     ETYPE_GRID,
-                        "track":     t,
+                        "track":     track_idx,
                         "pad":       ev.note,
                         "bar":       b,
                         "step":      s,
@@ -60,7 +69,7 @@ class MidiEditor:
                     events.append({
                         "type":      "note",
                         "etype":     ev.etype,
-                        "track":     t,
+                        "track":     track_idx,
                         "bar":       b,
                         "step":      s,
                         "offset":    offset,
@@ -211,17 +220,17 @@ class MidiEditor:
         return True
 
     def _delete_tape_event(self, pattern, ev):
-        key = (ev["track"], ev["bar"], ev["step"])
+        t    = ev["track"]
+        time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+        idx  = ev.get("event_idx", -1)
         with pattern._lock:
-            lst = pattern._tape.get(key)
-            if lst is None:
+            if t >= len(pattern._tape):
                 return False
-            idx = ev.get("event_idx", -1)
-            if idx < 0 or idx >= len(lst):
+            track_list = pattern._tape[t]
+            matches = [i for i, e in enumerate(track_list) if e.time == time]
+            if idx < 0 or idx >= len(matches):
                 return False
-            del lst[idx]
-            if not lst:
-                del pattern._tape[key]
+            del track_list[matches[idx]]
         return True
 
     # ------------------------------------------------------------------
@@ -272,9 +281,9 @@ class MidiEditor:
         etype = ev.get("etype")
         if etype not in (ETYPE_KIT, ETYPE_PATCH):
             return None
-        old_key = (ev["track"], ev["bar"], ev["step"])
-        old_idx = ev.get("event_idx", -1)
         t       = ev["track"]
+        old_time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+        old_idx = ev.get("event_idx", -1)
         n_note  = new_note if new_note is not None else ev["pad"]
         n_vel   = max(1, min(127, new_vel  if new_vel  is not None else ev["vel"]))
         n_bar   = new_bar  if new_bar  is not None else ev["bar"]
@@ -285,25 +294,24 @@ class MidiEditor:
             return None
         if n_step < 0 or n_step >= pattern._num_steps:
             return None
+        new_time = pattern._bar_step_to_time(n_bar, n_step)
         with pattern._lock:
-            lst = pattern._tape.get(old_key)
-            if lst is None or old_idx < 0 or old_idx >= len(lst):
+            if t >= len(pattern._tape):
                 return None
-            del lst[old_idx]
-            if not lst:
-                del pattern._tape[old_key]
-            new_key = (t, n_bar, n_step)
-            pattern._tape.setdefault(new_key, []).append(
-                TapeEvent(etype, n_note, n_vel, n_dur, n_bend)
-            )
-            new_idx = len(pattern._tape[new_key]) - 1
+            track_list = pattern._tape[t]
+            matches = [i for i, e in enumerate(track_list) if e.time == old_time]
+            if old_idx < 0 or old_idx >= len(matches):
+                return None
+            del track_list[matches[old_idx]]
+            track_list.append(TapeEvent(etype, n_note, n_vel, n_dur, n_bend, time=new_time))
+            new_idx = sum(1 for e in track_list if e.time == new_time) - 1
         return {
             "type":      "note",
             "etype":     etype,
             "track":     t,
             "bar":       n_bar,
             "step":      n_step,
-            "offset":    n_bar * pattern._num_steps + n_step,
+            "offset":    new_time,
             "pad":       n_note,
             "vel":       n_vel,
             "dur":       n_dur,
@@ -506,13 +514,16 @@ class MidiEditor:
             }
         if etype in (ETYPE_KIT, ETYPE_PATCH):
             from pattern import TapeEvent
-            key = (ev["track"], ev["bar"], ev["step"])
+            t    = ev["track"]
+            time = pattern._bar_step_to_time(ev["bar"], ev["step"])
             with pattern._lock:
-                pattern._tape.setdefault(key, []).append(
+                pattern._ensure_track_count(t + 1)
+                track_list = pattern._tape[t]
+                track_list.append(
                     TapeEvent(etype, ev["pad"], ev["vel"],
-                              ev.get("dur", 500), ev.get("bend", 0))
+                              ev.get("dur", 500), ev.get("bend", 0), time=time)
                 )
-                new_idx = len(pattern._tape[key]) - 1
+                new_idx = sum(1 for e in track_list if e.time == time) - 1
             return {
                 "type":      "note",
                 "etype":     etype,
@@ -568,12 +579,14 @@ class MidiEditor:
                 "dur":    dur_v,
             }
         from pattern import TapeEvent
-        pad = max(0, min(127, pad))
-        dur = max(10, dur)
-        key = (track, bar, step)
+        pad  = max(0, min(127, pad))
+        dur  = max(10, dur)
+        time = pattern._bar_step_to_time(bar, step)
         with pattern._lock:
-            pattern._tape.setdefault(key, []).append(TapeEvent(etype, pad, vel, dur, bend))
-            new_idx = len(pattern._tape[key]) - 1
+            pattern._ensure_track_count(track + 1)
+            track_list = pattern._tape[track]
+            track_list.append(TapeEvent(etype, pad, vel, dur, bend, time=time))
+            new_idx = sum(1 for e in track_list if e.time == time) - 1
         return {
             "type":      "note",
             "etype":     etype,

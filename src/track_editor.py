@@ -201,13 +201,23 @@ class TrackEditor:
                 if dst_bar >= pattern._num_bars or step >= pattern._num_steps:
                     continue
                 abs_t = cur_track + rel_t
-                key = (abs_t, dst_bar, step)
+                time  = pattern._bar_step_to_time(dst_bar, step)
+                pattern._ensure_track_count(abs_t + 1)
+                track_list = pattern._tape[abs_t]
+                # Recopie chaque événement du presse-papier à la position de destination
+                # (son .time d'origine, relatif à la source, n'est pas réutilisable ici).
+                incoming = [
+                    TapeEvent(ev.etype, dur=ev.dur, channel=ev.channel,
+                              payload=ev.payload, time=time)
+                    for ev in events
+                ]
                 if merge:
-                    pattern._tape[key] = self._merge_events(
-                        pattern._tape.get(key, []), events
-                    )
+                    existing = [ev for ev in track_list if ev.time == time]
+                    track_list[:] = [ev for ev in track_list if ev.time != time]
+                    track_list.extend(self._merge_events(existing, incoming))
                 else:
-                    pattern._tape[key] = list(events)
+                    track_list[:] = [ev for ev in track_list if ev.time != time]
+                    track_list.extend(incoming)
 
         return True
 
@@ -313,11 +323,12 @@ class TrackEditor:
                     pattern.set_cell(abs_track, pad, bar, step, ev["vel"])
                     pasted += 1
             elif ev["etype"] in (ETYPE_KIT, ETYPE_PATCH):
-                te  = TapeEvent(ev["etype"], ev["pad"], ev["vel"],
-                                ev["dur"], ev.get("bend", 0))
-                key = (abs_track, bar, step)
+                time = pattern._bar_step_to_time(bar, step)
+                te   = TapeEvent(ev["etype"], ev["pad"], ev["vel"],
+                                 ev["dur"], ev.get("bend", 0), time=time)
                 with pattern._lock:
-                    pattern._tape.setdefault(key, []).append(te)
+                    pattern._ensure_track_count(abs_track + 1)
+                    pattern._tape[abs_track].append(te)
                 pasted += 1
         return pasted
 
@@ -342,18 +353,25 @@ class TrackEditor:
             num_bars  = max(1, end_bar - start_bar + 1)
             tape = {}
             with pattern._lock:
-                for (t, bar, step), events in pattern._tape.items():
-                    if t in tracks and start_bar <= bar <= end_bar:
-                        rel = tracks.index(t)
-                        tape[(rel, bar - start_bar, step)] = list(events)
+                for t in tracks:
+                    if t >= len(pattern._tape):
+                        continue
+                    rel = tracks.index(t)
+                    for ev in pattern._tape[t]:
+                        bar, step = pattern._time_to_bar_step(ev.time)
+                        if start_bar <= bar <= end_bar:
+                            tape.setdefault((rel, bar - start_bar, step), []).append(ev)
         else:
             num_bars = pattern._num_bars
             tape = {}
             with pattern._lock:
-                for (t, bar, step), events in pattern._tape.items():
-                    if t in tracks:
-                        rel = tracks.index(t)
-                        tape[(rel, bar, step)] = list(events)
+                for t in tracks:
+                    if t >= len(pattern._tape):
+                        continue
+                    rel = tracks.index(t)
+                    for ev in pattern._tape[t]:
+                        bar, step = pattern._time_to_bar_step(ev.time)
+                        tape.setdefault((rel, bar, step), []).append(ev)
         return _ClipboardData(
             num_tracks = len(tracks),
             num_bars   = num_bars,
@@ -374,13 +392,9 @@ class TrackEditor:
     def _erase_tape_range(self, pattern, track, lim_l, lim_r):
         """Efface _tape, _bend_tape, _mod_tape pour `track` dans [lim_l, lim_r]."""
         with pattern._lock:
-            to_del = [
-                k for k in pattern._tape
-                if k[0] == track
-                and lim_l <= k[1] * pattern._num_steps + k[2] <= lim_r
-            ]
-            for k in to_del:
-                del pattern._tape[k]
+            if track < len(pattern._tape):
+                track_list = pattern._tape[track]
+                track_list[:] = [ev for ev in track_list if not (lim_l <= ev.time <= lim_r)]
         if track < len(pattern._bend_tape):
             pattern._bend_tape[track] = [
                 (off, b) for off, b in pattern._bend_tape[track]

@@ -81,7 +81,7 @@ class DrumPlayer:
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
         self._on_mod_tape_cb      = None  # callback(track_idx, mod_value) lecture automation mod wheel
-        self._pending_patch       = {}    # {midi_note: (key, entry_idx, t_start)} — note_on en attente de note_off
+        self._pending_patch       = {}    # {midi_note: (track, TapeEvent, t_start)} — note_on en attente de note_off
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
@@ -457,14 +457,14 @@ class DrumPlayer:
                 # Snapshot atomique sous verrou — immunise contre les modifications
                 # concurrentes (record_*, erase_*) pendant l'itération.
                 with self._pattern._lock:
-                    tape_snap = {k: list(v) for k, v in self._pattern._tape.items()}
-                for (t_idx, bar_idx, step_idx), note_list in tape_snap.items():
-                    float_off = bar_idx * num_steps + step_idx
-                    if not (lp_start <= float_off <= lp_end):
-                        continue
-                    t_sec = (float_off - lp_start) * self.step_duration
-                    if t_sec > elapsed - 0.002:
-                        for ev in note_list:
+                    tape_snap = [list(track_list) for track_list in self._pattern._tape]
+                for t_idx, note_list in enumerate(tape_snap):
+                    for ev in note_list:
+                        float_off = ev.time
+                        if not (lp_start <= float_off <= lp_end):
+                            continue
+                        t_sec = (float_off - lp_start) * self.step_duration
+                        if t_sec > elapsed - 0.002:
                             if ev.etype == ETYPE_GRID:
                                 events.append((t_sec, self.GRID_EVENT,
                                                (t_idx, ev.note), ev.vel))
@@ -806,18 +806,13 @@ class DrumPlayer:
         """Efface un événement tape au passage (appelé par _run_thread en mode Erase)."""
         total_steps = self._pattern._num_bars * self._pattern._num_steps
         float_off   = t_sec / self.step_duration
-        step        = round(float_off) % total_steps
-        bar_idx     = step // self._pattern._num_steps
-        step_idx    = step % self._pattern._num_steps
-        key         = (track_idx, bar_idx, step_idx)
+        time_val    = float(round(float_off) % total_steps)
         with self._pattern._lock:
-            events = self._pattern._tape.get(key)
-            if events is None:
+            if track_idx >= len(self._pattern._tape):
                 return
-            events[:] = [e for e in events
-                         if not (e.note == midi_note and e.etype == etype)]
-            if not events:
-                self._pattern._tape.pop(key, None)
+            track_list = self._pattern._tape[track_idx]
+            track_list[:] = [e for e in track_list
+                              if not (e.time == time_val and e.note == midi_note and e.etype == etype)]
 
     def erase_hit(self, pad_idx):
         if not self.float_offsets[pad_idx]:
@@ -860,31 +855,32 @@ class DrumPlayer:
             d = abs(step_f - current) % total_steps
             return min(d, total_steps - d)
 
+        if track_idx >= len(self._pattern._tape):
+            return None
+
         best_dist = float('inf')
-        best_key  = None
-        best_i    = None
+        best_ev   = None
 
-        for (t, b, s), events in self._pattern._tape.items():
-            if t != track_idx:
-                continue
-            dist = circ_dist(b * self._pattern._num_steps + s)
-            for i, ev in enumerate(events):
-                if ev.etype == ETYPE_PATCH and ev.note == midi_note and dist < best_dist:
+        for ev in self._pattern._tape[track_idx]:
+            if ev.etype == ETYPE_PATCH and ev.note == midi_note:
+                dist = circ_dist(ev.time)
+                if dist < best_dist:
                     best_dist = dist
-                    best_key  = (t, b, s)
-                    best_i    = i
+                    best_ev   = ev
 
-        if best_key is None:
+        if best_ev is None:
             return None
 
         with self._pattern._lock:
-            events = self._pattern._tape.get(best_key)
-            if events:
-                events.pop(best_i)
-                if not events:
-                    del self._pattern._tape[best_key]
+            track_list = self._pattern._tape[track_idx]
+            for i, ev in enumerate(track_list):
+                if ev is best_ev:
+                    del track_list[i]
+                    break
+            else:
+                return None
 
-        return best_key[1], best_key[2]   # bar_idx, step_idx
+        return self._pattern._time_to_bar_step(best_ev.time)   # bar_idx, step_idx
 
     #--------------------------------------------------------------------------
 
@@ -973,19 +969,22 @@ class DrumPlayer:
         now = time.perf_counter()
         vel = max(1, min(127, int(velocity)))
         dur = 0 if duration_ms is None else max(0, int(duration_ms))
-        key = (self._cur_track, bar_idx, step_idx)
+        track = self._cur_track
+        time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
+        new_ev = TapeEvent(ETYPE_PATCH, midi_note, vel, dur, bend, time=time_val)
         with self._pattern._lock:
-            events = self._pattern._tape.setdefault(key, [])
+            self._pattern._ensure_track_count(track + 1)
+            events = self._pattern._tape[track]
             for i, ev in enumerate(events):
-                if ev.etype == ETYPE_PATCH and ev.note == midi_note:
-                    events[i] = TapeEvent(ETYPE_PATCH, midi_note, vel, dur, bend)
-                    entry_idx = i
+                if ev.time == time_val and ev.etype == ETYPE_PATCH and ev.note == midi_note:
+                    events[i] = new_ev
                     break
             else:
-                events.append(TapeEvent(ETYPE_PATCH, midi_note, vel, dur, bend))
-                entry_idx = len(events) - 1
+                events.append(new_ev)
         if duration_ms is None:
-            self._pending_patch[midi_note] = (key, entry_idx, now)
+            # Suivi par identité d'objet (pas par index) : robuste si d'autres
+            # événements de cette piste sont insérés/supprimés d'ici le note_off.
+            self._pending_patch[midi_note] = (track, new_ev, now)
         else:
             self._pending_patch.pop(midi_note, None)
         _bend_log(f"REC note_on  note={midi_note} vel={vel} dur={dur} bend={bend} "
@@ -997,14 +996,16 @@ class DrumPlayer:
         pending = self._pending_patch.pop(midi_note, None)
         if pending is None:
             return
-        key, entry_idx, t_start = pending
+        track, target_ev, t_start = pending
         with self._pattern._lock:
-            events = self._pattern._tape.get(key)
-            if events is None or entry_idx >= len(events):
+            events = self._pattern._tape[track]
+            for i, ev in enumerate(events):
+                if ev is target_ev:
+                    duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
+                    events[i] = TapeEvent(ETYPE_PATCH, ev.note, ev.vel, duration_ms, ev.bend, time=ev.time)
+                    break
+            else:
                 return
-            duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
-            ev = events[entry_idx]
-            events[entry_idx] = TapeEvent(ETYPE_PATCH, ev.note, ev.vel, duration_ms, ev.bend)
         _bend_log(f"REC note_off note={midi_note} dur_finale={duration_ms}ms")
 
     #--------------------------------------------------------------------------
@@ -1037,11 +1038,14 @@ class DrumPlayer:
         """Enregistre une note MIDI brute dans _tape (etype=ETYPE_KIT) sans passer par la grille."""
         _, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
-        key = (self._cur_track, bar_idx, step_idx)
+        track = self._cur_track
+        time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
         with self._pattern._lock:
-            events = self._pattern._tape.setdefault(key, [])
-            if not any(ev.etype == ETYPE_KIT and ev.note == midi_note for ev in events):
-                events.append(TapeEvent(ETYPE_KIT, midi_note, vel, 0, 0))
+            self._pattern._ensure_track_count(track + 1)
+            events = self._pattern._tape[track]
+            if not any(ev.time == time_val and ev.etype == ETYPE_KIT and ev.note == midi_note
+                       for ev in events):
+                events.append(TapeEvent(ETYPE_KIT, midi_note, vel, 0, 0, time=time_val))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------

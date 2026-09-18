@@ -138,36 +138,30 @@ class QuantizeManager:
         ms_per_step    = 60000.0 / max(1, p.bpm) / steps_per_beat
         dur_grid       = [max(1.0, i * step_size)
                           for i in range(1, num_bars * denom + 2)]
-        new_tape = {}
+        new_events = []
         with pattern._lock:
-            for (t, b, s), evs in list(pattern._tape.items()):
-                if t != p._cur_track:
-                    new_tape[(t, b, s)] = evs
+            for ev in pattern._tape[p._cur_track]:
+                if ev.etype not in (ETYPE_KIT, ETYPE_PATCH):
+                    new_events.append(ev)
                     continue
-                for ev in evs:
-                    if ev.etype not in (ETYPE_KIT, ETYPE_PATCH):
-                        new_tape.setdefault((t, b, s), []).append(ev)
-                        continue
-                    n_bar, n_step = b, s
-                    if quant_starts:
-                        pos = b * num_steps + float(s)
-                        ng  = _find_target(pos, full_grid)
-                        if _in_window(pos, ng):
-                            new_pos = _snap(pos, ng)
-                            n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
-                            n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
-                    n_dur = ev.dur
-                    if quant_durations and ev.dur > 0:
-                        dur_steps = ev.dur / ms_per_step
-                        ng_dur    = _find_target(dur_steps, dur_grid)
-                        if _in_window(dur_steps, ng_dur):
-                            n_dur = max(10, round(_snap(dur_steps, ng_dur) * ms_per_step))
-                    new_tape.setdefault((t, n_bar, n_step), []).append(
-                        TapeEvent(ev.etype, ev.note, ev.vel, n_dur, ev.bend)
-                    )
-            # Nettoyer les clés vides et mettre à jour
-            pattern._tape.clear()
-            pattern._tape.update({k: v for k, v in new_tape.items() if v})
+                b, s = pattern._time_to_bar_step(ev.time)
+                n_bar, n_step = b, s
+                if quant_starts:
+                    pos = ev.time
+                    ng  = _find_target(pos, full_grid)
+                    if _in_window(pos, ng):
+                        new_pos = _snap(pos, ng)
+                        n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
+                        n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
+                n_dur = ev.dur
+                if quant_durations and ev.dur > 0:
+                    dur_steps = ev.dur / ms_per_step
+                    ng_dur    = _find_target(dur_steps, dur_grid)
+                    if _in_window(dur_steps, ng_dur):
+                        n_dur = max(10, round(_snap(dur_steps, ng_dur) * ms_per_step))
+                new_time = pattern._bar_step_to_time(n_bar, n_step)
+                new_events.append(TapeEvent(ev.etype, ev.note, ev.vel, n_dur, ev.bend, time=new_time))
+            pattern._tape[p._cur_track] = new_events
 
     # ------------------------------------------------------------------
     # Géométrie du pattern

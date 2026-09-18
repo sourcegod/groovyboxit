@@ -1,15 +1,65 @@
 import random
 import threading
-from collections import namedtuple
 
-# Événement enregistré dans _tape.
+# Événement enregistré dans _tape (liste plate par piste, position = time).
 # etype: ETYPE_GRID = grille (pad de la séquence), ETYPE_KIT = kit (note MIDI brute),
 #        ETYPE_PATCH = patch synth (note + bend)
 ETYPE_GRID  = "GRID"
 ETYPE_KIT   = "KIT"
 ETYPE_PATCH = "PATCH"
 
-TapeEvent = namedtuple("TapeEvent", ["etype", "note", "vel", "dur", "bend"])
+
+class TapeEvent:
+    """Événement de _tape : time (position, steps cumulés sur la piste),
+    etype, dur, channel, payload (champs propres au type).
+
+    Constructeur historique compatible : TapeEvent(etype, note, vel, dur, bend)
+    range note/vel/bend dans payload — le temps que les fichiers consommateurs
+    soient migrés vers l'accès direct par payload (Phase 7 étape 1g). note/vel/
+    bend restent lisibles en attendant via les propriétés de compatibilité
+    ci-dessous.
+    """
+
+    __slots__ = ("etype", "time", "dur", "channel", "payload")
+
+    def __init__(self, etype, note=None, vel=None, dur=0, bend=0,
+                 *, time=None, channel=0, payload=None):
+        self.etype   = etype
+        self.time    = time
+        self.dur     = dur
+        self.channel = channel
+        if payload is not None:
+            self.payload = dict(payload)
+        else:
+            self.payload = {}
+            if note is not None:
+                self.payload["pad" if etype == ETYPE_GRID else "note"] = note
+            if vel is not None:
+                self.payload["vel"] = vel
+            if etype == ETYPE_PATCH:
+                self.payload["bend"] = bend
+
+    @property
+    def note(self):
+        return self.payload.get("pad") if self.etype == ETYPE_GRID else self.payload.get("note")
+
+    @property
+    def vel(self):
+        return self.payload.get("vel")
+
+    @property
+    def bend(self):
+        return self.payload.get("bend", 0)
+
+    def __eq__(self, other):
+        if not isinstance(other, TapeEvent):
+            return NotImplemented
+        return (self.etype == other.etype and self.dur == other.dur
+                and self.channel == other.channel and self.payload == other.payload)
+
+    def __repr__(self):
+        return (f"TapeEvent({self.etype!r}, time={self.time!r}, dur={self.dur!r}, "
+                f"channel={self.channel!r}, payload={self.payload!r})")
 
 
 class Track:
@@ -112,8 +162,8 @@ class Pattern:
             for _ in range(self._num_pads)
         ]
 
-        # Capture MIDI brute unifiée : {(track, bar, step): [TapeEvent]}
-        self._tape = {}
+        # Capture MIDI brute unifiée : liste plate par piste, position = TapeEvent.time
+        self._tape = [[] for _ in range(self._num_tracks)]
         # Verrou pour les accès concurrents _run_thread / thread UI
         self._lock = threading.RLock()
 
@@ -135,6 +185,20 @@ class Pattern:
             return 100 if v else 0
         return max(0, min(127, int(v)))
 
+    def _bar_step_to_time(self, bar, step):
+        """Position (bar,step) → time (steps cumulés), convention _bend_tape/_mod_tape."""
+        return bar * self._num_steps + step
+
+    def _time_to_bar_step(self, time):
+        """time (steps cumulés) → (bar, step), inverse de _bar_step_to_time."""
+        bar, step = divmod(int(time), self._num_steps)
+        return bar, step
+
+    def _ensure_track_count(self, n):
+        """Étend _tape (liste de listes) pour couvrir au moins n pistes."""
+        while len(self._tape) < n:
+            self._tape.append([])
+
     def _make_empty(self):
         return [
             [
@@ -151,53 +215,48 @@ class Pattern:
 
     def get_cell(self, track, pad, bar, step):
         """Vélocité (0..127) de la note grille (track,pad) à (bar,step). 0 si absente."""
-        for ev in self._tape.get((track, bar, step), ()):
-            if ev.etype == ETYPE_GRID and ev.note == pad:
+        if track >= len(self._tape):
+            return 0
+        time = self._bar_step_to_time(bar, step)
+        for ev in self._tape[track]:
+            if ev.time == time and ev.etype == ETYPE_GRID and ev.note == pad:
                 return ev.vel
         return 0
 
     def set_cell(self, track, pad, bar, step, value):
         """Écrit (value>0) ou efface (value<=0) la note grille (track,pad) à (bar,step)."""
         vel = Pattern._norm_vel(value)
-        key = (track, bar, step)
+        time = self._bar_step_to_time(bar, step)
         with self._lock:
-            evs = self._tape.get(key)
-            if evs is not None:
-                evs[:] = [ev for ev in evs if not (ev.etype == ETYPE_GRID and ev.note == pad)]
-                if not evs:
-                    del self._tape[key]
+            self._ensure_track_count(track + 1)
+            track_list = self._tape[track]
+            track_list[:] = [ev for ev in track_list
+                              if not (ev.time == time and ev.etype == ETYPE_GRID and ev.note == pad)]
             if vel > 0:
-                self._tape.setdefault(key, []).append(TapeEvent(ETYPE_GRID, pad, vel, 0, 0))
+                track_list.append(TapeEvent(ETYPE_GRID, pad, vel, 0, 0, time=time))
 
     def clear_grid_pad(self, track, pad):
         """Efface toutes les notes GRID d'un pad sur une piste (toutes mesures)."""
         with self._lock:
-            for key in list(self._tape.keys()):
-                if key[0] != track:
-                    continue
-                evs = self._tape[key]
-                evs[:] = [ev for ev in evs if not (ev.etype == ETYPE_GRID and ev.note == pad)]
-                if not evs:
-                    del self._tape[key]
+            if track >= len(self._tape):
+                return
+            track_list = self._tape[track]
+            track_list[:] = [ev for ev in track_list if not (ev.etype == ETYPE_GRID and ev.note == pad)]
 
     def clear_grid_box(self, tracks, bars, steps):
         """Efface les notes GRID dans un rectangle track×bar×step.
 
         Ne filtre que etype==ETYPE_GRID : ne supprime jamais un TapeEvent KIT/PATCH
-        coexistant à la même clé _tape.
+        coexistant à la même position dans _tape.
         """
-        track_set = set(tracks)
-        bar_set   = set(bars)
-        step_set  = set(steps)
+        time_set = {self._bar_step_to_time(b, s) for b in bars for s in steps}
         with self._lock:
-            for key in list(self._tape.keys()):
-                t, b, s = key
-                if t not in track_set or b not in bar_set or s not in step_set:
+            for t in tracks:
+                if t >= len(self._tape):
                     continue
-                evs = self._tape[key]
-                evs[:] = [ev for ev in evs if ev.etype != ETYPE_GRID]
-                if not evs:
-                    del self._tape[key]
+                track_list = self._tape[t]
+                track_list[:] = [ev for ev in track_list
+                                  if not (ev.etype == ETYPE_GRID and ev.time in time_set)]
 
     def grid_row(self, track, pad, bar):
         """Snapshot list[int] (longueur _num_steps) — lecture seule."""
@@ -210,12 +269,14 @@ class Pattern:
 
     def iter_grid(self, track=None):
         """Itère (track, pad, bar, step, vel) sur toutes les notes GRID (piste filtrée si donnée)."""
-        for (t, b, s), evs in self._tape.items():
-            if track is not None and t != track:
+        tracks = range(len(self._tape)) if track is None else (track,)
+        for t in tracks:
+            if t >= len(self._tape):
                 continue
-            for ev in evs:
+            for ev in self._tape[t]:
                 if ev.etype == ETYPE_GRID:
-                    yield (t, ev.note, b, s, ev.vel)
+                    bar, step = self._time_to_bar_step(ev.time)
+                    yield (t, ev.note, bar, step, ev.vel)
 
     def to_dense_grid(self):
         """Reconstruit [track][pad][bar][step] à la demande — pour to_dict()/compat uniquement."""
@@ -237,7 +298,7 @@ class Pattern:
         self._num_bars   = other._num_bars
         self._num_steps  = other._num_steps
         with self._lock:
-            self._tape = {k: list(v) for k, v in other._tape.items()}
+            self._tape = [list(track_list) for track_list in other._tape]
         self._bend_tape = [list(t) for t in other._bend_tape]
         self._mod_tape  = [list(t) for t in other._mod_tape]
 
@@ -246,7 +307,7 @@ class Pattern:
     def new_pattern(self, num_bars=1, num_steps=16):
         self._num_bars  = num_bars
         self._num_steps = num_steps
-        self._tape       = {}
+        self._tape       = [[] for _ in range(self._num_tracks)]
         self._bend_tape  = [[] for _ in range(self._num_tracks)]
         self._mod_tape   = [[] for _ in range(self._num_tracks)]
 
@@ -264,32 +325,31 @@ class Pattern:
         self._num_steps  = len(pattern[0][0][0]) if pattern and pattern[0] and pattern[0][0] else 16
         nv = Pattern._norm_vel
         with self._lock:
-            for key in list(self._tape.keys()):
-                evs = self._tape[key]
-                evs[:] = [ev for ev in evs if ev.etype != ETYPE_GRID]
-                if not evs:
-                    del self._tape[key]
+            self._ensure_track_count(self._num_tracks)
+            for t in range(self._num_tracks):
+                track_list = self._tape[t]
+                track_list[:] = [ev for ev in track_list if ev.etype != ETYPE_GRID]
             for t, track in enumerate(pattern):
                 for pad, pad_data in enumerate(track):
                     for bar, bar_data in enumerate(pad_data):
                         for step, v in enumerate(bar_data):
                             vel = nv(v)
                             if vel > 0:
-                                self._tape.setdefault((t, bar, step), []).append(
-                                    TapeEvent(ETYPE_GRID, pad, vel, 0, 0)
-                                )
+                                time = self._bar_step_to_time(bar, step)
+                                self._tape[t].append(TapeEvent(ETYPE_GRID, pad, vel, 0, 0, time=time))
 
     #--------------------------------------------------------------------------
 
     def reset_pattern(self):
-        self._tape      = {}
+        self._tape      = [[] for _ in range(self._num_tracks)]
         self._bend_tape = [[] for _ in range(self._num_tracks)]
         self._mod_tape  = [[] for _ in range(self._num_tracks)]
 
     def clear_track(self, track_idx):
         """Efface tous les pas de la piste track_idx (grille + tape MIDI)."""
         with self._lock:
-            self._tape = {k: v for k, v in self._tape.items() if k[0] != track_idx}
+            if track_idx < len(self._tape):
+                self._tape[track_idx] = []
         if track_idx < len(self._bend_tape):
             self._bend_tape[track_idx] = []
         if track_idx < len(self._mod_tape):
@@ -313,12 +373,15 @@ class Pattern:
         """Duplique les mesures existantes (pattern deux fois plus long)."""
         if self._num_bars * 2 > self.MAX_BARS:
             return False
-        half       = self._num_bars
-        half_steps = half * self._num_steps
-        new_tape = dict(self._tape)
-        for (t, b, s), events in self._tape.items():
-            new_tape[(t, b + half, s)] = events[:]
-        self._tape = new_tape
+        half_steps = self._num_bars * self._num_steps
+        self._tape = [
+            track_list + [
+                TapeEvent(ev.etype, dur=ev.dur, channel=ev.channel,
+                          payload=ev.payload, time=ev.time + half_steps)
+                for ev in track_list
+            ]
+            for track_list in self._tape
+        ]
         self._bend_tape = [
             track_bends + [(off + half_steps, b) for off, b in track_bends]
             for track_bends in self._bend_tape
@@ -338,11 +401,10 @@ class Pattern:
             return False
         half       = self._num_bars // 2
         half_steps = half * self._num_steps
-        self._tape = {
-            (t, b, s): events
-            for (t, b, s), events in self._tape.items()
-            if b < half
-        }
+        self._tape = [
+            [ev for ev in track_list if ev.time < half_steps]
+            for track_list in self._tape
+        ]
         self._bend_tape = [
             [(off, b) for off, b in track_bends if off < half_steps]
             for track_bends in self._bend_tape
@@ -372,7 +434,7 @@ class Pattern:
     #--------------------------------------------------------------------------
 
     def is_empty(self):
-        return not self._tape
+        return not any(self._tape)
 
     #--------------------------------------------------------------------------
 
@@ -381,17 +443,27 @@ class Pattern:
         old_steps = self._num_steps
         old_bars  = self._num_bars
 
+        # ev.time encode bar*old_steps+step : décoder avec l'ancienne résolution
+        # avant de changer _num_steps, puis ré-encoder avec la nouvelle — sinon
+        # un changement de num_steps réinterpréterait mal les positions stockées.
+        new_tape = []
+        for track_list in self._tape:
+            new_list = []
+            for ev in track_list:
+                bar, step = divmod(int(ev.time), old_steps)
+                if bar < num_bars and step < num_steps:
+                    new_time = bar * num_steps + step
+                    new_list.append(TapeEvent(ev.etype, dur=ev.dur, channel=ev.channel,
+                                               payload=ev.payload, time=new_time))
+            new_tape.append(new_list)
+        self._tape = new_tape
+
         if num_steps != old_steps:
             self._num_steps = num_steps
 
         if num_bars != old_bars:
             self._num_bars = num_bars
 
-        self._tape = {
-            (t, b, s): events
-            for (t, b, s), events in self._tape.items()
-            if b < self._num_bars and s < self._num_steps
-        }
         total_steps = self._num_bars * self._num_steps
         self._bend_tape = [
             [(off, b) for off, b in track_bends if off < total_steps]
@@ -430,14 +502,14 @@ class Pattern:
             "kb_scale":      self._kb_scale,
             "kb_root_midi":  self._kb_root_midi,
             "kit_tape": [
-                [t, b, s, ev.note, ev.vel, ev.dur]
-                for (t, b, s), events in self._tape.items()
-                for ev in events if ev.etype == ETYPE_KIT
+                [t, *self._time_to_bar_step(ev.time), ev.note, ev.vel, ev.dur]
+                for t, track_list in enumerate(self._tape)
+                for ev in track_list if ev.etype == ETYPE_KIT
             ],
             "patch_tape": [
-                [t, b, s, ev.note, ev.vel, ev.dur, ev.bend]
-                for (t, b, s), events in self._tape.items()
-                for ev in events if ev.etype == ETYPE_PATCH
+                [t, *self._time_to_bar_step(ev.time), ev.note, ev.vel, ev.dur, ev.bend]
+                for t, track_list in enumerate(self._tape)
+                for ev in track_list if ev.etype == ETYPE_PATCH
             ],
             "bend_tape": [list(t) for t in self._bend_tape],
             "mod_tape":  [list(t) for t in self._mod_tape],
@@ -460,7 +532,7 @@ class Pattern:
         self._loop_start = d.get("loop_start", None)
         self._loop_end   = d.get("loop_end", None)
         self._loop_count = d.get("loop_count", 0)
-        self._tape = {}
+        self._tape = []
         self.load_pattern(d["curpattern"])   # peuple les entrées ETYPE_GRID
         if "track_slots"   in d: self._track_slots   = d["track_slots"]
         if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]
@@ -473,12 +545,14 @@ class Pattern:
         for rec in d.get("kit_tape", []):
             t, b, s, note, vel = rec[:5]
             dur = rec[5] if len(rec) > 5 else 0
-            self._tape.setdefault((t, b, s), []).append(TapeEvent(ETYPE_KIT, note, vel, dur, 0))
+            self._ensure_track_count(t + 1)
+            self._tape[t].append(TapeEvent(ETYPE_KIT, note, vel, dur, 0, time=self._bar_step_to_time(b, s)))
         for rec in d.get("patch_tape", []):
             t, b, s, note, vel = rec[:5]
             dur  = rec[5] if len(rec) > 5 else 0
             bend = rec[6] if len(rec) > 6 else 0
-            self._tape.setdefault((t, b, s), []).append(TapeEvent(ETYPE_PATCH, note, vel, dur, bend))
+            self._ensure_track_count(t + 1)
+            self._tape[t].append(TapeEvent(ETYPE_PATCH, note, vel, dur, bend, time=self._bar_step_to_time(b, s)))
         raw_bends = d.get("bend_tape", [])
         self._bend_tape = [
             [tuple(p) for p in track_bends]
