@@ -138,7 +138,7 @@ cette standardisation soit faite.
   comme aujourd'hui, avec `channel=0` et la même règle `dur=0` pour GRID
   (fallback voix).
 
-### Découpage en commits
+### Découpage en commits (version initiale — voir correction ci-dessous)
 
 | Étape | Contenu | Fichiers/tests touchés |
 |---|---|---|
@@ -147,3 +147,80 @@ cette standardisation soit faite.
 | **1e** | Migration des 5 consommateurs directs (`ev.note`/`ev.vel`/`ev.bend` → `ev.payload[...]`, nouveau `ev.channel`), un fichier à la fois, tests après chacun. | `drum_player.py`, `track_editor.py`, `midi_editor.py`, `quantize_manager.py`, `ui/mw_project.py` + `test_midi_editor.py`, `test_quantize.py`, `test_track_editor.py`, `test_transport.py` |
 | **1f** | Brancher `channel` côté UI là où c'est pertinent (à évaluer une fois 1c-1e faits). | à déterminer |
 | **1g** | Durée GRID par événement (override Numpad1/3) — le vrai déclencheur initial de ce chantier (étape 7d, 2026-07-24). | `midi_editor.py` + `mew_numpad.py` |
+
+### Correction du découpage (2026-09-18, avant le début du code)
+
+Au moment d'attaquer 1c, vérification de l'empreinte réelle de l'accès
+direct à `_tape` en style dict (`_tape[(track,bar,step)]`, `.setdefault`,
+`.items()`, `.get()`, `del`, `in`, `.pop()`, `.keys()`) — pas seulement les
+appels au constructeur `TapeEvent(...)` comptés dans le tableau ci-dessus.
+Résultat : bien plus large que prévu.
+
+- **6 fichiers source** : `pattern.py`, `midi_editor.py`, `track_editor.py`,
+  `quantize_manager.py`, `drum_player.py`, **`ui/mw_project.py`** (via
+  `cb.tape` — presse-papier `TrackEditor`, même structure dict-keyée,
+  non identifié dans le découpage initial).
+- **7 fichiers de tests** : `test_pattern.py`, `test_pattern_grid_api.py`,
+  `test_pattern_properties_bug.py`, `test_tape.py` (à lui seul ~90
+  occurrences), `test_track_editor.py`, `test_midi_editor.py`,
+  `test_quantize.py`.
+
+Décision (2026-09-18) : élargir 1c à tous les fichiers source touchés par
+le changement de stockage (pas seulement `pattern.py`), et séparer
+clairement Implémentation / Tests à chaque étape — rythme déjà utilisé en
+Phase 6 (ex. étapes 10e/10f, 11a-11c). `ev.note`/`ev.vel`/`ev.bend` restent
+lisibles via des propriétés de compatibilité sur `TapeEvent` pendant la
+transition (voir design de la dataclass ci-dessus) : la migration réelle
+des accès (`ev.note` → `ev.payload["note"]`) dans les fichiers consommateurs
+reste une étape séparée (1g), et n'est donc pas bloquée par l'élargissement
+de 1c.
+
+**Découpage en commits (version corrigée, à suivre) :**
+
+| Étape | Contenu | Fichiers touchés |
+|---|---|---|
+| **1c** | Implémentation — `Pattern` : dataclass `TapeEvent` (constructeur compatible avec l'ancien positionnel + propriétés `note`/`vel`/`bend` de compat) + `_tape` → liste plate par piste + index `{(track,time): [...]}` ; adaptation des accès directs dict-style à `_tape`/`cb.tape` dans les 5 autres fichiers source touchés. Signatures publiques de `Pattern` inchangées. | `pattern.py`, `midi_editor.py`, `track_editor.py`, `quantize_manager.py`, `drum_player.py`, `ui/mw_project.py` |
+| **1d** | Tests — adaptation des 7 fichiers de tests à la nouvelle structure de `_tape`/`cb.tape`. | `test_pattern.py`, `test_pattern_grid_api.py`, `test_pattern_properties_bug.py`, `test_tape.py`, `test_track_editor.py`, `test_midi_editor.py`, `test_quantize.py` |
+| **1e** | Implémentation — `to_dict`/`from_dict` : écriture `tape_v2`, lecture rétrocompat ancien format. | `pattern.py` |
+| **1f** | Tests — rétrocompat de chargement (vieux dict/fichier `.gvp`), tests `to_dict`/`from_dict`. | `test_pattern.py` + fixture dédiée |
+| **1g** | Implémentation — migration réelle des consommateurs (`ev.note`/`ev.vel`/`ev.bend` → `ev.payload[...]`, `ev.channel`), suppression des propriétés de compat une fois tout migré. | `drum_player.py`, `track_editor.py`, `midi_editor.py`, `quantize_manager.py`, `ui/mw_project.py` |
+| **1h** | Tests — ajustements suite à 1g. | fichiers de tests correspondants |
+| **1i** | Implémentation — brancher `channel` côté UI. | à déterminer |
+| **1j** | Tests — idem. | à déterminer |
+| **1k** | Implémentation — durée GRID par événement (override Numpad1/3), le vrai déclencheur initial (étape 7d, 2026-07-24). | `midi_editor.py`, `mew_numpad.py` |
+| **1l** | Tests — idem. | fichiers de tests correspondants |
+
+### Conformité avec le but final (Import/Export MIDI)
+
+Vérifié le 2026-09-18, à la demande de l'utilisateur, que ce redesign sert
+bien l'objectif final (non encore formalisé comme phase dans `SPECS.md`)
+d'import/export de fichiers MIDI standard (SMF), sans refactoriser le
+format général des données de `Pattern` au-delà du nécessaire :
+
+- Un SMF stocke, par piste, des événements avec un **delta-time
+  arbitraire** (ticks), jamais quantifié sur une grille fixe. Le modèle
+  actuel de `_tape` (clé `(track,bar,step)`) force chaque événement sur une
+  division de `num_steps` — incompatible avec un import fidèle d'un fichier
+  à timing libre. `time` en champ flottant par événement (liste plate) est
+  le changement minimal qui débloque ça.
+- `channel` est un concept MIDI de premier niveau, nécessaire à l'import
+  (préserver le canal d'origine) et à l'export.
+- `payload` en dict permet à chaque type (CC, Program Change, Aftertouch,
+  SysEx — déjà anticipés dans `dialogs_temporal.py`) de porter exactement
+  ses propres champs.
+
+Ce qui reste **hors périmètre** de ce chantier, pour un import/export MIDI
+complet (à traiter plus tard, séparément) :
+- Tempo/signature rythmique variables en cours de pattern (SMF permet des
+  meta-événements tempo/signature à tout moment ; `Pattern` n'a qu'un
+  BPM/signature unique) — nécessiterait une automation dédiée, sur le
+  modèle `bend_tape`/`mod_tape`.
+- Le mapping d'un fichier MIDI de durée/nombre de pistes arbitraires sur la
+  structure fixe de Groovebox (99 patterns × 999 mesures × 8 pistes) — un
+  sujet d'orchestration séparé, pas un sujet `TapeEvent`.
+- Le codec SMF lui-même (lecture/écriture du fichier `.mid`) — pas encore
+  implémenté, pas dans ce chantier.
+
+Ce qui **ne change pas** dans `Pattern` (pas de refactor du format
+général) : `num_bars`, `num_steps`, `bpm`, `voices`, loop points, structure
+`Song`/`ProjectManager` — tous inchangés.
