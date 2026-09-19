@@ -14,49 +14,22 @@ class TapeEvent:
     création — jamais préservé lors d'une reconstruction représentant la
     même note modifiée, jamais sérialisé dans .gvp, comme Pattern._id),
     time (position, steps cumulés sur la piste), etype, dur, channel,
-    payload (champs propres au type).
-
-    Constructeur historique compatible : TapeEvent(etype, note, vel, dur, bend)
-    range note/vel/bend dans payload — le temps que les fichiers consommateurs
-    soient migrés vers l'accès direct par payload (Phase 7 étape 1g). note/vel/
-    bend restent lisibles en attendant via les propriétés de compatibilité
-    ci-dessous.
+    payload (champs propres au type — {"pad":,"vel":} pour GRID,
+    {"note":,"vel":} pour KIT, {"note":,"vel":,"bend":} pour PATCH).
     """
 
     __slots__ = ("id", "etype", "time", "dur", "channel", "payload")
 
     _counter = 0
 
-    def __init__(self, etype, note=None, vel=None, dur=0, bend=0,
-                 *, time=None, channel=0, payload=None):
+    def __init__(self, etype, dur=0, channel=0, payload=None, time=None):
         TapeEvent._counter += 1
         self.id      = TapeEvent._counter
         self.etype   = etype
         self.time    = time
         self.dur     = dur
         self.channel = channel
-        if payload is not None:
-            self.payload = dict(payload)
-        else:
-            self.payload = {}
-            if note is not None:
-                self.payload["pad" if etype == ETYPE_GRID else "note"] = note
-            if vel is not None:
-                self.payload["vel"] = vel
-            if etype == ETYPE_PATCH:
-                self.payload["bend"] = bend
-
-    @property
-    def note(self):
-        return self.payload.get("pad") if self.etype == ETYPE_GRID else self.payload.get("note")
-
-    @property
-    def vel(self):
-        return self.payload.get("vel")
-
-    @property
-    def bend(self):
-        return self.payload.get("bend", 0)
+        self.payload = dict(payload) if payload is not None else {}
 
     def __eq__(self, other):
         if not isinstance(other, TapeEvent):
@@ -229,8 +202,8 @@ class Pattern:
             return 0
         time = self._bar_step_to_time(bar, step)
         for ev in self._tape[track]:
-            if ev.time == time and ev.etype == ETYPE_GRID and ev.note == pad:
-                return ev.vel
+            if ev.time == time and ev.etype == ETYPE_GRID and ev.payload.get("pad") == pad:
+                return ev.payload.get("vel")
         return 0
 
     def set_cell(self, track, pad, bar, step, value):
@@ -241,9 +214,9 @@ class Pattern:
             self._ensure_track_count(track + 1)
             track_list = self._tape[track]
             track_list[:] = [ev for ev in track_list
-                              if not (ev.time == time and ev.etype == ETYPE_GRID and ev.note == pad)]
+                              if not (ev.time == time and ev.etype == ETYPE_GRID and ev.payload.get("pad") == pad)]
             if vel > 0:
-                track_list.append(TapeEvent(ETYPE_GRID, pad, vel, 0, 0, time=time))
+                track_list.append(TapeEvent(ETYPE_GRID, payload={"pad": pad, "vel": vel}, time=time))
 
     def clear_grid_pad(self, track, pad):
         """Efface toutes les notes GRID d'un pad sur une piste (toutes mesures)."""
@@ -251,7 +224,8 @@ class Pattern:
             if track >= len(self._tape):
                 return
             track_list = self._tape[track]
-            track_list[:] = [ev for ev in track_list if not (ev.etype == ETYPE_GRID and ev.note == pad)]
+            track_list[:] = [ev for ev in track_list
+                              if not (ev.etype == ETYPE_GRID and ev.payload.get("pad") == pad)]
 
     def clear_grid_box(self, tracks, bars, steps):
         """Efface les notes GRID dans un rectangle track×bar×step.
@@ -286,7 +260,7 @@ class Pattern:
             for ev in self._tape[t]:
                 if ev.etype == ETYPE_GRID:
                     bar, step = self._time_to_bar_step(ev.time)
-                    yield (t, ev.note, bar, step, ev.vel)
+                    yield (t, ev.payload.get("pad"), bar, step, ev.payload.get("vel"))
 
     def to_dense_grid(self):
         """Reconstruit [track][pad][bar][step] à la demande — pour to_dict()/compat uniquement."""
@@ -346,7 +320,9 @@ class Pattern:
                             vel = nv(v)
                             if vel > 0:
                                 time = self._bar_step_to_time(bar, step)
-                                self._tape[t].append(TapeEvent(ETYPE_GRID, pad, vel, 0, 0, time=time))
+                                self._tape[t].append(
+                                    TapeEvent(ETYPE_GRID, payload={"pad": pad, "vel": vel}, time=time)
+                                )
 
     #--------------------------------------------------------------------------
 
@@ -564,13 +540,17 @@ class Pattern:
                 t, b, s, note, vel = rec[:5]
                 dur = rec[5] if len(rec) > 5 else 0
                 self._ensure_track_count(t + 1)
-                self._tape[t].append(TapeEvent(ETYPE_KIT, note, vel, dur, 0, time=self._bar_step_to_time(b, s)))
+                self._tape[t].append(TapeEvent(ETYPE_KIT, dur=dur,
+                                                payload={"note": note, "vel": vel},
+                                                time=self._bar_step_to_time(b, s)))
             for rec in d.get("patch_tape", []):
                 t, b, s, note, vel = rec[:5]
                 dur  = rec[5] if len(rec) > 5 else 0
                 bend = rec[6] if len(rec) > 6 else 0
                 self._ensure_track_count(t + 1)
-                self._tape[t].append(TapeEvent(ETYPE_PATCH, note, vel, dur, bend, time=self._bar_step_to_time(b, s)))
+                self._tape[t].append(TapeEvent(ETYPE_PATCH, dur=dur,
+                                                payload={"note": note, "vel": vel, "bend": bend},
+                                                time=self._bar_step_to_time(b, s)))
         if "track_slots"   in d: self._track_slots   = d["track_slots"]
         if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]
         if "track_solos"   in d: self._track_solos   = d["track_solos"]

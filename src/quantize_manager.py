@@ -160,7 +160,8 @@ class QuantizeManager:
                     if _in_window(dur_steps, ng_dur):
                         n_dur = max(10, round(_snap(dur_steps, ng_dur) * ms_per_step))
                 new_time = pattern._bar_step_to_time(n_bar, n_step)
-                new_events.append(TapeEvent(ev.etype, ev.note, ev.vel, n_dur, ev.bend, time=new_time))
+                new_events.append(TapeEvent(ev.etype, dur=n_dur, channel=ev.channel,
+                                             payload=ev.payload, time=new_time))
             pattern._tape[p._cur_track] = new_events
 
     # ------------------------------------------------------------------

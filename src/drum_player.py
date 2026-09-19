@@ -467,13 +467,14 @@ class DrumPlayer:
                         if t_sec > elapsed - 0.002:
                             if ev.etype == ETYPE_GRID:
                                 events.append((t_sec, self.GRID_EVENT,
-                                               (t_idx, ev.note), ev.vel))
+                                               (t_idx, ev.payload.get("pad")), ev.payload.get("vel")))
                             elif ev.etype == ETYPE_KIT:
                                 events.append((t_sec, self.KIT_TAPE_EVENT,
-                                               (t_idx, ev.note, ev.dur), ev.vel))
+                                               (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
                             else:
                                 events.append((t_sec, self.PATCH_TAPE_EVENT,
-                                               (t_idx, ev.note, ev.dur, ev.bend), ev.vel))
+                                               (t_idx, ev.payload.get("note"), ev.dur, ev.payload.get("bend", 0)),
+                                               ev.payload.get("vel")))
                 for t_idx, track_bends in enumerate(self._pattern._bend_tape):
                     for float_off, bend_val in list(track_bends):
                         if not (lp_start <= float_off <= lp_end):
@@ -812,7 +813,8 @@ class DrumPlayer:
                 return
             track_list = self._pattern._tape[track_idx]
             track_list[:] = [e for e in track_list
-                              if not (e.time == time_val and e.note == midi_note and e.etype == etype)]
+                              if not (e.time == time_val and e.etype == etype
+                                      and e.payload.get("note") == midi_note)]
 
     def erase_hit(self, pad_idx):
         if not self.float_offsets[pad_idx]:
@@ -862,7 +864,7 @@ class DrumPlayer:
         best_ev   = None
 
         for ev in self._pattern._tape[track_idx]:
-            if ev.etype == ETYPE_PATCH and ev.note == midi_note:
+            if ev.etype == ETYPE_PATCH and ev.payload.get("note") == midi_note:
                 dist = circ_dist(ev.time)
                 if dist < best_dist:
                     best_dist = dist
@@ -971,12 +973,13 @@ class DrumPlayer:
         dur = 0 if duration_ms is None else max(0, int(duration_ms))
         track = self._cur_track
         time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
-        new_ev = TapeEvent(ETYPE_PATCH, midi_note, vel, dur, bend, time=time_val)
+        new_ev = TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": midi_note, "vel": vel, "bend": bend},
+                            time=time_val)
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
             events = self._pattern._tape[track]
             for i, ev in enumerate(events):
-                if ev.time == time_val and ev.etype == ETYPE_PATCH and ev.note == midi_note:
+                if ev.time == time_val and ev.etype == ETYPE_PATCH and ev.payload.get("note") == midi_note:
                     events[i] = new_ev
                     break
             else:
@@ -1004,7 +1007,8 @@ class DrumPlayer:
             for i, ev in enumerate(events):
                 if ev.id == target_id:
                     duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
-                    events[i] = TapeEvent(ETYPE_PATCH, ev.note, ev.vel, duration_ms, ev.bend, time=ev.time)
+                    events[i] = TapeEvent(ETYPE_PATCH, dur=duration_ms, channel=ev.channel,
+                                           payload=ev.payload, time=ev.time)
                     break
             else:
                 return
@@ -1045,9 +1049,9 @@ class DrumPlayer:
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
             events = self._pattern._tape[track]
-            if not any(ev.time == time_val and ev.etype == ETYPE_KIT and ev.note == midi_note
+            if not any(ev.time == time_val and ev.etype == ETYPE_KIT and ev.payload.get("note") == midi_note
                        for ev in events):
-                events.append(TapeEvent(ETYPE_KIT, midi_note, vel, 0, 0, time=time_val))
+                events.append(TapeEvent(ETYPE_KIT, payload={"note": midi_note, "vel": vel}, time=time_val))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------

@@ -229,14 +229,15 @@ class TrackEditor:
         KIT/PATCH : union brute par concaténation (comportement historique, doublons possibles).
         """
         result   = [ev for ev in existing if ev.etype != ETYPE_GRID]
-        g_by_pad = {ev.note: ev for ev in existing if ev.etype == ETYPE_GRID}
+        g_by_pad = {ev.payload.get("pad"): ev for ev in existing if ev.etype == ETYPE_GRID}
         for ev in incoming:
             if ev.etype != ETYPE_GRID:
                 result.append(ev)
                 continue
-            prev = g_by_pad.get(ev.note)
-            if prev is None or ev.vel > prev.vel:
-                g_by_pad[ev.note] = ev
+            pad  = ev.payload.get("pad")
+            prev = g_by_pad.get(pad)
+            if prev is None or ev.payload.get("vel") > prev.payload.get("vel"):
+                g_by_pad[pad] = ev
         result.extend(g_by_pad.values())
         return result
 
@@ -323,9 +324,11 @@ class TrackEditor:
                     pattern.set_cell(abs_track, pad, bar, step, ev["vel"])
                     pasted += 1
             elif ev["etype"] in (ETYPE_KIT, ETYPE_PATCH):
-                time = pattern._bar_step_to_time(bar, step)
-                te   = TapeEvent(ev["etype"], ev["pad"], ev["vel"],
-                                 ev["dur"], ev.get("bend", 0), time=time)
+                time    = pattern._bar_step_to_time(bar, step)
+                payload = {"note": ev["pad"], "vel": ev["vel"]}
+                if ev["etype"] == ETYPE_PATCH:
+                    payload["bend"] = ev.get("bend", 0)
+                te = TapeEvent(ev["etype"], dur=ev["dur"], payload=payload, time=time)
                 with pattern._lock:
                     pattern._ensure_track_count(abs_track + 1)
                     pattern._tape[abs_track].append(te)

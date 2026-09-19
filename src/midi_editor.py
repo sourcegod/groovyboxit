@@ -51,17 +51,18 @@ class MidiEditor:
             b, s = pattern._time_to_bar_step(offset)
             for i, ev in enumerate(by_time[offset]):
                 if ev.etype == ETYPE_GRID:
-                    dur = (pattern._voices[ev.note]["duration_ms"]
-                           if ev.note < len(pattern._voices) else 500)
+                    pad = ev.payload.get("pad")
+                    dur = (pattern._voices[pad]["duration_ms"]
+                           if pad < len(pattern._voices) else 500)
                     events.append({
                         "type":      "note",
                         "etype":     ETYPE_GRID,
                         "track":     track_idx,
-                        "pad":       ev.note,
+                        "pad":       pad,
                         "bar":       b,
                         "step":      s,
                         "offset":    offset,
-                        "vel":       ev.vel,
+                        "vel":       ev.payload.get("vel"),
                         "dur":       dur,
                         "event_idx": i,
                     })
@@ -73,10 +74,10 @@ class MidiEditor:
                         "bar":       b,
                         "step":      s,
                         "offset":    offset,
-                        "pad":       ev.note,   # KIT: index pad kit ; PATCH: note MIDI brute
-                        "vel":       ev.vel,
+                        "pad":       ev.payload.get("note"),   # KIT: index pad kit ; PATCH: note MIDI brute
+                        "vel":       ev.payload.get("vel"),
                         "dur":       ev.dur,
-                        "bend":      ev.bend,
+                        "bend":      ev.payload.get("bend", 0),
                         "event_idx": i,
                     })
 
@@ -303,7 +304,10 @@ class MidiEditor:
             if old_idx < 0 or old_idx >= len(matches):
                 return None
             del track_list[matches[old_idx]]
-            track_list.append(TapeEvent(etype, n_note, n_vel, n_dur, n_bend, time=new_time))
+            payload = {"note": n_note, "vel": n_vel}
+            if etype == ETYPE_PATCH:
+                payload["bend"] = n_bend
+            track_list.append(TapeEvent(etype, dur=n_dur, payload=payload, time=new_time))
             new_idx = sum(1 for e in track_list if e.time == new_time) - 1
         return {
             "type":      "note",
@@ -516,12 +520,14 @@ class MidiEditor:
             from pattern import TapeEvent
             t    = ev["track"]
             time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+            payload = {"note": ev["pad"], "vel": ev["vel"]}
+            if etype == ETYPE_PATCH:
+                payload["bend"] = ev.get("bend", 0)
             with pattern._lock:
                 pattern._ensure_track_count(t + 1)
                 track_list = pattern._tape[t]
                 track_list.append(
-                    TapeEvent(etype, ev["pad"], ev["vel"],
-                              ev.get("dur", 500), ev.get("bend", 0), time=time)
+                    TapeEvent(etype, dur=ev.get("dur", 500), payload=payload, time=time)
                 )
                 new_idx = sum(1 for e in track_list if e.time == time) - 1
             return {
@@ -579,13 +585,16 @@ class MidiEditor:
                 "dur":    dur_v,
             }
         from pattern import TapeEvent
-        pad  = max(0, min(127, pad))
-        dur  = max(10, dur)
-        time = pattern._bar_step_to_time(bar, step)
+        pad     = max(0, min(127, pad))
+        dur     = max(10, dur)
+        time    = pattern._bar_step_to_time(bar, step)
+        payload = {"note": pad, "vel": vel}
+        if etype == ETYPE_PATCH:
+            payload["bend"] = bend
         with pattern._lock:
             pattern._ensure_track_count(track + 1)
             track_list = pattern._tape[track]
-            track_list.append(TapeEvent(etype, pad, vel, dur, bend, time=time))
+            track_list.append(TapeEvent(etype, dur=dur, payload=payload, time=time))
             new_idx = sum(1 for e in track_list if e.time == time) - 1
         return {
             "type":      "note",
