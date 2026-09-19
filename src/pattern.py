@@ -10,8 +10,11 @@ ETYPE_PATCH = "PATCH"
 
 
 class TapeEvent:
-    """Événement de _tape : time (position, steps cumulés sur la piste),
-    etype, dur, channel, payload (champs propres au type).
+    """Événement de _tape : id (identifiant unique, incrémenté à chaque
+    création — jamais préservé lors d'une reconstruction représentant la
+    même note modifiée, jamais sérialisé dans .gvp, comme Pattern._id),
+    time (position, steps cumulés sur la piste), etype, dur, channel,
+    payload (champs propres au type).
 
     Constructeur historique compatible : TapeEvent(etype, note, vel, dur, bend)
     range note/vel/bend dans payload — le temps que les fichiers consommateurs
@@ -20,10 +23,14 @@ class TapeEvent:
     ci-dessous.
     """
 
-    __slots__ = ("etype", "time", "dur", "channel", "payload")
+    __slots__ = ("id", "etype", "time", "dur", "channel", "payload")
+
+    _counter = 0
 
     def __init__(self, etype, note=None, vel=None, dur=0, bend=0,
                  *, time=None, channel=0, payload=None):
+        TapeEvent._counter += 1
+        self.id      = TapeEvent._counter
         self.etype   = etype
         self.time    = time
         self.dur     = dur
@@ -61,7 +68,7 @@ class TapeEvent:
         return hash((self.etype, self.dur, self.channel, tuple(sorted(self.payload.items()))))
 
     def __repr__(self):
-        return (f"TapeEvent({self.etype!r}, time={self.time!r}, dur={self.dur!r}, "
+        return (f"TapeEvent(id={self.id!r}, {self.etype!r}, time={self.time!r}, dur={self.dur!r}, "
                 f"channel={self.channel!r}, payload={self.payload!r})")
 
 

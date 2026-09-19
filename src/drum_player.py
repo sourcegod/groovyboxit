@@ -81,7 +81,7 @@ class DrumPlayer:
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
         self._on_mod_tape_cb      = None  # callback(track_idx, mod_value) lecture automation mod wheel
-        self._pending_patch       = {}    # {midi_note: (track, TapeEvent, t_start)} — note_on en attente de note_off
+        self._pending_patch       = {}    # {midi_note: (track, TapeEvent.id, t_start)} — note_on en attente de note_off
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
@@ -982,9 +982,11 @@ class DrumPlayer:
             else:
                 events.append(new_ev)
         if duration_ms is None:
-            # Suivi par identité d'objet (pas par index) : robuste si d'autres
-            # événements de cette piste sont insérés/supprimés d'ici le note_off.
-            self._pending_patch[midi_note] = (track, new_ev, now)
+            # Suivi par id (pas par index) : robuste si d'autres événements de
+            # cette piste sont insérés/supprimés d'ici le note_off. Choix fait
+            # aussi pour un futur portage C/C++ (id = clé simple, portable ;
+            # pas d'équivalent direct à l'identité d'objet Python).
+            self._pending_patch[midi_note] = (track, new_ev.id, now)
         else:
             self._pending_patch.pop(midi_note, None)
         _bend_log(f"REC note_on  note={midi_note} vel={vel} dur={dur} bend={bend} "
@@ -996,11 +998,11 @@ class DrumPlayer:
         pending = self._pending_patch.pop(midi_note, None)
         if pending is None:
             return
-        track, target_ev, t_start = pending
+        track, target_id, t_start = pending
         with self._pattern._lock:
             events = self._pattern._tape[track]
             for i, ev in enumerate(events):
-                if ev is target_ev:
+                if ev.id == target_id:
                     duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
                     events[i] = TapeEvent(ETYPE_PATCH, ev.note, ev.vel, duration_ms, ev.bend, time=ev.time)
                     break
