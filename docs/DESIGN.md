@@ -68,6 +68,23 @@ l'insertion/suppression, jamais recalculé en entier sauf
 `copy_from`/`load_pattern`), pour ne pas introduire de régression de perf
 sur la grille.
 
+**Écart constaté à l'implémentation (étape 1c, 2026-09-19)** : l'index
+secondaire n'a PAS été construit. Pendant 1c, l'analyse du vrai périmètre
+(correctif 1b ci-dessous) a montré que `_tape` est pokée directement en
+style dict par de nombreux fichiers (pas seulement via `get_cell`/`set_cell`)
+— un index tenu à jour de façon incrémentale serait désynchronisé à chaque
+poke direct externe (`pattern._tape[t].append(...)`, filtrage in-place,
+etc.), ce qui aurait introduit des bugs de correction silencieux, pires
+qu'une régression de perf. Choix fait : `get_cell`/`set_cell`/etc. font un
+scan linéaire de la liste de la piste (`O(événements de la piste)` au lieu
+de `O(1)`). Accepté comme compromis pragmatique pour une appli desktop
+Python (pas de contrainte temps réel dur sur le rendu de grille) ; à
+reconsidérer seulement si un vrai problème de perf est mesuré — la bonne
+prochaine étape serait alors de centraliser les mutations de `_tape`
+derrière une API `Pattern` unique (au lieu du style actuel où les fichiers
+consommateurs accèdent à l'attribut directement) avant de pouvoir tenir un
+index de façon sûre.
+
 **2. Structure Python de l'événement** → **dataclass** avec champs communs
 + payload en dict :
 
@@ -102,6 +119,41 @@ sur GRID.
 Alternative écartée : l'événement copie systématiquement la durée de la
 voix à sa création — romprait le comportement actuel où changer la durée
 du pad affecte toutes ses occurrences déjà posées.
+
+**4. Identifiant unique `id` (ajouté 2026-09-19, demande explicite)** →
+`TapeEvent` porte un `id` auto-incrémenté à la création (`TapeEvent._counter`,
+même convention que `Pattern._id`). Décisions validées avec l'utilisateur :
+- **Jamais préservé** lors d'une reconstruction représentant la même note
+  modifiée (quantize déplace, resize retemporise, l'éditeur MIDI change
+  durée/vélocité/pitch/position) : chaque construction obtient un id neuf,
+  comme `Pattern._id` qui n'est jamais préservé non plus entre deux
+  instances. Alternative écartée : préserver l'id à travers ces
+  reconstructions pour une identité de note stable — aurait demandé de
+  retoucher tous les sites qui reconstruisent un `TapeEvent` (quantize,
+  resize, double_bars, édition), pour un besoin qui n'existe pas
+  aujourd'hui (rien dans l'architecture actuelle ne dépend d'une identité
+  stable across edits — les appelants se resynchronisent déjà via les
+  dicts `event_info` retournés par les méthodes d'édition).
+- **Jamais sérialisé** dans `.gvp`/`tape_v2` — identifiant de session
+  uniquement, comme `Pattern._id`.
+- `__eq__`/`__hash__` ignorent `id` (et `time`) : la comparaison reste par
+  valeur, comme avant.
+- Motivation explicite de l'utilisateur : une bonne partie du cœur
+  audio/MIDI sera réimplémentée en C/C++ plus tard pour la performance —
+  choisir des structures faciles à porter sans trop casser la
+  compatibilité. Un entier auto-incrémenté est l'équivalent direct d'une
+  clé d'entité dans une table/array C (`static uint64_t next_id; id =
+  next_id++;`), contrairement par exemple à l'identité d'objet Python.
+  Appliqué immédiatement : `drum_player.py` suivait les notes patch en
+  cours d'enregistrement (`_pending_patch`, note_on → note_off) par
+  identité d'objet Python (`is`) — remplacé par un suivi par `id`, qui a un
+  sens dans un futur portage C/C++.
+- Reste un point de vigilance général pour la suite du chantier (pas
+  retouché aujourd'hui) : `payload` en dict Python (clé→valeur arbitraire)
+  est un choix pratique côté Python mais n'a pas d'équivalent direct en C
+  (qui préférerait une union taguée ou des champs fixes par type) — à
+  garder en tête si/quand le portage C/C++ du cœur audio/MIDI est
+  réellement entrepris, sans le anticiper inutilement maintenant.
 
 ### Portée explicitement exclue de ce chantier
 
