@@ -242,6 +242,26 @@ de 1c.
 | **1k** | Implémentation — durée GRID par événement (override Numpad1/3), le vrai déclencheur initial (étape 7d, 2026-07-24). | `midi_editor.py`, `mew_numpad.py` |
 | **1l** | Tests — idem. | fichiers de tests correspondants |
 
+### Avancement (mise à jour 2026-09-19)
+
+1c–1j **FAITS** (commits `ed07a52` à `25b4aa7`, 1487 tests passed). 1i a
+été précisé en deux passes avec l'utilisateur au moment de coder :
+- Portée : capture (canal MIDI entrant, déjà parsé par `midi_manager.py`
+  mais jeté par `midi_handler.py`) + affichage (liste Ctrl+2, remplace le
+  placeholder `track+1`) + édition (`SpinCtrl` dans `_NoteEditDialog`/
+  `_MidiEventEditDialog`).
+- Numérotation 0-15 (pas 1-16), cohérente avec `midi_manager.py`/`note.py`.
+  Pas d'option « tous les canaux » dans les dialogs d'édition (une note a
+  toujours exactement un canal) ; pas de nouveau filtre canal dans
+  `EventFilterDialog` ni d'UI pour `MidiManager.channel` (gap préexistant
+  découvert en creusant, séparé de ce chantier).
+- Bugs de perte de canal trouvés et corrigés en vérifiant la chaîne
+  complète : `track_editor.py` `paste_events` et `ui/mw_project.py`
+  `_clipboard_to_dict`/`_clipboard_from_dict`.
+
+Reste **1k/1l** (durée GRID par événement, le déclencheur initial du
+chantier).
+
 ### Conformité avec le but final (Import/Export MIDI)
 
 Vérifié le 2026-09-18, à la demande de l'utilisateur, que ce redesign sert
