@@ -949,10 +949,10 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_hit(self, pad_idx, velocity=100):
+    def record_hit(self, pad_idx, velocity=100, channel=0):
         float_offset, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
-        self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, vel)
+        self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, vel, channel=channel)
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
@@ -960,12 +960,13 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_patch_note(self, midi_note, velocity=100, duration_ms=None, bend=0):
+    def record_patch_note(self, midi_note, velocity=100, duration_ms=None, bend=0, channel=0):
         """Enregistre une note MIDI brute dans _tape (etype=ETYPE_PATCH).
 
         duration_ms=None → durée mesurée jusqu'au note_off via record_patch_note_off().
         duration_ms>=0   → durée fixe (numpad).
         bend             → valeur pitch bend au moment du note_on (-8192..+8191).
+        channel          → canal MIDI d'origine (0..15), capturé depuis l'entrée live.
         """
         float_offset, bar_idx, step_idx = self._compute_record_offset()
         now = time.perf_counter()
@@ -973,7 +974,8 @@ class DrumPlayer:
         dur = 0 if duration_ms is None else max(0, int(duration_ms))
         track = self._cur_track
         time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
-        new_ev = TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": midi_note, "vel": vel, "bend": bend},
+        new_ev = TapeEvent(ETYPE_PATCH, dur=dur, channel=channel,
+                            payload={"note": midi_note, "vel": vel, "bend": bend},
                             time=time_val)
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
@@ -1040,7 +1042,7 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_kit_note(self, midi_note, velocity=100):
+    def record_kit_note(self, midi_note, velocity=100, channel=0):
         """Enregistre une note MIDI brute dans _tape (etype=ETYPE_KIT) sans passer par la grille."""
         _, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
@@ -1051,7 +1053,8 @@ class DrumPlayer:
             events = self._pattern._tape[track]
             if not any(ev.time == time_val and ev.etype == ETYPE_KIT and ev.payload.get("note") == midi_note
                        for ev in events):
-                events.append(TapeEvent(ETYPE_KIT, payload={"note": midi_note, "vel": vel}, time=time_val))
+                events.append(TapeEvent(ETYPE_KIT, channel=channel,
+                                         payload={"note": midi_note, "vel": vel}, time=time_val))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------

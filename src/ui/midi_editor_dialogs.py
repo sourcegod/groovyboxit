@@ -49,6 +49,10 @@ class _NoteEditDialog(wx.Dialog):
         self._vel_ctrl = wx.SpinCtrl(self, min=1, max=127,
                                      initial=max(1, ev["vel"]), size=(80, -1))
 
+        chan_lbl        = wx.StaticText(self, label="Canal MIDI (0-15) :")
+        self._chan_ctrl = wx.SpinCtrl(self, min=0, max=15,
+                                      initial=ev.get("channel", 0), size=(60, -1))
+
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
         ok_btn.SetDefault()
@@ -70,7 +74,9 @@ class _NoteEditDialog(wx.Dialog):
         right_vbox.Add(dur_lbl,        0, wx.BOTTOM, 2)
         right_vbox.Add(self._dur_ctrl, 0, wx.BOTTOM, 10)
         right_vbox.Add(vel_lbl,        0, wx.BOTTOM, 2)
-        right_vbox.Add(self._vel_ctrl, 0)
+        right_vbox.Add(self._vel_ctrl, 0, wx.BOTTOM, 10)
+        right_vbox.Add(chan_lbl,       0, wx.BOTTOM, 2)
+        right_vbox.Add(self._chan_ctrl, 0)
 
         left_vbox = wx.BoxSizer(wx.VERTICAL)
         left_vbox.Add(inst_lbl,       0, wx.BOTTOM, 2)
@@ -101,6 +107,9 @@ class _NoteEditDialog(wx.Dialog):
 
     def get_vel(self):
         return self._vel_ctrl.GetValue()
+
+    def get_channel(self):
+        return self._chan_ctrl.GetValue()
 
 
 class _MidiEventEditDialog(wx.Dialog):
@@ -186,6 +195,11 @@ class _MidiEventEditDialog(wx.Dialog):
         self._vel_sp = wx.SpinCtrl(self, min=1, max=127,
                                    initial=max(1, ev.get("vel", 100)), size=(70, -1))
 
+        # --- Canal MIDI ---
+        chan_lbl      = wx.StaticText(self, label="Canal MIDI (0-15) :")
+        self._chan_sp = wx.SpinCtrl(self, min=0, max=15,
+                                    initial=ev.get("channel", 0), size=(60, -1))
+
         # --- Boutons ---
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
@@ -212,7 +226,9 @@ class _MidiEventEditDialog(wx.Dialog):
         right_vbox.Add(dur_lbl,        0, wx.BOTTOM, 2)
         right_vbox.Add(self._dur_txt,  0, wx.BOTTOM, 10)
         right_vbox.Add(vel_lbl,        0, wx.BOTTOM, 2)
-        right_vbox.Add(self._vel_sp,   0)
+        right_vbox.Add(self._vel_sp,   0, wx.BOTTOM, 10)
+        right_vbox.Add(chan_lbl,       0, wx.BOTTOM, 2)
+        right_vbox.Add(self._chan_sp,  0)
 
         left_vbox = wx.BoxSizer(wx.VERTICAL)
         left_vbox.Add(note_lbl,       0, wx.BOTTOM, 2)
@@ -296,6 +312,9 @@ class _MidiEventEditDialog(wx.Dialog):
 
     def get_vel(self):
         return self._vel_sp.GetValue()
+
+    def get_channel(self):
+        return self._chan_sp.GetValue()
 
 
 class _CcEventEditDialog(wx.Dialog):

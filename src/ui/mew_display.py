@@ -188,21 +188,21 @@ class DisplayMixin:
         """Format du mode Tous les événements (Ctrl+2) — liste plate,
         "index: position, canal, type, numéro, val1, val2". i = position
         0-based dans self._events, affichée en index 1-based en tête de
-        ligne. Canal = numéro de piste (substitut en attendant un vrai
-        canal MIDI par piste — voir project_event_list_window_todo,
-        généralisation reportée après
-        project_event_structure_standardization_todo)."""
-        mark  = "[*] " if selected else "    "
-        bbt   = self._bbt_str(e["bar"], e["step"])
-        canal = e["track"] + 1
+        ligne. Canal : pour une note, vrai TapeEvent.channel (0-15, Phase 7
+        étape 1i) ; pour bend/mod (automation, pas des TapeEvent), pas de
+        canal réel — numéro de piste en substitut, comme avant."""
+        mark = "[*] " if selected else "    "
+        bbt  = self._bbt_str(e["bar"], e["step"])
         if e["type"] == "note":
             name   = self._event_note_name(e)
             number = self._event_pitch_number(e)
+            canal  = e.get("channel", 0)
             return (f"{mark}{i+1}: {bbt}, Canal {canal}, Note, "
                     f"{number} ({name}), Durée {e['dur']}ms, Vel {e['vel']}")
         elif e["type"] == "bend":
             return f"{mark}{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
         elif e["type"] == "mod":
+            canal = e["track"] + 1
             return (f"{mark}{i+1}: {bbt}, Canal {canal}, CC, "
                     f"Numéro 1, Valeur {e['value']}")
         return str(e)

@@ -290,12 +290,12 @@ class MidiHandler:
         slot     = win._rack.get_slot(win._cur_slot)
         if win._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
                 and win._router.synth_ready():
-            self._handle_keyboard_note_on(note, velocity)
+            self._handle_keyboard_note_on(note, velocity, channel)
         else:
             pad_idx = self._midi_to_pad(note)
-            self._handle_pad_note_on(note, velocity, slot, pad_idx)
+            self._handle_pad_note_on(note, velocity, slot, pad_idx, channel)
 
-    def _handle_keyboard_note_on(self, note, velocity):
+    def _handle_keyboard_note_on(self, note, velocity, channel=0):
         win        = self._win
         offset     = win._kb_root_midi - win._kb_play_root
         transposed = max(0, min(127, note + offset))
@@ -320,7 +320,7 @@ class MidiHandler:
             win._router.synth.play(transposed, vol_factor, pan, 0)
             win._router.kb_last_midi = transposed
             if win._player.recording and 0 <= play_idx < win.ROWS:
-                bar_idx, step_idx = win._player.record_hit(play_idx, velocity)
+                bar_idx, step_idx = win._player.record_hit(play_idx, velocity, channel=channel)
                 if bar_idx == 0 and step_idx < win.COLS:
                     win._cells[play_idx][step_idx].SetValue(True)
             win._nr_cancel_release()
@@ -349,9 +349,9 @@ class MidiHandler:
                 bend = synth.pitch_bend if synth else 0
                 _bend_log(f"REC_READ note={transposed} synth_id={id(synth)} "
                           f"synth_ready={win._router.synth_ready()} bend_read={bend}")
-                win._player.record_patch_note(transposed, velocity, bend=bend)
+                win._player.record_patch_note(transposed, velocity, bend=bend, channel=channel)
 
-    def _handle_pad_note_on(self, note, velocity, slot, pad_idx):
+    def _handle_pad_note_on(self, note, velocity, slot, pad_idx, channel=0):
         win = self._win
         if win._player.erasing:
             prev_range = set(win._player._erase_active_pads)
@@ -376,7 +376,7 @@ class MidiHandler:
                 win._router.kb_last_midi    = midi_n
                 win._player.last_played_pad = pad_idx
                 if win._player.recording:
-                    bar_idx, step_idx = win._player.record_hit(pad_idx, velocity)
+                    bar_idx, step_idx = win._player.record_hit(pad_idx, velocity, channel=channel)
                     if bar_idx == 0 and step_idx < win.COLS:
                         win._cells[pad_idx][step_idx].SetValue(True)
                 win._nr_cancel_release()
@@ -393,7 +393,7 @@ class MidiHandler:
                 win._player.play_sound(pad_idx, velocity)
                 win._player.last_played_pad = pad_idx
                 if win._player.recording:
-                    bar_idx, step_idx = win._player.record_hit(pad_idx, velocity)
+                    bar_idx, step_idx = win._player.record_hit(pad_idx, velocity, channel=channel)
                     if bar_idx == 0 and step_idx < win.COLS:
                         win._cells[pad_idx][step_idx].SetValue(True)
                 win._nr_cancel_release()
@@ -414,7 +414,7 @@ class MidiHandler:
             win._player.last_played_pad = pad_idx
             win._debug_pad_status(pad_idx, note)
             if win._player.recording:
-                bar_idx, step_idx = win._player.record_hit(pad_idx, velocity)
+                bar_idx, step_idx = win._player.record_hit(pad_idx, velocity, channel=channel)
                 if bar_idx == 0 and step_idx < win.COLS:
                     win._cells[pad_idx][step_idx].SetValue(True)
         elif slot.type == InstrumentType.KIT and win._snd.note_map:
@@ -423,12 +423,12 @@ class MidiHandler:
             pad_idx = max(0, min(win.ROWS - 1, kit_pad))
             win._debug_pad_status(pad_idx, note)
             if win._player.recording:
-                win._player.record_kit_note(note, velocity)
+                win._player.record_kit_note(note, velocity, channel=channel)
         else:
             win._player.play_sound(pad_idx, velocity)
             win._debug_pad_status(pad_idx, note)
             if win._player.recording:
-                bar_idx, step_idx = win._player.record_hit(pad_idx, velocity)
+                bar_idx, step_idx = win._player.record_hit(pad_idx, velocity, channel=channel)
                 if bar_idx == 0 and step_idx < win.COLS:
                     win._cells[pad_idx][step_idx].SetValue(True)
 

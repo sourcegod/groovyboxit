@@ -29,19 +29,21 @@ class EditingMixin:
                 new_note = min(dlg.get_note(), pat._num_pads - 1)
                 new_ev = self._midi_editor.edit_grid_note(
                     pat, ev,
-                    new_pad  = new_note,
-                    new_vel  = dlg.get_vel(),
-                    new_bar  = dlg.get_bar(),
-                    new_step = dlg.get_step(),
+                    new_pad     = new_note,
+                    new_vel     = dlg.get_vel(),
+                    new_bar     = dlg.get_bar(),
+                    new_step    = dlg.get_step(),
+                    new_channel = dlg.get_channel(),
                 )
             else:
                 new_ev = self._midi_editor.edit_tape_note(
                     pat, ev,
-                    new_note = dlg.get_note(),
-                    new_vel  = dlg.get_vel(),
-                    new_bar  = dlg.get_bar(),
-                    new_step = dlg.get_step(),
-                    new_dur  = dlg.get_dur_ms(),
+                    new_note    = dlg.get_note(),
+                    new_vel     = dlg.get_vel(),
+                    new_bar     = dlg.get_bar(),
+                    new_step    = dlg.get_step(),
+                    new_dur     = dlg.get_dur_ms(),
+                    new_channel = dlg.get_channel(),
                 )
             if new_ev:
                 # Pour les notes grille, rafraîchir le cache _all_offsets
@@ -241,7 +243,7 @@ class EditingMixin:
         if dlg.ShowModal() == wx.ID_OK:
             new_ev = self._midi_editor.insert_note(
                 pat, etype, track, dlg.get_bar(), dlg.get_step(), dlg.get_inst(),
-                vel=dlg.get_vel(), dur=dlg.get_dur(),
+                vel=dlg.get_vel(), dur=dlg.get_dur(), channel=dlg.get_channel(),
             )
             if new_ev:
                 self._insert_last_vel = new_ev["vel"]

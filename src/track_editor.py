@@ -318,17 +318,18 @@ class TrackEditor:
                 continue
             if bar >= pattern._num_bars or step >= ns:
                 continue
+            channel = ev.get("channel", 0)
             if ev["etype"] == ETYPE_GRID:
                 pad = ev["pad"]
                 if pad < pattern._num_pads:
-                    pattern.set_cell(abs_track, pad, bar, step, ev["vel"])
+                    pattern.set_cell(abs_track, pad, bar, step, ev["vel"], channel=channel)
                     pasted += 1
             elif ev["etype"] in (ETYPE_KIT, ETYPE_PATCH):
                 time    = pattern._bar_step_to_time(bar, step)
                 payload = {"note": ev["pad"], "vel": ev["vel"]}
                 if ev["etype"] == ETYPE_PATCH:
                     payload["bend"] = ev.get("bend", 0)
-                te = TapeEvent(ev["etype"], dur=ev["dur"], payload=payload, time=time)
+                te = TapeEvent(ev["etype"], dur=ev["dur"], channel=channel, payload=payload, time=time)
                 with pattern._lock:
                     pattern._ensure_track_count(abs_track + 1)
                     pattern._tape[abs_track].append(te)

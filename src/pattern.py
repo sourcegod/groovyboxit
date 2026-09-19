@@ -206,7 +206,7 @@ class Pattern:
                 return ev.payload.get("vel")
         return 0
 
-    def set_cell(self, track, pad, bar, step, value):
+    def set_cell(self, track, pad, bar, step, value, channel=0):
         """Écrit (value>0) ou efface (value<=0) la note grille (track,pad) à (bar,step)."""
         vel = Pattern._norm_vel(value)
         time = self._bar_step_to_time(bar, step)
@@ -216,7 +216,8 @@ class Pattern:
             track_list[:] = [ev for ev in track_list
                               if not (ev.time == time and ev.etype == ETYPE_GRID and ev.payload.get("pad") == pad)]
             if vel > 0:
-                track_list.append(TapeEvent(ETYPE_GRID, payload={"pad": pad, "vel": vel}, time=time))
+                track_list.append(TapeEvent(ETYPE_GRID, channel=channel,
+                                             payload={"pad": pad, "vel": vel}, time=time))
 
     def clear_grid_pad(self, track, pad):
         """Efface toutes les notes GRID d'un pad sur une piste (toutes mesures)."""

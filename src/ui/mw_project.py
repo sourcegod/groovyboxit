@@ -272,12 +272,14 @@ class ProjectMixin:
         for (t, b, s), events in cb.tape.items():
             for ev in events:
                 if ev.etype == ETYPE_GRID:
-                    tape_list.append([ETYPE_GRID, t, b, s, ev.payload.get("pad"), ev.payload.get("vel")])
+                    tape_list.append([ETYPE_GRID, t, b, s, ev.payload.get("pad"), ev.payload.get("vel"),
+                                       ev.channel])
                 elif ev.etype == ETYPE_KIT:
-                    tape_list.append([ETYPE_KIT, t, b, s, ev.payload.get("note"), ev.payload.get("vel"), ev.dur])
+                    tape_list.append([ETYPE_KIT, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
+                                       ev.dur, ev.channel])
                 else:
                     tape_list.append([ETYPE_PATCH, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
-                                       ev.dur, ev.payload.get("bend", 0)])
+                                       ev.dur, ev.payload.get("bend", 0), ev.channel])
         return {
             "num_tracks": cb.num_tracks,
             "num_bars":   cb.num_bars,
@@ -296,16 +298,20 @@ class ProjectMixin:
         for rec in d["tape"]:
             etype = rec[0]
             if etype == ETYPE_GRID:
-                _, t, b, s, pad, vel = rec
+                t, b, s, pad, vel = rec[1], rec[2], rec[3], rec[4], rec[5]
+                channel = rec[6] if len(rec) > 6 else 0
                 tape.setdefault((t, b, s), []).append(
-                    TapeEvent(ETYPE_GRID, payload={"pad": pad, "vel": vel})
+                    TapeEvent(ETYPE_GRID, channel=channel, payload={"pad": pad, "vel": vel})
                 )
             else:
                 t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
                 payload = {"note": note, "vel": vel}
                 if etype == ETYPE_PATCH:
                     payload["bend"] = rec[7] if len(rec) > 7 else 0
-                tape.setdefault((t, b, s), []).append(TapeEvent(etype, dur=dur, payload=payload))
+                    channel = rec[8] if len(rec) > 8 else 0
+                else:
+                    channel = rec[7] if len(rec) > 7 else 0
+                tape.setdefault((t, b, s), []).append(TapeEvent(etype, dur=dur, channel=channel, payload=payload))
         self._track_editor._clipboard = _ClipboardData(
             num_tracks = d["num_tracks"],
             num_bars   = d["num_bars"],
