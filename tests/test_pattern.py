@@ -464,7 +464,7 @@ def test_resize_both_bars_and_steps():
 REQUIRED_KEYS = {
     "name", "bpm", "num_bars", "num_steps", "start_bar", "looping",
     "track_slots", "track_mutes", "track_solos", "track_volumes",
-    "track_pans", "curpattern", "voices",
+    "track_pans", "tape_v2", "voices",
 }
 
 def test_to_dict_has_all_keys():
@@ -491,13 +491,16 @@ def test_to_dict_looping_value():
     assert p.to_dict()["looping"] is False
     print("  to_dict['looping'] reflète _looping : OK")
 
-def test_to_dict_curpattern_matches_dense_grid():
+def test_to_dict_tape_v2_matches_dense_grid():
+    """to_dict['tape_v2'] (une fois rechargé) doit produire la même grille dense
+    que to_dense_grid() — curpattern n'est plus dans to_dict (Phase 7 étape 1e)."""
     p = Pattern()
     p.set_cell(0, 3, 0, 7, 100)
     d = p.to_dict()
-    # curpattern est désormais dérivé à la volée depuis _tape (etype ETYPE_GRID)
-    assert d["curpattern"] == p.to_dense_grid()
-    print("  to_dict['curpattern'] == to_dense_grid() (dérivé de _tape) : OK")
+    dst = Pattern()
+    dst.from_dict(d)
+    assert dst.to_dense_grid() == p.to_dense_grid()
+    print("  to_dict['tape_v2'] → from_dict conserve to_dense_grid() : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -680,7 +683,7 @@ if __name__ == "__main__":
     test_to_dict_name_value()
     test_to_dict_bpm_value()
     test_to_dict_looping_value()
-    test_to_dict_curpattern_matches_dense_grid()
+    test_to_dict_tape_v2_matches_dense_grid()
     # from_dict
     test_from_dict_restores_name()
     test_from_dict_restores_bpm()

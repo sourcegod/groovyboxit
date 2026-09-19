@@ -192,24 +192,34 @@ def test_resize_filters_kit_events_steps_out_of_range():
 
 
 # ---------------------------------------------------------------------------
-# to_dict / from_dict — format JSON inchangé (rétrocompatibilité)
+# to_dict / from_dict — format tape_v2 (Phase 7 étape 1e) + rétrocompatibilité
 # ---------------------------------------------------------------------------
 
-def test_to_dict_kit_tape_6_columns():
+def test_to_dict_kit_event_in_tape_v2():
     p = Pattern()
     assign_tape(p, {(0, 0, 3): [_K(36)]})
-    rec = p.to_dict()["kit_tape"]
-    assert len(rec) == 1
-    assert rec[0] == [0, 0, 3, 36, 100, 0]
-    print("  to_dict kit_tape : enregistrement 6 colonnes : OK")
+    track0 = p.to_dict()["tape_v2"][0]
+    assert len(track0) == 1
+    ev_time, etype, dur, channel, payload = track0[0]
+    assert ev_time  == p._bar_step_to_time(0, 3)
+    assert etype    == ETYPE_KIT
+    assert dur      == 0
+    assert channel  == 0
+    assert payload  == {"note": 36, "vel": 100}
+    print("  to_dict tape_v2 : événement KIT correctement sérialisé : OK")
 
-def test_to_dict_patch_tape_7_columns():
+def test_to_dict_patch_event_in_tape_v2():
     p = Pattern()
     assign_tape(p, {(1, 0, 7): [_P(60, 90, 350, 2048)]})
-    rec = p.to_dict()["patch_tape"]
-    assert len(rec) == 1
-    assert rec[0] == [1, 0, 7, 60, 90, 350, 2048]
-    print("  to_dict patch_tape : enregistrement 7 colonnes (avec bend) : OK")
+    track1 = p.to_dict()["tape_v2"][1]
+    assert len(track1) == 1
+    ev_time, etype, dur, channel, payload = track1[0]
+    assert ev_time  == p._bar_step_to_time(0, 7)
+    assert etype    == ETYPE_PATCH
+    assert dur      == 350
+    assert channel  == 0
+    assert payload  == {"note": 60, "vel": 90, "bend": 2048}
+    print("  to_dict tape_v2 : événement PATCH correctement sérialisé (avec bend) : OK")
 
 def test_roundtrip_kit_tape():
     src = Pattern()
@@ -305,6 +315,25 @@ def test_from_dict_mixed_kit_and_patch_same_step():
     etypes = [ev.etype for ev in events]
     assert ETYPE_KIT in etypes and ETYPE_PATCH in etypes
     print("  from_dict kit+patch au même step → cohabitent dans _tape : OK")
+
+def test_from_dict_old_format_then_to_dict_upgrades_to_tape_v2():
+    """Charger un vieux preset (curpattern/kit_tape/patch_tape) puis re-sérialiser
+    doit produire le nouveau format tape_v2 — pas de double écriture permanente."""
+    old = {
+        "curpattern": Pattern().to_dense_grid(),
+        "kit_tape":   [[0, 0, 4, 36, 100, 0]],
+        "patch_tape": [[1, 0, 7, 60, 90, 500, 100]],
+    }
+    p = Pattern()
+    p.from_dict(old)
+    d = p.to_dict()
+    assert "tape_v2" in d
+    assert "curpattern" not in d and "kit_tape" not in d and "patch_tape" not in d
+    reloaded = Pattern()
+    reloaded.from_dict(d)
+    assert any(ev.etype == ETYPE_KIT   and ev.note == 36 for ev in tape_at(reloaded, 0, 0, 4))
+    assert any(ev.etype == ETYPE_PATCH and ev.note == 60 for ev in tape_at(reloaded, 1, 0, 7))
+    print("  from_dict (vieux format) → to_dict bascule vers tape_v2 (pas de dual-write) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -1600,14 +1629,16 @@ def test_clear_offset_removes_G_from_tape():
     print("  _clear_offset supprime TapeEvent('G') de _tape : OK")
 
 
-def test_to_dict_excludes_G_entries():
-    """to_dict ne sérialise pas les TapeEvent 'G' (dérivés de _tape via to_dense_grid)."""
+def test_to_dict_tape_v2_grid_entry_correctly_typed():
+    """to_dict sérialise une note GRID avec etype=ETYPE_GRID dans tape_v2 (pas KIT/PATCH)."""
     pl = _make_player()
     pl.record_hit(4, 100)   # crée un ETYPE_GRID dans _tape
     d = pl._pattern.to_dict()
-    assert d["kit_tape"]   == [], f"kit_tape doit être vide, obtenu {d['kit_tape']}"
-    assert d["patch_tape"] == [], f"patch_tape doit être vide, obtenu {d['patch_tape']}"
-    print("  to_dict exclut les entrées 'G' de la sérialisation : OK")
+    events = [ev for track in d["tape_v2"] for ev in track]
+    assert len(events) == 1
+    ev_time, etype, dur, channel, payload = events[0]
+    assert etype == ETYPE_GRID, f"attendu ETYPE_GRID, obtenu {etype!r}"
+    print("  to_dict sérialise une note GRID avec le bon etype dans tape_v2 : OK")
 
 
 def test_G_and_K_coexist_at_same_step():
@@ -1667,8 +1698,8 @@ if __name__ == "__main__":
     test_resize_filters_patch_events_out_of_range()
     test_resize_filters_kit_events_steps_out_of_range()
     # to_dict / from_dict
-    test_to_dict_kit_tape_6_columns()
-    test_to_dict_patch_tape_7_columns()
+    test_to_dict_kit_event_in_tape_v2()
+    test_to_dict_patch_event_in_tape_v2()
     test_roundtrip_kit_tape()
     test_roundtrip_patch_tape()
     test_roundtrip_patch_tape_with_bend()
@@ -1677,6 +1708,7 @@ if __name__ == "__main__":
     test_from_dict_patch_tape_backward_compat_6_columns()
     test_from_dict_empty_tapes()
     test_from_dict_mixed_kit_and_patch_same_step()
+    test_from_dict_old_format_then_to_dict_upgrades_to_tape_v2()
     # record_kit_note
     test_record_kit_note_stores_event()
     test_record_kit_note_no_duplicate_same_note()
@@ -1797,7 +1829,7 @@ if __name__ == "__main__":
     test_record_nr_hit_adds_G_to_tape()
     test_erase_hit_removes_G_from_tape()
     test_clear_offset_removes_G_from_tape()
-    test_to_dict_excludes_G_entries()
+    test_to_dict_tape_v2_grid_entry_correctly_typed()
     test_G_and_K_coexist_at_same_step()
     test_run_thread_GRID_EVENT_dispatch()
     print("Tous les tests : OK")
