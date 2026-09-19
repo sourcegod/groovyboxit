@@ -628,8 +628,8 @@ def test_goto_to_offset_un_bar():
 
 def test_etype_discriminates_k_vs_p():
     from pattern import TapeEvent, ETYPE_KIT, ETYPE_PATCH
-    ev_k = TapeEvent(ETYPE_KIT, 36, 100, 0, 0)
-    ev_p = TapeEvent(ETYPE_PATCH, 36, 100, 200, 0)
+    ev_k = TapeEvent(ETYPE_KIT, payload={"note": 36, "vel": 100})
+    ev_p = TapeEvent(ETYPE_PATCH, dur=200, payload={"note": 36, "vel": 100, "bend": 0})
     assert ev_k.etype == ETYPE_KIT
     assert ev_p.etype == ETYPE_PATCH
     assert ev_k != ev_p

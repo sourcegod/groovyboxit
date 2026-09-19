@@ -18,11 +18,11 @@ from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at, same
 
 
 def _K(note, vel=100, dur=0):
-    return TapeEvent(ETYPE_KIT, note, vel, dur, 0)
+    return TapeEvent(ETYPE_KIT, dur=dur, payload={"note": note, "vel": vel})
 
 
 def _P(note, vel=100, dur=0, bend=0):
-    return TapeEvent(ETYPE_PATCH, note, vel, dur, bend)
+    return TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": note, "vel": vel, "bend": bend})
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def test_set_cell_then_get_cell():
     p = Pattern()
     p.set_cell(0, 3, 0, 5, 100)
     assert p.get_cell(0, 3, 0, 5) == 100
-    assert tape_at(p, 0, 0, 5) == [TapeEvent(ETYPE_GRID, 3, 100, 0, 0)]
+    assert tape_at(p, 0, 0, 5) == [TapeEvent(ETYPE_GRID, payload={"pad": 3, "vel": 100})]
     print("  set_cell → get_cell : OK")
 
 
@@ -87,7 +87,7 @@ def test_set_cell_coexists_with_kp_events():
     set_tape_at(p, 0, 0, 4, [_K(60, 90), _P(61, 70, 200, 50)])
     p.set_cell(0, 3, 0, 4, 100)
     assert same_events(tape_at(p, 0, 0, 4), [
-        _K(60, 90), _P(61, 70, 200, 50), TapeEvent(ETYPE_GRID, 3, 100, 0, 0)
+        _K(60, 90), _P(61, 70, 200, 50), TapeEvent(ETYPE_GRID, payload={"pad": 3, "vel": 100})
     ])
     # Effacer la note G ne touche pas K/P
     p.set_cell(0, 3, 0, 4, 0)

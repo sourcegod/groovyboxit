@@ -35,8 +35,8 @@ def _make_live_with_kp(num_bars=2, num_steps=16):
     player._pattern.new_pattern(num_bars, num_steps)
     live = player._pattern
     live.set_cell(0, 0, 0, 0, 100)     # note de grille (G)
-    add_tape_at(live, 0, 0, 4, TapeEvent(ETYPE_KIT, 36, 90, 0, 0))
-    add_tape_at(live, 0, 1, 2, TapeEvent(ETYPE_PATCH, 60, 80, 300, 50))
+    add_tape_at(live, 0, 0, 4, TapeEvent(ETYPE_KIT, payload={"note": 36, "vel": 90}))
+    add_tape_at(live, 0, 1, 2, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 60, "vel": 80, "bend": 50}))
     live._bend_tape[0].append((5.0, 1000))
     live._mod_tape[0].append((3.0, 64))
     return player

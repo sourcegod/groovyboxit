@@ -446,7 +446,8 @@ from tape_test_utils import add_tape_at, tape_at, tape_positions
 
 def _add_K(player, bar, step, dur=500):
     """Ajoute un TapeEvent K sur la piste 0."""
-    add_tape_at(player._pattern, 0, bar, step, _TapeEvent(_ETYPE_KIT, 0, 100, dur, 0))
+    add_tape_at(player._pattern, 0, bar, step,
+                _TapeEvent(_ETYPE_KIT, dur=dur, payload={"note": 0, "vel": 100}))
 
 def _tape_pos(player):
     """Retourne les positions (bar, step) des événements sur la piste 0."""

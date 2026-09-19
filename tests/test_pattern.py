@@ -150,7 +150,7 @@ def test_load_pattern_preserves_kp_events():
     from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
     from tape_test_utils import add_tape_at, tape_at
     dst = Pattern()
-    add_tape_at(dst, 0, 0, 0, TapeEvent(ETYPE_KIT, 60, 90, 0, 0))
+    add_tape_at(dst, 0, 0, 0, TapeEvent(ETYPE_KIT, payload={"note": 60, "vel": 90}))
     dst.load_pattern(Pattern().to_dense_grid())
     assert any(ev.etype == ETYPE_KIT for ev in tape_at(dst, 0, 0, 0))
     print("  load_pattern préserve les événements K/P existants : OK")
@@ -351,7 +351,7 @@ def test_is_empty_false_with_only_kp_events():
     from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
     from tape_test_utils import set_tape_at
     p = Pattern()
-    set_tape_at(p, 0, 0, 0, [TapeEvent(ETYPE_KIT, 60, 90, 0, 0)])
+    set_tape_at(p, 0, 0, 0, [TapeEvent(ETYPE_KIT, payload={"note": 60, "vel": 90})])
     assert not p.is_empty()
     print("  is_empty() == False avec seulement des notes K/P : OK")
 
@@ -567,7 +567,7 @@ def test_from_dict_preserves_kit_and_patch_tape():
     from tape_test_utils import add_tape_at, tape_at
     src = Pattern()
     src.set_cell(0, 3, 0, 7, 100)
-    add_tape_at(src, 0, 0, 2, TapeEvent(ETYPE_KIT, 60, 90, 0, 0))
+    add_tape_at(src, 0, 0, 2, TapeEvent(ETYPE_KIT, payload={"note": 60, "vel": 90}))
     d = src.to_dict()
     dst = Pattern()
     dst.from_dict(d)
