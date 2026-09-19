@@ -1676,6 +1676,70 @@ def test_run_thread_GRID_EVENT_dispatch():
 
 
 # ---------------------------------------------------------------------------
+# Canal MIDI (Phase 7 étape 1i)
+# ---------------------------------------------------------------------------
+
+def test_set_cell_default_channel_zero():
+    p = Pattern()
+    p.set_cell(0, 3, 0, 5, 100)
+    assert tape_at(p, 0, 0, 5)[0].channel == 0
+    print("  set_cell sans channel → 0 par défaut : OK")
+
+def test_set_cell_stores_channel():
+    p = Pattern()
+    p.set_cell(0, 3, 0, 5, 100, channel=9)
+    assert tape_at(p, 0, 0, 5)[0].channel == 9
+    print("  set_cell(channel=9) stocke le canal : OK")
+
+def test_record_hit_stores_channel():
+    pl = _make_player()
+    bar_idx, step_idx = pl.record_hit(4, 100, channel=3)
+    ev = [e for e in tape_at(pl._pattern, 0, bar_idx, step_idx) if e.etype == ETYPE_GRID][0]
+    assert ev.channel == 3
+    print("  record_hit(channel=3) stocke le canal sur l'event GRID : OK")
+
+def test_record_kit_note_stores_channel():
+    pl = _make_player()
+    pl.record_kit_note(36, 100, channel=5)
+    ev = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_KIT][0]
+    assert ev.channel == 5
+    print("  record_kit_note(channel=5) stocke le canal : OK")
+
+def test_record_patch_note_stores_channel():
+    pl = _make_player()
+    pl.record_patch_note(60, 100, duration_ms=200, channel=7)
+    ev = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_PATCH][0]
+    assert ev.channel == 7
+    print("  record_patch_note(channel=7) stocke le canal : OK")
+
+def test_record_patch_note_off_preserves_channel():
+    """La finalisation de durée (note_off) ne doit pas réinitialiser le canal."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, channel=7)   # duration_ms=None → attend note_off
+    pl.record_patch_note_off(60)
+    ev = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_PATCH][0]
+    assert ev.channel == 7
+    print("  record_patch_note_off préserve le canal : OK")
+
+def test_resize_preserves_channel():
+    p = Pattern()
+    p.set_cell(0, 3, 0, 5, 100, channel=9)
+    p.resize(2, 32)   # change num_steps → retemporisation interne
+    ev = [e for e in p._tape[0] if e.etype == ETYPE_GRID][0]
+    assert ev.channel == 9
+    print("  resize (avec changement num_steps) préserve le canal : OK")
+
+def test_double_bars_preserves_channel():
+    p = Pattern()
+    p.new_pattern(1, 16)
+    p.set_cell(0, 3, 0, 5, 100, channel=9)
+    p.double_bars()
+    evs = [e for e in p._tape[0] if e.etype == ETYPE_GRID]
+    assert all(e.channel == 9 for e in evs)
+    print("  double_bars préserve le canal sur l'original et la copie : OK")
+
+
+# ---------------------------------------------------------------------------
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
@@ -1832,4 +1896,13 @@ if __name__ == "__main__":
     test_to_dict_tape_v2_grid_entry_correctly_typed()
     test_G_and_K_coexist_at_same_step()
     test_run_thread_GRID_EVENT_dispatch()
+    # Canal MIDI (Phase 7 étape 1i)
+    test_set_cell_default_channel_zero()
+    test_set_cell_stores_channel()
+    test_record_hit_stores_channel()
+    test_record_kit_note_stores_channel()
+    test_record_patch_note_stores_channel()
+    test_record_patch_note_off_preserves_channel()
+    test_resize_preserves_channel()
+    test_double_bars_preserves_channel()
     print("Tous les tests : OK")

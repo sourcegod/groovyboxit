@@ -340,6 +340,102 @@ def test_edit_grid_out_of_bounds_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# Canal MIDI (Phase 7 étape 1i)
+# ---------------------------------------------------------------------------
+
+def test_edit_grid_channel_preserved_by_default():
+    me = MidiEditor()
+    p  = Pattern()
+    p.set_cell(0, 0, 0, 0, 100, channel=5)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0,
+          "vel": 100, "channel": 5}
+    result = me.edit_grid_note(p, ev, new_vel=50)
+    assert result["channel"] == 5
+    assert tape_at(p, 0, 0, 0)[0].channel == 5
+
+def test_edit_grid_channel_can_be_changed():
+    me = MidiEditor()
+    p  = Pattern()
+    p.set_cell(0, 0, 0, 0, 100, channel=5)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0,
+          "vel": 100, "channel": 5}
+    result = me.edit_grid_note(p, ev, new_channel=9)
+    assert result["channel"] == 9
+    assert tape_at(p, 0, 0, 0)[0].channel == 9
+
+def test_edit_tape_note_basic():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)
+    kit_ev = next(e for e in ev if e["etype"] == ETYPE_KIT)
+    result = me.edit_tape_note(p, kit_ev, new_vel=42, new_dur=333)
+    assert result is not None
+    assert result["vel"] == 42
+    assert result["dur"] == 333
+    assert result["etype"] == ETYPE_KIT
+
+def test_edit_tape_note_channel_preserved_by_default():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_KIT, dur=500, channel=6, payload={"note": 60, "vel": 100}, time=0))
+    ev = me.get_note_events(p, 0)[0]
+    result = me.edit_tape_note(p, ev, new_vel=80)
+    assert result["channel"] == 6
+
+def test_edit_tape_note_channel_can_be_changed():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_PATCH, dur=500, channel=6, payload={"note": 60, "vel": 100, "bend": 0}, time=0))
+    ev = me.get_note_events(p, 0)[0]
+    result = me.edit_tape_note(p, ev, new_channel=2)
+    assert result["channel"] == 2
+    assert result["bend"] == 0   # payload PATCH conservé (bend inchangé)
+
+def test_get_note_events_exposes_channel():
+    p = Pattern()
+    p.set_cell(0, 0, 0, 0, 100, channel=4)
+    me = MidiEditor()
+    ev = me.get_note_events(p, 0)[0]
+    assert ev["channel"] == 4
+
+def test_duplicate_event_grid_preserves_channel():
+    me = MidiEditor()
+    p  = Pattern()
+    p.set_cell(0, 0, 0, 0, 100, channel=3)
+    ev = me.get_note_events(p, 0)[0]
+    result = me.duplicate_event(p, ev)
+    assert result["channel"] == 3
+
+def test_duplicate_event_tape_preserves_channel():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_KIT, dur=500, channel=8, payload={"note": 60, "vel": 100}, time=0))
+    ev = me.get_note_events(p, 0)[0]
+    result = me.duplicate_event(p, ev)
+    assert result["channel"] == 8
+
+def test_insert_note_grid_stores_channel():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_GRID, 0, 0, 2, 5, vel=90, channel=11)
+    assert result["channel"] == 11
+    assert tape_at(p, 0, 0, 2)[0].channel == 11
+
+def test_insert_note_patch_stores_channel():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_PATCH, 0, 0, 2, 64, vel=100, dur=250, channel=11)
+    assert result["channel"] == 11
+    assert tape_at(p, 0, 0, 2)[0].channel == 11
+
+def test_insert_note_default_channel_zero():
+    me = MidiEditor()
+    p  = Pattern()
+    result = me.insert_note(p, ETYPE_GRID, 0, 0, 0, 5)
+    assert result["channel"] == 0
+
+
+# ---------------------------------------------------------------------------
 # edit_bend_event / edit_mod_event
 # ---------------------------------------------------------------------------
 

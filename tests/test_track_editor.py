@@ -661,18 +661,19 @@ def test_erase_grid_then_paste_at_bar5():
 # ---------------------------------------------------------------------------
 
 def _make_note(track, pad, bar, step, vel=100, etype=ETYPE_GRID, dur=200, bend=0,
-               num_steps=16):
+               num_steps=16, channel=0):
     return {
-        "type":   "note",
-        "etype":  etype,
-        "track":  track,
-        "pad":    pad,
-        "bar":    bar,
-        "step":   step,
-        "offset": bar * num_steps + step,
-        "vel":    vel,
-        "dur":    dur,
-        "bend":   bend,
+        "type":    "note",
+        "etype":   etype,
+        "track":   track,
+        "pad":     pad,
+        "bar":     bar,
+        "step":    step,
+        "offset":  bar * num_steps + step,
+        "vel":     vel,
+        "dur":     dur,
+        "bend":    bend,
+        "channel": channel,
     }
 
 
@@ -788,6 +789,24 @@ def test_paste_events_no_clipboard_returns_zero():
     te = TrackEditor()
     p  = _make_pattern()
     assert te.paste_events(p, 0, 0) == 0
+
+
+def test_paste_events_grid_preserves_channel():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=1, num_bars=1, num_steps=16)
+    ev  = _make_note(0, 3, 0, 4, vel=90, channel=7)
+    te.copy_events([ev])
+    te.paste_events(p, 0, 8)
+    assert tape_at(p, 0, 0, 8)[0].channel == 7
+
+
+def test_paste_events_tape_kp_preserves_channel():
+    te  = TrackEditor()
+    p   = _make_pattern(num_tracks=1, num_bars=2, num_steps=16)
+    ev  = _make_note(0, 60, 0, 2, vel=100, etype=ETYPE_PATCH, dur=300, bend=200, channel=12)
+    te.copy_events([ev])
+    te.paste_events(p, 0, 8)
+    assert tape_at(p, 0, 0, 8)[0].channel == 12
 
 
 def test_copy_events_overwrites_previous():

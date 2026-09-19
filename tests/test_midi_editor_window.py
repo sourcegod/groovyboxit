@@ -218,9 +218,9 @@ class _FakeEventLabelWindow:
         self._view_mode = self.MODE_ALL if view_mode is None else view_mode
 
 
-def _note_ev(track=0, pad=60, vel=100, dur=500, etype=ETYPE_PATCH):
+def _note_ev(track=0, pad=60, vel=100, dur=500, etype=ETYPE_PATCH, channel=0):
     return {"type": "note", "etype": etype, "track": track, "bar": 0, "step": 0,
-            "pad": pad, "vel": vel, "dur": dur}
+            "pad": pad, "vel": vel, "dur": dur, "channel": channel}
 
 
 def test_event_label_mode_notes_keeps_old_format():
@@ -240,10 +240,10 @@ def test_event_label_mode_all_uses_new_format():
 
 def test_event_label_all_note_patch_format():
     win  = _FakeEventLabelWindow()
-    ev   = _note_ev(track=0, pad=60, vel=100, dur=500)
+    ev   = _note_ev(track=0, pad=60, vel=100, dur=500, channel=0)
     name = midi_to_note_name(60)
     assert win._event_label_all(0, ev) == \
-        f"    1: 1:1:1, Canal 1, Note, 60 ({name}), Durée 500ms, Vel 100"
+        f"    1: 1:1:1, Canal 0, Note, 60 ({name}), Durée 500ms, Vel 100"
 
 
 def test_event_label_all_note_selected_marks_line():
@@ -252,10 +252,17 @@ def test_event_label_all_note_selected_marks_line():
     assert win._event_label_all(0, ev, selected=True).startswith("[*] 1: ")
 
 
-def test_event_label_all_note_canal_is_track_number_1based():
+def test_event_label_all_note_canal_is_real_channel():
+    """Canal = TapeEvent.channel réel (Phase 7 étape 1i), indépendant de la piste."""
+    win = _FakeEventLabelWindow()
+    ev  = _note_ev(track=4, channel=9)
+    assert "Canal 9" in win._event_label_all(0, ev)
+
+def test_event_label_all_note_canal_defaults_to_zero():
     win = _FakeEventLabelWindow()
     ev  = _note_ev(track=4)
-    assert "Canal 5" in win._event_label_all(0, ev)
+    del ev["channel"]   # simule un event_info sans champ "channel" (défensif)
+    assert "Canal 0" in win._event_label_all(0, ev)
 
 
 def test_event_label_all_note_index_is_list_position():
