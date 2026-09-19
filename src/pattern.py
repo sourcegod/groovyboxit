@@ -489,14 +489,19 @@ class Pattern:
     def to_dict(self):
         """Sérialise le pattern en dict JSON-compatible.
 
-        Le format JSON conserve les clés 'kit_tape' et 'patch_tape' séparées
-        pour la rétrocompatibilité des presets existants.
+        Format 'tape_v2' (Phase 7 étape 1e) : une seule structure unifiée
+        GRID/KIT/PATCH, une liste par piste d'événements
+        [time, etype, dur, channel, payload]. Remplace les anciennes clés
+        'curpattern'/'kit_tape'/'patch_tape' — plus de double écriture ;
+        from_dict() sait encore lire l'ancien format pour les presets existants.
         """
         return {
             "name":          self._name,
             "bpm":           self._bpm,
             "num_bars":      self._num_bars,
             "num_steps":     self._num_steps,
+            "num_tracks":    self._num_tracks,
+            "num_pads":      self._num_pads,
             "start_bar":     self._start_bar,
             "looping":       self._looping,
             "loop_start":    self._loop_start,
@@ -507,19 +512,15 @@ class Pattern:
             "track_solos":   self._track_solos,
             "track_volumes": self._track_volumes,
             "track_pans":    self._track_pans,
-            "curpattern":    self.to_dense_grid(),
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
             "kb_root_midi":  self._kb_root_midi,
-            "kit_tape": [
-                [t, *self._time_to_bar_step(ev.time), ev.note, ev.vel, ev.dur]
-                for t, track_list in enumerate(self._tape)
-                for ev in track_list if ev.etype == ETYPE_KIT
-            ],
-            "patch_tape": [
-                [t, *self._time_to_bar_step(ev.time), ev.note, ev.vel, ev.dur, ev.bend]
-                for t, track_list in enumerate(self._tape)
-                for ev in track_list if ev.etype == ETYPE_PATCH
+            "tape_v2": [
+                [
+                    [ev.time, ev.etype, ev.dur, ev.channel, ev.payload]
+                    for ev in track_list
+                ]
+                for track_list in self._tape
             ],
             "bend_tape": [list(t) for t in self._bend_tape],
             "mod_tape":  [list(t) for t in self._mod_tape],
@@ -530,8 +531,10 @@ class Pattern:
     def from_dict(self, d):
         """Restaure le pattern depuis un dict (issu de to_dict / JSON).
 
-        Lit les clés 'kit_tape' et 'patch_tape' séparées (format historique)
-        et les fusionne dans _tape.
+        Si 'tape_v2' est présent (format Phase 7 étape 1e), c'est la seule
+        source de vérité pour _tape (GRID+KIT+PATCH unifiés). Sinon, lit
+        l'ancien format ('curpattern' + 'kit_tape' + 'patch_tape' séparées,
+        rétrocompatibilité des presets existants).
         """
         self._name       = d.get("name", "")
         self._bpm        = d.get("bpm", 100)
@@ -542,8 +545,32 @@ class Pattern:
         self._loop_start = d.get("loop_start", None)
         self._loop_end   = d.get("loop_end", None)
         self._loop_count = d.get("loop_count", 0)
-        self._tape = []
-        self.load_pattern(d["curpattern"])   # peuple les entrées ETYPE_GRID
+        if "tape_v2" in d:
+            self._num_tracks = d.get("num_tracks", len(d["tape_v2"]))
+            self._num_pads   = d.get("num_pads", Pattern.NUM_PADS)
+            self._tape = []
+            self._ensure_track_count(self._num_tracks)
+            for t, track_events in enumerate(d["tape_v2"]):
+                self._ensure_track_count(t + 1)
+                for rec in track_events:
+                    ev_time, etype, dur, channel, payload = rec
+                    self._tape[t].append(
+                        TapeEvent(etype, dur=dur, channel=channel, payload=payload, time=ev_time)
+                    )
+        else:
+            self._tape = []
+            self.load_pattern(d["curpattern"])   # peuple les entrées ETYPE_GRID
+            for rec in d.get("kit_tape", []):
+                t, b, s, note, vel = rec[:5]
+                dur = rec[5] if len(rec) > 5 else 0
+                self._ensure_track_count(t + 1)
+                self._tape[t].append(TapeEvent(ETYPE_KIT, note, vel, dur, 0, time=self._bar_step_to_time(b, s)))
+            for rec in d.get("patch_tape", []):
+                t, b, s, note, vel = rec[:5]
+                dur  = rec[5] if len(rec) > 5 else 0
+                bend = rec[6] if len(rec) > 6 else 0
+                self._ensure_track_count(t + 1)
+                self._tape[t].append(TapeEvent(ETYPE_PATCH, note, vel, dur, bend, time=self._bar_step_to_time(b, s)))
         if "track_slots"   in d: self._track_slots   = d["track_slots"]
         if "track_mutes"   in d: self._track_mutes   = d["track_mutes"]
         if "track_solos"   in d: self._track_solos   = d["track_solos"]
@@ -552,17 +579,6 @@ class Pattern:
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
-        for rec in d.get("kit_tape", []):
-            t, b, s, note, vel = rec[:5]
-            dur = rec[5] if len(rec) > 5 else 0
-            self._ensure_track_count(t + 1)
-            self._tape[t].append(TapeEvent(ETYPE_KIT, note, vel, dur, 0, time=self._bar_step_to_time(b, s)))
-        for rec in d.get("patch_tape", []):
-            t, b, s, note, vel = rec[:5]
-            dur  = rec[5] if len(rec) > 5 else 0
-            bend = rec[6] if len(rec) > 6 else 0
-            self._ensure_track_count(t + 1)
-            self._tape[t].append(TapeEvent(ETYPE_PATCH, note, vel, dur, bend, time=self._bar_step_to_time(b, s)))
         raw_bends = d.get("bend_tape", [])
         self._bend_tape = [
             [tuple(p) for p in track_bends]
