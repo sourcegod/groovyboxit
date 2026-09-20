@@ -259,8 +259,16 @@ de 1c.
   complète : `track_editor.py` `paste_events` et `ui/mw_project.py`
   `_clipboard_to_dict`/`_clipboard_from_dict`.
 
-Reste **1k/1l** (durée GRID par événement, le déclencheur initial du
-chantier).
+**1k/1l FAITS** (commits `45559cc`, `793489d`, 1497 tests passed) —
+**chantier Phase 7 complet (1a–1l)**. `Pattern.set_cell` gagne `dur=0`
+(0 = pas d'override) ; `midi_editor.py` expose `"dur"` (effective :
+override sinon voix) et `"dur_override"` (brut, pour préservation à
+travers les autres edits) ; `change_duration` accepte `ETYPE_GRID` en plus
+de `ETYPE_KIT`/`ETYPE_PATCH` ; `drum_player.py` fait primer l'override sur
+`voice_manager.get_duration_ms` à la lecture. Décision explicite :
+`insert_note` (GRID) ne pose jamais d'override — seule l'édition d'une
+note existante (Numpad1/3) en pose un, pour éviter qu'une simple insertion
+écrase silencieusement le réglage de voix.
 
 ### Conformité avec le but final (Import/Export MIDI)
 
