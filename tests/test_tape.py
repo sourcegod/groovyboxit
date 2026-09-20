@@ -1654,7 +1654,7 @@ def test_G_and_K_coexist_at_same_step():
 
 
 def test_run_thread_GRID_EVENT_dispatch():
-    """Simule la logique _run_thread : GRID_EVENT dispatch (track, pad, vel)."""
+    """Simule la logique _run_thread : GRID_EVENT dispatch (track, pad, dur, vel)."""
     pl = _make_player()
     pl.record_hit(5, 90)
     key = (0, 0, 0)
@@ -1663,16 +1663,74 @@ def test_run_thread_GRID_EVENT_dispatch():
     events = []
     for ev in note_list:
         if ev.etype == ETYPE_GRID:
-            events.append((0.0, pl.GRID_EVENT, (0, ev.payload.get("pad")), ev.payload.get("vel")))
+            events.append((0.0, pl.GRID_EVENT,
+                            (0, ev.payload.get("pad"), ev.dur), ev.payload.get("vel")))
 
     assert len(events) == 1, f"attendu 1 GRID_EVENT, obtenu {len(events)}"
     t_sec, etype, evt_data, vel = events[0]
     assert etype == pl.GRID_EVENT, f"etype attendu GRID_EVENT, obtenu {etype}"
-    t_idx, pad_idx = evt_data
-    assert t_idx   == 0
-    assert pad_idx == 5
-    assert vel     == 90
-    print("  _run_thread dispatch GRID_EVENT : (track=0, pad=5, vel=90) : OK")
+    t_idx, pad_idx, dur_override = evt_data
+    assert t_idx        == 0
+    assert pad_idx      == 5
+    assert dur_override == 0   # record_hit ne pose jamais d'override
+    assert vel          == 90
+    print("  _run_thread dispatch GRID_EVENT : (track=0, pad=5, dur=0, vel=90) : OK")
+
+def test_run_thread_GRID_EVENT_dispatch_carries_dur_override():
+    """Phase 7 étape 1k : une durée éditée (Numpad1/3) doit voyager jusqu'au
+    dispatch _run_thread, pour primer sur voice_manager.get_duration_ms."""
+    pl = _make_player()
+    p  = pl._pattern
+    p.set_cell(0, 5, 0, 0, 90, dur=750)   # override posé via edit_grid_note en pratique
+    note_list = tape_at(p, 0, 0, 0)
+
+    events = []
+    for ev in note_list:
+        if ev.etype == ETYPE_GRID:
+            events.append((0.0, pl.GRID_EVENT,
+                            (0, ev.payload.get("pad"), ev.dur), ev.payload.get("vel")))
+
+    t_sec, etype, evt_data, vel = events[0]
+    t_idx, pad_idx, dur_override = evt_data
+    assert dur_override == 750
+    # Résolution effective, comme dans _run_thread : override prime sur la voix.
+    effective_dur = dur_override if dur_override > 0 else pl.voice_manager.get_duration_ms(pad_idx)
+    assert effective_dur == 750
+    print("  _run_thread dispatch GRID_EVENT véhicule un dur_override (1k) : OK")
+
+
+# ---------------------------------------------------------------------------
+# Durée GRID par événement (Phase 7 étape 1k)
+# ---------------------------------------------------------------------------
+
+def test_set_cell_default_dur_zero():
+    p = Pattern()
+    p.set_cell(0, 3, 0, 5, 100)
+    assert tape_at(p, 0, 0, 5)[0].dur == 0
+    print("  set_cell sans dur → 0 (pas d'override) par défaut : OK")
+
+def test_set_cell_stores_dur_override():
+    p = Pattern()
+    p.set_cell(0, 3, 0, 5, 100, dur=750)
+    assert tape_at(p, 0, 0, 5)[0].dur == 750
+    print("  set_cell(dur=750) stocke l'override sur l'event GRID : OK")
+
+def test_resize_preserves_dur_override():
+    p = Pattern()
+    p.set_cell(0, 3, 0, 5, 100, dur=750)
+    p.resize(2, 32)   # change num_steps → retemporisation interne
+    ev = [e for e in p._tape[0] if e.etype == ETYPE_GRID][0]
+    assert ev.dur == 750
+    print("  resize (avec changement num_steps) préserve l'override de durée : OK")
+
+def test_double_bars_preserves_dur_override():
+    p = Pattern()
+    p.new_pattern(1, 16)
+    p.set_cell(0, 3, 0, 5, 100, dur=750)
+    p.double_bars()
+    evs = [e for e in p._tape[0] if e.etype == ETYPE_GRID]
+    assert all(e.dur == 750 for e in evs)
+    print("  double_bars préserve l'override de durée sur l'original et la copie : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -1896,6 +1954,12 @@ if __name__ == "__main__":
     test_to_dict_tape_v2_grid_entry_correctly_typed()
     test_G_and_K_coexist_at_same_step()
     test_run_thread_GRID_EVENT_dispatch()
+    test_run_thread_GRID_EVENT_dispatch_carries_dur_override()
+    # Durée GRID par événement (Phase 7 étape 1k)
+    test_set_cell_default_dur_zero()
+    test_set_cell_stores_dur_override()
+    test_resize_preserves_dur_override()
+    test_double_bars_preserves_dur_override()
     # Canal MIDI (Phase 7 étape 1i)
     test_set_cell_default_channel_zero()
     test_set_cell_stores_channel()

@@ -589,11 +589,65 @@ def test_move_event_tape_note():
 # change_duration (étape 7d — Numpad 1/3)
 # ---------------------------------------------------------------------------
 
-def test_change_duration_grid_returns_none():
+def test_change_duration_grid_lengthens_from_voice_default():
+    """Phase 7 étape 1k : Numpad1/3 fonctionne désormais aussi sur GRID —
+    la durée devient propre à cette occurrence (dur_override), elle prime
+    sur voice_manager.get_duration_ms(pad)."""
+    me = MidiEditor()
+    p  = _make_pattern()   # voix par défaut : duration_ms=500
+    ev = me.get_note_events(p, 0)[0]
+    assert ev["etype"] == ETYPE_GRID and ev["pad"] == 0
+    assert ev["dur"] == 500
+    assert ev["dur_override"] == 0
+    result = me.change_duration(p, ev, 50)
+    assert result is not None
+    assert result["dur"] == 550
+    assert result["dur_override"] == 550
+
+def test_change_duration_grid_no_change_returns_none():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0, "vel": 100}
-    assert me.change_duration(p, ev, 50) is None
+    ev = me.get_note_events(p, 0)[0]
+    assert me.change_duration(p, ev, 0) is None
+
+def test_change_duration_grid_override_persists_after_other_edits():
+    """Une fois posé, l'override de durée doit survivre à un edit_grid_note
+    qui ne le touche pas explicitement (vélocité, canal, déplacement...)."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)[0]
+    overridden = me.change_duration(p, ev, 50)
+    moved = me.edit_grid_note(p, overridden, new_vel=77, new_channel=4)
+    assert moved["dur"]          == 550
+    assert moved["dur_override"] == 550
+    assert moved["vel"]          == 77
+    assert moved["channel"]      == 4
+
+def test_edit_grid_note_new_dur_sets_override():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)[0]
+    result = me.edit_grid_note(p, ev, new_dur=1200)
+    assert result["dur"]          == 1200
+    assert result["dur_override"] == 1200
+
+def test_duplicate_event_grid_preserves_dur_override():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_note_events(p, 0)[0]
+    overridden = me.change_duration(p, ev, 50)
+    dup = me.duplicate_event(p, overridden)
+    assert dup["dur"]          == 550
+    assert dup["dur_override"] == 550
+
+def test_insert_note_grid_never_sets_dur_override():
+    """Contrairement à l'édition, l'insertion GRID ne pose jamais d'override
+    (comportement inchangé : toujours la voix, dur passé pour KIT/PATCH
+    uniquement — voir insert_note)."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    result = me.insert_note(p, ETYPE_GRID, 0, 1, 0, 5, vel=90, dur=1234)
+    assert result["dur_override"] == 0
 
 
 def test_change_duration_lengthen_tape_note():
