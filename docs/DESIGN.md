@@ -304,3 +304,193 @@ complet (à traiter plus tard, séparément) :
 Ce qui **ne change pas** dans `Pattern` (pas de refactor du format
 général) : `num_bars`, `num_steps`, `bpm`, `voices`, loop points, structure
 `Song`/`ProjectManager` — tous inchangés.
+
+---
+
+## Phase 7 étape 2a — Fondations d'un parser MIDI dédié (`midi_parser.py` + `midi_constants.py`)
+
+### Origine du besoin
+
+`EventFilterDialog` (`dialogs_temporal.py`) liste depuis longtemps 5 types
+d'événements marqués « (à venir) » dans `_EVT_TYPE_LABELS` : CC générique,
+Program Change, Poly Aftertouch, Channel Pressure, SysEx/Meta —
+sélection bloquée (`_TYPES_TO_COME`, snap-back sur le dernier type valide).
+[[project_event_list_window_todo]] notait déjà « reste reporté :
+canal/CC arbitraire » (canal fait en Phase 7 étape 1i). L'utilisateur a
+demandé de compléter ce filtre avec ces messages reportés.
+
+### État des lieux constaté en code (2026-09-20)
+
+Aucun des 5 types n'existe à un seul niveau de la chaîne aujourd'hui :
+
+- **`midi_manager.py::_callback`** décode les octets bruts **inline**
+  (pas de module dédié) et ne reconnaît que 4 types de statut MIDI :
+  `0x90` (Note On), `0x80` (Note Off), `0xB0` (Control Change), `0xE0`
+  (Pitch Bend). `0xC0` (Program Change), `0xA0` (Poly Aftertouch), `0xD0`
+  (Channel Pressure) ne sont **pas reconnus** — messages silencieusement
+  ignorés. Pire pour SysEx : `self._midi_in.ignore_types(sysex=True, ...)`
+  est posé à l'ouverture du port — ces messages sont jetés par `rtmidi`
+  **avant même** d'atteindre `_callback`.
+- **CC générique** est le type le plus proche d'être prêt : le parsing
+  `0xB0` existe déjà et `midi_handler.py::on_cc` reçoit **tout** `cc_num`,
+  mais seuls CC#1/7/10/64/120/121/123 ont un effet câblé en dur, et seul
+  CC#1 (mod wheel) est **enregistré** (dans `_mod_tape`, séparé de
+  `_tape`). Un CC arbitraire reçu aujourd'hui ne fait rien et n'est jamais
+  capturé.
+- **Program Change** : aucune notion de « program » MIDI dans l'app (le
+  `Rack` a des slots d'instrument, pas des program numbers GM) — aucun
+  effet live possible, capture pure si implémenté.
+- **Poly Aftertouch / Channel Pressure** : parsing absent ; incertain que
+  le MPK mini Plus envoie même de l'aftertouch (à vérifier avant d'y
+  investir du temps).
+- **SysEx/Meta** : bloqué au niveau `rtmidi`, valeur d'usage la plus
+  incertaine des 5 dans cette app (pas de sortie MIDI, pas de moteur
+  consommateur).
+- **Descriptions existantes** : `midi_handler.py` a déjà un dict
+  `CC_NAMES` (partiel, noms CC standard MIDI 1.0) utilisé uniquement pour
+  le statut MIDI live (`format_midi_status`/`_notify_editor_midi`).
+  `synth_engine.py::midi_to_note_name` donne déjà les noms de note
+  (`60 → "C4"`). Aucune table General MIDI (noms des 128 programs)
+  n'existe nulle part — fournie par l'utilisateur pour ce chantier (voir
+  Conception ci-dessous).
+
+### Décision : construire un module `midi_parser.py` dédié, fondations d'abord
+
+Décision de l'utilisateur (2026-09-20) : commencer par les **fondations
+d'un parser MIDI** plutôt que par le branchement direct
+capture/stockage/filtre. Proposition initiale de l'utilisateur pour la
+taxonomie, reprise telle quelle :
+
+```python
+class CVoice:
+    NoteOff               = 0x80
+    NoteOn                = 0x90
+    PolyphonicKeyPressure = 0xA0   # note aftertouch
+    ControllerChange      = 0xB0
+    ProgramChange         = 0xC0
+    ChannelPressure       = 0xD0
+    PitchBend             = 0xE0
+
+
+class CMeta:
+    FileMetaEvent              = 0xFF
+    SMPTEOffsetMetaEvent       = 0x54
+    SystemExclusive            = 0xF0
+    SystemExclusivePacket      = 0xF7
+    SequenceNumber             = 0x00
+    TextMetaEvent              = 0x01
+    CopyrightMetaEvent         = 0x02
+    TrackName                  = 0x03
+    InstrumentName             = 0x04
+    Lyric                      = 0x05
+    Marker                     = 0x06
+    CuePoint                   = 0x07
+    ChannelPrefix              = 0x20
+    MidiPort                   = 0x21
+    EndTrack                   = 0x2F
+    SetTempo                   = 0x51
+    TimeSignature              = 0x58
+    KeySignature               = 0x59
+    SequencerSpecificMetaEvent = 0x7F
+```
+
+`CMeta` reprend la taxonomie standard des méta-événements d'un fichier
+MIDI (SMF) — ce qui confirme que ce module sert **double emploi** :
+décodage des messages MIDI temps réel reçus aujourd'hui (`CVoice`), et
+fondation pour la lecture/écriture d'un fichier `.mid` plus tard
+(`CMeta`), sans dupliquer la taxonomie entre les deux usages.
+
+**Portée retenue pour ce module** (ce que 2a couvre vraiment, vs. les
+fondations posées sans implémentation) :
+
+| Catégorie | Dans ce chantier | Détail |
+|---|---|---|
+| Notes | Description seulement | Réutilise `synth_engine.midi_to_note_name` (pas de duplication) ; le décodage `0x80`/`0x90` reste largement ce qui existe déjà. |
+| CC (Control Change) | Parsing + descriptions | `CC_NAMES` déplacé (pas dupliqué) depuis `midi_handler.py`. |
+| Program Change | Parsing nouveau + descriptions GM | Tables fournies par l'utilisateur (patchs mélodiques + kits GM2), voir Conception. |
+| Pitch Bend | Parsing (déjà fait) centralisé | Décodage 14 bits déplacé dans le module dédié. |
+| Poly Aftertouch, Channel Pressure | **Fondations seulement** | Constantes `CVoice` posées ; pas de décodage ni de capture dans ce chantier. |
+| Meta, SysEx, Text | **Fondations seulement** | Constantes `CMeta` posées ; `ignore_types(sysex=True)` **pas retiré** dans ce chantier. |
+
+### Conception
+
+**Deux fichiers séparés** (données vs. logique) :
+
+- **`src/midi_constants.py`** (nouveau) : tables de description pures,
+  aucune dépendance. Contenu :
+  - `CC_NAMES` : fusionné (déplacé, pas dupliqué) depuis
+    `midi_handler.py`.
+  - `GM_PATCH_NAMES` : 128 noms d'instruments General MIDI (liste fournie
+    par l'utilisateur, `_gm_patch_lst` renommé selon la convention du
+    projet).
+  - `GM2_DRUMKIT_NAMES` : noms des kits de batterie GM2 par program
+    number (liste fournie par l'utilisateur, `_gm2_drumkit` renommé) —
+    seuls certains index ont un nom ; les autres restent l'entier
+    lui-même (convention reprise telle quelle de la source fournie).
+- **`src/midi_parser.py`** (nouveau) : logique de décodage, aucune
+  dépendance à `rtmidi` ni `wx` — pur et testable unitairement sans port
+  MIDI ni interface graphique (alternative écartée : garder le décodage
+  inline dans `midi_manager.py::_callback` comme aujourd'hui — pas
+  réutilisable pour un futur import `.mid`, pas testable isolément).
+  - `CVoice`/`CMeta` : classes-namespaces de constantes, telles que
+    proposées par l'utilisateur.
+  - Fonction(s) de décodage bas niveau : prennent les octets bruts d'un
+    message et retournent une structure décrivant le message (type,
+    canal, données) — remplace la logique actuellement inline dans
+    `MidiManager._callback` pour les 4 types déjà gérés, **plus**
+    `ProgramChange` (nouveau).
+  - Importe les tables de description depuis `midi_constants.py` (ne les
+    redéfinit pas).
+  - Note : `GM2_DRUMKIT_NAMES` n'est consulté que si l'appelant sait déjà
+    qu'un canal/piste est un kit de batterie (typiquement canal 10) —
+    `midi_parser.py` ne devine pas ça tout seul à ce stade ; c'est
+    `describe_program(program, is_drum=False)` (ou équivalent) qui
+    choisit la table.
+
+### Intégration avec l'existant
+
+- `midi_manager.py::_callback` délègue le décodage octet-par-octet à
+  `midi_parser.py` ; garde la gestion de port `rtmidi`, le threading, le
+  filtrage de canal (`self.channel`).
+- Nouveau callback `on_program_change(program, chan)` (miroir de
+  `on_note_on`/`on_cc`/`on_pitch_bend`), câblé dans `midi_handler.py`.
+- `midi_handler.py::CC_NAMES` supprimé au profit de l'import depuis
+  `midi_constants.py` (`format_midi_status` l'utilise déjà pour le statut
+  live — comportement inchangé, juste la source de la table qui change).
+- Program Change reçu : au minimum, statut live affiché (comme les autres
+  types déjà gérés par `_notify_editor_midi`) ; la **capture/stockage**
+  dans `_tape` (nouveau `ETYPE_PROGRAM_CHANGE`, payload `{"program": int}`,
+  cohérent avec la conception `TapeEvent` de la Phase 7 1a-1l) et le
+  branchement `EventFilterDialog`/affichage Ctrl+2 sont un **chantier
+  séparé, ultérieur** (à numéroter une fois le parser posé — pas dans
+  2a-2i).
+
+### Portée explicitement exclue de ce chantier
+
+- Retirer `ignore_types(sysex=True)` et décoder les SysEx.
+- Décoder Poly Aftertouch / Channel Pressure.
+- Décoder les méta-événements SMF (`CMeta`) — les constantes existent,
+  rien ne les lit encore (utile seulement quand le codec `.mid`
+  lecture/écriture sera entrepris).
+- Câbler la capture (`_tape`), l'affichage (liste Ctrl+2) et le filtre
+  (`EventFilterDialog`) de Program Change/CC générique — fondations du
+  parser uniquement dans ce chantier ; le branchement est un chantier
+  séparé qui suivra.
+
+### Découpage en commits proposé (à valider avant de coder)
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **2a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **2b** | Implémentation — `midi_constants.py` : `CC_NAMES` (fusionné), `GM_PATCH_NAMES`, `GM2_DRUMKIT_NAMES`. | `midi_constants.py` (nouveau) |
+| **2c** | Tests — `midi_constants.py` (tailles de table, quelques valeurs connues). | `test_midi_constants.py` (nouveau) |
+| **2d** | Implémentation — `midi_parser.py` : `CVoice`/`CMeta`, décodage bas niveau (Note On/Off, CC, Program Change, Pitch Bend), fonctions de description important `midi_constants.py`. | `midi_parser.py` (nouveau) |
+| **2e** | Tests — `midi_parser.py` en isolation (pas de dépendance rtmidi/wx, tests purs sur des octets construits à la main). | `test_midi_parser.py` (nouveau) |
+| **2f** | Implémentation — `midi_manager.py` délègue à `midi_parser.py` ; ajoute la reconnaissance `0xC0` + callback `on_program_change`. | `midi_manager.py` |
+| **2g** | Tests — mise à jour/ajout pour la délégation + Program Change. | `test_midi_manager.py` |
+| **2h** | Implémentation — `midi_handler.py` : câble `on_program_change` (statut live minimum), retire `CC_NAMES` local au profit de l'import. | `midi_handler.py` |
+| **2i** | Tests — idem. | `test_midi_handler.py` |
+
+Suite (hors périmètre 2a-2i, à renuméroter plus tard) : capture/stockage
+de Program Change et CC générique dans `_tape` + branchement
+`EventFilterDialog`/affichage Ctrl+2 — une fois le parser posé.
