@@ -52,20 +52,22 @@ class MidiEditor:
             for i, ev in enumerate(by_time[offset]):
                 if ev.etype == ETYPE_GRID:
                     pad = ev.payload.get("pad")
-                    dur = (pattern._voices[pad]["duration_ms"]
-                           if pad < len(pattern._voices) else 500)
+                    voice_dur = (pattern._voices[pad]["duration_ms"]
+                                 if pad < len(pattern._voices) else 500)
+                    dur = ev.dur if ev.dur > 0 else voice_dur
                     events.append({
-                        "type":      "note",
-                        "etype":     ETYPE_GRID,
-                        "track":     track_idx,
-                        "pad":       pad,
-                        "bar":       b,
-                        "step":      s,
-                        "offset":    offset,
-                        "vel":       ev.payload.get("vel"),
-                        "dur":       dur,
-                        "channel":   ev.channel,
-                        "event_idx": i,
+                        "type":         "note",
+                        "etype":        ETYPE_GRID,
+                        "track":        track_idx,
+                        "pad":          pad,
+                        "bar":          b,
+                        "step":         s,
+                        "offset":       offset,
+                        "vel":          ev.payload.get("vel"),
+                        "dur":          dur,
+                        "dur_override": ev.dur,
+                        "channel":      ev.channel,
+                        "event_idx":    i,
                     })
                 else:
                     events.append({
@@ -328,8 +330,14 @@ class MidiEditor:
         }
 
     def edit_grid_note(self, pattern, ev, new_pad=None, new_vel=None,
-                       new_bar=None, new_step=None, new_channel=None):
-        """Modifie un événement grille (etype GRID). Retourne le nouvel event_info ou None."""
+                       new_bar=None, new_step=None, new_channel=None, new_dur=None):
+        """Modifie un événement grille (etype GRID). Retourne le nouvel event_info ou None.
+
+        new_dur : durée propre à cette occurrence (Numpad1/3, Phase 7 étape
+        1k) — None préserve l'override existant (ev["dur_override"], 0 si
+        aucun) ; sinon devient le nouvel override, qui prime désormais sur
+        voice_manager.get_duration_ms(pad) pour cette seule occurrence.
+        """
         if ev.get("etype") != ETYPE_GRID:
             return None
         t        = ev["track"]
@@ -342,6 +350,7 @@ class MidiEditor:
         n_bar    = new_bar  if new_bar  is not None else old_bar
         n_step   = new_step if new_step is not None else old_step
         n_channel = max(0, min(15, new_channel if new_channel is not None else ev.get("channel", 0)))
+        n_dur_override = max(0, new_dur if new_dur is not None else ev.get("dur_override", 0))
 
         if not (0 <= t < pattern._num_tracks):
             return None
@@ -354,21 +363,23 @@ class MidiEditor:
 
         n_vel = max(1, min(127, n_vel))
         pattern.set_cell(t, old_pad, old_bar, old_step, 0)
-        pattern.set_cell(t, n_pad, n_bar, n_step, n_vel, channel=n_channel)
+        pattern.set_cell(t, n_pad, n_bar, n_step, n_vel, channel=n_channel, dur=n_dur_override)
 
-        dur = (pattern._voices[n_pad]["duration_ms"]
-               if n_pad < len(pattern._voices) else 500)
+        voice_dur = (pattern._voices[n_pad]["duration_ms"]
+                     if n_pad < len(pattern._voices) else 500)
+        dur = n_dur_override if n_dur_override > 0 else voice_dur
         return {
-            "type":    "note",
-            "etype":   ETYPE_GRID,
-            "track":   t,
-            "pad":     n_pad,
-            "bar":     n_bar,
-            "step":    n_step,
-            "offset":  n_bar * pattern._num_steps + n_step,
-            "vel":     n_vel,
-            "dur":     dur,
-            "channel": n_channel,
+            "type":         "note",
+            "etype":        ETYPE_GRID,
+            "track":        t,
+            "pad":          n_pad,
+            "bar":          n_bar,
+            "step":         n_step,
+            "offset":       n_bar * pattern._num_steps + n_step,
+            "vel":          n_vel,
+            "dur":          dur,
+            "dur_override": n_dur_override,
+            "channel":      n_channel,
         }
 
     def edit_bend_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
@@ -452,13 +463,17 @@ class MidiEditor:
         return self.edit_tape_note(pattern, ev, new_bar=new_bar, new_step=new_step)
 
     def change_duration(self, pattern, ev, delta_ms):
-        """Raccourcit/rallonge un événement tape (KIT/PATCH). GRID n'a pas de
-        durée propre (dérivée de la voix) : retourne toujours None."""
-        if ev.get("etype") not in (ETYPE_KIT, ETYPE_PATCH):
+        """Raccourcit/rallonge un événement (KIT/PATCH, ou GRID depuis la
+        Phase 7 étape 1k — la durée devient alors propre à cette occurrence,
+        elle prime sur voice_manager.get_duration_ms(pad))."""
+        etype = ev.get("etype")
+        if etype not in (ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH):
             return None
         new_dur = max(10, ev.get("dur", 500) + delta_ms)
         if new_dur == ev.get("dur", 500):
             return None
+        if etype == ETYPE_GRID:
+            return self.edit_grid_note(pattern, ev, new_dur=new_dur)
         return self.edit_tape_note(pattern, ev, new_dur=new_dur)
 
     def change_velocity(self, pattern, ev, delta):
@@ -507,22 +522,26 @@ class MidiEditor:
             new_pad = pad + 1 if pad < hi else pad - 1
             if new_pad < 0:
                 return None
-            vel     = ev["vel"]
-            channel = ev.get("channel", 0)
-            pattern.set_cell(ev["track"], new_pad, ev["bar"], ev["step"], vel, channel=channel)
-            dur = (pattern._voices[new_pad]["duration_ms"]
-                   if new_pad < len(pattern._voices) else 500)
+            vel          = ev["vel"]
+            channel      = ev.get("channel", 0)
+            dur_override = ev.get("dur_override", 0)
+            pattern.set_cell(ev["track"], new_pad, ev["bar"], ev["step"], vel,
+                              channel=channel, dur=dur_override)
+            voice_dur = (pattern._voices[new_pad]["duration_ms"]
+                         if new_pad < len(pattern._voices) else 500)
+            dur = dur_override if dur_override > 0 else voice_dur
             return {
-                "type":    "note",
-                "etype":   ETYPE_GRID,
-                "track":   ev["track"],
-                "pad":     new_pad,
-                "bar":     ev["bar"],
-                "step":    ev["step"],
-                "offset":  ev["offset"],
-                "vel":     vel,
-                "dur":     dur,
-                "channel": channel,
+                "type":         "note",
+                "etype":        ETYPE_GRID,
+                "track":        ev["track"],
+                "pad":          new_pad,
+                "bar":          ev["bar"],
+                "step":         ev["step"],
+                "offset":       ev["offset"],
+                "vel":          vel,
+                "dur":          dur,
+                "dur_override": dur_override,
+                "channel":      channel,
             }
         if etype in (ETYPE_KIT, ETYPE_PATCH):
             from pattern import TapeEvent
@@ -580,21 +599,25 @@ class MidiEditor:
         vel     = max(1, min(127, vel))
         channel = max(0, min(15, channel))
         if etype == ETYPE_GRID:
+            # Pas d'override de durée à l'insertion : toujours la voix (comme
+            # avant l'étape 1k) — seule l'édition d'une note existante
+            # (Numpad1/3, change_duration/edit_grid_note) en pose un.
             pad = max(0, min(pattern._num_pads - 1, pad))
             pattern.set_cell(track, pad, bar, step, vel, channel=channel)
             dur_v = (pattern._voices[pad]["duration_ms"]
                      if pad < len(pattern._voices) else 500)
             return {
-                "type":    "note",
-                "etype":   ETYPE_GRID,
-                "track":   track,
-                "pad":     pad,
-                "bar":     bar,
-                "step":    step,
-                "offset":  bar * pattern._num_steps + step,
-                "vel":     vel,
-                "dur":     dur_v,
-                "channel": channel,
+                "type":         "note",
+                "etype":        ETYPE_GRID,
+                "track":        track,
+                "pad":          pad,
+                "bar":          bar,
+                "step":         step,
+                "offset":       bar * pattern._num_steps + step,
+                "vel":          vel,
+                "dur":          dur_v,
+                "dur_override": 0,
+                "channel":      channel,
             }
         from pattern import TapeEvent
         pad     = max(0, min(127, pad))

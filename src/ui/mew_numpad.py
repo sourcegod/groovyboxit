@@ -91,7 +91,7 @@ class NumpadMixin:
             self._navigate_and_play_after_edit(results[-1])
             self._set_status(f"Durée: {results[-1]['dur']}ms")
         else:
-            self._set_status("Raccourcir: non disponible (GRID) ou durée déjà minimale")
+            self._set_status("Raccourcir: durée déjà minimale")
 
     def _numpad_lengthen(self):
         delta   = self._grid_value_ms()
@@ -101,7 +101,7 @@ class NumpadMixin:
             self._navigate_and_play_after_edit(results[-1])
             self._set_status(f"Durée: {results[-1]['dur']}ms")
         else:
-            self._set_status("Rallonger: non disponible (GRID)")
+            self._set_status("Rallonger: aucun changement")
 
     def _numpad_move(self, direction):
         delta   = direction * self._grid_value_steps()

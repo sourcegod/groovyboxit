@@ -206,8 +206,12 @@ class Pattern:
                 return ev.payload.get("vel")
         return 0
 
-    def set_cell(self, track, pad, bar, step, value, channel=0):
-        """Écrit (value>0) ou efface (value<=0) la note grille (track,pad) à (bar,step)."""
+    def set_cell(self, track, pad, bar, step, value, channel=0, dur=0):
+        """Écrit (value>0) ou efface (value<=0) la note grille (track,pad) à (bar,step).
+
+        dur : durée propre à cet événement (ms), 0 = pas d'override, la
+        durée vient de voice_manager.get_duration_ms(pad) comme avant
+        (Phase 7 étape 1k)."""
         vel = Pattern._norm_vel(value)
         time = self._bar_step_to_time(bar, step)
         with self._lock:
@@ -216,7 +220,7 @@ class Pattern:
             track_list[:] = [ev for ev in track_list
                               if not (ev.time == time and ev.etype == ETYPE_GRID and ev.payload.get("pad") == pad)]
             if vel > 0:
-                track_list.append(TapeEvent(ETYPE_GRID, channel=channel,
+                track_list.append(TapeEvent(ETYPE_GRID, dur=dur, channel=channel,
                                              payload={"pad": pad, "vel": vel}, time=time))
 
     def clear_grid_pad(self, track, pad):

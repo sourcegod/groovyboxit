@@ -467,7 +467,7 @@ class DrumPlayer:
                         if t_sec > elapsed - 0.002:
                             if ev.etype == ETYPE_GRID:
                                 events.append((t_sec, self.GRID_EVENT,
-                                               (t_idx, ev.payload.get("pad")), ev.payload.get("vel")))
+                                               (t_idx, ev.payload.get("pad"), ev.dur), ev.payload.get("vel")))
                             elif ev.etype == ETYPE_KIT:
                                 events.append((t_sec, self.KIT_TAPE_EVENT,
                                                (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
@@ -519,7 +519,7 @@ class DrumPlayer:
                 if self._wakeup.is_set():
                     break
                 if track_or_type == self.GRID_EVENT:
-                    t_idx, pad_idx = evt_data
+                    t_idx, pad_idx, dur_override = evt_data
                     if t_idx == self._cur_track \
                             and pad_idx in self._erase_active_pads:
                         self._clear_offset(pad_idx, t_sec / self.step_duration)
@@ -527,7 +527,9 @@ class DrumPlayer:
                         vol = min(1.0, self.voice_manager.get_volume_factor(pad_idx)
                                   * velocity / 100.0)
                         pan = self._mix_pan(self.voice_manager.get_pan(pad_idx))
-                        dur = self.voice_manager.get_duration_ms(pad_idx)
+                        # dur_override>0 (Numpad1/3, Phase 7 étape 1k) prime sur la
+                        # durée de la voix, pour cette occurrence uniquement.
+                        dur = dur_override if dur_override > 0 else self.voice_manager.get_duration_ms(pad_idx)
                         if self._on_track_play_cb:
                             self._on_track_play_cb(t_idx, pad_idx, vol, pan, dur)
                         else:
