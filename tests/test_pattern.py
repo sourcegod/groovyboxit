@@ -575,6 +575,38 @@ def test_from_dict_preserves_kit_and_patch_tape():
     assert any(ev.etype == ETYPE_KIT for ev in tape_at(dst, 0, 0, 2))
     print("  from_dict conserve G (via curpattern) et K/P (via kit_tape) : OK")
 
+def test_roundtrip_preserves_cc_event():
+    """to_dict/from_dict (tape_v2) conservent un TapeEvent ETYPE_CC (Phase 7 étape 4c)."""
+    from pattern import TapeEvent, ETYPE_CC
+    from tape_test_utils import add_tape_at, tape_at
+    src = Pattern()
+    add_tape_at(src, 0, 0, 5, TapeEvent(ETYPE_CC, channel=2, payload={"cc_num": 74, "value": 100}))
+    d = src.to_dict()
+    dst = Pattern()
+    dst.from_dict(d)
+    evs = [ev for ev in tape_at(dst, 0, 0, 5) if ev.etype == ETYPE_CC]
+    assert len(evs) == 1
+    assert evs[0].channel == 2
+    assert evs[0].payload == {"cc_num": 74, "value": 100}
+    assert evs[0].dur == 0
+    print("  round-trip to_dict/from_dict conserve un événement ETYPE_CC : OK")
+
+def test_roundtrip_preserves_program_change_event():
+    """to_dict/from_dict (tape_v2) conservent un TapeEvent ETYPE_PGM (Phase 7 étape 4c)."""
+    from pattern import TapeEvent, ETYPE_PGM
+    from tape_test_utils import add_tape_at, tape_at
+    src = Pattern()
+    add_tape_at(src, 1, 0, 3, TapeEvent(ETYPE_PGM, channel=9, payload={"program": 42}))
+    d = src.to_dict()
+    dst = Pattern()
+    dst.from_dict(d)
+    evs = [ev for ev in tape_at(dst, 1, 0, 3) if ev.etype == ETYPE_PGM]
+    assert len(evs) == 1
+    assert evs[0].channel == 9
+    assert evs[0].payload == {"program": 42}
+    assert evs[0].dur == 0
+    print("  round-trip to_dict/from_dict conserve un événement ETYPE_PGM : OK")
+
 
 # ---------------------------------------------------------------------------
 # Aller-retour to_dict / from_dict
