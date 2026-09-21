@@ -35,7 +35,7 @@ from ui.mw_project     import ProjectMixin
 from ui.mw_tracks      import TrackMixin
 from ui.mw_pads        import PadMixin
 from ui.mw_midi_editor import MidiEditorMixin
-from midi_manager import MidiManager
+from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
 from undo_manager import UndoManager

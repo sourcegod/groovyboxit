@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/midi_manager.py
+    File: src/midi/midi_manager.py
     Gestionnaire d'entrée MIDI externe (python-rtmidi).
     Reçoit les messages Note On / Note Off d'un clavier ou pad MIDI
     et les transmet via callbacks découplés de l'interface graphique.
