@@ -12,8 +12,8 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import midi_parser as mp
-from midi_parser import CVoice, MidiMessage, decode_message
+import midi.midi_parser as mp
+from midi.midi_parser import CVoice, MidiMessage, decode_message
 
 
 # ---------------------------------------------------------------------------
