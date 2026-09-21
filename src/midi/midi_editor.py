@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/midi_editor.py
+    File: src/midi/midi_editor.py
     MidiEditor — sélection, manipulation et édition des événements MIDI d'un pattern.
     Date: Fri, 26/06/2026
     Author: Coolbrother

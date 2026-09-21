@@ -1,5 +1,5 @@
 import wx
-from midi_editor import MidiEditor
+from midi.midi_editor import MidiEditor
 from ui.midi_virtual_keyboard import VirtualKeyboardMixin
 from ui.mew_display          import DisplayMixin
 from ui.mew_playback         import PlaybackMixin

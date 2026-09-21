@@ -898,7 +898,7 @@ class EventFilterDialog(wx.Dialog):
         return self._matched_indices_for(self.get_criteria())
 
     def _matched_indices_for(self, criteria):
-        from midi_editor import MidiEditor
+        from midi.midi_editor import MidiEditor
         return MidiEditor().filter_events(self._events, criteria)
 
     # ------------------------------------------------------------------
