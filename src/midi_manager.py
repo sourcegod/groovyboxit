@@ -14,7 +14,7 @@ try:
 except ImportError:
     _RTMIDI_AVAILABLE = False
 
-from midi_parser import decode_message, CVoice
+from midi.midi_parser import decode_message, CVoice
 
 
 class MidiManager:

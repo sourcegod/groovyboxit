@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/midi_parser.py
+    File: src/midi/midi_parser.py
     Parser MIDI dédié : décodage bas niveau des messages temps réel
     (Note On/Off, Control Change, Program Change, Pitch Bend) et
     fonctions de description texte (notes, CC, programs GM). Aucune

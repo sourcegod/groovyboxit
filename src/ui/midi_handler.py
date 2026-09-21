@@ -22,7 +22,7 @@ def _bend_log(msg):
 from rack import InstrumentType
 from synth_engine import midi_to_note_name
 from midi.midi_constants import CC_NAMES
-from midi_parser import describe_program
+from midi.midi_parser import describe_program
 
 
 def format_midi_status(kind, channel, **kwargs):
