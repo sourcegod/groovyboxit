@@ -613,3 +613,24 @@ jamais laissée rouge entre deux paires distinctes.
 - Toute modification de comportement : chantier de rangement pur, aucun
   changement fonctionnel attendu (suite de tests inchangée en
   nombre/contenu, seuls les imports changent).
+
+**3b-3k FAITS** (commits `c0e88af`..`9fe5055`, 1549 tests passed) —
+**chantier Phase 7 complet (3a-3l)**. `midi_constants.py`,
+`midi_parser.py`, `midi_manager.py`, `midi_editor.py` regroupés sous
+`src/midi/` (nouveau package, `src/midi/__init__.py` vide) ; tous les
+imports pointent `midi.midi_xxx`, aucun import plat résiduel.
+`src/ui/midi_handler.py` renommé en `midi_handler_window.py` (3j/3k,
+extension de scope décidée en cours de chantier) pour lever
+l'ambiguïté avec `src/midi/midi_manager.py` — classe `MidiHandler` et
+attribut `win._midi_handler` inchangés. Comportement inchangé
+(rangement/renommage purs), suite verte à l'issue de chaque paire
+impl+tests.
+
+Point de process noté : le commit `83c2e38` (3k) a d'abord manqué 2
+lignes (docstring + import) à cause d'un `git add -A <chemins
+explicites>` lancé juste après un `git mv` sans re-vérifier le statut —
+la suite tournait verte sur le fichier de travail non committé,
+masquant l'écart. Corrigé par un commit correctif immédiat (`9fe5055`)
+plutôt qu'un `--amend`. Réflexe à prendre : après `git mv` + édition,
+toujours `git status`/`git diff HEAD` avant de committer, pas seulement
+lancer la suite de tests.
