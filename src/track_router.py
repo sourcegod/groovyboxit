@@ -420,6 +420,43 @@ class TrackRouter:
         if engine and engine.is_loaded():
             engine.set_mod_wheel(mod_value)
 
+    def on_cc_tape(self, track_idx, cc_num, value):
+        """Rejoue un CC générique capturé pendant la lecture (Phase 7 étape
+        4g, voir docs/DESIGN.md § Phase 7 étape 4a, décision 2) — même
+        effet que la réception live (MidiHandler.on_cc). Effets globaux
+        (64/120/121/123) indépendants de track_idx ; volume/pan (7/10) et
+        mod wheel (1, délégué à on_mod_tape) appliqués à track_idx, la
+        piste d'origine de l'événement (pas de notion de focus UI à la
+        lecture)."""
+        if cc_num == 120:                          # CC#120 : All Sounds Off
+            self.stop_all_sounds()
+            return
+        if cc_num == 121:                          # CC#121 : Reset All Controllers
+            self.reset_all_controls()
+            return
+        if cc_num == 123:                          # CC#123 : All Notes Off
+            self.stop_all_synth_voices()
+            return
+        if cc_num == 64:                           # CC#64 : Sustain Pedal
+            self.set_sustain(value >= 64)
+            return
+        if not self._track_is_audible(track_idx):
+            return
+        if cc_num == 1:                            # CC#1 : Modulation Wheel
+            self.on_mod_tape(track_idx, value)
+        elif cc_num == 7:                          # CC#7 : Volume standard
+            self.set_track_volume(track_idx, round(value * 100 / 127))
+        elif cc_num == 10:                         # CC#10 : Pan standard
+            self.set_track_pan(track_idx, round((value - 64) * 100 / 63))
+
+    def on_program_change_tape(self, track_idx, program):
+        """Rejoue un Program Change capturé pendant la lecture (Phase 7
+        étape 4g) : même effet provisoire que la réception live
+        (MidiHandler.on_program_change) — assign_slot sur le Rack — mais
+        ciblant track_idx, la piste d'origine de l'événement, plutôt que
+        la piste courante."""
+        self.assign_slot(track_idx, program % 16)
+
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):
         """Mode Keyboard/KIT : joue pad_idx pitché sur la gamme courante."""
         if not wav_path:
