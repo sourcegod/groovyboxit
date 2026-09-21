@@ -1,6 +1,6 @@
 #python3
 """
-    File: tests/test_midi_handler.py
+    File: tests/test_midi_handler_window.py
     Tests — statut MIDI live de l'éditeur MIDI (Phase 6 étape 10g).
     format_midi_status (pur) + MidiHandler._notify_editor_midi (glue vers
     MidiEditorWindow._set_midi_status quand la fenêtre est ouverte).
@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import ui.midi_handler as mh
+import ui.midi_handler_window as mh
 from synth_engine import midi_to_note_name
 
 
