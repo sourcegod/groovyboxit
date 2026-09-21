@@ -575,7 +575,20 @@ autres).
 | **3g** | Tests — `tests/test_midi_manager.py` (import pointé), suite verte. | `tests/test_midi_manager.py` |
 | **3h** | Implémentation — déplace `midi_editor.py` ; met à jour les imports non-tests (`src/ui/midi_editor_window.py`, `src/ui/dialogs_temporal.py`). | `src/midi/midi_editor.py` (déplacé), `src/ui/midi_editor_window.py`, `src/ui/dialogs_temporal.py` |
 | **3i** | Tests — `tests/test_midi_editor.py`, `tests/test_midi_editor_filter.py` (imports pointés), suite verte. | `tests/test_midi_editor.py`, `tests/test_midi_editor_filter.py` |
-| **3j** | Doc — chantier complet (3a-3i). | `docs/DESIGN.md` |
+| **3j** | Implémentation — renomme `src/ui/midi_handler.py` en `src/ui/midi_handler_window.py` ; met à jour l'import non-test (`src/ui/main_window.py`). | `src/ui/midi_handler_window.py` (déplacé), `src/ui/main_window.py` |
+| **3k** | Tests — renomme `tests/test_midi_handler.py` en `tests/test_midi_handler_window.py` (import pointé), suite verte. | `tests/test_midi_handler_window.py` (déplacé) |
+| **3l** | Doc — chantier complet (3a-3k). | `docs/DESIGN.md` |
+
+**Extension de scope (décision utilisateur, 2026-09-21)** : une fois
+les 4 fichiers regroupés sous `src/midi/`, `src/midi/midi_manager.py`
+et `src/ui/midi_handler.py` sont apparus comme deux noms trop proches
+pour être distingués d'un coup d'œil (aucune collision réelle — modules
+`midi.midi_manager` et `ui.midi_handler` distincts — mais confusion
+plausible). Décision : renommer `src/ui/midi_handler.py` en
+`src/ui/midi_handler_window.py` (3j/3k, ajoutés après coup). Seul le
+nom de fichier change — la classe `MidiHandler` et l'attribut
+`win._midi_handler` ne sont pas renommés (hors scope, aucune ambiguïté
+sur ces deux-là).
 
 **Remarque sur les commits impl-only (3b/3d/3f/3h)** : chaque commit
 d'implémentation laisse volontairement le(s) fichier(s) de test
@@ -588,9 +601,12 @@ jamais laissée rouge entre deux paires distinctes.
 
 ### Portée explicitement exclue de ce chantier
 
-- Renommer les fichiers eux-mêmes (ex. `midi_parser.py` → `parser.py`) :
-  seul le dossier change.
-- Déplacer les fichiers MIDI de `src/ui/` (`midi_handler.py`,
+- Renommer les 4 fichiers déplacés eux-mêmes (ex. `midi_parser.py` →
+  `parser.py`) : seul le dossier change. Ne s'applique pas à
+  `src/ui/midi_handler.py` → `midi_handler_window.py` (3j/3k) : ce
+  fichier n'est pas déplacé, seulement renommé, pour lever l'ambiguïté
+  avec `src/midi/midi_manager.py` (voir Extension de scope ci-dessus).
+- Déplacer les fichiers MIDI de `src/ui/` (`midi_handler_window.py`,
   `midi_editor_window.py`, `mw_midi_editor.py`, `midi_editor_dialogs.py`,
   `midi_virtual_keyboard.py`) : restent sous `src/ui/` (décision
   utilisateur).
