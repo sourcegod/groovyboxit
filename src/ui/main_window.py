@@ -27,7 +27,7 @@ from ui.dialogs import (
     SaveConfirmDialog,
 )
 from ui.key_manager import KeyManager
-from ui.midi_handler import MidiHandler
+from ui.midi_handler_window import MidiHandler
 from ui.song_window import SongWindow
 from ui.mw_patterns    import PatternMixin
 from ui.mw_songs       import SongMixin

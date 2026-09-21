@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/ui/midi_handler.py
+    File: src/ui/midi_handler_window.py
     Gestion des événements MIDI entrants (note_on, note_off, vélocité, connexion).
     Date: Wed, 27/05/2026
     Author: Coolbrother
