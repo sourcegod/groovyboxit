@@ -3,7 +3,8 @@
     File: tests/test_midi_manager.py
     Tests unitaires de MidiManager :
     valeurs initiales, list_ports, open/open_by_name/open_first, close,
-    _callback (Note On / Note Off / filtrage canal), on_status, sans rtmidi.
+    _callback (Note On / Note Off / CC / Pitch Bend / Program Change /
+    filtrage canal / délégation à midi_parser), on_status, sans rtmidi.
     Date: Fri, 23/05/2026
     Author: Coolbrother
 """
@@ -77,6 +78,19 @@ def test_init_callbacks_stored():
     assert mgr._on_status   is on_st
     stop()
     ok("callbacks stockés à l'init")
+
+def test_init_on_program_change_stored():
+    on_pc = MagicMock()
+    mgr, _, stop = make_mgr(on_program_change=on_pc)
+    assert mgr._on_program_change is on_pc
+    stop()
+    ok("on_program_change stocké à l'init")
+
+def test_init_on_program_change_default_none():
+    mgr, _, stop = make_mgr()
+    assert mgr._on_program_change is None
+    stop()
+    ok("on_program_change == None par défaut")
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +355,89 @@ def test_callback_empty_message_no_crash():
 
 
 # ---------------------------------------------------------------------------
+# _callback — délégation à midi_parser (CC, Pitch Bend, types non reconnus)
+# ---------------------------------------------------------------------------
+
+def test_callback_cc():
+    hits = []
+    mgr, _, stop = make_mgr(on_cc=lambda cc, v, c: hits.append((cc, v, c)))
+    _fire(mgr, [0xB0, 1, 127])
+    assert hits == [(1, 127, 0)]
+    stop()
+    ok("_callback CC → on_cc(cc_num, value, chan) (délégué à midi_parser)")
+
+def test_callback_cc_channel_filter_no_match():
+    hits = []
+    mgr, _, stop = make_mgr(on_cc=lambda cc, v, c: hits.append(cc))
+    mgr.channel = 2
+    _fire(mgr, [0xB0, 1, 127])   # canal 0 → filtré
+    assert hits == []
+    stop()
+    ok("_callback CC : filtrage canal respecté après délégation")
+
+def test_callback_pitch_bend():
+    hits = []
+    mgr, _, stop = make_mgr(on_pitch_bend=lambda b, c: hits.append((b, c)))
+    _fire(mgr, [0xE0, 0, 64])   # centre → bend = 0
+    assert hits == [(0, 0)]
+    stop()
+    ok("_callback Pitch Bend → on_pitch_bend(bend, chan) (délégué à midi_parser)")
+
+def test_callback_unrecognized_type_no_crash_no_callback():
+    hits = []
+    mgr, _, stop = make_mgr(on_note_on=lambda n, v, c: hits.append(n))
+    _fire(mgr, [0xA0, 60, 10])   # Poly Aftertouch : hors périmètre, decode_message → None
+    assert hits == []
+    stop()
+    ok("_callback type non reconnu (Poly Aftertouch) : ignoré, pas de crash")
+
+
+# ---------------------------------------------------------------------------
+# _callback — Program Change (nouveau, Phase 7 étape 2f)
+# ---------------------------------------------------------------------------
+
+def test_callback_program_change():
+    hits = []
+    mgr, _, stop = make_mgr(on_program_change=lambda p, c: hits.append((p, c)))
+    _fire(mgr, [0xC0, 41])
+    assert hits == [(41, 0)]
+    stop()
+    ok("_callback Program Change → on_program_change(program, chan)")
+
+def test_callback_program_change_channel_extracted():
+    hits = []
+    mgr, _, stop = make_mgr(on_program_change=lambda p, c: hits.append(c))
+    _fire(mgr, [0xC9, 41])   # canal 9
+    assert hits == [9]
+    stop()
+    ok("_callback Program Change extrait correctement le canal (0xC9 → canal 9)")
+
+def test_callback_program_change_channel_filter_match():
+    hits = []
+    mgr, _, stop = make_mgr(on_program_change=lambda p, c: hits.append(p))
+    mgr.channel = 2
+    _fire(mgr, [0xC2, 41])   # canal 2 → accepté
+    assert hits == [41]
+    stop()
+    ok("filtrage canal : Program Change canal correspondant → on_program_change appelé")
+
+def test_callback_program_change_channel_filter_no_match():
+    hits = []
+    mgr, _, stop = make_mgr(on_program_change=lambda p, c: hits.append(p))
+    mgr.channel = 2
+    _fire(mgr, [0xC0, 41])   # canal 0 → filtré
+    assert hits == []
+    stop()
+    ok("filtrage canal : Program Change canal différent → on_program_change ignoré")
+
+def test_callback_program_change_no_callback_no_crash():
+    mgr, _, stop = make_mgr()   # pas de on_program_change
+    _fire(mgr, [0xC0, 41])
+    stop()
+    ok("_callback Program Change sans callback ne plante pas")
+
+
+# ---------------------------------------------------------------------------
 # Sans rtmidi (_RTMIDI_AVAILABLE = False)
 # ---------------------------------------------------------------------------
 
@@ -374,6 +471,8 @@ if __name__ == "__main__":
         test_init_port_name_empty,
         test_init_channel_none,
         test_init_callbacks_stored,
+        test_init_on_program_change_stored,
+        test_init_on_program_change_default_none,
         test_list_ports_returns_list,
         test_list_ports_empty,
         test_open_valid_returns_true,
@@ -405,6 +504,15 @@ if __name__ == "__main__":
         test_callback_channel_filter_no_match,
         test_callback_no_callbacks_no_crash,
         test_callback_empty_message_no_crash,
+        test_callback_cc,
+        test_callback_cc_channel_filter_no_match,
+        test_callback_pitch_bend,
+        test_callback_unrecognized_type_no_crash_no_callback,
+        test_callback_program_change,
+        test_callback_program_change_channel_extracted,
+        test_callback_program_change_channel_filter_match,
+        test_callback_program_change_channel_filter_no_match,
+        test_callback_program_change_no_callback_no_crash,
         test_no_rtmidi_list_ports_empty,
         test_no_rtmidi_open_returns_false,
         test_no_rtmidi_notifies_at_init,
