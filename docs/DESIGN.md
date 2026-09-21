@@ -634,3 +634,263 @@ masquant l'écart. Corrigé par un commit correctif immédiat (`9fe5055`)
 plutôt qu'un `--amend`. Réflexe à prendre : après `git mv` + édition,
 toujours `git status`/`git diff HEAD` avant de committer, pas seulement
 lancer la suite de tests.
+
+---
+
+## Phase 7 étape 4a — Capture, filtre et affichage de CC générique / Program Change
+
+### Origine du besoin
+
+Suite directe de [[project_midi_parser_todo]] (2a-2j, parser dédié) et
+[[project_midi_files_reorg]] (3a-3l, rangement sans lien fonctionnel).
+`midi_manager.py`/`midi_parser.py` reconnaissent déjà Program Change
+(`on_program_change`) et tout Control Change (`on_cc`) — mais aucun des
+deux n'est capturé dans `_tape`, ni filtrable dans `EventFilterDialog`
+(`_TYPES_TO_COME` bloque encore leurs entrées), ni affiché dans la liste
+Ctrl+2. Décidé en 2a : « branchement capture/stockage/filtre : chantier
+séparé, ultérieur » (voir docs/DESIGN.md § Phase 7 étape 2a, section
+« Intégration avec l'existant »). C'est ce chantier.
+
+### État des lieux constaté en code (2026-09-21) — un piège identifié
+
+Un `else` catch-all traite aujourd'hui silencieusement **tout** etype de
+`_tape` différent de `ETYPE_GRID`/`ETYPE_KIT` comme un `ETYPE_PATCH` :
+
+- `drum_player.py` (~L474, boucle de lecture) : `else: events.append((…
+  self.PATCH_TAPE_EVENT, (t_idx, ev.payload.get("note"), …,
+  ev.payload.get("bend", 0)), …))`. Un `ETYPE_PGM`/`ETYPE_CC` non
+  reconnu explicitement y serait lu comme une note PATCH avec
+  `note=None`, `bend=0` — au mieux un événement fantôme silencieux, au
+  pire un plantage en aval (`TrackRouter.on_patch_tape` attend un
+  `midi_note` entier).
+- `midi/midi_editor.py::get_note_events` (~L72) : même `else`, avec en
+  plus `events.sort(key=lambda e: (e["offset"], e["pad"]))` (L88) — un
+  `pad=None` ferait lever un `TypeError` dès qu'il faut comparer `None`
+  à un entier (liste mixte).
+- `ui/mw_project.py::_clipboard_to_dict`/`_clipboard_from_dict`
+  (~L274-309, presse-papier `TrackEditor` cross-pattern Ctrl+C/X/V) :
+  même schéma `if GRID / elif KIT / else PATCH`.
+
+Chaque nouveau etype introduit ici **doit** donc remplacer ces `else`
+par un `elif ETYPE_PATCH` explicite avant d'ajouter ses propres
+branches — pas une option, un correctif de sécurité préalable.
+
+Points sans piège (déjà sûrs par inclusion, pas par exclusion) :
+`quantize_manager.py` (`if etype not in (KIT, PATCH): continue`) et
+`track_editor.py::paste_events` (`elif etype in (KIT, PATCH)`) ignorent
+déjà silencieusement tout etype inconnu — pas de correctif requis, mais
+CC/Program Change y resteront non quantifiables et non collables via
+Ctrl+V « niveau événement » (`copy_events`/`paste_events`) tant qu'ils
+n'y sont pas explicitement ajoutés (voir Portée exclue).
+
+### Décisions validées (utilisateur, 2026-09-21)
+
+1. **CC#1 dupliqué, migration notée pour plus tard.** Le nouveau
+   « CC générique » capture **tous** les CC reçus, y compris CC#1 — en
+   plus de `_mod_tape` (qui continue, inchangé, à piloter le vibrato en
+   lecture via `on_mod_tape`). Doublon assumé : `_mod_tape` est
+   candidat à être remplacé par une lecture de `_tape`/`ETYPE_CC`
+   filtrée sur `cc_num==1` dans un chantier ultérieur (non fait ici).
+2. **Effet réellement rejoué à la lecture (Play), pas seulement une
+   capture passive** — pour CC générique **et** pour Program Change.
+   Revient sur la position prise en 2a (« aucun effet live possible »
+   pour Program Change) : c'était une simplification volontaire pour
+   avancer sur les fondations du parser, pas une limite définitive.
+   Décision révisée (2026-09-21) : en attendant le vrai mode Rack
+   Synth/GM (16 canaux MIDI → 16 slots avec leurs patchs, lecture de
+   fichiers `.mid` — chantier futur distinct, motivant de garder la
+   souplesse du format MIDI, qui peut envoyer un Program Change à tout
+   moment), Program Change pilote **provisoirement** le `Rack` existant
+   à 16 slots :
+   - CC générique capturé → même effet que sa réception live via
+     `on_cc` (volume/pan/sustain/mod wheel/all-notes-off/all-sounds-off/
+     reset), appliqué à la piste d'origine (pas à la piste/pad ayant le
+     focus UI — cette notion de focus n'existe pas pendant la lecture).
+   - Program Change (live **et** rejoué à la lecture) → réassigne le
+     slot du `Rack` de la piste concernée : `TrackRouter.assign_slot(
+     track_idx, program % 16)` (`assign_slot` existe déjà — chargement
+     du `SynthEngine`/patch en tâche de fond si le slot est SYNTH, non
+     bloquant). Valeurs 16-127 repliées par modulo 16 en attendant le
+     vrai adressage par canal du futur mode GM. Live : cible la piste
+     courante (`win._player._cur_track`, comme les autres effets CC
+     live) ; lecture : cible `track_idx`, la piste d'origine de
+     l'événement (comme `on_cc_tape`).
+3. **Édition via Entrée (Ctrl+2) incluse dans ce chantier**, en
+   réutilisant `_CcEventEditDialog` (déjà utilisé pour bend/mod) :
+   valeur éditable pour CC générique et pour Program Change ; le numéro
+   de CC (`cc_num`) reste non éditable dans ce chantier (seule sa
+   valeur l'est, comme le pad/note n'est pas éditable pour bend/mod
+   aujourd'hui).
+4. **Groupe de plage dédié dans `EventFilterDialog`**, symétrique à
+   Pitch Bend : un groupe « CC générique » (Numéro CC Bas/Haut + Valeur
+   Bas/Haut, sur le modèle Notes qui combine déjà deux paires
+   Note/Vélocité) et un groupe « Program Change » (Program Bas/Haut,
+   sur le modèle Pitch Bend à une seule paire).
+
+### Conception
+
+**Deux nouveaux etypes dans `_tape`** (pattern.py), cohérents avec la
+conception `TapeEvent` unifiée de la Phase 7 1a-1l — pas de structure
+parallèle façon `_bend_tape`/`_mod_tape` :
+
+```python
+ETYPE_CC  = "CC"    # payload {"cc_num": int, "value": int}, dur=0
+ETYPE_PGM = "PGM"   # payload {"program": int},              dur=0
+```
+
+Pas de dédoublonnage à la capture (contrairement à
+`record_kit_note`/`record_patch_note` qui évitent les doublons exacts à
+la même position) : deux CC de même valeur au même tick sont des
+données valides (un contrôleur physique peut légitimement renvoyer deux
+fois la même valeur), donc simple `append`.
+
+**Capture** (`drum_player.py`, miroir de `record_kit_note`) :
+- `record_cc(cc_num, value, channel=0)` → `TapeEvent(ETYPE_CC, …)`
+  append dans `_tape[cur_track]`.
+- `record_program_change(program, channel=0)` → `TapeEvent(ETYPE_PGM,
+  …)` append dans `_tape[cur_track]`.
+
+Branchées dans `midi_handler_window.py` :
+- `on_cc` : ajoute `if win._player.recording:
+  win._player.record_cc(cc_num, value, channel)`, **avant ou après**
+  les branches d'effet existantes (7/10/64/120/121/123/1) — celles-ci
+  restent inchangées pour la réception live, la capture est
+  orthogonale.
+- `on_program_change` : ajoute l'appel `record_program_change`
+  équivalent, **et** l'effet live (décision 2 révisée) :
+  `win._router.assign_slot(win._player._cur_track, program % 16)` —
+  le commentaire actuel (« aucun effet live possible, capture pure »)
+  est obsolète et à retirer.
+
+**Lecture (rejeu de l'effet, décision 2)** — deux nouveaux marqueurs
+internes `DrumPlayer.CC_TAPE_EVENT`/`PGM_TAPE_EVENT`, deux nouveaux
+callbacks `_on_cc_tape_cb`/`_on_program_change_tape_cb` (même
+convention que `_on_bend_tape_cb`), wirés dans `main_window.py` vers
+deux nouvelles méthodes `TrackRouter.on_cc_tape`/`on_program_change_tape` :
+- `on_cc_tape(track_idx, cc_num, value)` : CC#64/120/121/123 → effet
+  global (sustain/all sounds off/reset/all notes off), indépendant de
+  `track_idx`. CC#1 → délègue à `on_mod_tape` existant (même moteur
+  cible que le vibrato live). CC#7/10 → `set_track_volume`/
+  `set_track_pan` **de `track_idx`** (pas de piste focus à la lecture).
+  Piste non audible (`_track_is_audible`) → ignoré, sauf les 4 effets
+  globaux.
+- `on_program_change_tape(track_idx, program)` : `assign_slot(track_idx,
+  program % 16)` (décision 2 révisée) — même appel que l'effet live,
+  ciblant la piste d'origine de l'événement plutôt que la piste
+  courante.
+
+**Filtre/sélection/affichage** — le point délicat est `event_idx` :
+`_delete_tape_event`/`edit_tape_note` le résolvent comme *position
+parmi tous les événements de `_tape[track]` au même `time`, tous etypes
+confondus* (`matches = [i for i,e in enumerate(track_list) if e.time ==
+time]`), exactement la construction déjà faite par
+`get_note_events::by_time`. Pour que CC/PGM restent éditables/
+supprimables avec la même convention d'index, `get_all_events` ne doit
+**pas** re-scanner `_tape[t]` indépendamment pour CC/PGM (ça
+recalculerait un `event_idx` local à CC/PGM seul, incohérent avec
+`_delete_tape_event`) : il doit dériver ses entrées "cc"/"pgm" de la
+**même** construction `by_time` que `get_note_events`, avec le même `i`
+partagé entre tous les etypes présents à cet offset.
+→ Refactor proposé : extraire de `get_note_events` la construction
+`by_time` (groupement `_tape[track_idx]` par `.time`, tous etypes) dans
+un petit helper privé partagé, réutilisé par `get_note_events` (filtre
+GRID/KIT/PATCH, comportement inchangé) et par une nouvelle collecte
+CC/PGM appelée depuis `get_all_events` (filtre CC/PGM, même `i`).
+
+Nouveaux champs d'event dict : `{"type": "cc", "track", "bar", "step",
+"offset", "cc_num", "value", "channel", "event_idx"}` et `{"type":
+"pgm", "track", "bar", "step", "offset", "program", "channel",
+"event_idx"}`.
+
+`MidiEditor` : deux nouvelles méthodes `edit_cc_event`/`edit_pgm_event`
+(miroir de `edit_tape_note`, retrouvent l'événement via
+`time`+`event_idx` dans `_tape[track]`, remplacent `value`/`program`
+et/ou repositionnent). `delete_event` couvre déjà CC/PGM sans
+changement (`_delete_tape_event` est générique par `event_idx`).
+
+`filter_events` : nouvelles clés critères `cc_num_lo/hi`, `cc_val_lo/hi`,
+`pgm_lo/hi` ; nouvelles branches `e["type"] == "cc"`/`"pgm"` bornées en
+plus du test `etype_filter`.
+
+`EventFilterDialog` (`dialogs_temporal.py`) : `_EVT_TYPE_LABELS`
+perd ses deux entrées « (à venir) » pour CC générique/Program Change
+(sortent de `_TYPES_TO_COME`, qui garde Poly Aftertouch/Channel
+Pressure/SysEx-Meta) ; nouveaux `_TYPE_CC`/`_TYPE_PGM` + entrées
+`_TYPE_KEY` ; deux nouveaux `StaticBoxSizer` (« CC générique » : Numéro
+CC Bas/Haut + Valeur Bas/Haut ; « Program Change » : Program Bas/Haut),
+activés/désactivés dans `_update_group_enabled` comme les groupes
+existants ; `_type_unavailable` étendu pour bloquer aussi CC/PGM en
+mode Notes (`view_mode == 0`), comme Bend/Mod aujourd'hui.
+
+`mew_display.py` (`_event_label_all`, liste Ctrl+2) : deux nouvelles
+branches `elif e["type"] == "cc"`/`"pgm"` (format `"Canal {ch}, CC,
+Numéro {cc_num}, Valeur {value}"` / `"Canal {ch}, Program Change,
+Program {program} ({nom GM si connu via describe_program})"` —
+réutilise `midi.midi_parser.describe_program`, pas de table dupliquée).
+
+`mew_editing.py::_edit_note_dialog` : le test `ev.get("type") in
+("bend", "mod")` devient `("bend", "mod", "cc", "pgm")`, délégué à
+`_edit_cc_dialog` généralisé (dispatch par `ev["type"]` plutôt que le
+booléen `is_bend` actuel, vers `edit_bend_event`/`edit_mod_event`/
+`edit_cc_event`/`edit_pgm_event`).
+
+`midi_editor_dialogs.py::_CcEventEditDialog` : `is_bend` (booléen)
+remplacé par dispatch sur `ev["type"]` (4 branches titre+label+bornes ;
+CC générique reprend les bornes 0-127 déjà utilisées pour Mod, Program
+Change ajoute une borne 0-127 avec le libellé « Program »).
+
+**Persistance (`.gvp`) et presse-papier `TrackEditor`** :
+- `pattern.py::to_dict`/`from_dict` sérialisent déjà `_tape` de façon
+  générique par `TapeEvent` (etype/dur/channel/payload) — à vérifier
+  qu'aucun filtre implicite sur les 3 etypes existants n'y traîne
+  (lecture rapide du code de sauvegarde needed avant 4h, voir
+  découpage).
+- `ui/mw_project.py::_clipboard_to_dict`/`_clipboard_from_dict` : le
+  `else → PATCH` (piège identifié plus haut) devient `elif ETYPE_PATCH`
+  + deux nouvelles branches CC/PGM (format `[ETYPE_CC, t, b, s, cc_num,
+  value, channel]` / `[ETYPE_PGM, t, b, s, program, channel]`).
+
+### Portée explicitement exclue de ce chantier
+
+- Éditer `cc_num` d'un événement CC générique existant (seule sa valeur
+  l'est, décision 3).
+- Migrer `_mod_tape`/`on_mod_tape` pour qu'il lise `_tape`/`ETYPE_CC`
+  au lieu de sa structure dédiée (doublon CC#1 assumé, décision 1) —
+  chantier ultérieur distinct.
+- Le vrai mode Rack Synth/GM (adressage par canal MIDI plutôt que par
+  piste, lecture de fichiers `.mid` sur 16 canaux avec leurs patchs) —
+  `assign_slot(track_idx, program % 16)` n'est qu'un pont provisoire
+  vers le `Rack` existant (décision 2 révisée), pas ce mode complet.
+- `copy_events`/`paste_events` (presse-papier « niveau événement »,
+  Ctrl+C/V dans la liste Ctrl+2, distinct du presse-papier
+  `TrackEditor`) : reste limité à `ETYPE_GRID`/`KIT`/`PATCH` comme
+  aujourd'hui — CC/PGM non copiables-collables à ce niveau dans ce
+  chantier (silencieusement ignorés par le filtre `in (ETYPE_KIT,
+  ETYPE_PATCH)` existant, pas de régression, juste pas d'extension).
+- Quantisation (`quantize_manager.py`) de CC/PGM — reste hors du filtre
+  `(ETYPE_KIT, ETYPE_PATCH)` existant, sans changement.
+- Poly Aftertouch / Channel Pressure / SysEx-Meta — toujours hors
+  périmètre (constantes `CVoice`/`CMeta` posées en 2a, décodage non
+  fait), restent dans `_TYPES_TO_COME`.
+
+### Découpage en commits proposé (à valider avant de coder)
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **4a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **4b** | Implémentation — `pattern.py` : `ETYPE_CC`/`ETYPE_PGM` ; vérifie que `to_dict`/`from_dict` les sérialisent sans changement (générique par construction). | `pattern.py` |
+| **4c** | Tests — `pattern.py` (round-trip `to_dict`/`from_dict` avec un `TapeEvent` CC et un PGM). | `test_pattern.py` |
+| **4d** | Implémentation — `drum_player.py` : `record_cc`/`record_program_change` ; corrige le piège `else→PATCH` de la boucle de lecture (`elif ETYPE_PATCH` explicite) ; ajoute `CC_TAPE_EVENT`/`PGM_TAPE_EVENT` + callbacks. | `drum_player.py` |
+| **4e** | Tests — capture (`record_cc`/`record_program_change`) + non-régression boucle de lecture (un `ETYPE_PGM`/`ETYPE_CC` dans `_tape` ne casse plus la lecture d'un `ETYPE_PATCH` voisin). | `test_pattern.py` ou nouveau `test_drum_player_cc.py` |
+| **4f** | Implémentation — `midi_handler_window.py` : branche `record_cc`/`record_program_change` dans `on_cc`/`on_program_change`, **et** l'effet live Program Change (`assign_slot(cur_track, program % 16)`). | `midi_handler_window.py` |
+| **4g** | Implémentation — `track_router.py` + `main_window.py` : `on_cc_tape`/`on_program_change_tape` (celui-ci appelle aussi `assign_slot`), wiring des callbacks. | `track_router.py`, `main_window.py` |
+| **4h** | Tests — `on_cc_tape` (volume/pan/sustain/mod/all-notes-off/all-sounds-off/reset appliqués correctement, piste non audible ignorée sauf effets globaux) ; `on_program_change_tape` (`assign_slot` appelé avec le bon slot, modulo 16) ; effet live Program Change dans `on_program_change`. | `test_track_router.py`, `test_midi_handler_window.py` |
+| **4i** | Implémentation — `midi_editor.py` : refactor `by_time` partagé, `get_note_events` restreint à GRID/KIT/PATCH, collecte CC/PGM dans `get_all_events` (même `event_idx`), `filter_events` étendu, `edit_cc_event`/`edit_pgm_event`. | `midi/midi_editor.py` |
+| **4j** | Tests — `get_all_events` (event_idx cohérent avec un GRID+CC au même offset), `filter_events` (cc/pgm), `edit_cc_event`/`edit_pgm_event`, `delete_event` sur CC/PGM. | `test_midi_editor.py` |
+| **4k** | Implémentation — `dialogs_temporal.py` (`EventFilterDialog`) : sort `_TYPES_TO_COME`, groupes CC générique/Program Change, `_type_unavailable`. | `ui/dialogs_temporal.py` |
+| **4l** | Tests — `EventFilterDialog` (sélection type CC/PGM disponible, groupes activés/désactivés, critères transmis). | `test_*` (dialog existant) |
+| **4m** | Implémentation — `mew_display.py` (labels Ctrl+2), `mew_editing.py` (dispatch 4 types), `midi_editor_dialogs.py` (`_CcEventEditDialog` généralisé). | `ui/mew_display.py`, `ui/mew_editing.py`, `ui/midi_editor_dialogs.py` |
+| **4n** | Tests — affichage Ctrl+2 (labels CC/PGM), édition via Entrée (valeur CC, valeur Program). | `test_midi_editor_window.py` |
+| **4o** | Implémentation — `mw_project.py` : corrige le piège `else→PATCH` du presse-papier `TrackEditor` (`elif ETYPE_PATCH` + branches CC/PGM). | `ui/mw_project.py` |
+| **4p** | Tests — presse-papier `TrackEditor` (Ctrl+C/X/V) avec un CC/PGM dans la plage copiée. | `test_track_editor.py` |
+| **4q** | Doc — mise à jour mémoire (chantier clos), `pytest tests/` complet vérifié vert. | — |
