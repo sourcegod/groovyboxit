@@ -3,10 +3,13 @@ import threading
 
 # Événement enregistré dans _tape (liste plate par piste, position = time).
 # etype: ETYPE_GRID = grille (pad de la séquence), ETYPE_KIT = kit (note MIDI brute),
-#        ETYPE_PATCH = patch synth (note + bend)
+#        ETYPE_PATCH = patch synth (note + bend), ETYPE_CC = Control Change
+#        générique, ETYPE_PGM = Program Change (Phase 7 étape 4b)
 ETYPE_GRID  = "GRID"
 ETYPE_KIT   = "KIT"
 ETYPE_PATCH = "PATCH"
+ETYPE_CC    = "CC"
+ETYPE_PGM   = "PGM"
 
 
 class TapeEvent:
@@ -15,7 +18,9 @@ class TapeEvent:
     même note modifiée, jamais sérialisé dans .gvp, comme Pattern._id),
     time (position, steps cumulés sur la piste), etype, dur, channel,
     payload (champs propres au type — {"pad":,"vel":} pour GRID,
-    {"note":,"vel":} pour KIT, {"note":,"vel":,"bend":} pour PATCH).
+    {"note":,"vel":} pour KIT, {"note":,"vel":,"bend":} pour PATCH,
+    {"cc_num":,"value":} pour CC, {"program":} pour PGM ; dur=0 pour
+    CC/PGM, événements instantanés).
     """
 
     __slots__ = ("id", "etype", "time", "dur", "channel", "payload")
