@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import midi_manager as mm_module
-from midi_manager import MidiManager
+import midi.midi_manager as mm_module
+from midi.midi_manager import MidiManager
 
 
 # ---------------------------------------------------------------------------
