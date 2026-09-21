@@ -50,6 +50,28 @@ def test_format_pitch_bend_negative():
     assert msg == "Pitch Bend, Chan: 1, Val: -200"
 
 
+def test_format_program_change_melodic():
+    msg = mh.format_midi_status("program_change", 0, program=0)
+    assert msg == "Program Change, Chan: 1, Program: 0 (Acoustic Grand Piano)"
+
+
+def test_format_program_change_melodic_channel_not_10():
+    # Canal != 10 (0-indexé != 9) : toujours interprété comme patch mélodique GM1.
+    msg = mh.format_midi_status("program_change", 8, program=25)
+    assert msg == "Program Change, Chan: 9, Program: 25 (Acoustic Guitar (steel))"
+
+
+def test_format_program_change_drum_kit_named():
+    # Canal 10 (0-indexé 9) : traité comme percussion GM, table des kits GM2.
+    msg = mh.format_midi_status("program_change", 9, program=25)
+    assert msg == "Program Change, Chan: 10, Program: 25 (TR-808 Kit)"
+
+
+def test_format_program_change_drum_kit_unnamed_shows_number_only():
+    msg = mh.format_midi_status("program_change", 9, program=1)
+    assert msg == "Program Change, Chan: 10, Program: 1"
+
+
 def test_format_channel_is_1based():
     assert "Chan: 16" in mh.format_midi_status("cc", 15, cc_num=1, value=0)
 
@@ -98,3 +120,19 @@ def test_notify_editor_midi_updates_open_editor():
     handler = mh.MidiHandler(win)
     handler._notify_editor_midi("cc", 0, cc_num=1, value=64)
     assert win._midi_editor_window.last == "CC, Chan: 1, Num: 1 (Modulation Wheel), Val: 64"
+
+
+# ---------------------------------------------------------------------------
+# MidiHandler.on_program_change — statut live minimum (Phase 7 étape 2h)
+# ---------------------------------------------------------------------------
+
+def test_on_program_change_updates_open_editor():
+    win     = _FakeWinWithEditor()
+    handler = mh.MidiHandler(win)
+    handler.on_program_change(41, 0)
+    assert win._midi_editor_window.last == "Program Change, Chan: 1, Program: 41 (Viola)"
+
+
+def test_on_program_change_noop_when_editor_closed():
+    handler = mh.MidiHandler(_FakeWinNoEditor())
+    handler.on_program_change(41, 0)   # ne doit pas lever
