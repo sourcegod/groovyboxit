@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import midi_constants as mc
+import midi.midi_constants as mc
 
 
 # ---------------------------------------------------------------------------
