@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/midi_constants.py
+    File: src/midi/midi_constants.py
     Tables de description MIDI pures (aucune dépendance rtmidi/wx) :
     noms des Control Change, noms des patchs General MIDI 1,
     noms des kits de batterie General MIDI 2.

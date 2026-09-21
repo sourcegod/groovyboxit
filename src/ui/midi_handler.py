@@ -21,7 +21,7 @@ def _bend_log(msg):
         f.write(f"[{ts}] {msg}\n")
 from rack import InstrumentType
 from synth_engine import midi_to_note_name
-from midi_constants import CC_NAMES
+from midi.midi_constants import CC_NAMES
 from midi_parser import describe_program
 
 

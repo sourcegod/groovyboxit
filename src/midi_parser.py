@@ -15,7 +15,7 @@
     Author: Coolbrother
 """
 from synth_engine import midi_to_note_name
-from midi_constants import CC_NAMES, GM_PATCH_NAMES, GM2_DRUMKIT_NAMES
+from midi.midi_constants import CC_NAMES, GM_PATCH_NAMES, GM2_DRUMKIT_NAMES
 
 
 class CVoice:
