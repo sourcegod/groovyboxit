@@ -14,6 +14,8 @@ try:
 except ImportError:
     _RTMIDI_AVAILABLE = False
 
+from midi_parser import decode_message, CVoice
+
 
 class MidiManager:
     """
@@ -23,18 +25,26 @@ class MidiManager:
         on_note_on(note, velocity, channel)   — Note On  (velocity > 0)
         on_note_off(note, channel)            — Note Off (velocity == 0 ou 0x8n)
         on_status(message: str)               — événement texte (connexion, erreur…)
+        on_cc(cc_num, value, channel)         — Control Change
+        on_pitch_bend(bend, channel)          — Pitch Bend (-8192..8191)
+        on_program_change(program, channel)   — Program Change
 
     Filtrage de canal : si self.channel est None, tous les canaux sont acceptés ;
     sinon seul le canal correspondant (0–15) est traité.
+
+    Décodage bas niveau délégué à midi_parser.decode_message (voir
+    Phase 7 étape 2f) : ce module ne fait plus que la gestion de port
+    rtmidi, le threading et le filtrage de canal.
     """
 
     def __init__(self, on_note_on=None, on_note_off=None, on_status=None,
-                 on_cc=None, on_pitch_bend=None):
-        self._on_note_on    = on_note_on
-        self._on_note_off   = on_note_off
-        self._on_status     = on_status
-        self._on_cc         = on_cc
-        self._on_pitch_bend = on_pitch_bend
+                 on_cc=None, on_pitch_bend=None, on_program_change=None):
+        self._on_note_on        = on_note_on
+        self._on_note_off       = on_note_off
+        self._on_status         = on_status
+        self._on_cc             = on_cc
+        self._on_pitch_bend     = on_pitch_bend
+        self._on_program_change = on_program_change
 
         self.channel    = None   # None = tous les canaux, 0–15 = filtre
         self._midi_in   = None
@@ -119,39 +129,38 @@ class MidiManager:
         if not message:
             return
 
-        status  = message[0]
-        msg_type = status & 0xF0
-        chan     = status & 0x0F
-
-        if self.channel is not None and chan != self.channel:
+        msg = decode_message(message)
+        if msg is None:                       # type non reconnu (voir midi_parser)
             return
 
-        if msg_type == 0x90:                  # Note On
-            note     = message[1]
-            velocity = message[2]
+        if self.channel is not None and msg.channel != self.channel:
+            return
+
+        if msg.mtype == CVoice.NoteOn:
+            note     = msg.payload["note"]
+            velocity = msg.payload["vel"]
             if velocity == 0:                  # Note On vel=0 = Note Off
                 if self._on_note_off:
-                    self._on_note_off(note, chan)
+                    self._on_note_off(note, msg.channel)
             else:
                 if self._on_note_on:
-                    self._on_note_on(note, velocity, chan)
+                    self._on_note_on(note, velocity, msg.channel)
 
-        elif msg_type == 0x80:                # Note Off explicite
-            note = message[1]
+        elif msg.mtype == CVoice.NoteOff:      # Note Off explicite
             if self._on_note_off:
-                self._on_note_off(note, chan)
+                self._on_note_off(msg.payload["note"], msg.channel)
 
-        elif msg_type == 0xB0:                # Control Change
-            cc_num = message[1]
-            value  = message[2]
+        elif msg.mtype == CVoice.ControllerChange:
             if self._on_cc:
-                self._on_cc(cc_num, value, chan)
+                self._on_cc(msg.payload["cc_num"], msg.payload["value"], msg.channel)
 
-        elif msg_type == 0xE0:                # Pitch Bend
-            # 14 bits : LSB (message[1]) + MSB (message[2]), centre = 8192
-            bend = ((message[2] << 7) | message[1]) - 8192
+        elif msg.mtype == CVoice.ProgramChange:
+            if self._on_program_change:
+                self._on_program_change(msg.payload["program"], msg.channel)
+
+        elif msg.mtype == CVoice.PitchBend:
             if self._on_pitch_bend:
-                self._on_pitch_bend(bend, chan)
+                self._on_pitch_bend(msg.payload["bend"], msg.channel)
 
     # ------------------------------------------------------------------
     # Utilitaire interne
@@ -182,11 +191,15 @@ if __name__ == "__main__":
     def on_cc(cc_num, value, chan):
         print(f"  CC       cc={cc_num:3d}  val={value:3d}  chan={chan}")
 
+    def on_program_change(program, chan):
+        print(f"  PROGRAM  program={program:3d}  chan={chan}")
+
     def on_status(msg):
         print(f"[MIDI] {msg}")
 
     mgr = MidiManager(on_note_on=on_note_on, on_note_off=on_note_off,
-                      on_status=on_status, on_cc=on_cc)
+                      on_status=on_status, on_cc=on_cc,
+                      on_program_change=on_program_change)
 
     ports = mgr.list_ports()
     print(f"Ports disponibles : {ports}")
