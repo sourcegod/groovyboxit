@@ -4,7 +4,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from midi_editor import MidiEditor
+from midi.midi_editor import MidiEditor
 
 
 # ---------------------------------------------------------------------------

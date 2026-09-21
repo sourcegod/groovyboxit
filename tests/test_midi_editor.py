@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at
-from midi_editor import MidiEditor
+from midi.midi_editor import MidiEditor
 
 
 # ---------------------------------------------------------------------------
