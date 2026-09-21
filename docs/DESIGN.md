@@ -503,3 +503,97 @@ faute de liste spécifique fournie — voir commit `2a98f2f`) ;
 `describe_note`/`describe_cc`/`describe_program`) ; `MidiManager._callback`
 délègue à `decode_message` et reconnaît Program Change ; `MidiHandler`
 câble `on_program_change` (statut live minimum, `_tape` hors périmètre).
+
+---
+
+## Phase 7 étape 3a — Réorganisation des fichiers MIDI (`src/midi/`)
+
+### Origine du besoin
+
+Après les étapes 2a-2j, 4 fichiers MIDI « cœur » (logique, hors UI)
+cohabitent en vrac à la racine de `src/` avec des fichiers non-MIDI
+(`pattern.py`, `synth_engine.py`, etc.) : `midi_constants.py`,
+`midi_editor.py`, `midi_manager.py`, `midi_parser.py`. L'utilisateur
+demande de les regrouper dans un nouveau dossier `src/midi/` pour mieux
+ranger le code.
+
+### Décision de scope (utilisateur, 2026-09-21)
+
+- **4 fichiers déplacés** : `midi_constants.py`, `midi_editor.py`,
+  `midi_manager.py` (inclus après clarification — même domaine « cœur
+  MIDI non-UI » que les 3 cités initialement), `midi_parser.py`.
+- **Fichiers `ui/*.py` liés au MIDI laissés en place** (`midi_handler.py`,
+  `midi_editor_window.py`, `mw_midi_editor.py`, `midi_editor_dialogs.py`,
+  `midi_virtual_keyboard.py`) : la convention existante range tout le GUI
+  wx sous `src/ui/` indépendamment du domaine métier — pas de mélange
+  UI/logique dans `src/midi/`.
+- **Pas de renommage de fichier** : seul le dossier change
+  (`src/midi_parser.py` → `src/midi/midi_parser.py`), même convention que
+  `src/ui/` lors du refactor Phase 6 (fichiers déplacés tels quels).
+
+### Conception : package `src/midi/`, imports absolus pointés
+
+- Nouveau `src/midi/__init__.py` (vide) — même convention que
+  `src/ui/__init__.py` (vide, package pur, pas de ré-export).
+- Tous les imports vers ces 4 fichiers passent de la forme plate
+  (`from midi_parser import X`, `import midi_manager as mm`) à la forme
+  pointée `from midi.midi_parser import X`, `import midi.midi_manager as
+  mm` — même convention que `src/ui/` (`from ui.midi_handler import
+  MidiHandler`), **pas d'imports relatifs** (`.xxx`).
+- Imports internes entre les 4 fichiers déplacés (`midi_parser.py` →
+  `midi_constants.py`, `midi_manager.py` → `midi_parser.py`) : même forme
+  pointée `from midi.midi_constants import ...`, pas de raccourci
+  relatif — cohérent avec le style du reste du projet.
+
+### État des lieux des importeurs (avant déplacement)
+
+| Fichier déplacé | Importé par (code) | Importé par (tests) |
+|---|---|---|
+| `midi_constants.py` | `src/midi_parser.py`, `src/ui/midi_handler.py` | `tests/test_midi_constants.py` |
+| `midi_parser.py` | `src/midi_manager.py`, `src/ui/midi_handler.py` | `tests/test_midi_parser.py` |
+| `midi_manager.py` | `src/ui/main_window.py` | `tests/test_midi_manager.py` |
+| `midi_editor.py` | `src/ui/midi_editor_window.py`, `src/ui/dialogs_temporal.py` (import local différé dans une méthode) | `tests/test_midi_editor.py`, `tests/test_midi_editor_filter.py` |
+
+### Ordre de déplacement (dépendances internes)
+
+`midi_constants.py` (aucune dépendance `midi_*`) → `midi_parser.py`
+(dépend de `midi_constants`) → `midi_manager.py` (dépend de
+`midi_parser`) → `midi_editor.py` (indépendant, dépend seulement de
+`pattern.py` — déplacé en dernier, aucune contrainte d'ordre avec les 3
+autres).
+
+### Découpage en commits proposé (à valider avant de coder)
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **3a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **3b** | Implémentation — `src/midi/__init__.py` + déplace `midi_constants.py` ; met à jour les imports non-tests (`src/midi_parser.py`, `src/ui/midi_handler.py`). | `src/midi/__init__.py` (nouveau), `src/midi/midi_constants.py` (déplacé), `src/midi_parser.py`, `src/ui/midi_handler.py` |
+| **3c** | Tests — `tests/test_midi_constants.py` (import pointé `midi.midi_constants`), suite verte. | `tests/test_midi_constants.py` |
+| **3d** | Implémentation — déplace `midi_parser.py` ; met à jour les imports non-tests (`src/midi_manager.py`, `src/ui/midi_handler.py`). | `src/midi/midi_parser.py` (déplacé), `src/midi_manager.py`, `src/ui/midi_handler.py` |
+| **3e** | Tests — `tests/test_midi_parser.py` (import pointé), suite verte. | `tests/test_midi_parser.py` |
+| **3f** | Implémentation — déplace `midi_manager.py` ; met à jour l'import non-test (`src/ui/main_window.py`). | `src/midi/midi_manager.py` (déplacé), `src/ui/main_window.py` |
+| **3g** | Tests — `tests/test_midi_manager.py` (import pointé), suite verte. | `tests/test_midi_manager.py` |
+| **3h** | Implémentation — déplace `midi_editor.py` ; met à jour les imports non-tests (`src/ui/midi_editor_window.py`, `src/ui/dialogs_temporal.py`). | `src/midi/midi_editor.py` (déplacé), `src/ui/midi_editor_window.py`, `src/ui/dialogs_temporal.py` |
+| **3i** | Tests — `tests/test_midi_editor.py`, `tests/test_midi_editor_filter.py` (imports pointés), suite verte. | `tests/test_midi_editor.py`, `tests/test_midi_editor_filter.py` |
+| **3j** | Doc — chantier complet (3a-3i). | `docs/DESIGN.md` |
+
+**Remarque sur les commits impl-only (3b/3d/3f/3h)** : chaque commit
+d'implémentation laisse volontairement le(s) fichier(s) de test
+correspondant(s) rouge(s) (`ModuleNotFoundError` sur l'ancien import
+plat) jusqu'au commit Tests qui suit immédiatement — titré en
+conséquence (« travail incomplet — tests à suivre »), même convention
+que Phase 7 étape 1k (commit `45559cc`). La suite complète (`pytest
+tests/`) n'est vérifiée verte qu'à l'issue de chaque paire impl+tests,
+jamais laissée rouge entre deux paires distinctes.
+
+### Portée explicitement exclue de ce chantier
+
+- Renommer les fichiers eux-mêmes (ex. `midi_parser.py` → `parser.py`) :
+  seul le dossier change.
+- Déplacer les fichiers MIDI de `src/ui/` (`midi_handler.py`,
+  `midi_editor_window.py`, `mw_midi_editor.py`, `midi_editor_dialogs.py`,
+  `midi_virtual_keyboard.py`) : restent sous `src/ui/` (décision
+  utilisateur).
+- Toute modification de comportement : chantier de rangement pur, aucun
+  changement fonctionnel attendu (suite de tests inchangée en
+  nombre/contenu, seuls les imports changent).
