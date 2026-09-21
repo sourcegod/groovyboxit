@@ -101,13 +101,39 @@ class _FakeMidiStatusCtrl:
         self.last = msg
 
 
+class _FakePlayer:
+    def __init__(self):
+        self.recording  = False
+        self._cur_track = 0
+
+
+class _FakeRouter:
+    def __init__(self):
+        self.assigned_slot = None   # (track, slot_idx) du dernier assign_slot()
+
+    def assign_slot(self, track, slot_idx):
+        self.assigned_slot = (track, slot_idx)
+
+
 class _FakeWinNoEditor:
     _midi_editor_window = None
+
+    def __init__(self):
+        self._player = _FakePlayer()
+        self._router = _FakeRouter()
+
+    def _show_status(self, msg):
+        pass
 
 
 class _FakeWinWithEditor:
     def __init__(self):
         self._midi_editor_window = _FakeMidiStatusCtrl()
+        self._player = _FakePlayer()
+        self._router = _FakeRouter()
+
+    def _show_status(self, msg):
+        pass
 
 
 def test_notify_editor_midi_noop_when_editor_closed():

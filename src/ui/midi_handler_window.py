@@ -204,9 +204,15 @@ class MidiHandler:
         win._show_status(f"Pitch Bend: {st:+.2f} st")
 
     def on_cc(self, cc_num, value, channel):
-        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#64 = Sustain, CC#123 = All Notes Off."""
+        """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#64 = Sustain, CC#123 = All Notes Off.
+
+        Capturé dans _tape (etype ETYPE_CC, Phase 7 étape 4f) indépendamment
+        de l'effet live ci-dessous — y compris CC#1, dupliqué avec _mod_tape
+        (voir docs/DESIGN.md § Phase 7 étape 4a, décision 1)."""
         self._notify_editor_midi("cc", channel, cc_num=cc_num, value=value)
         win = self._win
+        if win._player.recording:
+            win._player.record_cc(cc_num, value, channel)
         if cc_num == 120:                          # CC#120 : All Sounds Off
             win._router.stop_all_sounds()
             win._show_status("All Sounds Off")
@@ -258,10 +264,20 @@ class MidiHandler:
     # ------------------------------------------------------------------
 
     def on_program_change(self, program, channel):
-        """Program Change MIDI reçu — statut live minimum (Phase 7 étape 2h).
-        Capture/stockage dans _tape et branchement EventFilterDialog/Ctrl+2 :
-        chantier séparé, ultérieur (voir docs/DESIGN.md)."""
+        """Program Change MIDI reçu — capturé dans _tape (etype ETYPE_PGM,
+        Phase 7 étape 4f) et réassigne provisoirement le slot du Rack de la
+        piste courante (`program % 16`), en attendant le futur mode Rack
+        Synth/GM 16 canaux (voir docs/DESIGN.md § Phase 7 étape 4a,
+        décision 2 révisée — la position 2a « aucun effet live possible »
+        était une simplification de développement, pas définitive)."""
         self._notify_editor_midi("program_change", channel, program=program)
+        win = self._win
+        if win._player.recording:
+            win._player.record_program_change(program, channel)
+        track    = win._player._cur_track
+        slot_idx = program % 16
+        win._router.assign_slot(track, slot_idx)
+        win._show_status(f"Piste {track + 1}: Program Change → Slot {slot_idx + 1}")
 
     # ------------------------------------------------------------------
     # Note On
