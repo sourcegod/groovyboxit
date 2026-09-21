@@ -494,3 +494,12 @@ fondations posées sans implémentation) :
 Suite (hors périmètre 2a-2i, à renuméroter plus tard) : capture/stockage
 de Program Change et CC générique dans `_tape` + branchement
 `EventFilterDialog`/affichage Ctrl+2 — une fois le parser posé.
+
+**2b-2i FAITS** (commits `2a98f2f`..`4382a9b`, 1549 tests passed) —
+**chantier Phase 7 complet (2a-2i)**. `midi_constants.py` (CC_NAMES
+déplacé, GM_PATCH_NAMES/GM2_DRUMKIT_NAMES = tables standard officielles,
+faute de liste spécifique fournie — voir commit `2a98f2f`) ;
+`midi_parser.py` (CVoice/CMeta, `decode_message` littéral,
+`describe_note`/`describe_cc`/`describe_program`) ; `MidiManager._callback`
+délègue à `decode_message` et reconnaît Program Change ; `MidiHandler`
+câble `on_program_change` (statut live minimum, `_tape` hors périmètre).
