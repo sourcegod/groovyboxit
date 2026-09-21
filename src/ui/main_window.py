@@ -146,11 +146,12 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._project_modified = False
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
-            on_note_on    = lambda n, v, c:  wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
-            on_note_off   = lambda n, c:     wx.CallAfter(self._midi_handler.on_note_off, n, c),
-            on_status     = lambda msg:      wx.CallAfter(self._show_status, msg),
-            on_cc         = lambda cc, v, c: wx.CallAfter(self._midi_handler.on_cc, cc, v, c),
-            on_pitch_bend = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
+            on_note_on        = lambda n, v, c:  wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
+            on_note_off       = lambda n, c:     wx.CallAfter(self._midi_handler.on_note_off, n, c),
+            on_status         = lambda msg:      wx.CallAfter(self._show_status, msg),
+            on_cc             = lambda cc, v, c: wx.CallAfter(self._midi_handler.on_cc, cc, v, c),
+            on_pitch_bend     = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
+            on_program_change = lambda p, c:     wx.CallAfter(self._midi_handler.on_program_change, p, c),
         )
         self._track_editor = TrackEditor()
         self._undo = UndoManager()

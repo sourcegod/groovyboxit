@@ -21,39 +21,8 @@ def _bend_log(msg):
         f.write(f"[{ts}] {msg}\n")
 from rack import InstrumentType
 from synth_engine import midi_to_note_name
-
-
-# Noms des Control Change standard MIDI 1.0 (CC non listés : sans nom).
-CC_NAMES = {
-    0: "Bank Select", 1: "Modulation Wheel", 2: "Breath Controller",
-    4: "Foot Controller", 5: "Portamento Time", 6: "Data Entry MSB",
-    7: "Channel Volume", 8: "Balance", 10: "Pan", 11: "Expression Controller",
-    12: "Effect Control 1", 13: "Effect Control 2",
-    16: "General Purpose 1", 17: "General Purpose 2",
-    18: "General Purpose 3", 19: "General Purpose 4",
-    32: "Bank Select LSB", 33: "Modulation Wheel LSB",
-    34: "Breath Controller LSB", 36: "Foot Controller LSB",
-    37: "Portamento Time LSB", 38: "Data Entry LSB",
-    39: "Channel Volume LSB", 40: "Balance LSB", 42: "Pan LSB",
-    43: "Expression Controller LSB",
-    64: "Sustain Pedal", 65: "Portamento On/Off", 66: "Sostenuto",
-    67: "Soft Pedal", 68: "Legato Footswitch", 69: "Hold 2",
-    70: "Sound Variation", 71: "Timbre/Harmonic Intensity",
-    72: "Release Time", 73: "Attack Time", 74: "Brightness",
-    75: "Sound Controller 6", 76: "Sound Controller 7",
-    77: "Sound Controller 8", 78: "Sound Controller 9",
-    79: "Sound Controller 10",
-    80: "General Purpose 5", 81: "General Purpose 6",
-    82: "General Purpose 7", 83: "General Purpose 8",
-    84: "Portamento Control", 88: "High Resolution Velocity Prefix",
-    91: "Reverb Depth", 92: "Tremolo Depth", 93: "Chorus Depth",
-    94: "Detune Depth", 95: "Phaser Depth",
-    96: "Data Increment", 97: "Data Decrement",
-    98: "NRPN LSB", 99: "NRPN MSB", 100: "RPN LSB", 101: "RPN MSB",
-    120: "All Sound Off", 121: "Reset All Controllers", 122: "Local Control",
-    123: "All Notes Off", 124: "Omni Mode Off", 125: "Omni Mode On",
-    126: "Mono Mode On", 127: "Poly Mode On",
-}
+from midi_constants import CC_NAMES
+from midi_parser import describe_program
 
 
 def format_midi_status(kind, channel, **kwargs):
@@ -73,6 +42,12 @@ def format_midi_status(kind, channel, **kwargs):
         return f"CC, Chan: {ch}, Num: {num}, Val: {kwargs['value']}"
     if kind == "pitch_bend":
         return f"Pitch Bend, Chan: {ch}, Val: {kwargs['bend']:+d}"
+    if kind == "program_change":
+        program = kwargs["program"]
+        # Canal 10 (0-indexé 9) = canal percussion standard GM.
+        name = describe_program(program, is_drum=(channel == 9))
+        num  = f"{program} ({name})" if name else str(program)
+        return f"Program Change, Chan: {ch}, Program: {num}"
     return ""
 
 
@@ -277,6 +252,16 @@ class MidiHandler:
                 win._player.voice_manager.set_pan(pad, pan)
                 win._pan_ctrls[pad].SetValue(pan)
                 win._show_status(f"Pad {pad + 1}: Pan {pan}")
+
+    # ------------------------------------------------------------------
+    # Program Change
+    # ------------------------------------------------------------------
+
+    def on_program_change(self, program, channel):
+        """Program Change MIDI reçu — statut live minimum (Phase 7 étape 2h).
+        Capture/stockage dans _tape et branchement EventFilterDialog/Ctrl+2 :
+        chantier séparé, ultérieur (voir docs/DESIGN.md)."""
+        self._notify_editor_midi("program_change", channel, program=program)
 
     # ------------------------------------------------------------------
     # Note On
