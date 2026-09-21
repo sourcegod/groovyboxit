@@ -14,7 +14,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
 from drum_player import DrumPlayer
 from tape_test_utils import (
     tape_at, has_tape_at, set_tape_at, add_tape_at, all_tape_events,
@@ -394,6 +394,138 @@ def test_record_kit_note_velocity_minimum_one():
     events = pl._pattern._tape[0]
     assert events[0].payload.get("vel") == 1
     print("  record_kit_note vélocité 0 → 1 : OK")
+
+
+# ---------------------------------------------------------------------------
+# DrumPlayer.record_cc / record_program_change (Phase 7 étape 4e)
+# ---------------------------------------------------------------------------
+
+def test_record_cc_stores_event():
+    pl = _make_player()
+    pl.record_cc(74, 90, channel=3)
+    events = pl._pattern._tape[0]
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.etype == ETYPE_CC
+    assert ev.payload == {"cc_num": 74, "value": 90}
+    assert ev.channel == 3
+    assert ev.dur == 0
+    print("  record_cc stocke TapeEvent(CC, cc_num=74, value=90) : OK")
+
+def test_record_cc_no_dedup_same_value_same_step():
+    """Contrairement à record_kit_note, deux CC identiques au même tick sont
+    tous les deux enregistrés (données valides, pas un doublon à filtrer)."""
+    pl = _make_player()
+    pl.record_cc(1, 64)
+    pl.record_cc(1, 64)
+    events = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_CC]
+    assert len(events) == 2
+    print("  record_cc : pas de dédoublonnage, deux CC identiques conservés : OK")
+
+def test_record_cc_returns_bar_step():
+    pl = _make_player()
+    bar_idx, step_idx = pl.record_cc(7, 100)
+    assert isinstance(bar_idx,  int)
+    assert isinstance(step_idx, int)
+    print("  record_cc retourne (bar_idx, step_idx) valides : OK")
+
+def test_record_program_change_stores_event():
+    pl = _make_player()
+    pl.record_program_change(42, channel=9)
+    events = pl._pattern._tape[0]
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.etype == ETYPE_PGM
+    assert ev.payload == {"program": 42}
+    assert ev.channel == 9
+    assert ev.dur == 0
+    print("  record_program_change stocke TapeEvent(PGM, program=42) : OK")
+
+def test_record_program_change_returns_bar_step():
+    pl = _make_player()
+    bar_idx, step_idx = pl.record_program_change(3)
+    assert isinstance(bar_idx,  int)
+    assert isinstance(step_idx, int)
+    print("  record_program_change retourne (bar_idx, step_idx) valides : OK")
+
+def test_cc_tape_callback_receives_track_cc_and_value():
+    received = []
+    pl = _make_player()
+    pl._on_cc_tape_cb = lambda t, cc, v: received.append((t, cc, v))
+    pl._on_cc_tape_cb(2, 74, 90)
+    assert received == [(2, 74, 90)]
+    print("  on_cc_tape_cb reçoit (track_idx, cc_num, value) : OK")
+
+def test_cc_tape_no_callback_is_safe():
+    pl = _make_player()
+    pl._on_cc_tape_cb = None
+    try:
+        if pl._on_cc_tape_cb:
+            pl._on_cc_tape_cb(0, 0, 0)
+        print("  on_cc_tape_cb=None → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+def test_program_change_tape_callback_receives_track_and_program():
+    received = []
+    pl = _make_player()
+    pl._on_program_change_tape_cb = lambda t, p: received.append((t, p))
+    pl._on_program_change_tape_cb(1, 42)
+    assert received == [(1, 42)]
+    print("  on_program_change_tape_cb reçoit (track_idx, program) : OK")
+
+def test_program_change_tape_no_callback_is_safe():
+    pl = _make_player()
+    pl._on_program_change_tape_cb = None
+    try:
+        if pl._on_program_change_tape_cb:
+            pl._on_program_change_tape_cb(0, 0)
+        print("  on_program_change_tape_cb=None → no-op sans plantage : OK")
+    except Exception as e:
+        assert False, f"Exception inattendue : {e}"
+
+def test_run_thread_build_cc_and_pgm_events_mixed_with_patch():
+    """Non-régression (Phase 7 étape 4e) : un ETYPE_CC/ETYPE_PGM dans _tape,
+    aux côtés d'un ETYPE_PATCH sur la même piste, ne casse plus la
+    construction des événements de lecture. Piège identifié en 4a : l'ancien
+    `else` catch-all aurait lu le CC/PGM comme un PATCH (note=None, bend=0)."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500, bend=1234)
+    pl.record_cc(74, 90)
+    pl.record_program_change(5)
+
+    events = []
+    for t_idx, note_list in enumerate(pl._pattern._tape):
+        for ev in note_list:
+            if ev.etype == ETYPE_GRID:
+                events.append((pl.GRID_EVENT,
+                               (t_idx, ev.payload.get("pad"), ev.dur), ev.payload.get("vel")))
+            elif ev.etype == ETYPE_KIT:
+                events.append((pl.KIT_TAPE_EVENT,
+                               (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
+            elif ev.etype == ETYPE_PATCH:
+                events.append((pl.PATCH_TAPE_EVENT,
+                               (t_idx, ev.payload.get("note"), ev.dur, ev.payload.get("bend", 0)),
+                               ev.payload.get("vel")))
+            elif ev.etype == ETYPE_CC:
+                events.append((pl.CC_TAPE_EVENT,
+                               (t_idx, ev.payload.get("cc_num"), ev.payload.get("value")), 0))
+            elif ev.etype == ETYPE_PGM:
+                events.append((pl.PGM_TAPE_EVENT, (t_idx, ev.payload.get("program")), 0))
+
+    by_type = {e[0]: e for e in events}
+    assert len(events) == 3, "GRID/KIT/PATCH/CC/PGM exhaustifs, aucun événement fantôme"
+
+    _, (t_idx, note, dur, bend), vel = by_type[pl.PATCH_TAPE_EVENT]
+    assert (note, bend, vel) == (60, 1234, 100), \
+        "le PATCH voisin d'un CC/PGM garde ses vraies valeurs (pas de note=None)"
+
+    _, (t_idx, cc_num, value), _ = by_type[pl.CC_TAPE_EVENT]
+    assert (cc_num, value) == (74, 90)
+
+    _, (t_idx, program), _ = by_type[pl.PGM_TAPE_EVENT]
+    assert program == 5
+    print("  _run_thread : CC/PGM aux côtés d'un PATCH, catégorisation correcte, pas de note=None : OK")
 
 
 # ---------------------------------------------------------------------------
