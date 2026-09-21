@@ -36,6 +36,7 @@ class FakeSynthEngine:
         self.sustain                   = False
         self._sustained_notes          = set()
         self.release_sustain_called    = 0
+        self.mod_wheel_value           = None
 
     def is_loaded(self):
         return self._loaded
@@ -68,6 +69,9 @@ class FakeSynthEngine:
     def release_sustain(self):
         self.release_sustain_called += 1
         self._sustained_notes.clear()
+
+    def set_mod_wheel(self, value):
+        self.mod_wheel_value = value
 
 
 class FakeSoundManager:
@@ -1134,6 +1138,122 @@ def test_panic_calls_reset_all_controls():
     print("  panic → stop_all_sounds + reset_all_controls : OK")
 
 
+# ---------------------------------------------------------------------------
+# on_cc_tape / on_program_change_tape (Phase 7 étape 4h)
+# ---------------------------------------------------------------------------
+
+def test_on_cc_tape_120_stops_all_sounds():
+    router, snd, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.on_cc_tape(0, 120, 127)
+    assert e1.stop_all_voices_called == 1
+    assert snd.stop_all_called == 1
+    print("  on_cc_tape CC#120 → stop_all_sounds (effet global) : OK")
+
+
+def test_on_cc_tape_121_resets_all_controls():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.on_cc_tape(0, 121, 0)
+    assert e1.reset_all_controls_called == 1
+    print("  on_cc_tape CC#121 → reset_all_controls (effet global) : OK")
+
+
+def test_on_cc_tape_123_stops_all_synth_voices():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.on_cc_tape(0, 123, 0)
+    assert e1.stop_all_voices_called == 1
+    print("  on_cc_tape CC#123 → stop_all_synth_voices (effet global) : OK")
+
+
+def test_on_cc_tape_64_sets_sustain():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.on_cc_tape(0, 64, 127)
+    assert e1.sustain is True
+    router.on_cc_tape(0, 64, 0)
+    assert e1.sustain is False
+    print("  on_cc_tape CC#64 → set_sustain On/Off (effet global) : OK")
+
+
+def test_on_cc_tape_1_delegates_to_mod_wheel():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine(); e1._loaded = True
+    router._track_slots[0] = 1   # slot 1 = SYNTH "Piano"
+    router._slot_synths    = {1: e1}
+    router.on_cc_tape(0, 1, 80)
+    assert e1.mod_wheel_value == 80
+    print("  on_cc_tape CC#1 → délègue à on_mod_tape (mod wheel piste d'origine) : OK")
+
+
+def test_on_cc_tape_7_sets_track_volume_of_origin_track():
+    router, _, _ = _make_router()
+    router.on_cc_tape(3, 7, 127)
+    assert router._track_volumes[3] == 100
+    assert router._track_volumes[0] == 100   # inchangé sur les autres pistes
+    print("  on_cc_tape CC#7 → set_track_volume(track_idx) sur la piste d'origine : OK")
+
+
+def test_on_cc_tape_10_sets_track_pan_of_origin_track():
+    router, _, _ = _make_router()
+    router.on_cc_tape(2, 10, 127)
+    assert router._track_pans[2] == 100
+    assert router._track_pans[0] == 0   # inchangé sur les autres pistes
+    print("  on_cc_tape CC#10 → set_track_pan(track_idx) sur la piste d'origine : OK")
+
+
+def test_on_cc_tape_track_effect_ignored_when_track_muted():
+    """CC#7/10 (effet par piste) ignoré si la piste est mute — contrairement
+    aux effets globaux (64/120/121/123), inconditionnels."""
+    router, _, _ = _make_router()
+    router.toggle_track_mute(0)
+    router.on_cc_tape(0, 7, 127)
+    assert router._track_volumes[0] == 100, "piste mute → set_track_volume non appliqué"
+    print("  on_cc_tape : piste non audible ignorée pour l'effet par piste : OK")
+
+
+def test_on_cc_tape_global_effect_applies_even_when_track_muted():
+    router, _, _ = _make_router()
+    e1 = FakeSynthEngine()
+    router._slot_synths = {1: e1}
+    router.toggle_track_mute(0)
+    router.on_cc_tape(0, 64, 127)
+    assert e1.sustain is True, "l'effet global (sustain) s'applique même piste mute"
+    print("  on_cc_tape : effet global appliqué indépendamment du mute de la piste : OK")
+
+
+@patch("track_router.SynthEngine", FakeSynthEngine)
+def test_on_program_change_tape_calls_assign_slot_modulo_16():
+    router, _, _ = _make_router()
+    router.on_program_change_tape(3, 20)   # 20 % 16 = 4
+    assert router._track_slots[3] == 4
+    print("  on_program_change_tape : assign_slot(track_idx, program % 16) : OK")
+
+
+@patch("track_router.SynthEngine", FakeSynthEngine)
+def test_on_program_change_tape_program_127_wraps_to_slot_15():
+    router, _, _ = _make_router()
+    router.on_program_change_tape(0, 127)   # 127 % 16 = 15
+    assert router._track_slots[0] == 15
+    print("  on_program_change_tape : program=127 → slot 15 (modulo 16) : OK")
+
+
+@patch("track_router.SynthEngine", FakeSynthEngine)
+def test_on_program_change_tape_targets_origin_track_not_current():
+    """on_program_change_tape cible track_idx (piste d'origine de l'événement),
+    pas une notion de piste courante (qui n'existe pas au niveau TrackRouter)."""
+    router, _, _ = _make_router()
+    router.on_program_change_tape(5, 1)
+    assert router._track_slots[5] == 1
+    assert router._track_slots[0] == 0   # les autres pistes ne sont pas affectées
+    print("  on_program_change_tape cible track_idx, pas une piste courante implicite : OK")
+
+
 if __name__ == "__main__":
     print("=== test_track_router ===")
     test_initial_state()
@@ -1244,5 +1364,19 @@ if __name__ == "__main__":
     test_load_slot_preview_appends_load_thread()
     test_multiple_load_threads_all_tracked()
     print("Tests wait_loaded / _load_threads : OK")
+
+    test_on_cc_tape_120_stops_all_sounds()
+    test_on_cc_tape_121_resets_all_controls()
+    test_on_cc_tape_123_stops_all_synth_voices()
+    test_on_cc_tape_64_sets_sustain()
+    test_on_cc_tape_1_delegates_to_mod_wheel()
+    test_on_cc_tape_7_sets_track_volume_of_origin_track()
+    test_on_cc_tape_10_sets_track_pan_of_origin_track()
+    test_on_cc_tape_track_effect_ignored_when_track_muted()
+    test_on_cc_tape_global_effect_applies_even_when_track_muted()
+    test_on_program_change_tape_calls_assign_slot_modulo_16()
+    test_on_program_change_tape_program_127_wraps_to_slot_15()
+    test_on_program_change_tape_targets_origin_track_not_current()
+    print("Tests on_cc_tape / on_program_change_tape : OK")
 
     print("Tous les tests : OK")

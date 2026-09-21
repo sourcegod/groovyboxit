@@ -105,6 +105,10 @@ class _FakePlayer:
     def __init__(self):
         self.recording  = False
         self._cur_track = 0
+        self.recorded_programs = []   # [(program, channel), ...] via record_program_change
+
+    def record_program_change(self, program, channel=0):
+        self.recorded_programs.append((program, channel))
 
 
 class _FakeRouter:
@@ -162,3 +166,39 @@ def test_on_program_change_updates_open_editor():
 def test_on_program_change_noop_when_editor_closed():
     handler = mh.MidiHandler(_FakeWinNoEditor())
     handler.on_program_change(41, 0)   # ne doit pas lever
+
+
+# ---------------------------------------------------------------------------
+# MidiHandler.on_program_change — effet live assign_slot (Phase 7 étape 4h,
+# décision révisée sur 2a : voir docs/DESIGN.md § Phase 7 étape 4a)
+# ---------------------------------------------------------------------------
+
+def test_on_program_change_assigns_rack_slot_on_current_track():
+    win     = _FakeWinNoEditor()
+    win._player._cur_track = 2
+    handler = mh.MidiHandler(win)
+    handler.on_program_change(5, 0)
+    assert win._router.assigned_slot == (2, 5)
+
+
+def test_on_program_change_assigns_slot_modulo_16():
+    win     = _FakeWinNoEditor()
+    handler = mh.MidiHandler(win)
+    handler.on_program_change(127, 0)   # 127 % 16 = 15
+    assert win._router.assigned_slot == (0, 15)
+
+
+def test_on_program_change_captures_when_recording():
+    win = _FakeWinNoEditor()
+    win._player.recording = True
+    handler = mh.MidiHandler(win)
+    handler.on_program_change(41, 3)
+    assert win._player.recorded_programs == [(41, 3)]
+
+
+def test_on_program_change_no_capture_when_not_recording():
+    win = _FakeWinNoEditor()
+    win._player.recording = False
+    handler = mh.MidiHandler(win)
+    handler.on_program_change(41, 3)
+    assert win._player.recorded_programs == []
