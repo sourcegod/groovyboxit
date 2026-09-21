@@ -4,7 +4,7 @@ import threading
 import os
 
 from metronome import Metronome
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
 from voice_manager import VoiceManager
 from quantize_manager import QuantizeManager
 from loop_manager import LoopManager, LoopWindow
@@ -28,6 +28,8 @@ class DrumPlayer:
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
     BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
     MOD_TAPE_EVENT   = -5   # marqueur interne pour les événements d'automation mod wheel
+    CC_TAPE_EVENT    = -7   # marqueur interne pour les événements CC générique (etype ETYPE_CC de _tape)
+    PGM_TAPE_EVENT   = -8   # marqueur interne pour les événements Program Change (etype ETYPE_PGM de _tape)
 
     def __init__(self, sound_manager=None):
         self._play_thread = None
@@ -81,6 +83,8 @@ class DrumPlayer:
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
         self._on_mod_tape_cb      = None  # callback(track_idx, mod_value) lecture automation mod wheel
+        self._on_cc_tape_cb              = None  # callback(track_idx, cc_num, value) lecture CC générique
+        self._on_program_change_tape_cb  = None  # callback(track_idx, program) lecture Program Change
         self._pending_patch       = {}    # {midi_note: (track, TapeEvent.id, t_start)} — note_on en attente de note_off
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
@@ -471,10 +475,16 @@ class DrumPlayer:
                             elif ev.etype == ETYPE_KIT:
                                 events.append((t_sec, self.KIT_TAPE_EVENT,
                                                (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
-                            else:
+                            elif ev.etype == ETYPE_PATCH:
                                 events.append((t_sec, self.PATCH_TAPE_EVENT,
                                                (t_idx, ev.payload.get("note"), ev.dur, ev.payload.get("bend", 0)),
                                                ev.payload.get("vel")))
+                            elif ev.etype == ETYPE_CC:
+                                events.append((t_sec, self.CC_TAPE_EVENT,
+                                               (t_idx, ev.payload.get("cc_num"), ev.payload.get("value")), 0))
+                            elif ev.etype == ETYPE_PGM:
+                                events.append((t_sec, self.PGM_TAPE_EVENT,
+                                               (t_idx, ev.payload.get("program")), 0))
                 for t_idx, track_bends in enumerate(self._pattern._bend_tape):
                     for float_off, bend_val in list(track_bends):
                         if not (lp_start <= float_off <= lp_end):
@@ -560,6 +570,14 @@ class DrumPlayer:
                     t_idx, mod_val = evt_data
                     if self._on_mod_tape_cb:
                         self._on_mod_tape_cb(t_idx, mod_val)
+                elif track_or_type == self.CC_TAPE_EVENT:
+                    t_idx, cc_num, value = evt_data
+                    if self._on_cc_tape_cb:
+                        self._on_cc_tape_cb(t_idx, cc_num, value)
+                elif track_or_type == self.PGM_TAPE_EVENT:
+                    t_idx, program = evt_data
+                    if self._on_program_change_tape_cb:
+                        self._on_program_change_tape_cb(t_idx, program)
                 elif track_or_type == self.NR_EVENT:
                     pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
                     if pad is not None and self.voice_manager.is_audible(pad):
@@ -1057,6 +1075,37 @@ class DrumPlayer:
                        for ev in events):
                 events.append(TapeEvent(ETYPE_KIT, channel=channel,
                                          payload={"note": midi_note, "vel": vel}, time=time_val))
+        return bar_idx, step_idx
+
+    #--------------------------------------------------------------------------
+
+    def record_cc(self, cc_num, value, channel=0):
+        """Enregistre un Control Change générique dans _tape (etype=ETYPE_CC).
+
+        Pas de dédoublonnage (contrairement à record_kit_note) : deux CC de
+        même valeur au même tick sont des données valides."""
+        _, bar_idx, step_idx = self._compute_record_offset()
+        track = self._cur_track
+        time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
+        with self._pattern._lock:
+            self._pattern._ensure_track_count(track + 1)
+            self._pattern._tape[track].append(
+                TapeEvent(ETYPE_CC, channel=channel,
+                          payload={"cc_num": cc_num, "value": value}, time=time_val)
+            )
+        return bar_idx, step_idx
+
+    def record_program_change(self, program, channel=0):
+        """Enregistre un Program Change dans _tape (etype=ETYPE_PGM)."""
+        _, bar_idx, step_idx = self._compute_record_offset()
+        track = self._cur_track
+        time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
+        with self._pattern._lock:
+            self._pattern._ensure_track_count(track + 1)
+            self._pattern._tape[track].append(
+                TapeEvent(ETYPE_PGM, channel=channel,
+                          payload={"program": program}, time=time_val)
+            )
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
