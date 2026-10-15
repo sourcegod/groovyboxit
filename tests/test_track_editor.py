@@ -920,6 +920,127 @@ def test_clipboard_to_dict_skips_unknown_etype():
     assert win._clipboard_to_dict()["tape"] == []
 
 
+# ---------------------------------------------------------------------------
+# Fraction de temps — CC en temps flottant (Phase 7 étape 5e)
+# ---------------------------------------------------------------------------
+
+def _frac_times(events, etype=ETYPE_CC):
+    return sorted(round(ev.time, 6) for ev in events if ev.etype == etype)
+
+
+def test_paste_preserves_cc_fractional_time():
+    """Deux CC du même pas source (3.4, 3.7) doivent rester distincts après
+    collage, pas plaqués sur le pas entier de destination (5d)."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p._tape[0].append(TapeEvent(ETYPE_CC, channel=1, payload={"cc_num": 1, "value": 90}, time=3.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, channel=1, payload={"cc_num": 1, "value": 20}, time=3.7))
+
+    te.copy(p, 0)
+    te.paste(p, 1)
+
+    assert _frac_times(p._tape[1]) == [3.4, 3.7]
+
+
+def test_paste_fractional_cc_offset_by_destination_bar():
+    """La fraction suit la position de destination, pas seulement le pas source."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 64}, time=3.4))
+
+    te.copy(p, 0)
+    te.paste(p, 1, dest_bar=1)   # mesure 1 → pas 16+3 = 19
+
+    times = [ev.time for ev in p._tape[1] if ev.etype == ETYPE_CC]
+    assert len(times) == 1
+    assert round(times[0], 6) == 19.4
+
+
+def test_paste_replace_cleans_fractional_cc_at_destination():
+    """Remplace : un CC fractionnaire déjà présent au pas ciblé à destination
+    doit être nettoyé, pas laissé en résidu (piège trouvé en vérifiant 5d —
+    comparaison par pas entier, pas par égalité exacte de .time)."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p.set_cell(0, 2, 0, 3, 100)   # source : note GRID au pas 3
+    p._tape[1].append(TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 55}, time=3.9))
+
+    te.copy(p, 0)
+    te.paste(p, 1)   # replace (défaut) sur la piste 1
+
+    assert [ev for ev in p._tape[1] if ev.etype == ETYPE_CC] == []
+    assert has_tape_at(p, 1, 0, 3)
+
+
+def test_paste_merge_keeps_both_fractional_cc_at_same_step():
+    """Fusion (Shift+V) : un CC fractionnaire existant et un CC fractionnaire
+    collé au même pas entier coexistent (union), aucun n'écrase l'autre."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 10}, time=3.2))
+    p._tape[1].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 99}, time=3.8))
+
+    te.copy(p, 0)
+    te.paste(p, 1, merge=True)
+
+    assert _frac_times(p._tape[1]) == [3.2, 3.8]
+
+
+def test_clipboard_roundtrip_preserves_cc_fraction():
+    """Sérialisation .gvp du presse-papier : la fraction de temps d'un CC
+    survit (champ `frac` ajouté en 5d)."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p._tape[0].append(TapeEvent(ETYPE_CC, channel=1, payload={"cc_num": 1, "value": 90}, time=3.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, channel=1, payload={"cc_num": 1, "value": 20}, time=3.7))
+    te.copy(p, 0)
+    win = _FakeClipboardWindow(te)
+
+    win._clipboard_from_dict(win._clipboard_to_dict())
+    events = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    assert _frac_times(events) == [0.4, 0.7]
+
+
+def test_clipboard_roundtrip_notes_have_zero_fraction():
+    """GRID/KIT/PATCH n'ont jamais de fraction (notes au pas entier)."""
+    te = TrackEditor()
+    p  = _pattern_with_cc_pgm_range()
+    te.copy(p, 0)
+    win = _FakeClipboardWindow(te)
+
+    win._clipboard_from_dict(win._clipboard_to_dict())
+    events = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    grid = [ev for ev in events if ev.etype == ETYPE_GRID][0]
+    pgm  = [ev for ev in events if ev.etype == ETYPE_PGM][0]
+    assert grid.time == 0.0
+    assert pgm.time   == 0.0
+
+
+def test_clipboard_from_dict_old_format_without_frac_defaults_to_zero():
+    """Presse-papier .gvp sauvé avant 5d (sans champ `frac`) : relu à
+    l'identique, fraction 0.0 — pour les cinq etypes."""
+    te = TrackEditor()
+    old_records = [
+        [ETYPE_GRID,  0, 0, 1, 3, 100, 0],                    # 7 champs
+        [ETYPE_KIT,   0, 0, 2, 60, 90, 500, 1],                # 8 champs
+        [ETYPE_PATCH, 0, 0, 3, 64, 80, 300, 1234, 2],          # 9 champs
+        [ETYPE_CC,    0, 0, 4, 74, 90, 3],                     # 7 champs
+        [ETYPE_PGM,   0, 0, 5, 41, 4],                         # 6 champs
+    ]
+    d = {"num_tracks": 1, "num_bars": 1, "num_steps": 16, "tape": old_records}
+    win = _FakeClipboardWindow(te)
+    win._clipboard_from_dict(d)
+    events = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    assert len(events) == 5
+    assert all(ev.time == 0.0 for ev in events)
+    by_etype = {ev.etype: ev for ev in events}
+    assert by_etype[ETYPE_GRID].payload  == {"pad": 3, "vel": 100}
+    assert by_etype[ETYPE_KIT].payload   == {"note": 60, "vel": 90}
+    assert by_etype[ETYPE_PATCH].payload == {"note": 64, "vel": 80, "bend": 1234}
+    assert by_etype[ETYPE_CC].payload    == {"cc_num": 74, "value": 90}
+    assert by_etype[ETYPE_PGM].payload   == {"program": 41}
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = failed = 0
