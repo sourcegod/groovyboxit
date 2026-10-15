@@ -6,15 +6,16 @@
     Author: Coolbrother
 """
 
-from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
 
 
 class MidiEditor:
     """Logique d'édition des événements MIDI d'un pattern.
 
     Source unique : _tape[track] = [TapeEvent, ...] (liste plate, position =
-    TapeEvent.time), etype ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH.
-    Mode étendu (VIEW_ALL) : _tape (idem) + _bend_tape + _mod_tape.
+    TapeEvent.time), etype ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH pour les notes,
+    ETYPE_CC/ETYPE_PGM pour CC générique et Program Change (Phase 7 étape 4i).
+    Mode étendu (VIEW_ALL) : _tape (notes + CC/PGM) + _bend_tape + _mod_tape.
     """
 
     VIEW_NOTES = 0   # notes de la grille de la piste courante
@@ -28,21 +29,24 @@ class MidiEditor:
     # Collecte d'événements
     # ------------------------------------------------------------------
 
-    def get_note_events(self, pattern, track_idx, lim_left=None, lim_right=None):
-        """Retourne toutes les notes (GRID/KIT/PATCH) d'une piste, depuis _tape.
+    def _events_by_time(self, pattern, track_idx, lim_left=None, lim_right=None):
+        """Itère _tape[track_idx] groupé par position, dans l'ordre des positions.
 
-        event_idx : position de l'événement parmi ceux à la même position
-        (time) sur cette piste — recalculé de la même façon dans
-        _delete_tape_event/edit_tape_note/duplicate_event/insert_note.
+        Rend des tuples (offset, bar, step, event_idx, ev) où event_idx est la
+        position de ev parmi TOUS les événements de la piste à cette position,
+        **tous etypes confondus** — c'est la convention que résolvent
+        _delete_tape_event/edit_tape_note via
+        `[i for i, e in enumerate(track_list) if e.time == time]`.
+        Partagé par get_note_events (notes) et get_cc_pgm_events (CC/PGM) pour
+        que les deux produisent des event_idx mutuellement cohérents : un
+        compteur local à chaque famille d'etype désignerait le mauvais
+        événement à la suppression/édition (Phase 7 étape 4i).
         """
-        events = []
         if track_idx >= len(pattern._tape):
-            return events
-
+            return
         by_time = {}
         for ev in pattern._tape[track_idx]:
             by_time.setdefault(ev.time, []).append(ev)
-
         for offset in sorted(by_time):
             if lim_left  is not None and offset < lim_left:
                 continue
@@ -50,48 +54,100 @@ class MidiEditor:
                 continue
             b, s = pattern._time_to_bar_step(offset)
             for i, ev in enumerate(by_time[offset]):
-                if ev.etype == ETYPE_GRID:
-                    pad = ev.payload.get("pad")
-                    voice_dur = (pattern._voices[pad]["duration_ms"]
-                                 if pad < len(pattern._voices) else 500)
-                    dur = ev.dur if ev.dur > 0 else voice_dur
-                    events.append({
-                        "type":         "note",
-                        "etype":        ETYPE_GRID,
-                        "track":        track_idx,
-                        "pad":          pad,
-                        "bar":          b,
-                        "step":         s,
-                        "offset":       offset,
-                        "vel":          ev.payload.get("vel"),
-                        "dur":          dur,
-                        "dur_override": ev.dur,
-                        "channel":      ev.channel,
-                        "event_idx":    i,
-                    })
-                else:
-                    events.append({
-                        "type":      "note",
-                        "etype":     ev.etype,
-                        "track":     track_idx,
-                        "bar":       b,
-                        "step":      s,
-                        "offset":    offset,
-                        "pad":       ev.payload.get("note"),   # KIT: index pad kit ; PATCH: note MIDI brute
-                        "vel":       ev.payload.get("vel"),
-                        "dur":       ev.dur,
-                        "bend":      ev.payload.get("bend", 0),
-                        "channel":   ev.channel,
-                        "event_idx": i,
-                    })
+                yield offset, b, s, i, ev
+
+    def get_note_events(self, pattern, track_idx, lim_left=None, lim_right=None):
+        """Retourne toutes les notes (GRID/KIT/PATCH) d'une piste, depuis _tape.
+
+        event_idx : position de l'événement parmi ceux à la même position
+        (time) sur cette piste — voir _events_by_time.
+        Les etypes ETYPE_CC/ETYPE_PGM ne sont pas des notes (pas de pad/vel) :
+        exclus ici, remontés par get_cc_pgm_events.
+        """
+        events = []
+        for offset, b, s, i, ev in self._events_by_time(pattern, track_idx, lim_left, lim_right):
+            if ev.etype == ETYPE_GRID:
+                pad = ev.payload.get("pad")
+                voice_dur = (pattern._voices[pad]["duration_ms"]
+                             if pad < len(pattern._voices) else 500)
+                dur = ev.dur if ev.dur > 0 else voice_dur
+                events.append({
+                    "type":         "note",
+                    "etype":        ETYPE_GRID,
+                    "track":        track_idx,
+                    "pad":          pad,
+                    "bar":          b,
+                    "step":         s,
+                    "offset":       offset,
+                    "vel":          ev.payload.get("vel"),
+                    "dur":          dur,
+                    "dur_override": ev.dur,
+                    "channel":      ev.channel,
+                    "event_idx":    i,
+                })
+            elif ev.etype in (ETYPE_KIT, ETYPE_PATCH):
+                events.append({
+                    "type":      "note",
+                    "etype":     ev.etype,
+                    "track":     track_idx,
+                    "bar":       b,
+                    "step":      s,
+                    "offset":    offset,
+                    "pad":       ev.payload.get("note"),   # KIT: index pad kit ; PATCH: note MIDI brute
+                    "vel":       ev.payload.get("vel"),
+                    "dur":       ev.dur,
+                    "bend":      ev.payload.get("bend", 0),
+                    "channel":   ev.channel,
+                    "event_idx": i,
+                })
 
         events.sort(key=lambda e: (e["offset"], e["pad"]))
+        return events
+
+    def get_cc_pgm_events(self, pattern, track_idx, lim_left=None, lim_right=None):
+        """Retourne les CC générique (ETYPE_CC) et Program Change (ETYPE_PGM)
+        d'une piste, depuis _tape (Phase 7 étape 4i).
+
+        Pas des notes (ni pad ni vélocité) : séparés de get_note_events, donc
+        absents du mode Notes (Ctrl+1) et remontés seulement par
+        get_all_events (Ctrl+2), comme les automations bend/mod. event_idx
+        partagé avec les notes de la même position (voir _events_by_time).
+        """
+        events = []
+        for offset, b, s, i, ev in self._events_by_time(pattern, track_idx, lim_left, lim_right):
+            if ev.etype == ETYPE_CC:
+                events.append({
+                    "type":      "cc",
+                    "etype":     ETYPE_CC,
+                    "track":     track_idx,
+                    "bar":       b,
+                    "step":      s,
+                    "offset":    offset,
+                    "cc_num":    ev.payload.get("cc_num"),
+                    "value":     ev.payload.get("value"),
+                    "channel":   ev.channel,
+                    "event_idx": i,
+                })
+            elif ev.etype == ETYPE_PGM:
+                events.append({
+                    "type":      "pgm",
+                    "etype":     ETYPE_PGM,
+                    "track":     track_idx,
+                    "bar":       b,
+                    "step":      s,
+                    "offset":    offset,
+                    "program":   ev.payload.get("program"),
+                    "channel":   ev.channel,
+                    "event_idx": i,
+                })
         return events
 
     def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
         """Retourne tous les événements MIDI des pistes sélectionnées.
 
-        Inclut : notes (GRID/KIT/PATCH via get_note_events), bend_tape, mod_tape.
+        Inclut : notes (GRID/KIT/PATCH via get_note_events), CC générique et
+        Program Change (ETYPE_CC/ETYPE_PGM via get_cc_pgm_events), bend_tape,
+        mod_tape.
         """
         sel_set = set(sel_tracks)
         events  = []
@@ -100,6 +156,10 @@ class MidiEditor:
         for t in sorted(sel_set):
             evs = self.get_note_events(pattern, t, lim_left, lim_right)
             events.extend(evs)
+
+        # CC générique / Program Change (ETYPE_CC/ETYPE_PGM, via _tape)
+        for t in sorted(sel_set):
+            events.extend(self.get_cc_pgm_events(pattern, t, lim_left, lim_right))
 
         # Automation pitch bend
         for t in sorted(sel_set):
@@ -150,10 +210,13 @@ class MidiEditor:
         criteria (dict) :
             active       bool  — interrupteur maître ; False = tout passe
             invert       bool  — inverse le résultat (appliqué en dernier)
-            etype_filter str   — "all" | "note" | "bend" | "mod"
+            etype_filter str   — "all" | "note" | "bend" | "mod" | "cc" | "pgm"
             note_lo/hi   int   — bornes sur e["pad"], type "note" seulement
             vel_lo/hi    int   — bornes sur e["vel"], type "note" seulement
             bend_lo/hi   int   — bornes sur e["value"], type "bend" seulement
+            cc_num_lo/hi int   — bornes sur e["cc_num"], type "cc" seulement
+            cc_val_lo/hi int   — bornes sur e["value"],  type "cc" seulement
+            pgm_lo/hi    int   — bornes sur e["program"], type "pgm" seulement
             pos_from/to  num   — bornes sur e["offset"], tous types
         """
         if not criteria.get("active", True):
@@ -171,6 +234,12 @@ class MidiEditor:
         vel_hi       = criteria.get("vel_hi", 127)
         bend_lo      = criteria.get("bend_lo", -8192)
         bend_hi      = criteria.get("bend_hi", 8191)
+        cc_num_lo    = criteria.get("cc_num_lo", 0)
+        cc_num_hi    = criteria.get("cc_num_hi", 127)
+        cc_val_lo    = criteria.get("cc_val_lo", 0)
+        cc_val_hi    = criteria.get("cc_val_hi", 127)
+        pgm_lo       = criteria.get("pgm_lo", 0)
+        pgm_hi       = criteria.get("pgm_hi", 127)
 
         matched = set()
         for i, e in enumerate(events):
@@ -191,6 +260,14 @@ class MidiEditor:
             elif e["type"] == "bend" and etype_filter == "bend":
                 if not (bend_lo <= e["value"] <= bend_hi):
                     continue
+            elif e["type"] == "cc" and etype_filter == "cc":
+                if not (cc_num_lo <= e["cc_num"] <= cc_num_hi):
+                    continue
+                if not (cc_val_lo <= e["value"] <= cc_val_hi):
+                    continue
+            elif e["type"] == "pgm" and etype_filter == "pgm":
+                if not (pgm_lo <= e["program"] <= pgm_hi):
+                    continue
 
             matched.add(i)
 
@@ -204,12 +281,21 @@ class MidiEditor:
     # ------------------------------------------------------------------
 
     def delete_event(self, pattern, ev):
-        """Supprime un événement. Retourne True si supprimé."""
-        if ev.get("type") != "note":
-            return False
-        if ev.get("etype") == ETYPE_GRID:
-            return self._delete_grid_event(pattern, ev)
-        return self._delete_tape_event(pattern, ev)
+        """Supprime un événement. Retourne True si supprimé.
+
+        Notes GRID → via la façade grille ; notes KIT/PATCH et CC/PGM → via
+        _delete_tape_event (même repérage time+event_idx, voir
+        _events_by_time). Les automations bend/mod vivent hors de _tape et ne
+        passent pas par ici.
+        """
+        kind = ev.get("type")
+        if kind == "note":
+            if ev.get("etype") == ETYPE_GRID:
+                return self._delete_grid_event(pattern, ev)
+            return self._delete_tape_event(pattern, ev)
+        if kind in ("cc", "pgm"):
+            return self._delete_tape_event(pattern, ev)
+        return False
 
     def _delete_grid_event(self, pattern, ev):
         t, pad, b, s = ev["track"], ev["pad"], ev["bar"], ev["step"]
@@ -438,6 +524,95 @@ class MidiEditor:
             "step":   n_step,
             "offset": n_off,
             "value":  n_val,
+        }
+
+    def _replace_tape_event(self, pattern, ev, etype, payload, new_bar, new_step):
+        """Remplace le TapeEvent repéré par (time, event_idx) par un nouveau de
+        même etype/canal avec `payload`, éventuellement à une autre position.
+
+        Retourne (bar, step, time, event_idx, channel) du nouvel événement, ou
+        None si la position visée est hors pattern / l'index ne résout rien /
+        l'etype trouvé ne correspond pas. Factorise la chirurgie commune à
+        edit_cc_event et edit_pgm_event (Phase 7 étape 4i).
+        """
+        from pattern import TapeEvent
+        t        = ev["track"]
+        old_time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+        old_idx  = ev.get("event_idx", -1)
+        n_bar    = new_bar  if new_bar  is not None else ev["bar"]
+        n_step   = new_step if new_step is not None else ev["step"]
+        if n_bar < 0 or n_bar >= pattern._num_bars:
+            return None
+        if n_step < 0 or n_step >= pattern._num_steps:
+            return None
+        new_time = pattern._bar_step_to_time(n_bar, n_step)
+        with pattern._lock:
+            if t >= len(pattern._tape):
+                return None
+            track_list = pattern._tape[t]
+            matches = [i for i, e in enumerate(track_list) if e.time == old_time]
+            if old_idx < 0 or old_idx >= len(matches):
+                return None
+            old_ev = track_list[matches[old_idx]]
+            if old_ev.etype != etype:
+                return None
+            channel = old_ev.channel
+            del track_list[matches[old_idx]]
+            track_list.append(TapeEvent(etype, channel=channel, payload=payload, time=new_time))
+            new_idx = sum(1 for e in track_list if e.time == new_time) - 1
+        return n_bar, n_step, new_time, new_idx, channel
+
+    def edit_cc_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
+        """Modifie un CC générique de _tape (etype ETYPE_CC).
+
+        Seuls la valeur (0..127) et la position sont éditables — cc_num reste
+        inchangé dans ce chantier (voir docs/DESIGN.md § Phase 7 étape 4a,
+        décision 3). Retourne le nouvel event_info ou None.
+        """
+        cc_num = ev["cc_num"]
+        n_val  = new_value if new_value is not None else ev["value"]
+        n_val  = max(0, min(127, n_val))
+        res = self._replace_tape_event(
+            pattern, ev, ETYPE_CC, {"cc_num": cc_num, "value": n_val}, new_bar, new_step
+        )
+        if res is None:
+            return None
+        n_bar, n_step, new_time, new_idx, channel = res
+        return {
+            "type":      "cc",
+            "etype":     ETYPE_CC,
+            "track":     ev["track"],
+            "bar":       n_bar,
+            "step":      n_step,
+            "offset":    new_time,
+            "cc_num":    cc_num,
+            "value":     n_val,
+            "channel":   channel,
+            "event_idx": new_idx,
+        }
+
+    def edit_pgm_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
+        """Modifie un Program Change de _tape (etype ETYPE_PGM) : numéro de
+        program (0..127) et/ou position. Retourne le nouvel event_info ou None.
+        """
+        n_prog = new_value if new_value is not None else ev["program"]
+        n_prog = max(0, min(127, n_prog))
+        res = self._replace_tape_event(
+            pattern, ev, ETYPE_PGM, {"program": n_prog}, new_bar, new_step
+        )
+        if res is None:
+            return None
+        n_bar, n_step, new_time, new_idx, channel = res
+        return {
+            "type":      "pgm",
+            "etype":     ETYPE_PGM,
+            "track":     ev["track"],
+            "bar":       n_bar,
+            "step":      n_step,
+            "offset":    new_time,
+            "program":   n_prog,
+            "channel":   channel,
+            "event_idx": new_idx,
         }
 
     # ------------------------------------------------------------------

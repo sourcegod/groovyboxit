@@ -808,6 +808,13 @@ Nouveaux champs d'event dict : `{"type": "cc", "track", "bar", "step",
 et/ou repositionnent). `delete_event` couvre déjà CC/PGM sans
 changement (`_delete_tape_event` est générique par `event_idx`).
 
+**Correction en cours de chantier (4i)** : la phrase ci-dessus était
+fausse — `delete_event` commence par `if ev.get("type") != "note":
+return False`, donc un CC/PGM était rejeté avant même d'atteindre
+`_delete_tape_event` (lui bien générique). Corrigé en 4i : dispatch sur
+`ev["type"]`, les types `"cc"`/`"pgm"` passant par `_delete_tape_event`
+comme les notes KIT/PATCH.
+
 `filter_events` : nouvelles clés critères `cc_num_lo/hi`, `cc_val_lo/hi`,
 `pgm_lo/hi` ; nouvelles branches `e["type"] == "cc"`/`"pgm"` bornées en
 plus du test `etype_filter`.
