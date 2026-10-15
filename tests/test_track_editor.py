@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
 from track_editor import TrackEditor
 from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at
 
@@ -817,6 +817,107 @@ def test_copy_events_overwrites_previous():
     te.copy_events([ev1])
     assert len(te._event_clipboard.events) == 1
     assert te._event_clipboard.events[0]["vel"] == 20
+
+
+# ---------------------------------------------------------------------------
+# Presse-papier et CC générique / Program Change (Phase 7 étape 4p)
+# ---------------------------------------------------------------------------
+
+class _FakeClipboardWindow:
+    """Objet minimal exposant les vraies (de)sérialisations du presse-papier
+    TrackEditor de ProjectMixin (mw_project.py)."""
+    def __init__(self, track_editor):
+        from ui.mw_project import ProjectMixin
+        self._track_editor      = track_editor
+        self._clipboard_to_dict = ProjectMixin._clipboard_to_dict.__get__(self)
+        self._clipboard_from_dict = ProjectMixin._clipboard_from_dict.__get__(self)
+
+
+def _pattern_with_cc_pgm_range():
+    """Piste 0 : une note GRID, un CC et un Program Change dans la mesure 0."""
+    p = _make_pattern()
+    p.set_cell(0, 2, 0, 4, 100)
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_CC,  channel=1,
+                                      payload={"cc_num": 74, "value": 90}))
+    add_tape_at(p, 0, 0, 8, TapeEvent(ETYPE_PGM, channel=9,
+                                      payload={"program": 42}))
+    return p
+
+
+def test_copy_paste_preserves_cc_and_pgm():
+    """_extract/paste recopient tous les etypes : un CC/PGM de la plage copiée
+    se retrouve tel quel sur la piste de destination."""
+    te = TrackEditor()
+    p  = _pattern_with_cc_pgm_range()
+    te.copy(p, 0)
+    te.paste(p, 1)
+    cc  = [e for e in tape_at(p, 1, 0, 4) if e.etype == ETYPE_CC]
+    pgm = [e for e in tape_at(p, 1, 0, 8) if e.etype == ETYPE_PGM]
+    assert cc  and cc[0].payload  == {"cc_num": 74, "value": 90}
+    assert cc[0].channel == 1
+    assert pgm and pgm[0].payload == {"program": 42}
+    assert pgm[0].channel == 9
+
+
+def test_clipboard_roundtrip_preserves_cc_and_pgm():
+    """Sauvegarde/relecture .gvp du presse-papier : un CC/PGM n'est plus
+    dégradé en ETYPE_PATCH (piège else→PATCH corrigé en 4o)."""
+    te = TrackEditor()
+    p  = _pattern_with_cc_pgm_range()
+    te.copy(p, 0)
+    win = _FakeClipboardWindow(te)
+
+    d = win._clipboard_to_dict()
+    etypes = sorted({rec[0] for rec in d["tape"]})
+    assert etypes == sorted([ETYPE_CC, ETYPE_GRID, ETYPE_PGM])
+
+    te._clipboard = None
+    win._clipboard_from_dict(d)
+    cb = te._clipboard
+    assert cb is not None
+    events = [ev for evs in cb.tape.values() for ev in evs]
+    cc  = [e for e in events if e.etype == ETYPE_CC][0]
+    pgm = [e for e in events if e.etype == ETYPE_PGM][0]
+    assert cc.payload  == {"cc_num": 74, "value": 90}
+    assert cc.channel  == 1
+    assert cc.dur      == 0
+    assert pgm.payload == {"program": 42}
+    assert pgm.channel == 9
+    assert pgm.dur     == 0
+
+
+def test_clipboard_roundtrip_still_preserves_notes():
+    """Non-régression : GRID/KIT/PATCH traversent toujours la sérialisation."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p.set_cell(0, 2, 0, 4, 100)
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_KIT, dur=500, channel=2,
+                                      payload={"note": 60, "vel": 80}))
+    add_tape_at(p, 0, 0, 6, TapeEvent(ETYPE_PATCH, dur=300, channel=3,
+                                      payload={"note": 64, "vel": 70, "bend": 1234}))
+    te.copy(p, 0)
+    win = _FakeClipboardWindow(te)
+
+    win._clipboard_from_dict(win._clipboard_to_dict())
+    events = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    kit   = [e for e in events if e.etype == ETYPE_KIT][0]
+    patch = [e for e in events if e.etype == ETYPE_PATCH][0]
+    grid  = [e for e in events if e.etype == ETYPE_GRID][0]
+    assert (kit.payload, kit.dur, kit.channel)     == ({"note": 60, "vel": 80}, 500, 2)
+    assert patch.payload["bend"] == 1234
+    assert (patch.dur, patch.channel)              == (300, 3)
+    assert grid.payload == {"pad": 2, "vel": 100}
+
+
+def test_clipboard_to_dict_skips_unknown_etype():
+    """Un etype inattendu est ignoré à la sérialisation plutôt que corrompu en
+    PATCH (comportement du correctif 4o)."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    add_tape_at(p, 0, 0, 4, TapeEvent("MYSTERY", payload={"x": 1}))
+    te.copy(p, 0)
+    win = _FakeClipboardWindow(te)
+    assert win._clipboard_to_dict()["tape"] == []
 
 
 if __name__ == "__main__":
