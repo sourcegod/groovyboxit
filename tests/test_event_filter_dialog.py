@@ -477,6 +477,170 @@ def test_tab_order_includes_notes_group_when_type_notes():
     teardown(app, frame, dlg)
 
 
+# ---------------------------------------------------------------------------
+# CC générique / Program Change (Phase 7 étape 4l)
+# ---------------------------------------------------------------------------
+
+TYPE_CC  = 4
+TYPE_PGM = 5
+
+
+def test_cc_and_pgm_types_are_available_in_mode_all():
+    """Les deux types ne sont plus "à venir" : sélectionnables en MODE_ALL."""
+    app, frame, dlg = make_dlg(view_mode=MODE_ALL)
+    assert dlg._type_unavailable(TYPE_CC)  is False
+    assert dlg._type_unavailable(TYPE_PGM) is False
+    teardown(app, frame, dlg)
+
+
+def test_cc_and_pgm_types_unavailable_in_mode_notes():
+    """Comme Bend/Mod : le mode Notes ne liste que les notes."""
+    app, frame, dlg = make_dlg(view_mode=MODE_NOTES)
+    assert dlg._type_unavailable(TYPE_CC)  is True
+    assert dlg._type_unavailable(TYPE_PGM) is True
+    teardown(app, frame, dlg)
+
+
+def test_selecting_cc_in_mode_notes_reverts_with_specific_message():
+    app, frame, dlg = make_dlg(view_mode=MODE_NOTES)
+    dlg._type_lb.SetSelection(TYPE_CC)
+    dlg._on_type_change(None)
+    assert dlg._type_lb.GetSelection() == 0
+    assert "mode notes" in dlg._status_ctrl.GetString(0).lower()
+    teardown(app, frame, dlg)
+
+
+def test_selecting_cc_type_in_mode_all_is_kept():
+    app, frame, dlg = make_dlg(view_mode=MODE_ALL)
+    dlg._type_lb.SetSelection(TYPE_CC)
+    dlg._on_type_change(None)
+    assert dlg._type_lb.GetSelection() == TYPE_CC
+    assert dlg.get_criteria()["etype_filter"] == "cc"
+    teardown(app, frame, dlg)
+
+
+def test_selecting_pgm_type_in_mode_all_is_kept():
+    app, frame, dlg = make_dlg(view_mode=MODE_ALL)
+    dlg._type_lb.SetSelection(TYPE_PGM)
+    dlg._on_type_change(None)
+    assert dlg._type_lb.GetSelection() == TYPE_PGM
+    assert dlg.get_criteria()["etype_filter"] == "pgm"
+    teardown(app, frame, dlg)
+
+
+def test_cc_group_enabled_only_when_type_cc():
+    app, frame, dlg = make_dlg()
+    dlg._type_lb.SetSelection(TYPE_CC)
+    dlg._update_group_enabled()
+    assert dlg._cc_num_lo_spin.IsEnabled() is True
+    assert dlg._cc_val_hi_spin.IsEnabled() is True
+    assert dlg._pgm_lo_spin.IsEnabled()    is False
+    assert dlg._note_lo_lb.IsEnabled()     is False
+    assert dlg._pitch_lo_spin.IsEnabled()  is False
+    teardown(app, frame, dlg)
+
+
+def test_pgm_group_enabled_only_when_type_pgm():
+    app, frame, dlg = make_dlg()
+    dlg._type_lb.SetSelection(TYPE_PGM)
+    dlg._update_group_enabled()
+    assert dlg._pgm_lo_spin.IsEnabled()    is True
+    assert dlg._pgm_hi_spin.IsEnabled()    is True
+    assert dlg._cc_num_lo_spin.IsEnabled() is False
+    teardown(app, frame, dlg)
+
+
+def test_cc_and_pgm_groups_disabled_when_type_all():
+    app, frame, dlg = make_dlg()
+    dlg._type_lb.SetSelection(0)
+    dlg._update_group_enabled()
+    assert dlg._cc_num_lo_spin.IsEnabled() is False
+    assert dlg._pgm_lo_spin.IsEnabled()    is False
+    teardown(app, frame, dlg)
+
+
+def test_cc_pgm_default_ranges_are_permissive():
+    app, frame, dlg = make_dlg()
+    c = dlg.get_criteria()
+    assert (c["cc_num_lo"], c["cc_num_hi"]) == (0, 127)
+    assert (c["cc_val_lo"], c["cc_val_hi"]) == (0, 127)
+    assert (c["pgm_lo"],    c["pgm_hi"])    == (0, 127)
+    teardown(app, frame, dlg)
+
+
+def test_cc_pgm_ranges_passed_through_get_criteria():
+    app, frame, dlg = make_dlg()
+    dlg._cc_num_lo_spin.SetValue(70)
+    dlg._cc_num_hi_spin.SetValue(80)
+    dlg._cc_val_lo_spin.SetValue(10)
+    dlg._cc_val_hi_spin.SetValue(90)
+    dlg._pgm_lo_spin.SetValue(40)
+    dlg._pgm_hi_spin.SetValue(50)
+    c = dlg.get_criteria()
+    assert (c["cc_num_lo"], c["cc_num_hi"]) == (70, 80)
+    assert (c["cc_val_lo"], c["cc_val_hi"]) == (10, 90)
+    assert (c["pgm_lo"],    c["pgm_hi"])    == (40, 50)
+    teardown(app, frame, dlg)
+
+
+def test_state_restores_cc_and_pgm_type_and_ranges():
+    state = {
+        "etype_filter": "cc",
+        "cc_num_lo": 7, "cc_num_hi": 74,
+        "cc_val_lo": 20, "cc_val_hi": 100,
+        "pgm_lo": 1, "pgm_hi": 9,
+    }
+    app, frame, dlg = make_dlg(state=state)
+    assert dlg._type_lb.GetSelection() == TYPE_CC
+    c = dlg.get_criteria()
+    assert (c["cc_num_lo"], c["cc_num_hi"]) == (7, 74)
+    assert (c["cc_val_lo"], c["cc_val_hi"]) == (20, 100)
+    assert (c["pgm_lo"],    c["pgm_hi"])    == (1, 9)
+    teardown(app, frame, dlg)
+
+
+def test_state_restores_pgm_type():
+    app, frame, dlg = make_dlg(state={"etype_filter": "pgm"})
+    assert dlg._type_lb.GetSelection() == TYPE_PGM
+    teardown(app, frame, dlg)
+
+
+def test_clear_filter_resets_cc_and_pgm_ranges():
+    app, frame, dlg = make_dlg(state={"etype_filter": "cc", "cc_num_lo": 7,
+                                       "cc_num_hi": 7, "pgm_lo": 5, "pgm_hi": 5})
+    dlg._on_clear_filter(None)
+    c = dlg.get_criteria()
+    assert c["etype_filter"] == "all"
+    assert (c["cc_num_lo"], c["cc_num_hi"]) == (0, 127)
+    assert (c["pgm_lo"],    c["pgm_hi"])    == (0, 127)
+    teardown(app, frame, dlg)
+
+
+def test_tab_order_includes_cc_group_when_type_cc():
+    app, frame, dlg = make_dlg()
+    dlg._type_lb.SetSelection(TYPE_CC)
+    dlg._update_group_enabled()
+    order = [w for w in dlg._tab_order_full if w.IsEnabled()]
+    assert dlg._cc_num_lo_spin in order
+    assert dlg._cc_val_hi_spin in order
+    assert dlg._pgm_lo_spin not in order
+    assert dlg._note_lo_lb  not in order
+    teardown(app, frame, dlg)
+
+
+def test_cc_pgm_spinctrls_have_accessible_names():
+    """Un SpinCtrl seul n'annonce que sa valeur : nom accessible obligatoire
+    (cf. feedback_accessibility_spinctrl)."""
+    app, frame, dlg = make_dlg()
+    assert dlg._cc_num_lo_spin.GetName() == "Numéro CC Bas"
+    assert dlg._cc_num_hi_spin.GetName() == "Numéro CC Haut"
+    assert dlg._cc_val_lo_spin.GetName() == "Valeur CC Bas"
+    assert dlg._cc_val_hi_spin.GetName() == "Valeur CC Haut"
+    assert dlg._pgm_lo_spin.GetName()    == "Program Bas"
+    assert dlg._pgm_hi_spin.GetName()    == "Program Haut"
+    teardown(app, frame, dlg)
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
