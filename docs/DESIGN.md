@@ -925,3 +925,169 @@ Point de conception à retenir pour la suite : `event_idx` compte parmi
 notes et les CC/PGM dérivent du même helper `_events_by_time` — toute
 nouvelle famille d'etype ajoutée à `_tape` devra faire pareil, sous peine
 de viser le mauvais événement à la suppression/édition.
+
+---
+
+## Phase 7 étape 5a — Migration `_mod_tape` → `_tape`/`ETYPE_CC` (CC#1)
+
+### Origine du besoin
+
+Décision 1 de la Phase 7 étape 4a : CC#1 (Mod Wheel) est capturé **deux
+fois** depuis l'étape 4f — dans `_mod_tape` (structure historique dédiée)
+et dans `_tape` sous forme d'`ETYPE_CC` `cc_num=1`. Doublon assumé à
+l'époque, migration notée comme chantier ultérieur (demandée le
+2026-10-15). But : une seule source de vérité pour le mod wheel, comme
+GRID/KIT/PATCH l'ont déjà pour les notes.
+
+### État des lieux constaté en code (2026-10-16, 1649 tests verts)
+
+**Où vit `_mod_tape`** (liste par piste de tuples `(float_offset, value)`,
+pas de `TapeEvent`, pas de canal) :
+- `pattern.py` : `__init__` (L161), `copy_from`, `new_pattern`,
+  `reset_pattern`, `clear_track`, `double_bars`, `halve_bars`, `resize`,
+  `to_dict` (clé `"mod_tape"`), `from_dict` (lecture tolérante, clé
+  absente → listes vides).
+- `drum_player.py` : `MOD_TAPE_EVENT = -5`, `_on_mod_tape_cb`, boucle
+  `_run_thread` qui construit les `MOD_TAPE_EVENT` (L495-501) et les
+  dispatche (L569-572), `record_mod()` (L1053).
+- `ui/main_window.py:132` : `_on_mod_tape_cb = self._router.on_mod_tape`.
+- `ui/midi_handler_window.py::on_cc` : `record_cc` pour **tous** les CC
+  (L213), **plus** `record_mod(value)` dans la branche CC#1 (L238).
+- `track_editor.py::_erase_tape_range` : efface la plage dans `_mod_tape`.
+- `midi/midi_editor.py` : `get_all_events` produit des entrées
+  `type="mod"` depuis `_mod_tape` en plus des `type="cc"` depuis `_tape`
+  (donc **chaque mouvement de molette apparaît deux fois** dans Ctrl+2) ;
+  `edit_mod_event` ; `filter_events` (`etype_filter="mod"`) ;
+  `delete_event` ne gère pas `"mod"` (point mod non supprimable, alors
+  que son jumeau `"cc"` l'est depuis 4i).
+- UI : `mew_display.py` (2 branches `"mod"`), `mew_editing.py` (dispatch
+  `"mod"` → `edit_mod_event`), `midi_editor_dialogs.py::_CcEventEditDialog`
+  (branche `"mod"`), `dialogs_temporal.py::EventFilterDialog` (`_TYPE_MOD`,
+  entrée « Mod Wheel (CC1) »).
+- Tests : ~20 tests `_mod_tape` dans `test_tape.py` (L1401-1643), plus
+  `test_pattern_properties_bug.py`, `test_pattern_grid_api.py`,
+  `test_track_editor.py`, `test_midi_editor.py`, `test_midi_editor_filter.py`,
+  `test_cc_event_edit_dialog.py`, `test_midi_editor_window.py`,
+  `test_event_filter_dialog.py`.
+
+**Lecture : CC#1 déjà rejoué deux fois.** `TrackRouter.on_cc_tape` délègue
+CC#1 à `on_mod_tape` (4g) ; la boucle rejoue donc chaque point une fois
+via `MOD_TAPE_EVENT` et une fois via `CC_TAPE_EVENT`. Inoffensif (même
+valeur, même moteur) mais confirme que `_tape` suffit déjà à piloter le
+vibrato : supprimer `MOD_TAPE_EVENT` ne demande **aucun** changement dans
+`TrackRouter`.
+
+**Le vrai piège : la résolution temporelle.** Les deux copies n'ont pas
+la même précision :
+- `record_mod` (comme `record_bend`) stocke l'offset **flottant brut**
+  (sous-pas), jamais quantifié.
+- `record_cc` passe par `_compute_record_offset` et stocke
+  `_bar_step_to_time(bar_idx, step_idx)` — un **pas entier**, arrondi au
+  plus proche, et en plus quantifié à la grille si
+  `_quant_in_recording` est actif.
+
+Conséquence : un balayage de molette (des dizaines de valeurs par pas)
+est aujourd'hui fidèle dans `_mod_tape`, mais tassé sur la copie
+`ETYPE_CC` : tous les points d'un même pas tombent au même instant à la
+lecture → seule la dernière valeur est audible, effet « escalier ».
+Supprimer `_mod_tape` sans traiter ça serait une **régression audible**.
+
+Or plusieurs chemins supposent aujourd'hui un `TapeEvent.time` entier, et
+perdraient ou rateraient une partie fractionnaire :
+- `MidiEditor._delete_tape_event` / `_replace_tape_event` : retrouvent
+  l'événement par `time = _bar_step_to_time(ev["bar"], ev["step"])` puis
+  `e.time == time` → un CC à `time=3.4` serait **introuvable** (ou pire,
+  `event_idx` résolu parmi les événements du temps 3).
+- `Pattern.resize` : `divmod(int(ev.time), old_steps)` puis ré-encodage
+  `bar*num_steps+step` → fraction perdue.
+- `TrackEditor._extract`/`paste` (clé `(rel, bar, step)` puis
+  `_bar_step_to_time`) et `ui/mw_project.py::_clipboard_to_dict`/
+  `_clipboard_from_dict` (enregistrements `[etype, t, b, s, …]`) →
+  fraction perdue au copier-coller de piste.
+- Sans risque : `_run_thread` (utilise `ev.time` tel quel), `double_bars`/
+  `halve_bars` (additions/comparaisons), `to_dict`/`from_dict` (`time`
+  sérialisé tel quel en JSON), `_events_by_time` (groupe par `ev.time`
+  exact, `_time_to_bar_step` fait `int()` pour l'affichage BBT).
+
+### Décisions proposées (à valider par l'utilisateur)
+
+1. **CC capturés en temps flottant non quantifié — pour tous les CC, pas
+   seulement CC#1.** `record_cc` stocke l'offset brut de
+   `_compute_record_offset` (sans arrondi au pas ni quantisation
+   d'enregistrement), comme `record_bend`/`record_mod` aujourd'hui. Les
+   CC sont des contrôleurs continus (volume, pan, mod…) : les tasser sur
+   la grille n'a pas de sens musical, la quantisation reste réservée aux
+   notes. `record_program_change` reste au pas entier (événement
+   ponctuel, rien à lisser).
+   - *Écarté* : garder CC au pas entier (régression audible du vibrato,
+     voir ci-dessus) ; traiter CC#1 seul en flottant (deux règles pour un
+     même etype, piège pour la future migration de `_bend_tape`).
+   - Implique de rendre **sûrs vis-à-vis d'un `time` fractionnaire** les
+     chemins listés plus haut : repérage par `ev["offset"]` (déjà fourni
+     par `_events_by_time`, égal à `ev.time` exact) plutôt que par
+     `bar/step` dans `_delete_tape_event`/`_replace_tape_event` ;
+     conservation de la fraction dans `resize` et dans les deux
+     presse-papiers `TrackEditor` (champ fraction optionnel en fin
+     d'enregistrement, absent = 0, rétrocompatible).
+   - Édition Entrée d'un CC (Ctrl+2) : si la position bar/step n'est pas
+     changée, le `time` fractionnaire d'origine est conservé ; si elle
+     l'est, l'événement est posé sur le pas entier choisi.
+2. **Suppression complète de `_mod_tape`** : attribut, `record_mod`,
+   `MOD_TAPE_EVENT`, `_on_mod_tape_cb` et son wiring, appel `record_mod`
+   dans `on_cc`, branches `_mod_tape` de `Pattern`/`TrackEditor`.
+   `TrackRouter.on_mod_tape` **reste** (appelé par `on_cc_tape` pour
+   CC#1). Corrige au passage le double rejeu.
+3. **Rétrocompatibilité `.gvp` : migration à l'ouverture.** `to_dict`
+   n'écrit plus `"mod_tape"`. `from_dict`, si la clé est présente et
+   non vide pour une piste, convertit chaque `(off, val)` en
+   `TapeEvent(ETYPE_CC, channel=0, payload={"cc_num": 1, "value": val},
+   time=off)` **et retire d'abord les `ETYPE_CC` `cc_num==1` déjà
+   présents dans `tape_v2` pour cette piste** — les presets sauvés depuis
+   4f contiennent les deux copies ; `_mod_tape` gagne car c'est la copie
+   précise (temps flottant). Piste dont `mod_tape` est vide → ses
+   `ETYPE_CC#1` sont gardés tels quels.
+   - Limite assumée : un CC#1 supprimé à la main via Ctrl+2 (possible
+     depuis 4i sur la copie `cc`) mais toujours présent dans `mod_tape`
+     réapparaît à la première réouverture de ce preset ancien. Cas rare,
+     une seule fois, documenté plutôt que traité.
+   - *Écarté* : fusionner les deux sources (doublons garantis) ; ignorer
+     `mod_tape` (perte de la précision temporelle des presets existants).
+4. **Éditeur MIDI : un seul type `"cc"`.** `get_all_events` ne produit
+   plus d'entrées `"mod"` ; un point de molette s'affiche comme n'importe
+   quel CC (`describe_cc(1)` → « Modulation Wheel » déjà fourni par le
+   libellé Ctrl+2 de 4m), est éditable par Entrée et supprimable.
+   `edit_mod_event` et les branches `"mod"` de `mew_display`,
+   `mew_editing`, `_CcEventEditDialog` disparaissent.
+   - **`EventFilterDialog` garde l'entrée « Mod Wheel (CC1) »** comme
+     raccourci de filtre : `etype_filter="mod"` est traduit dans
+     `filter_events` en `type=="cc" and cc_num==1` (habitude conservée,
+     pas besoin de passer par CC générique + numéro 1..1).
+   - *Écarté* : retirer l'entrée du dialog (perte d'un raccourci
+     accessible déjà connu, pour aucun gain).
+
+### Portée explicitement exclue de ce chantier
+
+- Migration de `_bend_tape` vers `_tape` (Pitch Bend n'a pas encore
+  d'etype ; même schéma probable, que la décision 1 prépare) — chantier
+  distinct.
+- Quantisation des CC (`quantize_manager.py` les ignore toujours).
+- Édition du `cc_num` d'un CC existant, `copy_events`/`paste_events`
+  « niveau événement » pour CC/PGM (inchangé depuis 4a).
+- Conversion du `time` flottant des CC déjà enregistrés au pas entier
+  dans les presets existants (hors CC#1 remplacé par `mod_tape`) : ils
+  restent tels quels.
+
+### Découpage en commits proposé (à valider avant de coder)
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **5a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **5b** | Implémentation — temps flottant des CC (décision 1) : `record_cc` non quantifié ; `_delete_tape_event`/`_replace_tape_event` repèrent par `ev["offset"]` ; `edit_cc_event` conserve la fraction si position inchangée ; `Pattern.resize` conserve la fraction. | `drum_player.py`, `midi/midi_editor.py`, `pattern.py` |
+| **5c** | Tests — `record_cc` hors pas entier même avec quantisation active ; suppression/édition d'un CC à `time` fractionnaire (dont cohabitation avec une note au pas entier voisin) ; `resize` préserve la fraction. | `test_drum_player_cc.py`, `test_midi_editor.py`, `test_tape.py` |
+| **5d** | Implémentation — presse-papiers `TrackEditor` (`_extract`/`paste`) et `mw_project` (`_clipboard_to_dict`/`_from_dict`) : fraction de `time` conservée (champ optionnel, rétrocompatible). | `track_editor.py`, `ui/mw_project.py` |
+| **5e** | Tests — copier/coller de piste et round-trip dict avec un CC fractionnaire ; ancien format sans fraction relu à l'identique. | `test_track_editor.py` |
+| **5f** | Implémentation — éditeur MIDI un seul type `"cc"` (décision 4) : `get_all_events` sans `"mod"`, `edit_mod_event` supprimé, alias `"mod"` dans `filter_events`, branches `"mod"` retirées de `mew_display`/`mew_editing`/`_CcEventEditDialog`. | `midi/midi_editor.py`, `ui/mew_*.py`, `ui/midi_editor_dialogs.py` |
+| **5g** | Tests — Ctrl+2 ne montre plus de doublon CC#1 ; filtre « Mod Wheel » = CC#1 seul ; tests `"mod"` existants adaptés. | `test_midi_editor*.py`, `test_cc_event_edit_dialog.py`, `test_midi_editor_window.py`, `test_event_filter_dialog.py` |
+| **5h** | Implémentation — suppression de `_mod_tape` (décision 2) + migration `.gvp` à l'ouverture (décision 3). Suite rouge jusqu'à 5i (tests `_mod_tape` de `test_tape.py` obsolètes) — à signaler dans le titre du commit. | `pattern.py`, `drum_player.py`, `ui/main_window.py`, `ui/midi_handler_window.py`, `track_editor.py` |
+| **5i** | Tests — retrait/adaptation des tests `_mod_tape` ; migration `from_dict` (mod_tape seul, mod_tape + doublon CC#1, mod_tape vide qui garde les CC#1) ; `to_dict` sans `"mod_tape"` ; CC#1 rejoué une seule fois ; `on_cc` n'appelle plus `record_mod`. | `test_tape.py`, `test_pattern_*.py`, `test_track_editor.py`, `test_midi_handler_window.py` |
+| **5j** | Doc — clôture (DESIGN.md, mémoire), `pytest tests/` complet vert. | `docs/DESIGN.md` |
