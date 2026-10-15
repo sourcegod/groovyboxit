@@ -601,6 +601,24 @@ Arrêt immédiat de tous les sons + envoi CC#120 (All Sounds Off) + CC#121 (Rese
 | #121 | Reset All Controllers | Réinitialisation (Mod, Sustain…) |
 | #123 | All Notes Off | Arrêt propre de toutes les voix |
 
+Depuis la Phase 7 étape 4, **tout** CC reçu (y compris ceux sans effet câblé)
+est capturé pendant Rec dans `_tape` (etype `ETYPE_CC`, payload
+`{"cc_num", "value"}`), affichable/filtrable/éditable dans la liste Ctrl+2 de
+l'éditeur MIDI. À la lecture, un CC capturé rejoue le même effet que sa
+réception live, appliqué à la piste d'origine de l'événement
+(`TrackRouter.on_cc_tape`) — CC#64/120/121/123 restent globaux. CC#1 est
+capturé **à la fois** dans `_mod_tape` (automation vibrato historique) et
+dans `_tape` : doublon assumé, `_mod_tape` est candidat à être remplacé par
+une lecture de `_tape` filtrée plus tard.
+
+### Program Change
+
+Capturé dans `_tape` (etype `ETYPE_PGM`, payload `{"program"}`). Effet
+**provisoire**, live et à la lecture : réassigne le slot du Rack de la piste
+(`assign_slot(track, program % 16)`), en attendant le mode Rack Synth/GM
+(16 canaux MIDI → 16 slots avec leurs patchs, lecture de fichiers `.mid`),
+où le format MIDI permet un Program Change à tout moment pendant la lecture.
+
 ### Pitch Bend temps réel
 
 - `phase_incr` flottant dans le driver audio pour un pitch bend sans artefact
@@ -982,8 +1000,9 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   n'étendent la sélection événement par événement — sinon le tout premier
   événement visité n'est jamais inclus dans la sélection (bug corrigé).
 - Ctrl+Shift+F : EventFilterDialog — filtre = mécanisme de sélection (pas un affichage
-  séparé) ; type (Notes/Pitch Bend/Mod Wheel, CC/PC/Poly AT/Channel Pressure/SysEx
-  reportés), note/vélocité/pitch bend/position ; Ok/Appliquer remplacent la sélection,
+  séparé) ; type (Notes/Pitch Bend/Mod Wheel/CC générique/Program Change ; Poly AT/
+  Channel Pressure/SysEx toujours reportés), note/vélocité/pitch bend/numéro et valeur
+  de CC/numéro de program/position ; Ok/Appliquer remplacent la sélection,
   Ajouter/Supprimer la modifient, Réinitialiser la vide, Effacer le filtre remet les
   critères à un état permissif. Dernier état mémorisé en session
   (`DrumPlayer._event_filter_state`, comme les derniers paramètres de quantisation :
@@ -1305,15 +1324,16 @@ Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 |---|---|
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
-| `test_event_filter_dialog.py` | EventFilterDialog : critères, types "à venir", Tab order, on_action (36 tests) |
+| `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change + dispatch d'édition (14 tests) |
+| `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
 | `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
 | `test_key_manager.py` | Raccourcis clavier, transport, ProjectManager |
 | `test_loop_points_pattern.py` | Loop points : données Pattern (29 tests) |
 | `test_loop_points_player.py` | Loop points : DrumPlayer (21 tests) |
 | `test_loop_select_dialog.py` | LoopSelectDialog (42 tests) |
-| `test_midi_editor.py` | MidiEditor : get_note_events, sélection, édition |
-| `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/position (19 tests) |
+| `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
+| `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/CC/program/position (30 tests) |
 | `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |

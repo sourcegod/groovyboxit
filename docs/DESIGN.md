@@ -901,3 +901,27 @@ Change ajoute une borne 0-127 avec le libellé « Program »).
 | **4o** | Implémentation — `mw_project.py` : corrige le piège `else→PATCH` du presse-papier `TrackEditor` (`elif ETYPE_PATCH` + branches CC/PGM). | `ui/mw_project.py` |
 | **4p** | Tests — presse-papier `TrackEditor` (Ctrl+C/X/V) avec un CC/PGM dans la plage copiée. | `test_track_editor.py` |
 | **4q** | Doc — mise à jour mémoire (chantier clos), `pytest tests/` complet vérifié vert. | — |
+
+**4b-4q FAITS** (commits `8547793`..`c309bac`, 1649 tests passed) —
+**chantier Phase 7 étape 4 complet**. CC générique et Program Change sont
+capturés dans `_tape` (`ETYPE_CC`/`ETYPE_PGM`), rejoués à la lecture avec
+leur effet réel, filtrables par type et par plage (numéro/valeur de CC,
+numéro de program), affichés dans la liste Ctrl+2 avec leur vrai canal et
+leur nom MIDI/GM, éditables par Entrée, et traversent la sérialisation
+`.gvp` (pattern et presse-papier `TrackEditor`). Suite verte à l'issue de
+chaque paire impl+tests.
+
+Les **trois pièges `else → PATCH`** annoncés en tête de ce plan ont tous
+été corrigés avant d'introduire les nouveaux etypes : `drum_player.py`
+(boucle de lecture, 4d), `midi/midi_editor.py::get_note_events` (4i) et
+`ui/mw_project.py` (presse-papier, 4o). Deux corrections de plan notées en
+cours de route : `delete_event` ne couvrait pas CC/PGM contrairement à ce
+qu'affirmait la section Conception (corrigé en 4i, voir la note dédiée), et
+l'effet live de Program Change a été décidé après coup (décision 2
+révisée) alors que 2a l'avait écarté.
+
+Point de conception à retenir pour la suite : `event_idx` compte parmi
+**tous** les etypes d'une même position de `_tape`. C'est pour ça que les
+notes et les CC/PGM dérivent du même helper `_events_by_time` — toute
+nouvelle famille d'etype ajoutée à `_tape` devra faire pareil, sous peine
+de viser le mauvais événement à la suppression/édition.
