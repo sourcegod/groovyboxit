@@ -271,6 +271,14 @@ class ProjectMixin:
         4o, un `else` fourre-tout sérialisait tout etype inconnu comme un
         ETYPE_PATCH (note=None), ce qui corrompait un CC/Program Change pris
         dans la plage copiée (_extract copie tous les etypes).
+
+        Dernier champ de chaque enregistrement (`frac`, Phase 7 étape 5d) :
+        fraction de pas de `ev.time` (CC en temps flottant depuis 5b) — t/b/s
+        sont le pas entier tronqué (clé du bucket), `frac` complète la
+        position exacte. Toujours 0.0 pour GRID/KIT/PATCH (notes au pas
+        entier). Ajouté en fin de liste : lecture rétrocompatible par
+        `_clipboard_from_dict` (absent → 0.0) des presse-papiers .gvp
+        sauvés avant 5d.
         """
         cb = self._track_editor._clipboard
         if cb is None:
@@ -278,20 +286,21 @@ class ProjectMixin:
         tape_list = []
         for (t, b, s), events in cb.tape.items():
             for ev in events:
+                frac = ev.time - int(ev.time)
                 if ev.etype == ETYPE_GRID:
                     tape_list.append([ETYPE_GRID, t, b, s, ev.payload.get("pad"), ev.payload.get("vel"),
-                                       ev.channel])
+                                       ev.channel, frac])
                 elif ev.etype == ETYPE_KIT:
                     tape_list.append([ETYPE_KIT, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
-                                       ev.dur, ev.channel])
+                                       ev.dur, ev.channel, frac])
                 elif ev.etype == ETYPE_PATCH:
                     tape_list.append([ETYPE_PATCH, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
-                                       ev.dur, ev.payload.get("bend", 0), ev.channel])
+                                       ev.dur, ev.payload.get("bend", 0), ev.channel, frac])
                 elif ev.etype == ETYPE_CC:
                     tape_list.append([ETYPE_CC, t, b, s, ev.payload.get("cc_num"),
-                                       ev.payload.get("value"), ev.channel])
+                                       ev.payload.get("value"), ev.channel, frac])
                 elif ev.etype == ETYPE_PGM:
-                    tape_list.append([ETYPE_PGM, t, b, s, ev.payload.get("program"), ev.channel])
+                    tape_list.append([ETYPE_PGM, t, b, s, ev.payload.get("program"), ev.channel, frac])
         return {
             "num_tracks": cb.num_tracks,
             "num_bars":   cb.num_bars,
@@ -300,7 +309,14 @@ class ProjectMixin:
         }
 
     def _clipboard_from_dict(self, d):
-        """Restaure le presse-papier TrackEditor depuis un dict."""
+        """Restaure le presse-papier TrackEditor depuis un dict.
+
+        `time=frac` (Phase 7 étape 5d) : seule la fraction de pas est
+        reconstituée ici (0..1, 0.0 par défaut pour un enregistrement sans
+        ce champ, rétrocompatible) — la position bar/step pleine n'a pas
+        besoin d'être recomposée, `TrackEditor.paste` additionne cette
+        fraction à la position de destination (voir son commentaire).
+        """
         from track_editor import _ClipboardData
         from pattern import TapeEvent
         if d is None:
@@ -312,21 +328,24 @@ class ProjectMixin:
             if etype == ETYPE_GRID:
                 t, b, s, pad, vel = rec[1], rec[2], rec[3], rec[4], rec[5]
                 channel = rec[6] if len(rec) > 6 else 0
+                frac    = rec[7] if len(rec) > 7 else 0.0
                 tape.setdefault((t, b, s), []).append(
-                    TapeEvent(ETYPE_GRID, channel=channel, payload={"pad": pad, "vel": vel})
+                    TapeEvent(ETYPE_GRID, channel=channel, payload={"pad": pad, "vel": vel}, time=frac)
                 )
             elif etype == ETYPE_CC:
                 t, b, s, cc_num, value = rec[1], rec[2], rec[3], rec[4], rec[5]
                 channel = rec[6] if len(rec) > 6 else 0
+                frac    = rec[7] if len(rec) > 7 else 0.0
                 tape.setdefault((t, b, s), []).append(
                     TapeEvent(ETYPE_CC, channel=channel,
-                              payload={"cc_num": cc_num, "value": value})
+                              payload={"cc_num": cc_num, "value": value}, time=frac)
                 )
             elif etype == ETYPE_PGM:
                 t, b, s, program = rec[1], rec[2], rec[3], rec[4]
                 channel = rec[5] if len(rec) > 5 else 0
+                frac    = rec[6] if len(rec) > 6 else 0.0
                 tape.setdefault((t, b, s), []).append(
-                    TapeEvent(ETYPE_PGM, channel=channel, payload={"program": program})
+                    TapeEvent(ETYPE_PGM, channel=channel, payload={"program": program}, time=frac)
                 )
             else:
                 t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
@@ -334,9 +353,13 @@ class ProjectMixin:
                 if etype == ETYPE_PATCH:
                     payload["bend"] = rec[7] if len(rec) > 7 else 0
                     channel = rec[8] if len(rec) > 8 else 0
+                    frac    = rec[9] if len(rec) > 9 else 0.0
                 else:
                     channel = rec[7] if len(rec) > 7 else 0
-                tape.setdefault((t, b, s), []).append(TapeEvent(etype, dur=dur, channel=channel, payload=payload))
+                    frac    = rec[8] if len(rec) > 8 else 0.0
+                tape.setdefault((t, b, s), []).append(
+                    TapeEvent(etype, dur=dur, channel=channel, payload=payload, time=frac)
+                )
         self._track_editor._clipboard = _ClipboardData(
             num_tracks = d["num_tracks"],
             num_bars   = d["num_bars"],

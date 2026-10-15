@@ -205,18 +205,24 @@ class TrackEditor:
                 pattern._ensure_track_count(abs_t + 1)
                 track_list = pattern._tape[abs_t]
                 # Recopie chaque événement du presse-papier à la position de destination
-                # (son .time d'origine, relatif à la source, n'est pas réutilisable ici).
+                # (son .time absolu d'origine, relatif à la source, n'est pas réutilisable
+                # ici) — mais conserve sa fraction de pas (CC en temps flottant, Phase 7
+                # étape 5d) : un CC à time=35.4 dans le presse-papier (bucket bar/step
+                # tronqué à l'entier) redevient dst_time + 0.4, pas dst_time pile.
                 incoming = [
                     TapeEvent(ev.etype, dur=ev.dur, channel=ev.channel,
-                              payload=ev.payload, time=time)
+                              payload=ev.payload, time=time + (ev.time - int(ev.time)))
                     for ev in events
                 ]
+                # Comparaison par pas entier (pas par égalité exacte de .time) : plusieurs
+                # CC fractionnaires du même pas doivent tous être repérés comme "ce pas",
+                # sinon un CC fractionnaire existant à destination survivrait au remplacement.
                 if merge:
-                    existing = [ev for ev in track_list if ev.time == time]
-                    track_list[:] = [ev for ev in track_list if ev.time != time]
+                    existing = [ev for ev in track_list if int(ev.time) == time]
+                    track_list[:] = [ev for ev in track_list if int(ev.time) != time]
                     track_list.extend(self._merge_events(existing, incoming))
                 else:
-                    track_list[:] = [ev for ev in track_list if ev.time != time]
+                    track_list[:] = [ev for ev in track_list if int(ev.time) != time]
                     track_list.extend(incoming)
 
         return True
