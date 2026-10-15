@@ -1,6 +1,7 @@
 from synth_engine import midi_to_note_name
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from midi.midi_parser import describe_cc, describe_program
 
 
 class DisplayMixin:
@@ -188,9 +189,10 @@ class DisplayMixin:
         """Format du mode Tous les événements (Ctrl+2) — liste plate,
         "index: position, canal, type, numéro, val1, val2". i = position
         0-based dans self._events, affichée en index 1-based en tête de
-        ligne. Canal : pour une note, vrai TapeEvent.channel (0-15, Phase 7
-        étape 1i) ; pour bend/mod (automation, pas des TapeEvent), pas de
-        canal réel — numéro de piste en substitut, comme avant."""
+        ligne. Canal : pour une note et pour CC générique/Program Change
+        (Phase 7 étape 4m), vrai TapeEvent.channel (0-15, Phase 7 étape 1i) ;
+        pour bend/mod (automation, pas des TapeEvent), pas de canal réel —
+        numéro de piste en substitut, comme avant."""
         mark = "[*] " if selected else "    "
         bbt  = self._bbt_str(e["bar"], e["step"])
         if e["type"] == "note":
@@ -205,6 +207,24 @@ class DisplayMixin:
             canal = e["track"] + 1
             return (f"{mark}{i+1}: {bbt}, Canal {canal}, CC, "
                     f"Numéro 1, Valeur {e['value']}")
+        elif e["type"] == "cc":
+            # CC générique capturé dans _tape : vrai canal du TapeEvent, et
+            # nom standard MIDI 1.0 du contrôleur quand il est répertorié
+            # (même table que le statut MIDI live).
+            cc_num = e["cc_num"]
+            name   = describe_cc(cc_num)
+            num    = f"{cc_num} ({name})" if name else str(cc_num)
+            return (f"{mark}{i+1}: {bbt}, Canal {e.get('channel', 0)}, CC, "
+                    f"Numéro {num}, Valeur {e['value']}")
+        elif e["type"] == "pgm":
+            # Canal 10 (0-indexé 9) = canal percussion standard GM : noms de
+            # kits GM2 plutôt que patchs mélodiques GM1.
+            program = e["program"]
+            channel = e.get("channel", 0)
+            name    = describe_program(program, is_drum=(channel == 9))
+            prog    = f"{program} ({name})" if name else str(program)
+            return (f"{mark}{i+1}: {bbt}, Canal {channel}, Program Change, "
+                    f"Program {prog}")
         return str(e)
 
     def _update_label(self, idx):

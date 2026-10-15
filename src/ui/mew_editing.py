@@ -12,7 +12,7 @@ class EditingMixin:
             return
         cur = self._midi_editor._cur_idx
         ev  = self._events[cur]
-        if ev.get("type") in ("bend", "mod"):
+        if ev.get("type") in ("bend", "mod", "cc", "pgm"):
             self._edit_cc_dialog(ev)
             return
         if ev.get("type") != "note":
@@ -76,16 +76,25 @@ class EditingMixin:
         dlg.Destroy()
 
     def _edit_cc_dialog(self, ev):
-        """Édition d'un événement d'automation (bend/mod) via Entrée — MODE_ALL."""
-        pat    = self._parent._player._pattern
-        is_bend = ev["type"] == "bend"
-        label   = "Bend" if is_bend else "Mod"
+        """Édition d'un événement non-note via Entrée — MODE_ALL.
+
+        Types : "bend"/"mod" (automation) et, depuis la Phase 7 étape 4m,
+        "cc" (CC générique de _tape) et "pgm" (Program Change). val_key dit
+        où lire la valeur du type courant ("value" partout sauf "program").
+        """
+        pat  = self._parent._player._pattern
+        me   = self._midi_editor
+        label, val_key, edit_fn = {
+            "bend": ("Bend",                    "value",   me.edit_bend_event),
+            "mod":  ("Mod",                     "value",   me.edit_mod_event),
+            "cc":   (f"CC #{ev.get('cc_num')}", "value",   me.edit_cc_event),
+            "pgm":  ("Program Change",          "program", me.edit_pgm_event),
+        }[ev["type"]]
         self._add_undo(
             f"Éditer {label} Tr{ev['track']+1} B{ev['bar']+1}:S{ev['step']+1}"
         )
         dlg = _CcEventEditDialog(self, ev, pat)
         if dlg.ShowModal() == wx.ID_OK:
-            edit_fn = self._midi_editor.edit_bend_event if is_bend else self._midi_editor.edit_mod_event
             new_ev = edit_fn(
                 pat, ev,
                 new_value = dlg.get_value(),
@@ -101,13 +110,13 @@ class EditingMixin:
                     if (e["type"]  == new_ev["type"] and
                             e["track"]  == new_ev["track"] and
                             e["offset"] == new_ev["offset"] and
-                            e["value"]  == new_ev["value"]):
+                            e.get(val_key) == new_ev[val_key]):
                         found = i
                         break
                 if found is not None:
                     self._navigate_to(found)
                 bbt = self._bbt_str(new_ev["bar"], new_ev["step"])
-                self._set_status(f"{label} modifié → {bbt}  Valeur:{new_ev['value']}")
+                self._set_status(f"{label} modifié → {bbt}  Valeur:{new_ev[val_key]}")
             else:
                 self._parent._pop_last_undo()
                 self._set_status("Édition annulée (hors limites)")
