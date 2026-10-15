@@ -1670,6 +1670,83 @@ def test_edit_cc_event_unknown_event_idx_returns_none():
     assert me.edit_cc_event(p, bad, new_value=1) is None
 
 
+# --- CC à position fractionnaire (Phase 7 étape 5b) -----------------------
+
+def _pattern_with_fractional_cc():
+    """Piste 0 : note KIT et CC#1 au pas entier 3, CC#1 à 3.4 (même pas
+    affiché, autre position exacte)."""
+    p = Pattern()
+    p.resize(2, 16)
+    p._tape[0] += [
+        TapeEvent(ETYPE_KIT, payload={"note": 1, "vel": 100}, time=3),
+        TapeEvent(ETYPE_CC,  payload={"cc_num": 1, "value": 10}, time=3),
+        TapeEvent(ETYPE_CC,  channel=2, payload={"cc_num": 1, "value": 20}, time=3.4),
+    ]
+    return p
+
+
+def _frac_cc_ev(me, p):
+    return [e for e in me.get_cc_pgm_events(p, 0) if e["offset"] == 3.4][0]
+
+
+def test_fractional_cc_event_info():
+    me = MidiEditor()
+    p  = _pattern_with_fractional_cc()
+    ev = _frac_cc_ev(me, p)
+    assert (ev["bar"], ev["step"], ev["value"]) == (0, 3, 20)
+    assert ev["event_idx"] == 0   # seul événement à la position exacte 3.4
+
+
+def test_delete_fractional_cc_targets_exact_position():
+    """bar/step (0,3) désignent aussi la note et le CC au pas entier :
+    seul le CC à 3.4 doit partir."""
+    me = MidiEditor()
+    p  = _pattern_with_fractional_cc()
+    assert me.delete_event(p, _frac_cc_ev(me, p)) is True
+    left = [(e.etype, e.time, e.payload.get("value")) for e in p._tape[0]]
+    assert left == [(ETYPE_KIT, 3, None), (ETYPE_CC, 3, 10)]
+
+
+def test_delete_integer_cc_leaves_fractional_neighbour():
+    me = MidiEditor()
+    p  = _pattern_with_fractional_cc()
+    ev = [e for e in me.get_cc_pgm_events(p, 0) if e["offset"] == 3][0]
+    assert me.delete_event(p, ev) is True
+    assert [(e.etype, e.time) for e in p._tape[0]] == [(ETYPE_KIT, 3), (ETYPE_CC, 3.4)]
+
+
+def test_edit_fractional_cc_value_keeps_position():
+    me = MidiEditor()
+    p  = _pattern_with_fractional_cc()
+    res = me.edit_cc_event(p, _frac_cc_ev(me, p), new_value=99)
+    assert res["offset"] == 3.4
+    assert res["channel"] == 2
+    cc = [e for e in p._tape[0] if e.etype == ETYPE_CC and e.time == 3.4]
+    assert len(cc) == 1 and cc[0].payload == {"cc_num": 1, "value": 99}
+    # le CC au pas entier n'a pas bougé
+    assert [e for e in p._tape[0] if e.etype == ETYPE_CC and e.time == 3][0].payload["value"] == 10
+
+
+def test_edit_fractional_cc_move_snaps_to_integer_step():
+    me = MidiEditor()
+    p  = _pattern_with_fractional_cc()
+    res = me.edit_cc_event(p, _frac_cc_ev(me, p), new_step=8)
+    assert (res["bar"], res["step"], res["offset"]) == (0, 8, 8)
+    assert not any(e.time == 3.4 for e in p._tape[0])
+    assert [e.payload["value"] for e in p._tape[0] if e.time == 8] == [20]
+
+
+def test_event_time_falls_back_to_bar_step_when_offset_stale():
+    """Un dict dont offset ne correspond plus à bar/step est résolu par
+    bar/step (comportement d'avant 5b)."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    ev = dict(_cc_ev(me, p, cc_num=7), offset=0.5)   # bar/step = (0,12)
+    assert me._event_time(p, ev) == 12
+    assert me.delete_event(p, ev) is True
+    assert not [e for e in tape_at(p, 0, 0, 12) if e.etype == ETYPE_CC]
+
+
 # --- edit_pgm_event -------------------------------------------------------
 
 def test_edit_pgm_event_value():

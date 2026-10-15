@@ -429,6 +429,83 @@ def test_record_cc_returns_bar_step():
     assert isinstance(step_idx, int)
     print("  record_cc retourne (bar_idx, step_idx) valides : OK")
 
+def _player_at_offset(offset_steps):
+    """Player dont l'horloge d'enregistrement est à `offset_steps` pas du
+    début de la boucle (mesure de référence placée dans le passé)."""
+    pl = _make_player()
+    pl._measure_start = time.perf_counter() - offset_steps * pl.step_duration
+    return pl
+
+def test_record_cc_stores_fractional_time():
+    """Phase 7 étape 5b : un CC garde sa position sous-pas, pas d'arrondi
+    au pas entier (sinon balayage de molette rejoué en escalier)."""
+    pl = _player_at_offset(3.4)
+    bar_idx, step_idx = pl.record_cc(1, 64)
+    ev = pl._pattern._tape[0][0]
+    assert 3.35 < ev.time < 3.6, ev.time
+    assert ev.time != int(ev.time)
+    assert (bar_idx, step_idx) == (0, 3)   # pas tronqué, pas arrondi à 4
+    print("  record_cc stocke une position fractionnaire (≈3.4) : OK")
+
+def test_record_cc_ignores_record_quantization():
+    """La quantisation d'enregistrement reste réservée aux notes."""
+    pl = _player_at_offset(3.4)
+    pl._quant_in_recording = True
+    pl.quant_idx = 7   # 1/16 → calerait au pas 3
+    pl.record_cc(1, 64)
+    pl.record_hit(0)
+    cc  = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_CC][0]
+    hit = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_GRID][0]
+    assert cc.time != int(cc.time)
+    assert hit.time == 3                   # la note, elle, est quantifiée
+    print("  record_cc ignore la quantisation d'enregistrement (notes : oui) : OK")
+
+def test_record_cc_successive_points_keep_their_order():
+    """Plusieurs points d'un même pas restent distincts et croissants."""
+    pl = _player_at_offset(5.1)
+    pl.record_cc(1, 10)
+    pl._measure_start -= 0.3 * pl.step_duration
+    pl.record_cc(1, 20)
+    t1, t2 = (e.time for e in pl._pattern._tape[0])
+    assert int(t1) == int(t2) == 5
+    assert t1 < t2
+    print("  record_cc : deux points dans le même pas, positions distinctes : OK")
+
+def test_record_cc_count_in_gives_zero():
+    """Frappe anticipée (mesure de référence dans le futur) → position 0."""
+    pl = _make_player()
+    pl._measure_start = time.perf_counter() + 10
+    pl.record_cc(7, 100)
+    assert pl._pattern._tape[0][0].time == 0.0
+    print("  record_cc pendant le count-in → position 0 : OK")
+
+def test_record_program_change_stays_on_integer_step():
+    """Program Change reste ponctuel, calé au pas entier (décision 1)."""
+    pl = _player_at_offset(3.4)
+    pl.record_program_change(5)
+    assert pl._pattern._tape[0][0].time == 3
+    print("  record_program_change reste au pas entier : OK")
+
+def test_resize_preserves_fractional_time():
+    """Phase 7 étape 5b : la fraction de pas suit la nouvelle position."""
+    p = Pattern()
+    p.resize(2, 16)
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 64}, time=19.25))
+    p.resize(2, 8)    # bar 1 step 3 → 1*8 + 3 = 11, + .25
+    assert p._tape[0][0].time == 11.25
+    p.resize(4, 8)    # num_steps inchangé → position inchangée
+    assert p._tape[0][0].time == 11.25
+    print("  resize préserve la fraction de pas d'un CC : OK")
+
+def test_resize_integer_time_stays_int():
+    """Non-régression : un événement au pas entier ne devient pas flottant."""
+    p = Pattern()
+    p.set_cell(0, 3, 1, 5, 100)
+    p.resize(2, 32)
+    ev = p._tape[0][0]
+    assert ev.time == 37 and isinstance(ev.time, int)
+    print("  resize : time entier reste un int : OK")
+
 def test_record_program_change_stores_event():
     pl = _make_player()
     pl.record_program_change(42, channel=9)
