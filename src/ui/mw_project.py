@@ -1,6 +1,6 @@
 import os
 import wx
-from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
 from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
@@ -264,7 +264,14 @@ class ProjectMixin:
         }
 
     def _clipboard_to_dict(self):
-        """Sérialise le presse-papier TrackEditor (grille GRID + tape KIT/PATCH, unifiées)."""
+        """Sérialise le presse-papier TrackEditor (grille GRID + tape
+        KIT/PATCH/CC/PGM, unifiées).
+
+        Chaque etype a sa propre branche explicite : avant la Phase 7 étape
+        4o, un `else` fourre-tout sérialisait tout etype inconnu comme un
+        ETYPE_PATCH (note=None), ce qui corrompait un CC/Program Change pris
+        dans la plage copiée (_extract copie tous les etypes).
+        """
         cb = self._track_editor._clipboard
         if cb is None:
             return None
@@ -277,9 +284,14 @@ class ProjectMixin:
                 elif ev.etype == ETYPE_KIT:
                     tape_list.append([ETYPE_KIT, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
                                        ev.dur, ev.channel])
-                else:
+                elif ev.etype == ETYPE_PATCH:
                     tape_list.append([ETYPE_PATCH, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
                                        ev.dur, ev.payload.get("bend", 0), ev.channel])
+                elif ev.etype == ETYPE_CC:
+                    tape_list.append([ETYPE_CC, t, b, s, ev.payload.get("cc_num"),
+                                       ev.payload.get("value"), ev.channel])
+                elif ev.etype == ETYPE_PGM:
+                    tape_list.append([ETYPE_PGM, t, b, s, ev.payload.get("program"), ev.channel])
         return {
             "num_tracks": cb.num_tracks,
             "num_bars":   cb.num_bars,
@@ -302,6 +314,19 @@ class ProjectMixin:
                 channel = rec[6] if len(rec) > 6 else 0
                 tape.setdefault((t, b, s), []).append(
                     TapeEvent(ETYPE_GRID, channel=channel, payload={"pad": pad, "vel": vel})
+                )
+            elif etype == ETYPE_CC:
+                t, b, s, cc_num, value = rec[1], rec[2], rec[3], rec[4], rec[5]
+                channel = rec[6] if len(rec) > 6 else 0
+                tape.setdefault((t, b, s), []).append(
+                    TapeEvent(ETYPE_CC, channel=channel,
+                              payload={"cc_num": cc_num, "value": value})
+                )
+            elif etype == ETYPE_PGM:
+                t, b, s, program = rec[1], rec[2], rec[3], rec[4]
+                channel = rec[5] if len(rec) > 5 else 0
+                tape.setdefault((t, b, s), []).append(
+                    TapeEvent(ETYPE_PGM, channel=channel, payload={"program": program})
                 )
             else:
                 t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
