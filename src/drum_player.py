@@ -1083,10 +1083,21 @@ class DrumPlayer:
         """Enregistre un Control Change générique dans _tape (etype=ETYPE_CC).
 
         Pas de dédoublonnage (contrairement à record_kit_note) : deux CC de
-        même valeur au même tick sont des données valides."""
-        _, bar_idx, step_idx = self._compute_record_offset()
+        même valeur au même tick sont des données valides.
+
+        Position flottante brute, ni arrondie au pas ni quantifiée (comme
+        record_bend) : un CC est un contrôleur continu, un balayage de
+        molette tassé sur le pas serait rejoué en escalier (Phase 7 étape
+        5b, docs/DESIGN.md § 5a décision 1)."""
+        now          = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref          = self._measure_start if self._measure_start is not None else now
+        time_val     = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
+        if time_val >= total_steps:   # arrondi flottant en toute fin de boucle
+            time_val = 0.0
+        bar_idx, step_idx = self._pattern._time_to_bar_step(time_val)
         track = self._cur_track
-        time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
             self._pattern._tape[track].append(

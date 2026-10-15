@@ -310,9 +310,24 @@ class MidiEditor:
         pattern.set_cell(t, pad, b, s, 0)
         return True
 
+    @staticmethod
+    def _event_time(pattern, ev):
+        """TapeEvent.time exact visé par l'event dict `ev`.
+
+        Un CC peut vivre à une position fractionnaire (Phase 7 étape 5b) :
+        la reconstruire depuis bar/step la tronquerait et ne retrouverait
+        plus l'événement. On reprend donc ev["offset"] (égal à ev.time,
+        fourni par _events_by_time) tant qu'il est cohérent avec bar/step ;
+        sinon (dict construit/modifié à la main) on retombe sur bar/step.
+        """
+        offset = ev.get("offset")
+        if offset is not None and pattern._time_to_bar_step(offset) == (ev["bar"], ev["step"]):
+            return offset
+        return pattern._bar_step_to_time(ev["bar"], ev["step"])
+
     def _delete_tape_event(self, pattern, ev):
         t    = ev["track"]
-        time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+        time = self._event_time(pattern, ev)
         idx  = ev.get("event_idx", -1)
         with pattern._lock:
             if t >= len(pattern._tape):
@@ -373,7 +388,7 @@ class MidiEditor:
         if etype not in (ETYPE_KIT, ETYPE_PATCH):
             return None
         t       = ev["track"]
-        old_time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+        old_time = self._event_time(pattern, ev)
         old_idx = ev.get("event_idx", -1)
         n_note  = new_note if new_note is not None else ev["pad"]
         n_vel   = max(1, min(127, new_vel  if new_vel  is not None else ev["vel"]))
@@ -537,7 +552,7 @@ class MidiEditor:
         """
         from pattern import TapeEvent
         t        = ev["track"]
-        old_time = pattern._bar_step_to_time(ev["bar"], ev["step"])
+        old_time = self._event_time(pattern, ev)
         old_idx  = ev.get("event_idx", -1)
         n_bar    = new_bar  if new_bar  is not None else ev["bar"]
         n_step   = new_step if new_step is not None else ev["step"]
@@ -545,7 +560,12 @@ class MidiEditor:
             return None
         if n_step < 0 or n_step >= pattern._num_steps:
             return None
-        new_time = pattern._bar_step_to_time(n_bar, n_step)
+        # Position inchangée → time d'origine conservé, fraction comprise
+        # (Phase 7 étape 5b) ; déplacée → posée sur le pas entier choisi.
+        if (n_bar, n_step) == (ev["bar"], ev["step"]):
+            new_time = old_time
+        else:
+            new_time = pattern._bar_step_to_time(n_bar, n_step)
         with pattern._lock:
             if t >= len(pattern._tape):
                 return None

@@ -442,13 +442,15 @@ class Pattern:
         # ev.time encode bar*old_steps+step : décoder avec l'ancienne résolution
         # avant de changer _num_steps, puis ré-encoder avec la nouvelle — sinon
         # un changement de num_steps réinterpréterait mal les positions stockées.
+        # La fraction de pas (CC en temps flottant, Phase 7 étape 5b) est
+        # reportée telle quelle sur la nouvelle position.
         new_tape = []
         for track_list in self._tape:
             new_list = []
             for ev in track_list:
                 bar, step = divmod(int(ev.time), old_steps)
                 if bar < num_bars and step < num_steps:
-                    new_time = bar * num_steps + step
+                    new_time = bar * num_steps + step + (ev.time - int(ev.time))
                     new_list.append(TapeEvent(ev.etype, dur=ev.dur, channel=ev.channel,
                                                payload=ev.payload, time=new_time))
             new_tape.append(new_list)
