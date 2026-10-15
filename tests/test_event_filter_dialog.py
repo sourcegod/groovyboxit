@@ -230,7 +230,7 @@ def test_selecting_to_come_type_reverts_to_last_valid():
     app, frame, dlg = make_dlg()
     dlg._type_lb.SetSelection(1)   # Notes (valide)
     dlg._on_type_change(None)
-    dlg._type_lb.SetSelection(4)   # "(à venir) CC générique"
+    dlg._type_lb.SetSelection(6)   # "(à venir) Poly Aftertouch"
     dlg._on_type_change(None)
     assert dlg._type_lb.GetSelection() == 1
     assert "indisponible" in dlg._status_ctrl.GetString(0).lower()
@@ -239,7 +239,7 @@ def test_selecting_to_come_type_reverts_to_last_valid():
 
 def test_selecting_to_come_type_does_not_crash():
     app, frame, dlg = make_dlg()
-    for idx in range(4, 9):
+    for idx in range(6, 9):
         dlg._type_lb.SetSelection(idx)
         dlg._on_type_change(None)
     teardown(app, frame, dlg)
@@ -346,7 +346,10 @@ def test_clear_filter_resets_to_permissive_state():
     assert c == {
         "active": True, "invert": False, "etype_filter": "all",
         "note_lo": 0, "note_hi": 127, "vel_lo": 0, "vel_hi": 127,
-        "bend_lo": -8192, "bend_hi": 8191, "pos_from": 0, "pos_to": TOTAL - 1,
+        "bend_lo": -8192, "bend_hi": 8191,
+        "cc_num_lo": 0, "cc_num_hi": 127, "cc_val_lo": 0, "cc_val_hi": 127,
+        "pgm_lo": 0, "pgm_hi": 127,
+        "pos_from": 0, "pos_to": TOTAL - 1,
     }
     teardown(app, frame, dlg)
 

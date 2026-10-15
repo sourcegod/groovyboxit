@@ -582,8 +582,8 @@ _EVT_TYPE_LABELS = [
     "Notes",
     "Pitch Bend",
     "Mod Wheel (CC1)",
-    "(à venir) CC générique",
-    "(à venir) Program Change",
+    "CC générique",
+    "Program Change",
     "(à venir) Poly Aftertouch",
     "(à venir) Channel Pressure",
     "(à venir) SysEx/Meta",
@@ -592,8 +592,11 @@ _TYPE_ALL   = 0
 _TYPE_NOTE  = 1
 _TYPE_BEND  = 2
 _TYPE_MOD   = 3
-_TYPES_TO_COME = {4, 5, 6, 7, 8}
-_TYPE_KEY = {_TYPE_ALL: "all", _TYPE_NOTE: "note", _TYPE_BEND: "bend", _TYPE_MOD: "mod"}
+_TYPE_CC    = 4
+_TYPE_PGM   = 5
+_TYPES_TO_COME = {6, 7, 8}
+_TYPE_KEY = {_TYPE_ALL: "all", _TYPE_NOTE: "note", _TYPE_BEND: "bend", _TYPE_MOD: "mod",
+             _TYPE_CC: "cc", _TYPE_PGM: "pgm"}
 
 
 class EventFilterDialog(wx.Dialog):
@@ -679,6 +682,52 @@ class EventFilterDialog(wx.Dialog):
         pitch_row.Add(self._pitch_hi_spin, 0)
         bend_sizer.Add(pitch_row, 0, wx.ALL, 4)
 
+        # --- StaticBox CC générique (Phase 7 étape 4k) ---
+        cc_box   = wx.StaticBox(self, label="CC générique")
+        cc_sizer = wx.StaticBoxSizer(cc_box, wx.VERTICAL)
+        cc_num_lo_label = wx.StaticText(self, label="Numéro CC Bas :")
+        self._cc_num_lo_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        cc_num_hi_label = wx.StaticText(self, label="Numéro CC Haut :")
+        self._cc_num_hi_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        cc_val_lo_label = wx.StaticText(self, label="Valeur Bas :")
+        self._cc_val_lo_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        cc_val_hi_label = wx.StaticText(self, label="Valeur Haut :")
+        self._cc_val_hi_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        # Noms accessibles : un SpinCtrl seul n'annonce que sa valeur, jamais
+        # le StaticText voisin (cf. feedback_accessibility_spinctrl).
+        self._cc_num_lo_spin.SetName("Numéro CC Bas")
+        self._cc_num_hi_spin.SetName("Numéro CC Haut")
+        self._cc_val_lo_spin.SetName("Valeur CC Bas")
+        self._cc_val_hi_spin.SetName("Valeur CC Haut")
+        cc_num_row = wx.BoxSizer(wx.HORIZONTAL)
+        cc_num_row.Add(cc_num_lo_label,       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        cc_num_row.Add(self._cc_num_lo_spin,  0, wx.RIGHT, 12)
+        cc_num_row.Add(cc_num_hi_label,       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        cc_num_row.Add(self._cc_num_hi_spin,  0)
+        cc_val_row = wx.BoxSizer(wx.HORIZONTAL)
+        cc_val_row.Add(cc_val_lo_label,       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        cc_val_row.Add(self._cc_val_lo_spin,  0, wx.RIGHT, 12)
+        cc_val_row.Add(cc_val_hi_label,       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        cc_val_row.Add(self._cc_val_hi_spin,  0)
+        cc_sizer.Add(cc_num_row, 0, wx.ALL, 4)
+        cc_sizer.Add(cc_val_row, 0, wx.ALL, 4)
+
+        # --- StaticBox Program Change (Phase 7 étape 4k) ---
+        pgm_box   = wx.StaticBox(self, label="Program Change")
+        pgm_sizer = wx.StaticBoxSizer(pgm_box, wx.VERTICAL)
+        pgm_lo_label = wx.StaticText(self, label="Program Bas :")
+        self._pgm_lo_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        pgm_hi_label = wx.StaticText(self, label="Program Haut :")
+        self._pgm_hi_spin = wx.SpinCtrl(self, min=0, max=127, size=(70, -1))
+        self._pgm_lo_spin.SetName("Program Bas")
+        self._pgm_hi_spin.SetName("Program Haut")
+        pgm_row = wx.BoxSizer(wx.HORIZONTAL)
+        pgm_row.Add(pgm_lo_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        pgm_row.Add(self._pgm_lo_spin, 0, wx.RIGHT, 12)
+        pgm_row.Add(pgm_hi_label,      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        pgm_row.Add(self._pgm_hi_spin, 0)
+        pgm_sizer.Add(pgm_row, 0, wx.ALL, 4)
+
         # --- StaticBox Position de la sélection ---
         pos_box   = wx.StaticBox(self, label="Position de la sélection")
         pos_sizer = wx.StaticBoxSizer(pos_box, wx.VERTICAL)
@@ -725,6 +774,8 @@ class EventFilterDialog(wx.Dialog):
         vbox.Add(type_sizer,      0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(notes_sizer,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(bend_sizer,      0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(cc_sizer,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(pgm_sizer,       0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(pos_sizer,       0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._active_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._invert_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
@@ -747,6 +798,9 @@ class EventFilterDialog(wx.Dialog):
             self._type_lb,
             self._note_lo_lb, self._note_hi_lb, self._vel_lo_spin, self._vel_hi_spin,
             self._pitch_lo_spin, self._pitch_hi_spin,
+            self._cc_num_lo_spin, self._cc_num_hi_spin,
+            self._cc_val_lo_spin, self._cc_val_hi_spin,
+            self._pgm_lo_spin, self._pgm_hi_spin,
             self._pos_from_ctrl, self._pos_to_ctrl,
             self._active_cb, self._invert_cb,
             self._ok_btn, self._apply_btn, self._cancel_btn,
@@ -784,7 +838,8 @@ class EventFilterDialog(wx.Dialog):
     def _apply_state(self, state, default_pos_from, default_pos_to):
         """Positionne les widgets non-SpinCtrl depuis `state` (ou défauts permissifs)."""
         type_idx = {"all": _TYPE_ALL, "note": _TYPE_NOTE, "bend": _TYPE_BEND,
-                    "mod": _TYPE_MOD}.get(state.get("etype_filter", "all"), _TYPE_ALL)
+                    "mod": _TYPE_MOD, "cc": _TYPE_CC,
+                    "pgm": _TYPE_PGM}.get(state.get("etype_filter", "all"), _TYPE_ALL)
         self._type_lb.SetSelection(type_idx)
         self._last_valid_type = type_idx
 
@@ -806,6 +861,12 @@ class EventFilterDialog(wx.Dialog):
         self._vel_hi_spin.SetValue(state.get("vel_hi", 127))
         self._pitch_lo_spin.SetValue(state.get("bend_lo", -8192))
         self._pitch_hi_spin.SetValue(state.get("bend_hi", 8191))
+        self._cc_num_lo_spin.SetValue(state.get("cc_num_lo", 0))
+        self._cc_num_hi_spin.SetValue(state.get("cc_num_hi", 127))
+        self._cc_val_lo_spin.SetValue(state.get("cc_val_lo", 0))
+        self._cc_val_hi_spin.SetValue(state.get("cc_val_hi", 127))
+        self._pgm_lo_spin.SetValue(state.get("pgm_lo", 0))
+        self._pgm_hi_spin.SetValue(state.get("pgm_hi", 127))
 
     def _on_clear_filter(self, event):
         """Réinitialise tous les champs de critères à un état permissif (pas la sélection)."""
@@ -819,6 +880,12 @@ class EventFilterDialog(wx.Dialog):
         self._vel_hi_spin.SetValue(127)
         self._pitch_lo_spin.SetValue(-8192)
         self._pitch_hi_spin.SetValue(8191)
+        self._cc_num_lo_spin.SetValue(0)
+        self._cc_num_hi_spin.SetValue(127)
+        self._cc_val_lo_spin.SetValue(0)
+        self._cc_val_hi_spin.SetValue(127)
+        self._pgm_lo_spin.SetValue(0)
+        self._pgm_hi_spin.SetValue(127)
         self._pos_from_ctrl.SetValue(self._bbt.fmt(0))
         self._pos_to_ctrl.SetValue(self._bbt.fmt(self._total_steps - 1))
         self._update_group_enabled()
@@ -829,11 +896,12 @@ class EventFilterDialog(wx.Dialog):
     # ------------------------------------------------------------------
 
     def _type_unavailable(self, idx):
-        """True si idx est un type "à venir", ou Bend/Mod alors que le mode
-        courant de l'éditeur (MODE_NOTES=0) ne les produit jamais."""
+        """True si idx est un type "à venir", ou Bend/Mod/CC/Program Change
+        alors que le mode courant de l'éditeur (MODE_NOTES=0) ne les produit
+        jamais (il ne liste que les notes GRID/KIT/PATCH)."""
         if idx in _TYPES_TO_COME:
             return True
-        if self._view_mode == 0 and idx in (_TYPE_BEND, _TYPE_MOD):
+        if self._view_mode == 0 and idx in (_TYPE_BEND, _TYPE_MOD, _TYPE_CC, _TYPE_PGM):
             return True
         return False
 
@@ -841,10 +909,17 @@ class EventFilterDialog(wx.Dialog):
         sel = self._type_lb.GetSelection()
         notes_on = (sel == _TYPE_NOTE)
         bend_on  = (sel == _TYPE_BEND)
+        cc_on    = (sel == _TYPE_CC)
+        pgm_on   = (sel == _TYPE_PGM)
         for w in (self._note_lo_lb, self._note_hi_lb, self._vel_lo_spin, self._vel_hi_spin):
             w.Enable(notes_on)
         for w in (self._pitch_lo_spin, self._pitch_hi_spin):
             w.Enable(bend_on)
+        for w in (self._cc_num_lo_spin, self._cc_num_hi_spin,
+                  self._cc_val_lo_spin, self._cc_val_hi_spin):
+            w.Enable(cc_on)
+        for w in (self._pgm_lo_spin, self._pgm_hi_spin):
+            w.Enable(pgm_on)
 
     def _on_type_change(self, event):
         idx = self._type_lb.GetSelection()
@@ -856,7 +931,7 @@ class EventFilterDialog(wx.Dialog):
             # pour le clavier virtuel, cf. VirtualKeyboardMixin/_vk_move).
             self._type_lb.SetString(self._last_valid_type,
                                     _EVT_TYPE_LABELS[self._last_valid_type])
-            if idx in (_TYPE_BEND, _TYPE_MOD) and self._view_mode == 0:
+            if idx in (_TYPE_BEND, _TYPE_MOD, _TYPE_CC, _TYPE_PGM) and self._view_mode == 0:
                 self._set_status("Type indisponible en mode Notes — Ctrl+2 pour Tous les événements")
             else:
                 self._set_status("Type indisponible pour le moment — sélection inchangée")
@@ -890,6 +965,12 @@ class EventFilterDialog(wx.Dialog):
             "vel_hi":   self._vel_hi_spin.GetValue(),
             "bend_lo":  self._pitch_lo_spin.GetValue(),
             "bend_hi":  self._pitch_hi_spin.GetValue(),
+            "cc_num_lo": self._cc_num_lo_spin.GetValue(),
+            "cc_num_hi": self._cc_num_hi_spin.GetValue(),
+            "cc_val_lo": self._cc_val_lo_spin.GetValue(),
+            "cc_val_hi": self._cc_val_hi_spin.GetValue(),
+            "pgm_lo":   self._pgm_lo_spin.GetValue(),
+            "pgm_hi":   self._pgm_hi_spin.GetValue(),
             "pos_from": pos_from if pos_from is not None else 0,
             "pos_to":   pos_to   if pos_to   is not None else self._total_steps - 1,
         }
