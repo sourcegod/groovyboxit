@@ -283,6 +283,75 @@ def test_event_label_all_bend_format_unchanged():
     assert win._event_label_all(0, ev) == "    1:1:1  Tr01  Bend:+500"
 
 
+# ---------------------------------------------------------------------------
+# Labels CC générique / Program Change (Phase 7 étape 4n)
+# ---------------------------------------------------------------------------
+
+def _cc_ev(track=0, cc_num=74, value=90, channel=0):
+    return {"type": "cc", "track": track, "bar": 0, "step": 0,
+            "cc_num": cc_num, "value": value, "channel": channel}
+
+
+def _pgm_ev(track=0, program=41, channel=0):
+    return {"type": "pgm", "track": track, "bar": 0, "step": 0,
+            "program": program, "channel": channel}
+
+
+def test_event_label_all_cc_known_controller_shows_name():
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(0, _cc_ev(cc_num=74, value=90)) == \
+        "    1: 1:1:1, Canal 0, CC, Numéro 74 (Brightness), Valeur 90"
+
+
+def test_event_label_all_cc_unknown_controller_shows_number_only():
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(0, _cc_ev(cc_num=3, value=10)) == \
+        "    1: 1:1:1, Canal 0, CC, Numéro 3, Valeur 10"
+
+
+def test_event_label_all_cc_uses_real_channel_not_track():
+    """CC générique vit dans _tape : vrai canal, pas le numéro de piste en
+    substitut comme pour mod/bend."""
+    win = _FakeEventLabelWindow()
+    assert "Canal 9" in win._event_label_all(0, _cc_ev(track=4, channel=9))
+
+
+def test_event_label_all_cc_channel_defaults_to_zero():
+    win = _FakeEventLabelWindow()
+    ev  = _cc_ev(track=4)
+    del ev["channel"]
+    assert "Canal 0" in win._event_label_all(0, ev)
+
+
+def test_event_label_all_cc_selected_marks_line():
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(0, _cc_ev(), selected=True).startswith("[*] 1: ")
+
+
+def test_event_label_all_pgm_melodic_shows_gm_patch_name():
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(0, _pgm_ev(program=41)) == \
+        "    1: 1:1:1, Canal 0, Program Change, Program 41 (Viola)"
+
+
+def test_event_label_all_pgm_channel_10_shows_gm2_drumkit_name():
+    """Canal 10 (0-indexé 9) = percussion GM : table des kits GM2."""
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(0, _pgm_ev(program=25, channel=9)) == \
+        "    1: 1:1:1, Canal 9, Program Change, Program 25 (TR-808 Kit)"
+
+
+def test_event_label_all_pgm_unnamed_drumkit_shows_number_only():
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(0, _pgm_ev(program=1, channel=9)) == \
+        "    1: 1:1:1, Canal 9, Program Change, Program 1"
+
+
+def test_event_label_all_pgm_index_is_list_position():
+    win = _FakeEventLabelWindow()
+    assert win._event_label_all(3, _pgm_ev()).strip().startswith("4:")
+
+
 def test_event_pitch_number_patch_is_raw_midi_note():
     win = _FakeEventLabelWindow()
     ev  = {"etype": ETYPE_PATCH, "pad": 60, "track": 0}
