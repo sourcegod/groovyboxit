@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
 from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at
 from midi.midi_editor import MidiEditor
 
@@ -1483,3 +1483,224 @@ def test_insert_between_offset_single_gap_impossible():
     me = MidiEditor()
     # écart de 2 mais round() tombe pile sur une borne : toujours résolu (1)
     assert me.insert_between_offset(0, 2) == 1
+
+
+# ---------------------------------------------------------------------------
+# CC générique / Program Change dans _tape (Phase 7 étape 4j)
+# ---------------------------------------------------------------------------
+
+def _pattern_with_cc_pgm():
+    """Pattern 2×16 : au pas 4 une note GRID + un CC + un Program Change
+    (même position, pour éprouver le partage d'event_idx), plus un CC isolé
+    au pas 12."""
+    p = Pattern()
+    p.resize(2, 16)
+    p.set_cell(0, 3, 0, 4, 100)
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_CC,  channel=1, payload={"cc_num": 74, "value": 90}))
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_PGM, channel=1, payload={"program": 5}))
+    add_tape_at(p, 0, 0, 12, TapeEvent(ETYPE_CC, channel=2, payload={"cc_num": 7, "value": 40}))
+    return p
+
+
+def _cc_ev(me, p, cc_num=74):
+    """Relit l'event_info d'un CC depuis le pattern (event_idx à jour)."""
+    return [e for e in me.get_cc_pgm_events(p, 0)
+            if e["type"] == "cc" and e["cc_num"] == cc_num][0]
+
+
+def _pgm_ev(me, p):
+    return [e for e in me.get_cc_pgm_events(p, 0) if e["type"] == "pgm"][0]
+
+
+def test_cc_pgm_excluded_from_note_events():
+    """CC/PGM ne sont pas des notes : absents de get_note_events (mode Notes)."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    ev = me.get_note_events(p, 0)
+    assert len(ev) == 1
+    assert ev[0]["etype"] == ETYPE_GRID
+
+
+def test_note_events_sort_unaffected_by_cc_pgm():
+    """Le tri de get_note_events (clé e["pad"]) ne lève plus de TypeError :
+    les CC/PGM, sans champ "pad", n'entrent plus dans la liste (piège 4a)."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    p.set_cell(0, 1, 0, 4, 80)   # 2e note GRID au même offset → force une comparaison
+    ev = me.get_note_events(p, 0)
+    assert [e["pad"] for e in ev] == [1, 3]
+
+
+def test_get_cc_pgm_events_fields():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    cc = _cc_ev(me, p)
+    assert cc["type"]    == "cc"
+    assert cc["etype"]   == ETYPE_CC
+    assert cc["track"]   == 0
+    assert cc["bar"]     == 0
+    assert cc["step"]    == 4
+    assert cc["offset"]  == 4
+    assert cc["value"]   == 90
+    assert cc["channel"] == 1
+
+    pgm = _pgm_ev(me, p)
+    assert pgm["type"]    == "pgm"
+    assert pgm["etype"]   == ETYPE_PGM
+    assert pgm["program"] == 5
+    assert pgm["channel"] == 1
+    assert pgm["offset"]  == 4
+
+
+def test_cc_pgm_event_idx_shared_with_notes_at_same_offset():
+    """event_idx compte parmi TOUS les etypes d'une même position : la note
+    GRID posée en premier prend 0, le CC 1, le Program Change 2."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    note = [e for e in me.get_note_events(p, 0) if e["offset"] == 4][0]
+    assert note["event_idx"] == 0
+    assert _cc_ev(me, p)["event_idx"]  == 1
+    assert _pgm_ev(me, p)["event_idx"] == 2
+
+
+def test_get_cc_pgm_events_respects_limiters():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert len(me.get_cc_pgm_events(p, 0, lim_left=5)) == 1      # seul le CC du pas 12
+    assert me.get_cc_pgm_events(p, 0, lim_left=5)[0]["cc_num"] == 7
+    assert len(me.get_cc_pgm_events(p, 0, lim_right=4)) == 2     # CC + PGM du pas 4
+    assert me.get_cc_pgm_events(p, 0, lim_left=20) == []
+
+
+def test_get_cc_pgm_events_unknown_track_returns_empty():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.get_cc_pgm_events(p, 99) == []
+
+
+def test_all_events_includes_cc_and_pgm():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    ev = me.get_all_events(p, [0])
+    assert len([e for e in ev if e["type"] == "cc"])  == 2
+    assert len([e for e in ev if e["type"] == "pgm"]) == 1
+    assert len([e for e in ev if e["type"] == "note"]) == 1
+
+
+# --- delete_event ---------------------------------------------------------
+
+def test_delete_event_cc_removes_the_cc_not_its_neighbours():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.delete_event(p, _cc_ev(me, p)) is True
+    at4 = tape_at(p, 0, 0, 4)
+    assert [e.etype for e in at4] == [ETYPE_GRID, ETYPE_PGM]
+
+
+def test_delete_event_pgm_removes_the_pgm_not_its_neighbours():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.delete_event(p, _pgm_ev(me, p)) is True
+    at4 = tape_at(p, 0, 0, 4)
+    assert [e.etype for e in at4] == [ETYPE_GRID, ETYPE_CC]
+
+
+def test_delete_event_bend_still_refused():
+    """Non-régression : bend/mod vivent hors de _tape, delete_event les refuse."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.delete_event(p, {"type": "bend", "track": 0, "bar": 0,
+                               "step": 2, "offset": 2, "value": 100}) is False
+
+
+# --- edit_cc_event --------------------------------------------------------
+
+def test_edit_cc_event_value():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    res = me.edit_cc_event(p, _cc_ev(me, p), new_value=20)
+    assert res is not None
+    assert res["value"]  == 20
+    assert res["cc_num"] == 74      # cc_num non éditable, préservé
+    assert res["channel"] == 1      # canal d'origine préservé
+    ev = [e for e in tape_at(p, 0, 0, 4) if e.etype == ETYPE_CC][0]
+    assert ev.payload == {"cc_num": 74, "value": 20}
+    assert ev.dur == 0
+
+
+def test_edit_cc_event_value_clamped():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.edit_cc_event(p, _cc_ev(me, p), new_value=999)["value"] == 127
+    assert me.edit_cc_event(p, _cc_ev(me, p), new_value=-5)["value"]  == 0
+
+
+def test_edit_cc_event_move_position():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    res = me.edit_cc_event(p, _cc_ev(me, p), new_bar=1, new_step=3)
+    assert (res["bar"], res["step"], res["offset"]) == (1, 3, p._num_steps + 3)
+    assert not [e for e in tape_at(p, 0, 0, 4) if e.etype == ETYPE_CC]
+    moved = [e for e in tape_at(p, 0, 1, 3) if e.etype == ETYPE_CC]
+    assert moved and moved[0].payload == {"cc_num": 74, "value": 90}
+
+
+def test_edit_cc_event_out_of_bounds_returns_none():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.edit_cc_event(p, _cc_ev(me, p), new_bar=999) is None
+    assert me.edit_cc_event(p, _cc_ev(me, p), new_step=999) is None
+    assert [e for e in tape_at(p, 0, 0, 4) if e.etype == ETYPE_CC]   # inchangé
+
+
+def test_edit_cc_event_wrong_event_idx_etype_returns_none():
+    """Garde-fou : si event_idx désigne un événement d'un autre etype (ici la
+    note GRID), l'édition échoue sans rien toucher dans _tape."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    bad = dict(_cc_ev(me, p), event_idx=0)   # 0 = la note GRID
+    assert me.edit_cc_event(p, bad, new_value=1) is None
+    assert [e.etype for e in tape_at(p, 0, 0, 4)] == [ETYPE_GRID, ETYPE_CC, ETYPE_PGM]
+
+
+def test_edit_cc_event_unknown_event_idx_returns_none():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    bad = dict(_cc_ev(me, p), event_idx=99)
+    assert me.edit_cc_event(p, bad, new_value=1) is None
+
+
+# --- edit_pgm_event -------------------------------------------------------
+
+def test_edit_pgm_event_value():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    res = me.edit_pgm_event(p, _pgm_ev(me, p), new_value=42)
+    assert res["program"] == 42
+    assert res["channel"] == 1
+    ev = [e for e in tape_at(p, 0, 0, 4) if e.etype == ETYPE_PGM][0]
+    assert ev.payload == {"program": 42}
+    assert ev.dur == 0
+
+
+def test_edit_pgm_event_value_clamped():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.edit_pgm_event(p, _pgm_ev(me, p), new_value=200)["program"] == 127
+    assert me.edit_pgm_event(p, _pgm_ev(me, p), new_value=-1)["program"]  == 0
+
+
+def test_edit_pgm_event_move_position():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    res = me.edit_pgm_event(p, _pgm_ev(me, p), new_step=9)
+    assert (res["bar"], res["step"], res["offset"]) == (0, 9, 9)
+    assert [e.etype for e in tape_at(p, 0, 0, 4)] == [ETYPE_GRID, ETYPE_CC]
+    assert [e.etype for e in tape_at(p, 0, 0, 9)] == [ETYPE_PGM]
+
+
+def test_edit_pgm_event_out_of_bounds_returns_none():
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    assert me.edit_pgm_event(p, _pgm_ev(me, p), new_bar=999) is None
+    assert [e for e in tape_at(p, 0, 0, 4) if e.etype == ETYPE_PGM]   # inchangé

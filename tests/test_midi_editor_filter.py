@@ -29,10 +29,24 @@ def _default_criteria(**overrides):
         "note_lo": 0, "note_hi": 127,
         "vel_lo":  0, "vel_hi":  127,
         "bend_lo": -8192, "bend_hi": 8191,
+        "cc_num_lo": 0, "cc_num_hi": 127,
+        "cc_val_lo": 0, "cc_val_hi": 127,
+        "pgm_lo": 0, "pgm_hi": 127,
         "pos_from": None, "pos_to": None,
     }
     c.update(overrides)
     return c
+
+
+def _events_with_cc_pgm():
+    """Liste de dicts imitant get_all_events() avec CC générique et Program
+    Change (Phase 7 étape 4j) : 1 note, 2 CC, 1 Program Change."""
+    return [
+        {"type": "note", "offset": 0, "pad": 60, "vel": 100},
+        {"type": "cc",   "offset": 2, "cc_num": 74, "value": 90},
+        {"type": "cc",   "offset": 4, "cc_num": 7,  "value": 20},
+        {"type": "pgm",  "offset": 6, "program": 42},
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -197,3 +211,89 @@ def test_position_combined_with_type():
     ev = _events()
     matched = me.filter_events(ev, _default_criteria(pos_from=0, pos_to=2, etype_filter="note"))
     assert matched == {0}
+
+
+# ---------------------------------------------------------------------------
+# CC générique / Program Change (Phase 7 étape 4j)
+# ---------------------------------------------------------------------------
+
+def test_type_cc_matches_only_cc_events():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    assert me.filter_events(ev, _default_criteria(etype_filter="cc")) == {1, 2}
+
+
+def test_type_pgm_matches_only_program_change_events():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    assert me.filter_events(ev, _default_criteria(etype_filter="pgm")) == {3}
+
+
+def test_type_all_includes_cc_and_pgm():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    assert me.filter_events(ev, _default_criteria()) == {0, 1, 2, 3}
+
+
+def test_cc_num_range_filters_by_controller_number():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    matched = me.filter_events(ev, _default_criteria(etype_filter="cc",
+                                                     cc_num_lo=70, cc_num_hi=80))
+    assert matched == {1}        # CC#74 seul
+
+
+def test_cc_value_range_filters_by_value():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    matched = me.filter_events(ev, _default_criteria(etype_filter="cc",
+                                                     cc_val_lo=0, cc_val_hi=50))
+    assert matched == {2}        # valeur 20 seule
+
+
+def test_cc_num_and_value_ranges_combined():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    matched = me.filter_events(ev, _default_criteria(etype_filter="cc",
+                                                     cc_num_lo=0, cc_num_hi=10,
+                                                     cc_val_lo=0, cc_val_hi=50))
+    assert matched == {2}        # CC#7 valeur 20
+    matched = me.filter_events(ev, _default_criteria(etype_filter="cc",
+                                                     cc_num_lo=0, cc_num_hi=10,
+                                                     cc_val_lo=80, cc_val_hi=127))
+    assert matched == set()      # CC#7 mais valeur hors plage
+
+
+def test_pgm_range_filters_by_program_number():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    assert me.filter_events(ev, _default_criteria(etype_filter="pgm",
+                                                   pgm_lo=40, pgm_hi=50)) == {3}
+    assert me.filter_events(ev, _default_criteria(etype_filter="pgm",
+                                                   pgm_lo=0, pgm_hi=10)) == set()
+
+
+def test_cc_ranges_ignored_for_other_types():
+    """Les bornes cc_num/cc_val ne s'appliquent qu'au type "cc" : en filtre
+    "all", un CC hors plage passe quand même (même logique que note/bend)."""
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    matched = me.filter_events(ev, _default_criteria(cc_num_lo=100, cc_num_hi=101))
+    assert matched == {0, 1, 2, 3}
+
+
+def test_cc_position_combined_with_type():
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    matched = me.filter_events(ev, _default_criteria(etype_filter="cc",
+                                                     pos_from=3, pos_to=10))
+    assert matched == {2}
+
+
+def test_cc_pgm_defaults_are_permissive():
+    """Sans clés cc_*/pgm_* dans les critères, les valeurs par défaut de
+    filter_events laissent tout passer."""
+    me = MidiEditor()
+    ev = _events_with_cc_pgm()
+    assert me.filter_events(ev, {"active": True, "etype_filter": "cc"}) == {1, 2}
+    assert me.filter_events(ev, {"active": True, "etype_filter": "pgm"}) == {3}
