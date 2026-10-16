@@ -180,9 +180,6 @@ class DisplayMixin:
         elif e["type"] == "bend":
             bbt = self._bbt_str(e["bar"], e["step"])
             return f"{mark}{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
-        elif e["type"] == "mod":
-            bbt = self._bbt_str(e["bar"], e["step"])
-            return f"{mark}{bbt}  Tr{e['track']+1:02d}  Mod:{e['value']}"
         return str(e)
 
     def _event_label_all(self, i, e, selected=False):
@@ -191,8 +188,11 @@ class DisplayMixin:
         0-based dans self._events, affichée en index 1-based en tête de
         ligne. Canal : pour une note et pour CC générique/Program Change
         (Phase 7 étape 4m), vrai TapeEvent.channel (0-15, Phase 7 étape 1i) ;
-        pour bend/mod (automation, pas des TapeEvent), pas de canal réel —
-        numéro de piste en substitut, comme avant."""
+        pour bend (automation, pas un TapeEvent), pas de canal réel — numéro
+        de piste en substitut, comme avant. CC#1 (Mod Wheel) n'a plus de
+        type "mod" séparé depuis l'étape 5f : il s'affiche comme un CC
+        générique (branche "cc" ci-dessous, describe_cc(1) → "Modulation
+        Wheel")."""
         mark = "[*] " if selected else "    "
         bbt  = self._bbt_str(e["bar"], e["step"])
         if e["type"] == "note":
@@ -203,10 +203,6 @@ class DisplayMixin:
                     f"{number} ({name}), Durée {e['dur']}ms, Vel {e['vel']}")
         elif e["type"] == "bend":
             return f"{mark}{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
-        elif e["type"] == "mod":
-            canal = e["track"] + 1
-            return (f"{mark}{i+1}: {bbt}, Canal {canal}, CC, "
-                    f"Numéro 1, Valeur {e['value']}")
         elif e["type"] == "cc":
             # CC générique capturé dans _tape : vrai canal du TapeEvent, et
             # nom standard MIDI 1.0 du contrôleur quand il est répertorié

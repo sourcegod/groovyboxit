@@ -12,7 +12,7 @@ class EditingMixin:
             return
         cur = self._midi_editor._cur_idx
         ev  = self._events[cur]
-        if ev.get("type") in ("bend", "mod", "cc", "pgm"):
+        if ev.get("type") in ("bend", "cc", "pgm"):
             self._edit_cc_dialog(ev)
             return
         if ev.get("type") != "note":
@@ -78,15 +78,16 @@ class EditingMixin:
     def _edit_cc_dialog(self, ev):
         """Édition d'un événement non-note via Entrée — MODE_ALL.
 
-        Types : "bend"/"mod" (automation) et, depuis la Phase 7 étape 4m,
-        "cc" (CC générique de _tape) et "pgm" (Program Change). val_key dit
-        où lire la valeur du type courant ("value" partout sauf "program").
+        Types : "bend" (automation _bend_tape) et, depuis la Phase 7 étape
+        4m, "cc" (CC générique de _tape — y compris CC#1/Mod Wheel, qui n'a
+        plus de type "mod" séparé depuis l'étape 5f) et "pgm" (Program
+        Change). val_key dit où lire la valeur du type courant ("value"
+        partout sauf "program").
         """
         pat  = self._parent._player._pattern
         me   = self._midi_editor
         label, val_key, edit_fn = {
             "bend": ("Bend",                    "value",   me.edit_bend_event),
-            "mod":  ("Mod",                     "value",   me.edit_mod_event),
             "cc":   (f"CC #{ev.get('cc_num')}", "value",   me.edit_cc_event),
             "pgm":  ("Program Change",          "program", me.edit_pgm_event),
         }[ev["type"]]

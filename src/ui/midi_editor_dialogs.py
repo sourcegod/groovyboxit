@@ -320,9 +320,10 @@ class _MidiEventEditDialog(wx.Dialog):
 class _CcEventEditDialog(wx.Dialog):
     """Dialog d'édition d'un événement non-note : position BBT + valeur.
 
-    Types gérés : "bend"/"mod" (automation _bend_tape/_mod_tape) et, depuis la
-    Phase 7 étape 4m, "cc" (CC générique de _tape — seule la valeur est
-    éditable, pas cc_num) et "pgm" (Program Change de _tape).
+    Types gérés : "bend" (automation _bend_tape) et, depuis la Phase 7
+    étape 4m, "cc" (CC générique de _tape — seule la valeur est éditable,
+    pas cc_num ; couvre CC#1/Mod Wheel, qui n'a plus de type "mod" séparé
+    depuis l'étape 5f) et "pgm" (Program Change de _tape).
     """
 
     def __init__(self, parent, ev, pattern):
@@ -340,7 +341,8 @@ class _CcEventEditDialog(wx.Dialog):
         self._updating       = False
 
         # Titre, libellé, bornes et champ de valeur selon le type d'événement
-        # (Phase 7 étape 4m : "cc" et "pgm" rejoignent "bend"/"mod").
+        # (Phase 7 étape 4m : "cc" et "pgm" rejoignent "bend" ; le type "mod"
+        # a disparu en 5f, CC#1/Mod Wheel passe par la branche "cc").
         kind = ev["type"]
         if kind == "bend":
             title, val_label, val_min, val_max = (
@@ -351,14 +353,10 @@ class _CcEventEditDialog(wx.Dialog):
             title, val_label, val_min, val_max = (
                 f"Éditer CC #{cc_num}", f"Valeur CC #{cc_num} (0..127) :", 0, 127)
             initial = ev["value"]
-        elif kind == "pgm":
+        else:   # "pgm" — Program Change
             title, val_label, val_min, val_max = (
                 "Éditer Program Change", "Program (0..127) :", 0, 127)
             initial = ev["program"]
-        else:   # "mod" — mod wheel (CC#1, _mod_tape)
-            title, val_label, val_min, val_max = (
-                "Éditer CC (mod wheel)", "Valeur CC (0..127) :", 0, 127)
-            initial = ev["value"]
         super().__init__(parent, title=title,
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
 

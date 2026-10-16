@@ -15,7 +15,9 @@ class MidiEditor:
     Source unique : _tape[track] = [TapeEvent, ...] (liste plate, position =
     TapeEvent.time), etype ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH pour les notes,
     ETYPE_CC/ETYPE_PGM pour CC générique et Program Change (Phase 7 étape 4i).
-    Mode étendu (VIEW_ALL) : _tape (notes + CC/PGM) + _bend_tape + _mod_tape.
+    Mode étendu (VIEW_ALL) : _tape (notes + CC/PGM) + _bend_tape. CC#1
+    (Mod Wheel) n'est plus une source séparée depuis _mod_tape (Phase 7
+    étape 5f) : il vit dans _tape comme n'importe quel ETYPE_CC.
     """
 
     VIEW_NOTES = 0   # notes de la grille de la piste courante
@@ -146,8 +148,9 @@ class MidiEditor:
         """Retourne tous les événements MIDI des pistes sélectionnées.
 
         Inclut : notes (GRID/KIT/PATCH via get_note_events), CC générique et
-        Program Change (ETYPE_CC/ETYPE_PGM via get_cc_pgm_events), bend_tape,
-        mod_tape.
+        Program Change (ETYPE_CC/ETYPE_PGM via get_cc_pgm_events, dont CC#1/
+        Mod Wheel — plus de type "mod" séparé depuis _mod_tape, étape 5f),
+        bend_tape.
         """
         sel_set = set(sel_tracks)
         events  = []
@@ -179,23 +182,12 @@ class MidiEditor:
                         "value":  val,
                     })
 
-        # Automation mod wheel
-        for t in sorted(sel_set):
-            if t < len(pattern._mod_tape):
-                for off, val in sorted(pattern._mod_tape[t]):
-                    if lim_left  is not None and off < lim_left:
-                        continue
-                    if lim_right is not None and off > lim_right:
-                        continue
-                    b, s = divmod(int(off), pattern._num_steps)
-                    events.append({
-                        "type":   "mod",
-                        "track":  t,
-                        "bar":    b,
-                        "step":   s,
-                        "offset": off,
-                        "value":  val,
-                    })
+        # Note (Phase 7 étape 5f) : plus de bloc "Automation mod wheel" ici.
+        # CC#1 (Mod Wheel) n'a plus de type "mod" séparé depuis _mod_tape —
+        # il est déjà remonté comme un "cc" ordinaire par get_cc_pgm_events
+        # ci-dessus (capturé dans _tape depuis l'étape 4f). _mod_tape existe
+        # encore à ce stade (lecture seule, TrackRouter.on_mod_tape) mais
+        # n'est plus une source pour l'éditeur — voir Portée de l'étape 5a.
 
         events.sort(key=lambda e: (e["offset"], e["track"]))
         return events
@@ -210,7 +202,11 @@ class MidiEditor:
         criteria (dict) :
             active       bool  — interrupteur maître ; False = tout passe
             invert       bool  — inverse le résultat (appliqué en dernier)
-            etype_filter str   — "all" | "note" | "bend" | "mod" | "cc" | "pgm"
+            etype_filter str   — "all" | "note" | "bend" | "cc" | "pgm" | "mod"
+                                 ("mod" est un alias conservé pour le raccourci
+                                 « Mod Wheel (CC1) » du dialog de filtre, Phase 7
+                                 étape 5f — traduit en type=="cc" and cc_num==1,
+                                 "mod" n'est plus un type d'événement réel)
             note_lo/hi   int   — bornes sur e["pad"], type "note" seulement
             vel_lo/hi    int   — bornes sur e["vel"], type "note" seulement
             bend_lo/hi   int   — bornes sur e["value"], type "bend" seulement
@@ -247,6 +243,12 @@ class MidiEditor:
             if pos_from is not None and offset < pos_from:
                 continue
             if pos_to is not None and offset > pos_to:
+                continue
+
+            if etype_filter == "mod":
+                if e["type"] != "cc" or e.get("cc_num") != 1:
+                    continue
+                matched.add(i)
                 continue
 
             if etype_filter != "all" and e["type"] != etype_filter:
@@ -512,34 +514,10 @@ class MidiEditor:
             "value":  n_val,
         }
 
-    def edit_mod_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
-        """Modifie un point d'automation mod wheel (_mod_tape). Retourne le nouvel event_info ou None."""
-        t = ev["track"]
-        if not (0 <= t < len(pattern._mod_tape)):
-            return None
-        n_bar  = new_bar   if new_bar   is not None else ev["bar"]
-        n_step = new_step  if new_step  is not None else ev["step"]
-        n_val  = new_value if new_value is not None else ev["value"]
-        if not (0 <= n_bar < pattern._num_bars):
-            return None
-        if not (0 <= n_step < pattern._num_steps):
-            return None
-        n_val = max(0, min(127, n_val))
-        lst   = pattern._mod_tape[t]
-        try:
-            lst.remove((ev["offset"], ev["value"]))
-        except ValueError:
-            return None
-        n_off = n_bar * pattern._num_steps + n_step
-        lst.append((n_off, n_val))
-        return {
-            "type":   "mod",
-            "track":  t,
-            "bar":    n_bar,
-            "step":   n_step,
-            "offset": n_off,
-            "value":  n_val,
-        }
+    # Note (Phase 7 étape 5f) : edit_mod_event a disparu — CC#1 (Mod Wheel)
+    # n'a plus de type "mod" séparé, il est édité par edit_cc_event comme
+    # n'importe quel CC générique (_mod_tape existe encore, lu uniquement
+    # par TrackRouter.on_mod_tape à la lecture, pas par l'éditeur).
 
     def _replace_tape_event(self, pattern, ev, etype, payload, new_bar, new_step):
         """Remplace le TapeEvent repéré par (time, event_idx) par un nouveau de
