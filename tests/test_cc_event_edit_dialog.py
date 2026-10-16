@@ -3,7 +3,8 @@
     File: tests/test_cc_event_edit_dialog.py
     Tests — _CcEventEditDialog (Phase 7 étape 4n) : dialog d'édition d'un
     événement non-note, généralisé en étape 4m aux types "cc" (CC générique
-    de _tape) et "pgm" (Program Change) en plus de "bend"/"mod".
+    de _tape) et "pgm" (Program Change) en plus de "bend". Le type "mod" a
+    disparu en 5f : CC#1 (Mod Wheel) passe désormais par la branche "cc".
     Couvre aussi le dispatch de MidiEditorWindow._edit_cc_dialog (quelle
     méthode d'édition de MidiEditor est appelée selon le type).
     Date: Wed, 15/10/2026
@@ -93,14 +94,6 @@ def test_bend_dialog_unchanged():
     assert dlg.GetTitle()       == "Éditer pitch bend"
     assert dlg._val_sp.GetMin() == -8192
     assert dlg._val_sp.GetMax() == 8191
-    teardown(frame, dlg)
-
-
-def test_mod_dialog_unchanged():
-    ev = {"type": "mod", "track": 0, "bar": 0, "step": 0, "offset": 0, "value": 64}
-    frame, dlg = make_dlg(ev)
-    assert dlg.GetTitle()         == "Éditer CC (mod wheel)"
-    assert dlg._val_sp.GetValue() == 64
     teardown(frame, dlg)
 
 
@@ -234,15 +227,6 @@ def test_edit_cc_dialog_still_handles_bend(monkeypatch):
     win._edit_cc_dialog(ev)
     assert (3, 55) in p._bend_tape[0]
     assert "Bend" in win.undos[0]
-
-
-def test_edit_cc_dialog_still_handles_mod(monkeypatch):
-    win, p = _win_with_cc_pgm(monkeypatch)
-    p._mod_tape[0] = [(4, 64)]
-    ev = {"type": "mod", "track": 0, "bar": 0, "step": 4, "offset": 4, "value": 64}
-    win._edit_cc_dialog(ev)
-    assert (3, 55) in p._mod_tape[0]
-    assert "Mod" in win.undos[0]
 
 
 if __name__ == "__main__":

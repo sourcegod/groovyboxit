@@ -196,12 +196,24 @@ def test_all_events_includes_bend():
     assert len(bends) == 2
 
 
-def test_all_events_includes_mod():
+def test_all_events_no_longer_includes_mod_type():
+    """Phase 7 étape 5f : _mod_tape n'est plus une source de get_all_events
+    (_make_pattern pose pourtant p._mod_tape[0] = [(1, 64)]) — CC#1 n'a plus
+    de type "mod" séparé."""
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_all_events(p, [0])
-    mods = [e for e in ev if e["type"] == "mod"]
-    assert len(mods) == 1
+    assert [e for e in ev if e["type"] == "mod"] == []
+
+
+def test_all_events_cc1_shows_as_cc_not_mod():
+    me = MidiEditor()
+    p  = _make_pattern()
+    add_tape_at(p, 0, 0, 1, TapeEvent(ETYPE_CC, channel=0, payload={"cc_num": 1, "value": 64}))
+    ev  = me.get_all_events(p, [0])
+    cc1 = [e for e in ev if e["type"] == "cc" and e["cc_num"] == 1]
+    assert len(cc1) == 1
+    assert cc1[0]["value"] == 64
 
 
 def test_all_events_multi_track():
@@ -436,16 +448,13 @@ def test_insert_note_default_channel_zero():
 
 
 # ---------------------------------------------------------------------------
-# edit_bend_event / edit_mod_event
+# edit_bend_event (edit_mod_event a disparu en 5f — CC#1/Mod Wheel s'édite
+# désormais via edit_cc_event comme n'importe quel CC générique, voir
+# test_edit_cc_event_* plus bas, qui couvrent déjà cette logique)
 # ---------------------------------------------------------------------------
 
 def _bend_ev(p, offset=2, value=100):
     return {"type": "bend", "track": 0, "bar": offset // p._num_steps,
-            "step": offset % p._num_steps, "offset": offset, "value": value}
-
-
-def _mod_ev(p, offset=1, value=64):
-    return {"type": "mod", "track": 0, "bar": offset // p._num_steps,
             "step": offset % p._num_steps, "offset": offset, "value": value}
 
 
@@ -495,35 +504,6 @@ def test_edit_bend_not_found_returns_none():
     p  = _make_pattern()
     ev = _bend_ev(p, offset=99, value=1)
     assert me.edit_bend_event(p, ev, new_value=50) is None
-
-
-def test_edit_mod_value():
-    me = MidiEditor()
-    p  = _make_pattern()
-    ev = _mod_ev(p)
-    result = me.edit_mod_event(p, ev, new_value=100)
-    assert result is not None
-    assert result["value"] == 100
-    assert (1, 64) not in p._mod_tape[0]
-    assert (1, 100) in p._mod_tape[0]
-
-
-def test_edit_mod_value_clamped():
-    me = MidiEditor()
-    p  = _make_pattern()
-    ev = _mod_ev(p)
-    result = me.edit_mod_event(p, ev, new_value=999)
-    assert result["value"] == 127
-    result2 = me.edit_mod_event(p, result, new_value=-5)
-    assert result2["value"] == 0
-
-
-def test_edit_mod_out_of_bounds_returns_none():
-    me = MidiEditor()
-    p  = _make_pattern()
-    ev = _mod_ev(p)
-    assert me.edit_mod_event(p, ev, new_step=999) is None
-    assert (1, 64) in p._mod_tape[0]   # inchangé
 
 
 # ---------------------------------------------------------------------------

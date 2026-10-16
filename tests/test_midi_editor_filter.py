@@ -12,12 +12,14 @@ from midi.midi_editor import MidiEditor
 # ---------------------------------------------------------------------------
 
 def _events():
-    """Liste de dicts imitant get_all_events() : 2 notes, 1 bend, 1 mod."""
+    """Liste de dicts imitant get_all_events() : 2 notes, 1 bend, 1 CC#1
+    (Mod Wheel — plus de type "mod" séparé depuis l'étape 5f, voir alias
+    etype_filter="mod" testé plus bas)."""
     return [
         {"type": "note", "offset": 0,   "pad": 60, "vel": 100},
         {"type": "note", "offset": 4,   "pad": 72, "vel": 30},
         {"type": "bend", "offset": 2,   "value": -200},
-        {"type": "mod",  "offset": 1.5, "value": 64},
+        {"type": "cc",   "offset": 1.5, "cc_num": 1, "value": 64},
     ]
 
 
@@ -159,13 +161,32 @@ def test_bend_bounds_exclude():
 
 
 # ---------------------------------------------------------------------------
-# Type "mod" — aucun sous-critère
+# Type "mod" — alias de filtre (type=="cc" and cc_num==1), Phase 7 étape 5f
 # ---------------------------------------------------------------------------
 
-def test_type_mod_isolates_mod_no_sub_criteria():
+def test_type_mod_isolates_cc1_no_sub_criteria():
+    """"mod" n'est plus un vrai type d'événement : raccourci de filtre
+    traduit en type=="cc" and cc_num==1."""
     me = MidiEditor()
     ev = _events()
     matched = me.filter_events(ev, _default_criteria(etype_filter="mod"))
+    assert matched == {3}
+
+
+def test_type_mod_excludes_other_cc_numbers():
+    me = MidiEditor()
+    ev = _events() + [{"type": "cc", "offset": 5, "cc_num": 7, "value": 20}]
+    matched = me.filter_events(ev, _default_criteria(etype_filter="mod"))
+    assert matched == {3}
+
+
+def test_type_mod_ignores_cc_range_criteria():
+    """"mod" n'a pas de sous-critères (comme avant 5f) : les bornes cc_num/
+    cc_val, même resserrées, ne filtrent pas le CC#1 isolé."""
+    me = MidiEditor()
+    ev = _events()
+    matched = me.filter_events(ev, _default_criteria(
+        etype_filter="mod", cc_num_lo=50, cc_num_hi=60, cc_val_lo=0, cc_val_hi=1))
     assert matched == {3}
 
 

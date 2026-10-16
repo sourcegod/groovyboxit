@@ -271,10 +271,12 @@ def test_event_label_all_note_index_is_list_position():
     assert win._event_label_all(3, ev).strip().startswith("4:")
 
 
-def test_event_label_all_mod_cc_format():
+def test_event_label_all_cc1_shows_modulation_wheel_name():
+    """CC#1 (Mod Wheel) n'a plus de branche "mod" séparée depuis l'étape 5f :
+    il s'affiche comme un CC générique, avec son nom standard MIDI 1.0."""
     win = _FakeEventLabelWindow()
-    ev  = {"type": "mod", "track": 1, "bar": 0, "step": 0, "value": 90}
-    assert win._event_label_all(2, ev) == "    3: 1:1:1, Canal 2, CC, Numéro 1, Valeur 90"
+    assert win._event_label_all(0, _cc_ev(cc_num=1, value=90, channel=2)) == \
+        "    1: 1:1:1, Canal 2, CC, Numéro 1 (Modulation Wheel), Valeur 90"
 
 
 def test_event_label_all_bend_format_unchanged():
