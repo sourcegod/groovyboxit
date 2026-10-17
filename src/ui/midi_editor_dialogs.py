@@ -320,8 +320,8 @@ class _MidiEventEditDialog(wx.Dialog):
 class _CcEventEditDialog(wx.Dialog):
     """Dialog d'édition d'un événement non-note : position BBT + valeur.
 
-    Types gérés : "bend" (automation _bend_tape) et, depuis la Phase 7
-    étape 4m, "cc" (CC générique de _tape — seule la valeur est éditable,
+    Types gérés : "bend" (ETYPE_BEND de _tape, Phase 7 étape 6d1) et,
+    depuis la Phase 7 étape 4m, "cc" (CC générique de _tape — seule la valeur est éditable,
     pas cc_num ; couvre CC#1/Mod Wheel, qui n'a plus de type "mod" séparé
     depuis l'étape 5f) et "pgm" (Program Change de _tape).
     """

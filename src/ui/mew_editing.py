@@ -78,8 +78,8 @@ class EditingMixin:
     def _edit_cc_dialog(self, ev):
         """Édition d'un événement non-note via Entrée — MODE_ALL.
 
-        Types : "bend" (automation _bend_tape) et, depuis la Phase 7 étape
-        4m, "cc" (CC générique de _tape — y compris CC#1/Mod Wheel, qui n'a
+        Types : "bend" (ETYPE_BEND de _tape depuis l'étape 6d1) et, depuis
+        la Phase 7 étape 4m, "cc" (CC générique de _tape — y compris CC#1/Mod Wheel, qui n'a
         plus de type "mod" séparé depuis l'étape 5f) et "pgm" (Program
         Change). val_key dit où lire la valeur du type courant ("value"
         partout sauf "program").

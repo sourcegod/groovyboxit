@@ -186,10 +186,10 @@ class DisplayMixin:
         """Format du mode Tous les événements (Ctrl+2) — liste plate,
         "index: position, canal, type, numéro, val1, val2". i = position
         0-based dans self._events, affichée en index 1-based en tête de
-        ligne. Canal : pour une note et pour CC générique/Program Change
-        (Phase 7 étape 4m), vrai TapeEvent.channel (0-15, Phase 7 étape 1i) ;
-        pour bend (automation, pas un TapeEvent), pas de canal réel — numéro
-        de piste en substitut, comme avant. CC#1 (Mod Wheel) n'a plus de
+        ligne. Canal : vrai TapeEvent.channel (0-15, Phase 7 étape 1i) pour
+        tous les types — notes, CC générique/Program Change (Phase 7 étape
+        4m) et Pitch Bend (ETYPE_BEND de _tape depuis l'étape 6d1, même
+        format que les autres types). CC#1 (Mod Wheel) n'a plus de
         type "mod" séparé depuis l'étape 5f : il s'affiche comme un CC
         générique (branche "cc" ci-dessous, describe_cc(1) → "Modulation
         Wheel")."""
@@ -202,7 +202,8 @@ class DisplayMixin:
             return (f"{mark}{i+1}: {bbt}, Canal {canal}, Note, "
                     f"{number} ({name}), Durée {e['dur']}ms, Vel {e['vel']}")
         elif e["type"] == "bend":
-            return f"{mark}{bbt}  Tr{e['track']+1:02d}  Bend:{e['value']:+d}"
+            return (f"{mark}{i+1}: {bbt}, Canal {e.get('channel', 0)}, Pitch Bend, "
+                    f"Valeur {e['value']:+d}")
         elif e["type"] == "cc":
             # CC générique capturé dans _tape : vrai canal du TapeEvent, et
             # nom standard MIDI 1.0 du contrôleur quand il est répertorié

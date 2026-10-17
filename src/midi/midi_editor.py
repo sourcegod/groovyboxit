@@ -6,7 +6,7 @@
     Author: Coolbrother
 """
 
-from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 
 
 class MidiEditor:
@@ -14,10 +14,11 @@ class MidiEditor:
 
     Source unique : _tape[track] = [TapeEvent, ...] (liste plate, position =
     TapeEvent.time), etype ETYPE_GRID/ETYPE_KIT/ETYPE_PATCH pour les notes,
-    ETYPE_CC/ETYPE_PGM pour CC générique et Program Change (Phase 7 étape 4i).
-    Mode étendu (VIEW_ALL) : _tape (notes + CC/PGM) + _bend_tape. CC#1
-    (Mod Wheel) n'est plus une source séparée depuis _mod_tape (Phase 7
-    étape 5f) : il vit dans _tape comme n'importe quel ETYPE_CC.
+    ETYPE_CC/ETYPE_PGM pour CC générique et Program Change (Phase 7 étape 4i),
+    ETYPE_BEND pour l'automation Pitch Bend (Phase 7 étape 6d1).
+    Mode étendu (VIEW_ALL) : tout _tape (notes + CC/PGM/BEND). Ni CC#1
+    (Mod Wheel, étape 5f) ni Pitch Bend (étape 6d1) n'ont plus de source
+    séparée : ils vivent dans _tape comme les autres etypes.
     """
 
     VIEW_NOTES = 0   # notes de la grille de la piste courante
@@ -107,13 +108,14 @@ class MidiEditor:
         return events
 
     def get_cc_pgm_events(self, pattern, track_idx, lim_left=None, lim_right=None):
-        """Retourne les CC générique (ETYPE_CC) et Program Change (ETYPE_PGM)
-        d'une piste, depuis _tape (Phase 7 étape 4i).
+        """Retourne les CC générique (ETYPE_CC), Program Change (ETYPE_PGM)
+        et Pitch Bend (ETYPE_BEND, type "bend", Phase 7 étape 6d1) d'une
+        piste, depuis _tape (Phase 7 étape 4i).
 
         Pas des notes (ni pad ni vélocité) : séparés de get_note_events, donc
         absents du mode Notes (Ctrl+1) et remontés seulement par
-        get_all_events (Ctrl+2), comme les automations bend/mod. event_idx
-        partagé avec les notes de la même position (voir _events_by_time).
+        get_all_events (Ctrl+2). event_idx partagé avec les notes de la même
+        position (voir _events_by_time).
         """
         events = []
         for offset, b, s, i, ev in self._events_by_time(pattern, track_idx, lim_left, lim_right):
@@ -142,15 +144,27 @@ class MidiEditor:
                     "channel":   ev.channel,
                     "event_idx": i,
                 })
+            elif ev.etype == ETYPE_BEND:
+                events.append({
+                    "type":      "bend",
+                    "etype":     ETYPE_BEND,
+                    "track":     track_idx,
+                    "bar":       b,
+                    "step":      s,
+                    "offset":    offset,
+                    "value":     ev.payload.get("value"),
+                    "channel":   ev.channel,
+                    "event_idx": i,
+                })
         return events
 
     def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
         """Retourne tous les événements MIDI des pistes sélectionnées.
 
-        Inclut : notes (GRID/KIT/PATCH via get_note_events), CC générique et
-        Program Change (ETYPE_CC/ETYPE_PGM via get_cc_pgm_events, dont CC#1/
-        Mod Wheel — plus de type "mod" séparé depuis _mod_tape, étape 5f),
-        bend_tape.
+        Inclut : notes (GRID/KIT/PATCH via get_note_events), CC générique,
+        Program Change et Pitch Bend (ETYPE_CC/ETYPE_PGM/ETYPE_BEND via
+        get_cc_pgm_events, dont CC#1/Mod Wheel — plus de type "mod" séparé
+        depuis l'étape 5f, ni de lecture de _bend_tape depuis l'étape 6d1).
         """
         sel_set = set(sel_tracks)
         events  = []
@@ -160,34 +174,12 @@ class MidiEditor:
             evs = self.get_note_events(pattern, t, lim_left, lim_right)
             events.extend(evs)
 
-        # CC générique / Program Change (ETYPE_CC/ETYPE_PGM, via _tape)
+        # CC générique / Program Change / Pitch Bend (ETYPE_CC/ETYPE_PGM/
+        # ETYPE_BEND, via _tape). CC#1 (Mod Wheel) y est un "cc" ordinaire
+        # depuis l'étape 5f ; le Pitch Bend y est lu depuis l'étape 6d1 (plus
+        # de bloc séparé sur _bend_tape).
         for t in sorted(sel_set):
             events.extend(self.get_cc_pgm_events(pattern, t, lim_left, lim_right))
-
-        # Automation pitch bend
-        for t in sorted(sel_set):
-            if t < len(pattern._bend_tape):
-                for off, val in sorted(pattern._bend_tape[t]):
-                    if lim_left  is not None and off < lim_left:
-                        continue
-                    if lim_right is not None and off > lim_right:
-                        continue
-                    b, s = divmod(int(off), pattern._num_steps)
-                    events.append({
-                        "type":   "bend",
-                        "track":  t,
-                        "bar":    b,
-                        "step":   s,
-                        "offset": off,
-                        "value":  val,
-                    })
-
-        # Note (Phase 7 étape 5f/5h) : plus de bloc "Automation mod wheel"
-        # ici. CC#1 (Mod Wheel) n'a plus de type "mod" séparé — il est déjà
-        # remonté comme un "cc" ordinaire par get_cc_pgm_events ci-dessus
-        # (capturé dans _tape depuis l'étape 4f). _mod_tape lui-même a
-        # disparu en 5h (TrackRouter.on_mod_tape reste, appelé par on_cc_tape
-        # à la lecture pour cc_num==1).
 
         events.sort(key=lambda e: (e["offset"], e["track"]))
         return events
@@ -285,17 +277,16 @@ class MidiEditor:
     def delete_event(self, pattern, ev):
         """Supprime un événement. Retourne True si supprimé.
 
-        Notes GRID → via la façade grille ; notes KIT/PATCH et CC/PGM → via
-        _delete_tape_event (même repérage time+event_idx, voir
-        _events_by_time). Les automations bend/mod vivent hors de _tape et ne
-        passent pas par ici.
+        Notes GRID → via la façade grille ; notes KIT/PATCH, CC/PGM et Pitch
+        Bend (dans _tape depuis l'étape 6d1) → via _delete_tape_event (même
+        repérage time+event_idx, voir _events_by_time).
         """
         kind = ev.get("type")
         if kind == "note":
             if ev.get("etype") == ETYPE_GRID:
                 return self._delete_grid_event(pattern, ev)
             return self._delete_tape_event(pattern, ev)
-        if kind in ("cc", "pgm"):
+        if kind in ("cc", "pgm", "bend"):
             return self._delete_tape_event(pattern, ev)
         return False
 
@@ -486,32 +477,31 @@ class MidiEditor:
         }
 
     def edit_bend_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
-        """Modifie un point d'automation pitch bend (_bend_tape). Retourne le nouvel event_info ou None."""
-        t = ev["track"]
-        if not (0 <= t < len(pattern._bend_tape)):
-            return None
-        n_bar  = new_bar   if new_bar   is not None else ev["bar"]
-        n_step = new_step  if new_step  is not None else ev["step"]
-        n_val  = new_value if new_value is not None else ev["value"]
-        if not (0 <= n_bar < pattern._num_bars):
-            return None
-        if not (0 <= n_step < pattern._num_steps):
-            return None
+        """Modifie un point d'automation Pitch Bend de _tape (etype ETYPE_BEND) :
+        valeur (-8192..+8191) et/ou position. Retourne le nouvel event_info ou None.
+
+        Via _replace_tape_event depuis la Phase 7 étape 6d1 : position
+        inchangée → time fractionnaire d'origine conservé (l'ancienne version
+        sur _bend_tape le ramenait toujours au pas entier).
+        """
+        n_val = new_value if new_value is not None else ev["value"]
         n_val = max(-8192, min(8191, n_val))
-        lst   = pattern._bend_tape[t]
-        try:
-            lst.remove((ev["offset"], ev["value"]))
-        except ValueError:
+        res = self._replace_tape_event(
+            pattern, ev, ETYPE_BEND, {"value": n_val}, new_bar, new_step
+        )
+        if res is None:
             return None
-        n_off = n_bar * pattern._num_steps + n_step
-        lst.append((n_off, n_val))
+        n_bar, n_step, new_time, new_idx, channel = res
         return {
-            "type":   "bend",
-            "track":  t,
-            "bar":    n_bar,
-            "step":   n_step,
-            "offset": n_off,
-            "value":  n_val,
+            "type":      "bend",
+            "etype":     ETYPE_BEND,
+            "track":     ev["track"],
+            "bar":       n_bar,
+            "step":      n_step,
+            "offset":    new_time,
+            "value":     n_val,
+            "channel":   channel,
+            "event_idx": new_idx,
         }
 
     # Note (Phase 7 étape 5f) : edit_mod_event a disparu — CC#1 (Mod Wheel)
@@ -525,7 +515,8 @@ class MidiEditor:
         Retourne (bar, step, time, event_idx, channel) du nouvel événement, ou
         None si la position visée est hors pattern / l'index ne résout rien /
         l'etype trouvé ne correspond pas. Factorise la chirurgie commune à
-        edit_cc_event et edit_pgm_event (Phase 7 étape 4i).
+        edit_cc_event, edit_pgm_event (Phase 7 étape 4i) et edit_bend_event
+        (étape 6d1).
         """
         from pattern import TapeEvent
         t        = ev["track"]
