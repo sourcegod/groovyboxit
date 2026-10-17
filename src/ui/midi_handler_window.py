@@ -182,10 +182,16 @@ class MidiHandler:
     # ------------------------------------------------------------------
 
     def on_pitch_bend(self, bend, channel):
-        """Pitch Bend MIDI (-8192..+8191, 0=centre) — temps réel sur les voix actives."""
+        """Pitch Bend MIDI (-8192..+8191, 0=centre) — temps réel sur les voix actives.
+
+        Capturé dans _tape (ETYPE_BEND) avant tout effet live, même sans
+        synthé prêt — comme on_cc (Phase 7 étape 7d1)."""
         self._notify_editor_midi("pitch_bend", channel, bend=bend)
         win = self._win
+        if win._player.recording:
+            win._player.record_bend(bend, channel)
         if not win._router.synth_ready():
+            win._show_status(f"Pitch Bend: {bend:+d}")
             return
         synth = win._router.synth
         synth.pitch_bend = bend
@@ -199,8 +205,6 @@ class MidiHandler:
         st = synth.pitch_bend_semitones
         _bend_log(f"BEND_SET bend={bend} ({st:+.3f}st) synth_id={id(synth)} "
                   f"slot_engine_id={id(slot_engine) if slot_engine else 'same'}")
-        if win._player.recording:
-            win._player.record_bend(bend, channel)
         win._show_status(f"Pitch Bend: {st:+.2f} st")
 
     def on_cc(self, cc_num, value, channel):
