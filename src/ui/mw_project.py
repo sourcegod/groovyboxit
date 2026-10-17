@@ -1,6 +1,6 @@
 import os
 import wx
-from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
@@ -265,7 +265,8 @@ class ProjectMixin:
 
     def _clipboard_to_dict(self):
         """Sérialise le presse-papier TrackEditor (grille GRID + tape
-        KIT/PATCH/CC/PGM, unifiées).
+        KIT/PATCH/CC/PGM/BEND, unifiées — BEND depuis la Phase 7 étape 6f1 :
+        `[ETYPE_BEND, t, b, s, value, channel, frac]`).
 
         Chaque etype a sa propre branche explicite : avant la Phase 7 étape
         4o, un `else` fourre-tout sérialisait tout etype inconnu comme un
@@ -301,6 +302,8 @@ class ProjectMixin:
                                        ev.payload.get("value"), ev.channel, frac])
                 elif ev.etype == ETYPE_PGM:
                     tape_list.append([ETYPE_PGM, t, b, s, ev.payload.get("program"), ev.channel, frac])
+                elif ev.etype == ETYPE_BEND:
+                    tape_list.append([ETYPE_BEND, t, b, s, ev.payload.get("value"), ev.channel, frac])
         return {
             "num_tracks": cb.num_tracks,
             "num_bars":   cb.num_bars,
@@ -346,6 +349,15 @@ class ProjectMixin:
                 frac    = rec[6] if len(rec) > 6 else 0.0
                 tape.setdefault((t, b, s), []).append(
                     TapeEvent(ETYPE_PGM, channel=channel, payload={"program": program}, time=frac)
+                )
+            elif etype == ETYPE_BEND:
+                # Branche explicite (Phase 7 étape 6f1) : la branche `else`
+                # ci-dessous lirait un BEND comme une note KIT/PATCH.
+                t, b, s, value = rec[1], rec[2], rec[3], rec[4]
+                channel = rec[5] if len(rec) > 5 else 0
+                frac    = rec[6] if len(rec) > 6 else 0.0
+                tape.setdefault((t, b, s), []).append(
+                    TapeEvent(ETYPE_BEND, channel=channel, payload={"value": value}, time=frac)
                 )
             else:
                 t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
