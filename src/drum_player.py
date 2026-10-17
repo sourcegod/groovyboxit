@@ -477,7 +477,7 @@ class DrumPlayer:
                                                (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
                             elif ev.etype == ETYPE_PATCH:
                                 events.append((t_sec, self.PATCH_TAPE_EVENT,
-                                               (t_idx, ev.payload.get("note"), ev.dur, ev.payload.get("bend", 0)),
+                                               (t_idx, ev.payload.get("note"), ev.dur),
                                                ev.payload.get("vel")))
                             elif ev.etype == ETYPE_CC:
                                 events.append((t_sec, self.CC_TAPE_EVENT,
@@ -545,12 +545,15 @@ class DrumPlayer:
                     else:
                         self.sound_man.play_note(midi_note, velocity / 127.0)
                 elif track_or_type == self.PATCH_TAPE_EVENT:
-                    t_idx, midi_note, dur, bend = evt_data
+                    # Plus de bend par note (Phase 7 étape 7f1) : un ETYPE_BEND
+                    # au même temps est rejoué avant (BEND_TAPE_EVENT=-4 trié
+                    # avant PATCH_TAPE_EVENT=-3 par events.sort()).
+                    t_idx, midi_note, dur = evt_data
                     if self.erasing and t_idx == self._cur_track \
                             and midi_note in self._erase_active_midi_notes:
                         self._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_PATCH)
                     elif self._on_patch_tape_cb:
-                        self._on_patch_tape_cb(t_idx, midi_note, velocity, dur, bend)
+                        self._on_patch_tape_cb(t_idx, midi_note, velocity, dur)
                 elif track_or_type == self.BEND_TAPE_EVENT:
                     t_idx, bend_val = evt_data
                     if self._on_bend_tape_cb:
@@ -988,7 +991,11 @@ class DrumPlayer:
 
         duration_ms=None → durée mesurée jusqu'au note_off via record_patch_note_off().
         duration_ms>=0   → durée fixe (numpad).
-        bend             → valeur pitch bend au moment du note_on (-8192..+8191).
+        bend             → valeur pitch bend live au moment du note_on
+                           (-8192..+8191) ; pas stockée dans la note (Phase 7
+                           étape 7f1) : si elle diffère de l'état de bend de la
+                           piste à ce temps, un ETYPE_BEND est posé au temps de
+                           la note (Pattern._chase_bend).
         channel          → canal MIDI d'origine (0..15), capturé depuis l'entrée live.
         """
         float_offset, bar_idx, step_idx = self._compute_record_offset()
@@ -998,10 +1005,11 @@ class DrumPlayer:
         track = self._cur_track
         time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
         new_ev = TapeEvent(ETYPE_PATCH, dur=dur, channel=channel,
-                            payload={"note": midi_note, "vel": vel, "bend": bend},
+                            payload={"note": midi_note, "vel": vel},
                             time=time_val)
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
+            self._pattern._chase_bend(track, time_val, bend, channel)
             events = self._pattern._tape[track]
             for i, ev in enumerate(events):
                 if ev.time == time_val and ev.etype == ETYPE_PATCH and ev.payload.get("note") == midi_note:

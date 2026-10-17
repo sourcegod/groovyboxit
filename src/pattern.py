@@ -20,7 +20,9 @@ class TapeEvent:
     même note modifiée, jamais sérialisé dans .gvp, comme Pattern._id),
     time (position, steps cumulés sur la piste), etype, dur, channel,
     payload (champs propres au type — {"pad":,"vel":} pour GRID,
-    {"note":,"vel":} pour KIT, {"note":,"vel":,"bend":} pour PATCH,
+    {"note":,"vel":} pour KIT, {"note":,"vel":} pour PATCH (plus de
+    "bend" par note depuis la Phase 7 étape 7f1 : le bend est un état de
+    canal, porté par les ETYPE_BEND),
     {"cc_num":,"value":} pour CC, {"program":} pour PGM, {"value":} pour
     BEND (-8192..+8191, 0=centre) ; dur=0 pour CC/PGM/BEND, événements
     instantanés).
@@ -189,6 +191,31 @@ class Pattern:
         """Étend _tape (liste de listes) pour couvrir au moins n pistes."""
         while len(self._tape) < n:
             self._tape.append([])
+
+    def _bend_state_at(self, track, time):
+        """État de Pitch Bend de la piste à `time` : valeur du dernier
+        ETYPE_BEND de temps <= time (à temps égal, le dernier dans _tape),
+        0 (centre) s'il n'y en a aucun. Appelant sous self._lock."""
+        state, state_time = 0, None
+        if track < len(self._tape):
+            for ev in self._tape[track]:
+                if ev.etype == ETYPE_BEND and ev.time <= time \
+                        and (state_time is None or ev.time >= state_time):
+                    state, state_time = ev.payload.get("value", 0), ev.time
+        return state
+
+    def _chase_bend(self, track, time, bend, channel=0):
+        """Pose un ETYPE_BEND `bend` à `time` si l'état de bend de la piste à
+        cet instant diffère (Phase 7 étape 7f1). Le bend est un état de canal,
+        comme en MIDI : une note ne porte plus son bend, c'est ce point qui
+        reproduit un bend tenu au note-on. Retourne True si un point a été
+        posé. Appelant sous self._lock."""
+        if self._bend_state_at(track, time) == bend:
+            return False
+        self._ensure_track_count(track + 1)
+        self._tape[track].append(
+            TapeEvent(ETYPE_BEND, channel=channel, payload={"value": bend}, time=time))
+        return True
 
     def _make_empty(self):
         return [

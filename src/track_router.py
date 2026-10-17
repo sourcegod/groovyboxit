@@ -369,9 +369,11 @@ class TrackRouter:
         vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
         self._snd.play_note(midi_note, vol)
 
-    def on_patch_tape(self, track_idx, midi_note, velocity, duration_ms=0, bend=0):
+    def on_patch_tape(self, track_idx, midi_note, velocity, duration_ms=0):
         """Lecture d'un événement patch_tape : note MIDI brute pour un synth.
-        bend : valeur pitch bend enregistrée (-8192..+8191) — appliquée via phase_incr."""
+        Joue avec l'état de Pitch Bend courant du moteur (posé par
+        on_bend_tape) — plus de bend propre à la note depuis la Phase 7
+        étape 7f1."""
         if not self._track_is_audible(track_idx):
             return
         slot_idx = self._track_slots[track_idx]
@@ -383,14 +385,9 @@ class TrackRouter:
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
             pan = self._track_pans[track_idx]
             dur = duration_ms if duration_ms > 0 else 500
-            old_bend          = engine.pitch_bend
-            engine.pitch_bend = bend
-            pi = 2.0 ** (engine.pitch_bend_semitones / 12.0)
-            _bend_log(f"PLAY note={midi_note} bend={bend} "
-                      f"({engine.pitch_bend_semitones:+.3f}st) phase_incr={pi:.5f} "
-                      f"old_bend={old_bend} engine_id={id(engine)}")
+            _bend_log(f"PLAY note={midi_note} bend={engine.pitch_bend} "
+                      f"({engine.pitch_bend_semitones:+.3f}st) engine_id={id(engine)}")
             engine.play(midi_note, vol, pan, dur)
-            engine.pitch_bend = old_bend
             threading.Timer(dur / 1000.0, engine.stop, [midi_note]).start()
 
     def on_bend_tape(self, track_idx, bend_value):
