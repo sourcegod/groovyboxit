@@ -158,10 +158,10 @@ class Pattern:
         # Verrou pour les accès concurrents _run_thread / thread UI
         self._lock = threading.RLock()
 
-        # Automation pitch bend : liste par piste de (float_offset, bend_value)
-        self._bend_tape  = [[] for _ in range(self._num_tracks)]
         # _mod_tape (mod wheel) supprimé en Phase 7 étape 5h : CC#1 vit dans
         # _tape (ETYPE_CC) depuis l'étape 5b, comme n'importe quel CC.
+        # _bend_tape (pitch bend) supprimé en Phase 7 étape 6h1 : le Pitch
+        # Bend vit dans _tape (ETYPE_BEND) depuis l'étape 6b1.
 
         # Gamme utilisée lors de l'enregistrement (lecture indépendante de l'UI)
         self._kb_scale     = "major"   # défaut "major" pour rétrocompat anciens patterns
@@ -177,7 +177,7 @@ class Pattern:
         return max(0, min(127, int(v)))
 
     def _bar_step_to_time(self, bar, step):
-        """Position (bar,step) → time (steps cumulés), convention _bend_tape."""
+        """Position (bar,step) → time (steps cumulés)."""
         return bar * self._num_steps + step
 
     def _time_to_bar_step(self, time):
@@ -288,7 +288,8 @@ class Pattern:
         """Clone entièrement l'état grille + tape + automation d'un autre Pattern.
 
         Remplace le duo load_pattern(other.to_dense_grid()) + copies manuelles de
-        _tape/_bend_tape historiquement dispersées dans l'UI.
+        _tape (et des anciennes structures d'automation, supprimées en Phase 7
+        étapes 5h/6h1) historiquement dispersées dans l'UI.
         """
         self._num_tracks = other._num_tracks
         self._num_pads   = other._num_pads
@@ -296,7 +297,6 @@ class Pattern:
         self._num_steps  = other._num_steps
         with self._lock:
             self._tape = [list(track_list) for track_list in other._tape]
-        self._bend_tape = [list(t) for t in other._bend_tape]
 
     #--------------------------------------------------------------------------
 
@@ -304,7 +304,6 @@ class Pattern:
         self._num_bars  = num_bars
         self._num_steps = num_steps
         self._tape       = [[] for _ in range(self._num_tracks)]
-        self._bend_tape  = [[] for _ in range(self._num_tracks)]
 
     #--------------------------------------------------------------------------
 
@@ -339,15 +338,12 @@ class Pattern:
 
     def reset_pattern(self):
         self._tape      = [[] for _ in range(self._num_tracks)]
-        self._bend_tape = [[] for _ in range(self._num_tracks)]
 
     def clear_track(self, track_idx):
         """Efface tous les pas de la piste track_idx (grille + tape MIDI)."""
         with self._lock:
             if track_idx < len(self._tape):
                 self._tape[track_idx] = []
-        if track_idx < len(self._bend_tape):
-            self._bend_tape[track_idx] = []
 
     #--------------------------------------------------------------------------
 
@@ -376,10 +372,6 @@ class Pattern:
             ]
             for track_list in self._tape
         ]
-        self._bend_tape = [
-            track_bends + [(off + half_steps, b) for off, b in track_bends]
-            for track_bends in self._bend_tape
-        ]
         self._num_bars *= 2
         return True
 
@@ -394,10 +386,6 @@ class Pattern:
         self._tape = [
             [ev for ev in track_list if ev.time < half_steps]
             for track_list in self._tape
-        ]
-        self._bend_tape = [
-            [(off, b) for off, b in track_bends if off < half_steps]
-            for track_bends in self._bend_tape
         ]
         self._num_bars = half
         return True
@@ -452,12 +440,6 @@ class Pattern:
         if num_bars != old_bars:
             self._num_bars = num_bars
 
-        total_steps = self._num_bars * self._num_steps
-        self._bend_tape = [
-            [(off, b) for off, b in track_bends if off < total_steps]
-            for track_bends in self._bend_tape
-        ]
-
     #--------------------------------------------------------------------------
 
     def to_dict(self):
@@ -496,7 +478,6 @@ class Pattern:
                 ]
                 for track_list in self._tape
             ],
-            "bend_tape": [list(t) for t in self._bend_tape],
         }
 
     #--------------------------------------------------------------------------
@@ -519,6 +500,14 @@ class Pattern:
         cette piste sont retirés avant d'y recréer les points depuis
         'mod_tape'. Piste dont 'mod_tape' est vide ou absente → ses
         ETYPE_CC cc_num=1 (s'il y en a) sont gardés tels quels.
+
+        Migration 'bend_tape' → ETYPE_BEND (Phase 7 étape 6h1) : to_dict
+        n'écrit plus cette clé depuis 6h1. Chaque point (off, val) d'un
+        preset plus ancien devient un TapeEvent ETYPE_BEND (payload
+        {"value": val}, time=off flottant conservé, channel=0 faute
+        d'information) ajouté à _tape[piste]. Pas de doublon à retirer :
+        contrairement au CC#1, le Pitch Bend n'avait aucune copie dans
+        'tape_v2' avant 6b1.
         """
         self._name       = d.get("name", "")
         self._bpm        = d.get("bpm", 100)
@@ -567,13 +556,14 @@ class Pattern:
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
-        raw_bends = d.get("bend_tape", [])
-        self._bend_tape = [
-            [tuple(p) for p in track_bends]
-            for track_bends in raw_bends
-        ]
-        while len(self._bend_tape) < self._num_tracks:
-            self._bend_tape.append([])
+        for t, track_bends in enumerate(d.get("bend_tape", [])):
+            if not track_bends:
+                continue
+            self._ensure_track_count(t + 1)
+            for off, val in track_bends:
+                self._tape[t].append(
+                    TapeEvent(ETYPE_BEND, channel=0, payload={"value": val}, time=off)
+                )
         for t, track_mods in enumerate(d.get("mod_tape", [])):
             if not track_mods:
                 continue   # piste vide → ETYPE_CC cc_num=1 existants gardés tels quels
