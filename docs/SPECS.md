@@ -604,12 +604,12 @@ Arrêt immédiat de tous les sons + envoi CC#120 (All Sounds Off) + CC#121 (Rese
 Depuis la Phase 7 étape 4, **tout** CC reçu (y compris ceux sans effet câblé)
 est capturé pendant Rec dans `_tape` (etype `ETYPE_CC`, payload
 `{"cc_num", "value"}`), affichable/filtrable/éditable dans la liste Ctrl+2 de
-l'éditeur MIDI. À la lecture, un CC capturé rejoue le même effet que sa
-réception live, appliqué à la piste d'origine de l'événement
-(`TrackRouter.on_cc_tape`) — CC#64/120/121/123 restent globaux. CC#1 est
-capturé **à la fois** dans `_mod_tape` (automation vibrato historique) et
-dans `_tape` : doublon assumé, `_mod_tape` est candidat à être remplacé par
-une lecture de `_tape` filtrée plus tard.
+l'éditeur MIDI, en temps flottant non quantifié (Phase 7 étape 5b — un
+contrôleur continu ne se tasse pas sur la grille). À la lecture, un CC
+capturé rejoue le même effet que sa réception live, appliqué à la piste
+d'origine de l'événement (`TrackRouter.on_cc_tape`) — CC#64/120/121/123
+restent globaux. CC#1 (Mod Wheel) n'a plus qu'une seule copie, dans `_tape` :
+la structure historique dédiée `_mod_tape` a été supprimée (Phase 7 étape 5h).
 
 ### Program Change
 
@@ -627,7 +627,9 @@ où le format MIDI permet un Program Change à tout moment pendant la lecture.
 ### Mod Wheel CC#1 — LFO vibrato
 
 - Profondeur maximale configurable : ±2 demi-tons
-- Automation : enregistrement dans `_mod_tape`, relecture synchronisée
+- Automation : capturée dans `_tape` comme n'importe quel CC générique
+  (Phase 7 étape 5h, `_mod_tape` supprimé), relecture via
+  `TrackRouter.on_cc_tape` → `on_mod_tape`, synchronisée
 
 ---
 

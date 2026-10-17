@@ -26,7 +26,6 @@ def _make_pattern(num_tracks=4, num_bars=2, num_steps=16):
     p._num_steps  = num_steps
     p._tape      = [[] for _ in range(num_tracks)]
     p._bend_tape = [[] for _ in range(num_tracks)]
-    p._mod_tape  = [[] for _ in range(num_tracks)]
     return p
 
 
