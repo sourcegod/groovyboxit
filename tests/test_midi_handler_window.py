@@ -287,3 +287,98 @@ def test_on_pitch_bend_no_capture_when_not_recording():
     handler = mh.MidiHandler(win)
     handler.on_pitch_bend(-1234, 5)
     assert win._player.recorded_bends == []
+
+
+# ---------------------------------------------------------------------------
+# MidiHandler.on_pitch_bend — capture même sans synthé prêt (Phase 7 étape 7e1)
+# ---------------------------------------------------------------------------
+
+class _FakeStatusWin(_FakeWinWithEditor):
+    """Fenêtre factice qui garde les statuts affichés, éditeur MIDI ouvert."""
+    def __init__(self, router):
+        super().__init__()
+        self._player   = _FakeBendPlayer()
+        self._router   = router
+        self.statuses  = []
+
+    def _show_status(self, msg):
+        self.statuses.append(msg)
+
+
+def test_on_pitch_bend_captures_without_synth_when_recording():
+    """Avant 7d1, le retour anticipé sur synth_ready() précédait record_bend :
+    la molette n'était pas enregistrée sur une piste sans synthé prêt."""
+    win = _FakeStatusWin(_FakeRouter())          # synth_ready() → False
+    win._player.recording = True
+    mh.MidiHandler(win).on_pitch_bend(1234, 3)
+    assert win._player.recorded_bends == [(1234, 3)]
+
+
+def test_on_pitch_bend_without_synth_shows_raw_value():
+    win = _FakeStatusWin(_FakeRouter())
+    mh.MidiHandler(win).on_pitch_bend(1234, 3)
+    assert win.statuses == ["Pitch Bend: +1234"]
+    mh.MidiHandler(win).on_pitch_bend(-500, 3)
+    assert win.statuses[-1] == "Pitch Bend: -500"
+
+
+def test_on_pitch_bend_without_synth_no_capture_when_not_recording():
+    win = _FakeStatusWin(_FakeRouter())
+    mh.MidiHandler(win).on_pitch_bend(1234, 3)
+    assert win._player.recorded_bends == []
+
+
+def test_on_pitch_bend_without_synth_still_notifies_editor():
+    win = _FakeStatusWin(_FakeRouter())
+    mh.MidiHandler(win).on_pitch_bend(1234, 3)
+    assert win._midi_editor_window.last == mh.format_midi_status("pitch_bend", 3, bend=1234)
+
+
+def test_on_pitch_bend_with_synth_applies_and_shows_semitones():
+    """Synthé prêt : comportement live inchangé (valeur posée sur le synthé,
+    statut en demi-tons) et capture une seule fois."""
+    router = _FakeRouterSynthReady()
+    router.synth = _FakeSynth()
+    router.synth.pitch_bend_semitones = 1.5
+    win = _FakeStatusWin(router)
+    win._player.recording = True
+    mh.MidiHandler(win).on_pitch_bend(6144, 0)
+    assert router.synth.pitch_bend == 6144
+    assert win.statuses == ["Pitch Bend: +1.50 st"]
+    assert win._player.recorded_bends == [(6144, 0)]
+
+
+def test_on_pitch_bend_with_synth_propagates_to_distinct_slot_engine():
+    router = _FakeRouterSynthReady()
+    router.synth = _FakeSynth()
+    slot_engine = _FakeSynth()
+    router._synth_slot_idx = 2
+    router._slot_synths    = {2: slot_engine}
+    win = _FakeStatusWin(router)
+    mh.MidiHandler(win).on_pitch_bend(-2048, 0)
+    assert slot_engine.pitch_bend == -2048
+
+
+class _NullSoundManager:
+    def stop_all(self):           pass
+    def play_sound(self, *a):     pass
+    def play_metronome(self, *a): pass
+    def play_note(self, *a):      pass
+
+
+def test_on_pitch_bend_without_synth_writes_etype_bend_in_real_tape():
+    """Bout en bout avec un vrai DrumPlayer : un ETYPE_BEND arrive dans _tape
+    de la piste courante, avec son canal, alors qu'aucun synthé n'est prêt."""
+    from drum_player import DrumPlayer
+    from pattern import ETYPE_BEND
+    player = DrumPlayer(_NullSoundManager())
+    player._measure_start = None
+    player._cur_track     = 2
+    player.recording      = True
+    win = _FakeWinNoEditor()
+    win._player = player
+    mh.MidiHandler(win).on_pitch_bend(-700, 4)
+    bends = [ev for ev in player._pattern._tape[2] if ev.etype == ETYPE_BEND]
+    assert len(bends) == 1
+    assert bends[0].payload == {"value": -700}
+    assert bends[0].channel == 4
