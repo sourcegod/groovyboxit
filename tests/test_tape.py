@@ -49,8 +49,13 @@ def _K(note, vel=100, dur=0):
     """Raccourci : TapeEvent kit."""
     return TapeEvent(ETYPE_KIT, dur=dur, payload={"note": note, "vel": vel})
 
-def _P(note, vel=100, dur=0, bend=0):
-    """Raccourci : TapeEvent patch."""
+def _P(note, vel=100, dur=0):
+    """Raccourci : TapeEvent patch (sans bend par note depuis la Phase 7 étape 7f1)."""
+    return TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": note, "vel": vel})
+
+def _P_old(note, vel=100, dur=0, bend=0):
+    """TapeEvent patch au format d'avant la Phase 7 étape 7h1 (champ "bend"
+    par note), pour les tests de migration."""
     return TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": note, "vel": vel, "bend": bend})
 
 
@@ -213,7 +218,7 @@ def test_to_dict_kit_event_in_tape_v2():
 
 def test_to_dict_patch_event_in_tape_v2():
     p = Pattern()
-    assign_tape(p, {(1, 0, 7): [_P(60, 90, 350, 2048)]})
+    assign_tape(p, {(1, 0, 7): [_P(60, 90, 350)]})
     track1 = p.to_dict()["tape_v2"][1]
     assert len(track1) == 1
     ev_time, etype, dur, channel, payload = track1[0]
@@ -221,8 +226,8 @@ def test_to_dict_patch_event_in_tape_v2():
     assert etype    == ETYPE_PATCH
     assert dur      == 350
     assert channel  == 0
-    assert payload  == {"note": 60, "vel": 90, "bend": 2048}
-    print("  to_dict tape_v2 : événement PATCH correctement sérialisé (avec bend) : OK")
+    assert payload  == {"note": 60, "vel": 90}
+    print("  to_dict tape_v2 : événement PATCH correctement sérialisé (sans bend) : OK")
 
 def test_roundtrip_kit_tape():
     src = Pattern()
@@ -246,23 +251,19 @@ def test_roundtrip_patch_tape():
     assert tapes_equal_strict(dst._tape, src._tape)
     print("  to_dict → from_dict patch events round-trip : OK")
 
-def test_roundtrip_patch_tape_with_bend():
-    """Régression : to_dict levait ValueError sur les 4-tuples."""
+def test_roundtrip_patch_tape_with_bend_points():
+    """Notes PATCH + ETYPE_BEND au même pas : aller-retour à l'identique,
+    sans point ajouté par la migration (les notes n'ont pas de champ bend)."""
     src = Pattern()
     assign_tape(src, {
-        (0, 0, 0): [_P(60, 100, 500, 4096), _P(62, 90, 300, -2000)],
+        (0, 0, 0): [TapeEvent(ETYPE_BEND, payload={"value": 4096}),
+                    _P(60, 100, 500), _P(62, 90, 300)],
         (1, 0, 4): [_P(67, 80, 200)],
     })
-    try:
-        d = src.to_dict()
-    except ValueError as e:
-        assert False, f"to_dict lève ValueError sur _tape : {e}"
     dst = Pattern()
-    dst.from_dict(d)
-    assert tape_at(dst, 0, 0, 0)[0] == _P(60, 100, 500, 4096)
-    assert tape_at(dst, 0, 0, 0)[1] == _P(62, 90, 300, -2000)
-    assert tape_at(dst, 1, 0, 4)[0] == _P(67, 80, 200)
-    print("  to_dict → from_dict patch 4-tuples avec bend (régression) : OK")
+    dst.from_dict(src.to_dict())
+    assert tapes_equal_strict(dst._tape, src._tape)
+    print("  to_dict → from_dict notes PATCH + ETYPE_BEND à l'identique : OK")
 
 def test_from_dict_kit_tape_backward_compat_5_columns():
     """Anciens presets sans colonne dur doivent se charger avec dur=0."""
@@ -277,7 +278,7 @@ def test_from_dict_kit_tape_backward_compat_5_columns():
     print("  from_dict kit rétro-compat 5 colonnes → dur=0 : OK")
 
 def test_from_dict_patch_tape_backward_compat_5_columns():
-    """Anciens presets sans dur ni bend doivent charger dur=0, bend=0."""
+    """Anciens presets sans dur ni bend doivent charger dur=0, sans bend."""
     old = {
         "curpattern": Pattern().to_dense_grid(),
         "patch_tape": [[0, 0, 7, 60, 90]],   # 5 colonnes
@@ -285,19 +286,19 @@ def test_from_dict_patch_tape_backward_compat_5_columns():
     p = Pattern()
     p.from_dict(old)
     assert has_tape_at(p, 0, 0, 7)
-    assert tape_at(p, 0, 0, 7) == [_P(60, 90, 0, 0)]
-    print("  from_dict patch rétro-compat 5 colonnes → dur=0, bend=0 : OK")
+    assert tape_at(p, 0, 0, 7) == [_P(60, 90, 0)]
+    print("  from_dict patch rétro-compat 5 colonnes → dur=0, sans bend : OK")
 
 def test_from_dict_patch_tape_backward_compat_6_columns():
-    """Anciens presets avec dur mais sans bend doivent charger bend=0."""
+    """Anciens presets avec dur mais sans bend : note sans bend, aucun ETYPE_BEND."""
     old = {
         "curpattern": Pattern().to_dense_grid(),
         "patch_tape": [[0, 0, 3, 60, 100, 500]],   # 6 colonnes, sans bend
     }
     p = Pattern()
     p.from_dict(old)
-    assert tape_at(p, 0, 0, 3) == [_P(60, 100, 500, 0)]
-    print("  from_dict patch rétro-compat 6 colonnes → bend=0 : OK")
+    assert tape_at(p, 0, 0, 3) == [_P(60, 100, 500)]
+    print("  from_dict patch rétro-compat 6 colonnes → sans bend : OK")
 
 def test_from_dict_empty_tapes():
     p = Pattern()
@@ -1840,7 +1841,7 @@ def test_compute_offsets_preserves_K_and_P():
     """_compute_offsets ne touche pas les événements K et P existants."""
     pl = _make_player()
     set_tape_at(pl._pattern, 0, 0, 3, [TapeEvent(ETYPE_KIT, payload={"note": 36, "vel": 100}),
-                                        TapeEvent(ETYPE_PATCH, dur=400, payload={"note": 60, "vel": 90, "bend": 0})])
+                                        TapeEvent(ETYPE_PATCH, dur=400, payload={"note": 60, "vel": 90})])
     pl._compute_offsets()   # lecture seule : ne mute pas _tape
     assert has_tape_at(pl._pattern, 0, 0, 3), "clé (0,0,3) ne doit pas disparaître"
     etypes = [ev.etype for ev in tape_at(pl._pattern, 0, 0, 3)]
@@ -2264,3 +2265,103 @@ if __name__ == "__main__":
     test_resize_preserves_channel()
     test_double_bars_preserves_channel()
     print("Tous les tests : OK")
+
+
+# ---------------------------------------------------------------------------
+# Migration du champ "bend" des notes PATCH → ETYPE_BEND (Phase 7 étape 7i1)
+# ---------------------------------------------------------------------------
+
+def _old_tape_v2(*track0_events, bend_points=()):
+    """Dict de preset au format tape_v2 d'avant 7h1 : notes PATCH avec champ
+    "bend" (ou tout TapeEvent fourni), sur la piste 0."""
+    p = Pattern()
+    p._tape[0].extend(track0_events)
+    p._tape[0].extend(TapeEvent(ETYPE_BEND, payload={"value": v}, time=t)
+                      for t, v in bend_points)
+    return p.to_dict()
+
+def _loaded(d):
+    p = Pattern()
+    p.from_dict(d)
+    return p
+
+def _bend_points(p, track=0):
+    return sorted((ev.time, ev.payload["value"]) for ev in _bends(p, track))
+
+def _old_note(note, time, bend, channel=0):
+    ev = _P_old(note, 100, 300, bend)
+    ev.time, ev.channel = time, channel
+    return ev
+
+def test_migrate_note_bends_become_etype_bend_points():
+    """Note pliée → point au temps de la note ; note à 0 qui suit une note
+    pliée → retour au centre (avant 7f1, chaque note imposait son bend)."""
+    p = _loaded(_old_tape_v2(_old_note(60, 0, 4096), _old_note(62, 4, 0),
+                             _old_note(64, 8, -2000), _old_note(65, 12, -2000)))
+    assert _bend_points(p) == [(0, 4096), (4, 0), (8, -2000)]
+    print("  migration : bends des notes → ETYPE_BEND (retour à 0, sans doublon) : OK")
+
+def test_migrate_note_bends_removes_field_from_payloads():
+    p = _loaded(_old_tape_v2(_old_note(60, 0, 4096), _old_note(62, 4, 0)))
+    notes = [ev for ev in p._tape[0] if ev.etype == ETYPE_PATCH]
+    assert [ev.payload for ev in notes] == [{"note": 60, "vel": 100}, {"note": 62, "vel": 100}]
+    print("  migration : champ bend retiré des payloads PATCH : OK")
+
+def test_migrate_all_zero_bends_adds_no_point():
+    """Cas courant des anciens fichiers : toutes les notes à bend 0."""
+    p = _loaded(_old_tape_v2(_old_note(60, 0, 0), _old_note(62, 4, 0)))
+    assert _bends(p, 0) == []
+    print("  migration : notes toutes à 0 → aucun ETYPE_BEND : OK")
+
+def test_migrate_uses_note_channel():
+    p = _loaded(_old_tape_v2(_old_note(60, 2, 1500, channel=9)))
+    assert [(ev.time, ev.channel) for ev in _bends(p, 0)] == [(2, 9)]
+
+def test_migrate_follows_time_not_list_order():
+    p = _loaded(_old_tape_v2(_old_note(64, 8, 0), _old_note(60, 0, 4096)))
+    assert _bend_points(p) == [(0, 4096), (8, 0)]
+
+def test_migrate_respects_existing_bend_automation():
+    """Un ETYPE_BEND déjà présent fixe l'état : note de même valeur → pas de
+    doublon ; note à 0 sous un état plié → point de retour à 0."""
+    p = _loaded(_old_tape_v2(_old_note(60, 2, 2000), _old_note(62, 6, 0),
+                             bend_points=[(0.5, 2000)]))
+    assert _bend_points(p) == [(0.5, 2000), (6, 0)]
+    print("  migration : tient compte des ETYPE_BEND existants : OK")
+
+def test_migrate_after_old_bend_tape_key():
+    """La migration des notes passe après celle de 'bend_tape' (6h1) et tient
+    donc compte de ses points."""
+    d = _old_tape_v2(_old_note(60, 4, 3000))
+    d["bend_tape"] = [[(1.5, 3000)]]
+    p = _loaded(d)
+    assert _bend_points(p) == [(1.5, 3000)]
+
+def test_migrate_old_patch_tape_format_7_columns():
+    old = {
+        "curpattern": Pattern().to_dense_grid(),
+        "patch_tape": [[0, 0, 3, 60, 100, 500, 4096], [0, 0, 9, 62, 100, 500, 0]],
+    }
+    p = _loaded(old)
+    assert _bend_points(p) == [(3, 4096), (9, 0)]
+    assert all("bend" not in ev.payload for ev in p._tape[0] if ev.etype == ETYPE_PATCH)
+    print("  migration : ancien format patch_tape (7 colonnes) : OK")
+
+def test_migrate_leaves_new_format_notes_untouched():
+    """Note sans champ bend (format 7f1+) sous un état plié : aucun point
+    ajouté — seules les notes portant le champ sont migrées."""
+    p = _loaded(_old_tape_v2(_P(60, 100, 300), bend_points=[(0, 2048)]))
+    assert _bend_points(p) == [(0, 2048)]
+
+def test_migrate_does_not_mutate_caller_dict():
+    d = _old_tape_v2(_old_note(60, 0, 4096))
+    _loaded(d)
+    assert d["tape_v2"][0][0][4] == {"note": 60, "vel": 100, "bend": 4096}
+
+def test_migrate_is_idempotent_through_save_and_reload():
+    p1 = _loaded(_old_tape_v2(_old_note(60, 0, 4096), _old_note(62, 4, 0)))
+    d  = p1.to_dict()
+    assert all("bend" not in rec[4] for rec in d["tape_v2"][0] if rec[1] == ETYPE_PATCH)
+    p2 = _loaded(d)
+    assert tapes_equal_strict(p2._tape, p1._tape)
+    print("  migration : sauvegarde puis rechargement → rien de plus : OK")

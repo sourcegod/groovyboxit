@@ -21,8 +21,8 @@ def _K(note, vel=100, dur=0):
     return TapeEvent(ETYPE_KIT, dur=dur, payload={"note": note, "vel": vel})
 
 
-def _P(note, vel=100, dur=0, bend=0):
-    return TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": note, "vel": vel, "bend": bend})
+def _P(note, vel=100, dur=0):
+    return TapeEvent(ETYPE_PATCH, dur=dur, payload={"note": note, "vel": vel})
 
 
 # ---------------------------------------------------------------------------
@@ -84,14 +84,14 @@ def test_multiple_pads_same_offset():
 
 def test_set_cell_coexists_with_kp_events():
     p = Pattern()
-    set_tape_at(p, 0, 0, 4, [_K(60, 90), _P(61, 70, 200, 50)])
+    set_tape_at(p, 0, 0, 4, [_K(60, 90), _P(61, 70, 200)])
     p.set_cell(0, 3, 0, 4, 100)
     assert same_events(tape_at(p, 0, 0, 4), [
-        _K(60, 90), _P(61, 70, 200, 50), TapeEvent(ETYPE_GRID, payload={"pad": 3, "vel": 100})
+        _K(60, 90), _P(61, 70, 200), TapeEvent(ETYPE_GRID, payload={"pad": 3, "vel": 100})
     ])
     # Effacer la note G ne touche pas K/P
     p.set_cell(0, 3, 0, 4, 0)
-    assert same_events(tape_at(p, 0, 0, 4), [_K(60, 90), _P(61, 70, 200, 50)])
+    assert same_events(tape_at(p, 0, 0, 4), [_K(60, 90), _P(61, 70, 200)])
     print("  set_cell coexiste avec K/P sur la même clé : OK")
 
 

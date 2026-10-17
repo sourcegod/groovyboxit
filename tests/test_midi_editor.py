@@ -30,7 +30,7 @@ def _make_pattern():
 
     # Tape K/P pour le mode ALL (ajoutés aux entrées G déjà posées par set_cell)
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=500, payload={"note": 60, "vel": 100}))
-    add_tape_at(p, 1, 0, 4, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 80, "bend": 0}))
+    add_tape_at(p, 1, 0, 4, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 80}))
 
     # Automation bend piste 0 — ETYPE_BEND dans _tape depuis la Phase 7
     # étape 6d1 (_mod_tape supprimé en 5h, _bend_tape plus lu par l'éditeur)
@@ -415,11 +415,12 @@ def test_edit_tape_note_channel_preserved_by_default():
 def test_edit_tape_note_channel_can_be_changed():
     me = MidiEditor()
     p  = Pattern()
-    p._tape[0].append(TapeEvent(ETYPE_PATCH, dur=500, channel=6, payload={"note": 60, "vel": 100, "bend": 0}, time=0))
+    p._tape[0].append(TapeEvent(ETYPE_PATCH, dur=500, channel=6, payload={"note": 60, "vel": 100}, time=0))
     ev = me.get_note_events(p, 0)[0]
     result = me.edit_tape_note(p, ev, new_channel=2)
     assert result["channel"] == 2
-    assert result["bend"] == 0   # payload PATCH conservé (bend inchangé)
+    assert "bend" not in result        # plus de bend par note (Phase 7 étape 7h1)
+    assert p._tape[0][0].payload == {"note": 60, "vel": 100}
 
 def test_get_note_events_exposes_channel():
     p = Pattern()
@@ -609,9 +610,9 @@ def test_move_event_tape_note():
     me = MidiEditor()
     p  = Pattern()
     p.resize(2, 16)
-    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100, "bend": 0}))
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 4,
-          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+          "pad": 64, "vel": 100, "dur": 300, "event_idx": 0}
     result = me.move_event(p, ev, 4)
     assert result is not None
     assert (result["bar"], result["step"]) == (0, 8)
@@ -687,9 +688,9 @@ def test_insert_note_grid_never_sets_dur_override():
 def test_change_duration_lengthen_tape_note():
     me = MidiEditor()
     p  = Pattern()
-    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100, "bend": 0}))
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
-          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+          "pad": 64, "vel": 100, "dur": 300, "event_idx": 0}
     result = me.change_duration(p, ev, 50)
     assert result is not None
     assert result["dur"] == 350
@@ -700,7 +701,7 @@ def test_change_duration_shorten_clamped_to_10ms():
     p  = Pattern()
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=15, payload={"note": 3, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
-          "pad": 3, "vel": 100, "dur": 15, "bend": 0, "event_idx": 0}
+          "pad": 3, "vel": 100, "dur": 15, "event_idx": 0}
     result = me.change_duration(p, ev, -50)
     assert result["dur"] == 10
 
@@ -710,7 +711,7 @@ def test_change_duration_no_change_at_floor_returns_none():
     p  = Pattern()
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=10, payload={"note": 3, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
-          "pad": 3, "vel": 100, "dur": 10, "bend": 0, "event_idx": 0}
+          "pad": 3, "vel": 100, "dur": 10, "event_idx": 0}
     assert me.change_duration(p, ev, -50) is None
 
 
@@ -730,9 +731,9 @@ def test_change_velocity_increase_grid():
 def test_change_velocity_decrease_tape():
     me = MidiEditor()
     p  = Pattern()
-    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 50, "bend": 0}))
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 50}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
-          "pad": 64, "vel": 50, "dur": 300, "bend": 0, "event_idx": 0}
+          "pad": 64, "vel": 50, "dur": 300, "event_idx": 0}
     result = me.change_velocity(p, ev, -1)
     assert result["vel"] == 49
 
@@ -786,9 +787,9 @@ def test_shift_pitch_grid_octave_clamped_to_num_pads():
 def test_shift_pitch_patch_semitone():
     me = MidiEditor()
     p  = Pattern()
-    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100, "bend": 0}))
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
-          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+          "pad": 64, "vel": 100, "dur": 300, "event_idx": 0}
     result = me.shift_pitch(p, ev, 1)
     assert result["pad"] == 65
 
@@ -796,9 +797,9 @@ def test_shift_pitch_patch_semitone():
 def test_shift_pitch_patch_octave():
     me = MidiEditor()
     p  = Pattern()
-    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100, "bend": 0}))
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
-          "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+          "pad": 64, "vel": 100, "dur": 300, "event_idx": 0}
     result = me.shift_pitch(p, ev, -12)
     assert result["pad"] == 52
 
@@ -806,9 +807,9 @@ def test_shift_pitch_patch_octave():
 def test_shift_pitch_patch_clamped_to_127():
     me = MidiEditor()
     p  = Pattern()
-    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 127, "vel": 100, "bend": 0}))
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 127, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
-          "pad": 127, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+          "pad": 127, "vel": 100, "dur": 300, "event_idx": 0}
     assert me.shift_pitch(p, ev, 1) is None
 
 
@@ -819,7 +820,7 @@ def test_shift_pitch_kit_goes_beyond_num_pads():
     p  = Pattern()
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=500, payload={"note": p._num_pads - 1, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
-          "pad": p._num_pads - 1, "vel": 100, "dur": 500, "bend": 0, "event_idx": 0}
+          "pad": p._num_pads - 1, "vel": 100, "dur": 500, "event_idx": 0}
     result = me.shift_pitch(p, ev, 1)
     assert result["pad"] == p._num_pads
 
@@ -829,7 +830,7 @@ def test_shift_pitch_kit_clamped_to_127():
     p  = Pattern()
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=500, payload={"note": 127, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
-          "pad": 127, "vel": 100, "dur": 500, "bend": 0, "event_idx": 0}
+          "pad": 127, "vel": 100, "dur": 500, "event_idx": 0}
     assert me.shift_pitch(p, ev, 1) is None
 
 
@@ -1381,7 +1382,7 @@ def test_duplicate_event_kit_stacks_at_same_position():
     p  = Pattern()
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=500, payload={"note": 60, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_KIT, "track": 0, "bar": 0, "step": 0,
-          "offset": 0, "pad": 60, "vel": 100, "dur": 500, "bend": 0, "event_idx": 0}
+          "offset": 0, "pad": 60, "vel": 100, "dur": 500, "event_idx": 0}
     result = me.duplicate_event(p, ev)
     assert result is not None
     assert result["bar"] == 0 and result["step"] == 0
@@ -1392,9 +1393,9 @@ def test_duplicate_event_kit_stacks_at_same_position():
 def test_duplicate_event_patch_stacks_at_same_position():
     me = MidiEditor()
     p  = Pattern()
-    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100, "bend": 0}))
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 100}))
     ev = {"type": "note", "etype": ETYPE_PATCH, "track": 0, "bar": 0, "step": 0,
-          "offset": 0, "pad": 64, "vel": 100, "dur": 300, "bend": 0, "event_idx": 0}
+          "offset": 0, "pad": 64, "vel": 100, "dur": 300, "event_idx": 0}
     result = me.duplicate_event(p, ev)
     assert result["pad"] == 64
     assert len(tape_at(p, 0, 0, 0)) == 2
@@ -1967,3 +1968,50 @@ def test_delete_events_counts_only_successful_deletions():
 
 def test_delete_events_empty_list_returns_zero():
     assert MidiEditor().delete_events(Pattern(), []) == 0
+
+
+
+# ---------------------------------------------------------------------------
+# Plus de champ "bend" par note PATCH dans l'éditeur (Phase 7 étape 7i1)
+# ---------------------------------------------------------------------------
+
+def test_get_note_events_patch_has_no_bend_key():
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 0, _patch(60))
+    assert "bend" not in me.get_note_events(p, 0)[0]
+
+
+def test_insert_note_patch_payload_has_no_bend():
+    me = MidiEditor()
+    p  = Pattern()
+    res = me.insert_note(p, ETYPE_PATCH, 0, 0, 2, 60, vel=90, dur=300)
+    assert "bend" not in res
+    assert tape_at(p, 0, 0, 2)[0].payload == {"note": 60, "vel": 90}
+
+
+def test_insert_note_takes_no_bend_parameter():
+    with pytest.raises(TypeError):
+        MidiEditor().insert_note(Pattern(), ETYPE_PATCH, 0, 0, 2, 60, bend=100)
+
+
+def test_duplicate_event_patch_payload_has_no_bend():
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 0, _patch(60))
+    res = me.duplicate_event(p, me.get_note_events(p, 0)[0])
+    assert "bend" not in res
+    assert all(ev.payload == {"note": 60, "vel": 100} for ev in p._tape[0])
+
+
+def test_edit_tape_note_does_not_touch_bend_points():
+    """Déplacer une note PATCH ne déplace pas le bend posé à son temps : le
+    bend est un état de canal, indépendant de la note."""
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_BEND, payload={"value": 4096}))
+    add_tape_at(p, 0, 0, 0, _patch(60))
+    note = me.get_note_events(p, 0)[0]
+    me.edit_tape_note(p, note, new_step=5)
+    bends = [ev for ev in p._tape[0] if ev.etype == ETYPE_BEND]
+    assert [(ev.time, ev.payload["value"]) for ev in bends] == [(0, 4096)]

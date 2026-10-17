@@ -658,7 +658,7 @@ def test_erase_grid_then_paste_at_bar5():
 # _EventClipboard — copy_events / paste_events / has_event_clipboard
 # ---------------------------------------------------------------------------
 
-def _make_note(track, pad, bar, step, vel=100, etype=ETYPE_GRID, dur=200, bend=0,
+def _make_note(track, pad, bar, step, vel=100, etype=ETYPE_GRID, dur=200,
                num_steps=16, channel=0):
     return {
         "type":    "note",
@@ -670,7 +670,6 @@ def _make_note(track, pad, bar, step, vel=100, etype=ETYPE_GRID, dur=200, bend=0
         "offset":  bar * num_steps + step,
         "vel":     vel,
         "dur":     dur,
-        "bend":    bend,
         "channel": channel,
     }
 
@@ -771,7 +770,7 @@ def test_paste_events_skips_out_of_bounds_offset():
 def test_paste_events_tape_kp():
     te  = TrackEditor()
     p   = _make_pattern(num_tracks=1, num_bars=2, num_steps=16)
-    ev  = _make_note(0, 60, 0, 2, vel=100, etype=ETYPE_PATCH, dur=300, bend=200)
+    ev  = _make_note(0, 60, 0, 2, vel=100, etype=ETYPE_PATCH, dur=300)
     te.copy_events([ev])
     n = te.paste_events(p, 0, 8)
     assert n == 1
@@ -779,8 +778,7 @@ def test_paste_events_tape_kp():
     te_ev = tape_at(p, 0, 0, 8)[0]
     assert te_ev.etype == ETYPE_PATCH
     assert te_ev.payload.get("note") == 60
-    assert te_ev.payload.get("vel")  == 100
-    assert te_ev.payload.get("bend") == 200
+    assert te_ev.payload == {"note": 60, "vel": 100}   # sans bend (Phase 7 étape 7h1)
 
 
 def test_paste_events_no_clipboard_returns_zero():
@@ -801,7 +799,7 @@ def test_paste_events_grid_preserves_channel():
 def test_paste_events_tape_kp_preserves_channel():
     te  = TrackEditor()
     p   = _make_pattern(num_tracks=1, num_bars=2, num_steps=16)
-    ev  = _make_note(0, 60, 0, 2, vel=100, etype=ETYPE_PATCH, dur=300, bend=200, channel=12)
+    ev  = _make_note(0, 60, 0, 2, vel=100, etype=ETYPE_PATCH, dur=300, channel=12)
     te.copy_events([ev])
     te.paste_events(p, 0, 8)
     assert tape_at(p, 0, 0, 8)[0].channel == 12
@@ -892,7 +890,7 @@ def test_clipboard_roundtrip_still_preserves_notes():
     add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_KIT, dur=500, channel=2,
                                       payload={"note": 60, "vel": 80}))
     add_tape_at(p, 0, 0, 6, TapeEvent(ETYPE_PATCH, dur=300, channel=3,
-                                      payload={"note": 64, "vel": 70, "bend": 1234}))
+                                      payload={"note": 64, "vel": 70}))
     te.copy(p, 0)
     win = _FakeClipboardWindow(te)
 
@@ -902,7 +900,7 @@ def test_clipboard_roundtrip_still_preserves_notes():
     patch = [e for e in events if e.etype == ETYPE_PATCH][0]
     grid  = [e for e in events if e.etype == ETYPE_GRID][0]
     assert (kit.payload, kit.dur, kit.channel)     == ({"note": 60, "vel": 80}, 500, 2)
-    assert patch.payload["bend"] == 1234
+    assert patch.payload == {"note": 64, "vel": 70}
     assert (patch.dur, patch.channel)              == (300, 3)
     assert grid.payload == {"pad": 2, "vel": 100}
 
@@ -1034,7 +1032,9 @@ def test_clipboard_from_dict_old_format_without_frac_defaults_to_zero():
     by_etype = {ev.etype: ev for ev in events}
     assert by_etype[ETYPE_GRID].payload  == {"pad": 3, "vel": 100}
     assert by_etype[ETYPE_KIT].payload   == {"note": 60, "vel": 90}
-    assert by_etype[ETYPE_PATCH].payload == {"note": 64, "vel": 80, "bend": 1234}
+    # rec[7] (ancien bend par note) ignoré depuis la Phase 7 étape 7h1
+    assert by_etype[ETYPE_PATCH].payload == {"note": 64, "vel": 80}
+    assert by_etype[ETYPE_PATCH].channel == 2
     assert by_etype[ETYPE_CC].payload    == {"cc_num": 74, "value": 90}
     assert by_etype[ETYPE_PGM].payload   == {"program": 41}
 
@@ -1196,3 +1196,29 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {exc}")
             failed += 1
     print(f"\n{passed} passed, {failed} failed")
+
+
+
+# ---------------------------------------------------------------------------
+# Presse-papier : ancienne colonne bend des notes PATCH (Phase 7 étape 7i1)
+# ---------------------------------------------------------------------------
+
+def test_clipboard_to_dict_patch_keeps_column_layout_with_zero_bend():
+    """Position rec[7] gardée (écrite à 0) : canal en rec[8], fraction en rec[9]."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    add_tape_at(p, 0, 0, 6, TapeEvent(ETYPE_PATCH, dur=300, channel=3,
+                                      payload={"note": 64, "vel": 70}))
+    te.copy(p, 0)
+    recs = [r for r in _FakeClipboardWindow(te)._clipboard_to_dict()["tape"]
+            if r[0] == ETYPE_PATCH]
+    assert recs == [[ETYPE_PATCH, 0, 0, 6, 64, 70, 300, 0, 3, 0]]
+
+
+def test_clipboard_from_dict_ignores_old_patch_bend_with_frac():
+    te  = TrackEditor()
+    win = _FakeClipboardWindow(te)
+    win._clipboard_from_dict({"num_tracks": 1, "num_bars": 1, "num_steps": 16,
+                              "tape": [[ETYPE_PATCH, 0, 0, 3, 64, 80, 300, -4096, 5, 0.0]]})
+    ev = [e for evs in te._clipboard.tape.values() for e in evs][0]
+    assert (ev.payload, ev.channel, ev.dur) == ({"note": 64, "vel": 80}, 5, 300)
