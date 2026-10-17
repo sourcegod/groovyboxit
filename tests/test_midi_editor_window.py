@@ -1019,3 +1019,194 @@ def test_on_key_ctrl_f_without_shift_does_not_open_filter_dialog():
     win._on_key(evt)
     assert win.filter_dialog_calls == 0
     assert evt.skipped is True
+
+
+# ---------------------------------------------------------------------------
+# _delete_event — Suppr de tout type d'événement (Phase 7 étape 7c1)
+# Vrai Pattern + vrai MidiEditor ; fenêtre factice qui reconstruit sa liste
+# comme le mode Ctrl+2 (get_all_events) à chaque _refresh.
+# ---------------------------------------------------------------------------
+
+from pattern import Pattern, TapeEvent, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
+from midi.midi_editor import MidiEditor
+from tape_test_utils import add_tape_at, tape_at
+
+
+class _FakeDelPlayer:
+    def __init__(self, pattern):
+        self._pattern        = pattern
+        self.offsets_computed = 0
+
+    def _compute_offsets(self):
+        self.offsets_computed += 1
+
+
+class _FakeDelParent:
+    def __init__(self, pattern):
+        self._player    = _FakeDelPlayer(pattern)
+        self.undo_labels = []
+
+    def _pop_last_undo(self):
+        self.undo_labels.pop()
+
+
+class _FakeDeleteWindow:
+    _delete_event     = mew.MidiEditorWindow._delete_event
+    _deleted_name     = staticmethod(mew.MidiEditorWindow._deleted_name)
+    _DELETABLE_TYPES  = mew.MidiEditorWindow._DELETABLE_TYPES
+
+    def __init__(self, pattern, cur_idx=0, selected=()):
+        self._parent           = _FakeDelParent(pattern)
+        self._midi_editor      = MidiEditor()
+        self._midi_editor._cur_idx = cur_idx
+        self._selected_indices = set(selected)
+        self.statuses          = []
+        self._refresh()
+        self._selected_indices = set(selected)   # _refresh vide la sélection
+
+    def _refresh(self):
+        self._events = self._midi_editor.get_all_events(self._parent._player._pattern, [0])
+        self._selected_indices.clear()
+
+    def _add_undo(self, label):
+        self._parent.undo_labels.append(label)
+
+    def _clear_selection(self):
+        self._selected_indices.clear()
+
+    def _set_status(self, msg):
+        self.statuses.append(msg)
+
+
+def _del_patch(note):
+    return TapeEvent(ETYPE_PATCH, payload={"note": note, "vel": 100})
+
+
+def _del_pattern():
+    """Pas 2 : PATCH 72, Pitch Bend +500, PATCH 48 (accord + bend au même pas).
+    Pas 5 : CC#7. Pas 8 : Program Change 41."""
+    p = Pattern()
+    add_tape_at(p, 0, 0, 2, _del_patch(72))
+    add_tape_at(p, 0, 0, 2, TapeEvent(ETYPE_BEND, payload={"value": 500}))
+    add_tape_at(p, 0, 0, 2, _del_patch(48))
+    add_tape_at(p, 0, 0, 5, TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 90}))
+    add_tape_at(p, 0, 0, 8, TapeEvent(ETYPE_PGM, payload={"program": 41}))
+    return p
+
+
+def _idx_of(win, kind):
+    return next(i for i, e in enumerate(win._events) if e["type"] == kind)
+
+
+def test_delete_cursor_on_bend_removes_only_the_bend():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    win._midi_editor._cur_idx = _idx_of(win, "bend")
+    win._delete_event()
+    assert [e.etype for e in tape_at(p, 0, 0, 2)] == [ETYPE_PATCH, ETYPE_PATCH]
+    assert win.statuses[-1] == "Pitch Bend supprimé"
+    assert win._parent.undo_labels == ["Suppr Pitch Bend Tr1 B1:S3"]
+    assert win._parent._player.offsets_computed == 1
+
+
+def test_delete_cursor_on_cc_removes_only_the_cc():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    win._midi_editor._cur_idx = _idx_of(win, "cc")
+    win._delete_event()
+    assert tape_at(p, 0, 0, 5) == []
+    assert len(win._events) == 4
+    assert win.statuses[-1] == "CC#7 supprimé"
+    assert win._parent.undo_labels == ["Suppr CC#7 Tr1 B1:S6"]
+
+
+def test_delete_cursor_on_pgm_removes_only_the_pgm():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    win._midi_editor._cur_idx = _idx_of(win, "pgm")
+    win._delete_event()
+    assert tape_at(p, 0, 0, 8) == []
+    assert len(win._events) == 4
+    assert win.statuses[-1] == "Program Change supprimé"
+
+
+def test_delete_cursor_on_note_removes_chord_keeps_bend_same_step():
+    """Curseur sur une note : l'accord entier (72 et 48) est supprimé, dans
+    l'ordre event_idx (bug A), et le bend du même pas est conservé."""
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    win._midi_editor._cur_idx = _idx_of(win, "note")
+    win._delete_event()
+    remaining = tape_at(p, 0, 0, 2)
+    assert [(e.etype, e.payload.get("value")) for e in remaining] == [(ETYPE_BEND, 500)]
+    assert win.statuses[-1] == "Accord supprimé(e) (2 note(s))"
+
+
+def test_delete_chord_recorded_high_then_low_fully_removed():
+    """Bug A vu depuis l'interface : accord 67 puis 60 dans _tape."""
+    p = Pattern()
+    add_tape_at(p, 0, 0, 0, _del_patch(67))
+    add_tape_at(p, 0, 0, 0, _del_patch(60))
+    win = _FakeDeleteWindow(p)
+    win._delete_event()
+    assert p._tape[0] == []
+    assert win.statuses[-1] == "Accord supprimé(e) (2 note(s))"
+
+
+def test_delete_mixed_selection_removes_all_types():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    sel = {_idx_of(win, "bend"), _idx_of(win, "cc"), _idx_of(win, "pgm"),
+           _idx_of(win, "note")}
+    win._selected_indices = set(sel)
+    win._delete_event()
+    assert [e.etype for e in p._tape[0]] == [ETYPE_PATCH]
+    assert win.statuses[-1] == "4 événement(s) supprimé(s)"
+    assert win._parent.undo_labels == ["Suppr 4 événement(s) sélectionné(s)"]
+    assert win._selected_indices == set()
+
+
+def test_delete_selection_of_notes_only_keeps_note_messages():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    notes = {i for i, e in enumerate(win._events) if e["type"] == "note"}
+    win._selected_indices = set(notes)
+    win._delete_event()
+    assert [e.etype for e in p._tape[0]] == [ETYPE_BEND, ETYPE_CC, ETYPE_PGM]
+    assert win.statuses[-1] == "2 note(s) supprimée(s)"
+    assert win._parent.undo_labels == ["Suppr 2 note(s) sélectionnée(s)"]
+
+
+def test_delete_selection_of_bend_only():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    win._selected_indices = {_idx_of(win, "bend")}
+    win._delete_event()
+    assert ETYPE_BEND not in [e.etype for e in p._tape[0]]
+    assert win.statuses[-1] == "1 événement(s) supprimé(s)"
+
+
+def test_delete_failure_pops_undo():
+    """Rien de supprimé (événement disparu entre-temps) → l'undo est retiré."""
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    win._midi_editor._cur_idx = _idx_of(win, "cc")
+    p._tape[0] = [e for e in p._tape[0] if e.etype != ETYPE_CC]
+    win._delete_event()
+    assert win._parent.undo_labels == []
+    assert win.statuses == []
+
+
+def test_delete_cursor_moves_back_after_single_event():
+    p   = _del_pattern()
+    win = _FakeDeleteWindow(p)
+    i   = _idx_of(win, "pgm")
+    win._midi_editor._cur_idx = i
+    win._delete_event()
+    assert win._midi_editor._cur_idx == i - 1
+
+
+def test_delete_empty_list_does_nothing():
+    win = _FakeDeleteWindow(Pattern())
+    win._delete_event()
+    assert win.statuses == [] and win._parent.undo_labels == []

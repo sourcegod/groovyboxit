@@ -1882,3 +1882,88 @@ def test_filter_pos_to_includes_fraction_of_its_step():
     ev = me.get_all_events(_pattern_fractional_edge(), [0])
     crit = {"active": True, "etype_filter": "all", "pos_from": 0, "pos_to": 5}
     assert sorted(ev[i]["offset"] for i in me.filter_events(ev, crit)) == [5.4, 5.4]
+
+
+# ---------------------------------------------------------------------------
+# delete_events — suppression multiple dans l'ordre event_idx (Phase 7 étape 7c1)
+# ---------------------------------------------------------------------------
+
+def _patch(note):
+    return TapeEvent(ETYPE_PATCH, payload={"note": note, "vel": 100})
+
+
+def test_delete_events_chord_recorded_high_then_low_fully_removed():
+    """Bug A (7a1) : affichage trié par pad (60 avant 67) ≠ ordre _tape
+    (67 puis 60). Supprimer à l'envers de l'affichage décalait event_idx et
+    laissait la note 60 ; delete_events supprime tout l'accord."""
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 0, _patch(67))
+    add_tape_at(p, 0, 0, 0, _patch(60))
+    ev = me.get_note_events(p, 0)
+    assert [e["pad"] for e in ev] == [60, 67]
+    assert [e["event_idx"] for e in ev] == [1, 0]
+    assert me.delete_events(p, ev) == 2
+    assert p._tape[0] == []
+
+
+def test_delete_events_mixed_grid_patch_bend_same_step():
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 2, _patch(72))
+    p.set_cell(0, 3, 0, 2, 100)
+    add_tape_at(p, 0, 0, 2, TapeEvent(ETYPE_BEND, payload={"value": 500}))
+    add_tape_at(p, 0, 0, 2, _patch(48))
+    ev = me.get_all_events(p, [0])
+    assert len(ev) == 4
+    assert me.delete_events(p, ev) == 4
+    assert tape_at(p, 0, 0, 2) == []
+
+
+def test_delete_events_keeps_unselected_neighbours():
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 2, _patch(72))
+    add_tape_at(p, 0, 0, 2, TapeEvent(ETYPE_BEND, payload={"value": 500}))
+    add_tape_at(p, 0, 0, 2, _patch(48))
+    ev = me.get_all_events(p, [0])
+    targets = [e for e in ev if e["type"] == "note"]
+    assert me.delete_events(p, targets) == 2
+    remaining = tape_at(p, 0, 0, 2)
+    assert [(e.etype, e.payload["value"]) for e in remaining] == [(ETYPE_BEND, 500)]
+
+
+def test_delete_events_order_of_input_does_not_matter():
+    me = MidiEditor()
+    p  = Pattern()
+    for n in (64, 67, 60):
+        add_tape_at(p, 0, 0, 0, _patch(n))
+    ev = me.get_note_events(p, 0)
+    shuffled = [ev[1], ev[0], ev[2]]
+    assert me.delete_events(p, shuffled) == 3
+    assert p._tape[0] == []
+
+
+def test_delete_events_across_tracks_and_steps():
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 1, _patch(60))
+    add_tape_at(p, 0, 0, 1, _patch(62))
+    add_tape_at(p, 1, 0, 1, _patch(64))
+    add_tape_at(p, 1, 0, 3, TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 90}))
+    ev = me.get_all_events(p, [0, 1])
+    assert me.delete_events(p, ev) == 4
+    assert p._tape[0] == [] and p._tape[1] == []
+
+
+def test_delete_events_counts_only_successful_deletions():
+    me = MidiEditor()
+    p  = Pattern()
+    add_tape_at(p, 0, 0, 0, _patch(60))
+    ev = me.get_note_events(p, 0)
+    ghost = dict(ev[0], event_idx=5)
+    assert me.delete_events(p, [ev[0], ghost]) == 1
+
+
+def test_delete_events_empty_list_returns_zero():
+    assert MidiEditor().delete_events(Pattern(), []) == 0
