@@ -200,7 +200,7 @@ class MidiHandler:
         _bend_log(f"BEND_SET bend={bend} ({st:+.3f}st) synth_id={id(synth)} "
                   f"slot_engine_id={id(slot_engine) if slot_engine else 'same'}")
         if win._player.recording:
-            win._player.record_bend(bend)
+            win._player.record_bend(bend, channel)
         win._show_status(f"Pitch Bend: {st:+.2f} st")
 
     def on_cc(self, cc_num, value, channel):

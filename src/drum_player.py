@@ -4,7 +4,7 @@ import threading
 import os
 
 from metronome import Metronome
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from voice_manager import VoiceManager
 from quantize_manager import QuantizeManager
 from loop_manager import LoopManager, LoopWindow
@@ -26,7 +26,7 @@ class DrumPlayer:
     GRID_EVENT       = -6   # marqueur interne pour les événements grille (etype ETYPE_GRID de _tape)
     KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
-    BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
+    BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements Pitch Bend (etype ETYPE_BEND de _tape)
     # MOD_TAPE_EVENT (-5) supprimé en Phase 7 étape 5h : CC#1 rejoué via
     # CC_TAPE_EVENT (_tape), qui délègue déjà à on_mod_tape (TrackRouter.on_cc_tape).
     CC_TAPE_EVENT    = -7   # marqueur interne pour les événements CC générique (etype ETYPE_CC de _tape)
@@ -485,13 +485,9 @@ class DrumPlayer:
                             elif ev.etype == ETYPE_PGM:
                                 events.append((t_sec, self.PGM_TAPE_EVENT,
                                                (t_idx, ev.payload.get("program")), 0))
-                for t_idx, track_bends in enumerate(self._pattern._bend_tape):
-                    for float_off, bend_val in list(track_bends):
-                        if not (lp_start <= float_off <= lp_end):
-                            continue
-                        t_sec = (float_off - lp_start) * self.step_duration
-                        if t_sec > elapsed - 0.002:
-                            events.append((t_sec, self.BEND_TAPE_EVENT, (t_idx, bend_val), 0))
+                            elif ev.etype == ETYPE_BEND:
+                                events.append((t_sec, self.BEND_TAPE_EVENT,
+                                               (t_idx, ev.payload.get("value")), 0))
             events.extend(self._metro.build_events(
                 loop_bars, self._pattern._num_steps, self._pattern._num_beats,
                 self.step_duration, elapsed))
@@ -956,6 +952,24 @@ class DrumPlayer:
         step_idx = step % self._pattern._num_steps
         return float_offset, bar_idx, step_idx
 
+    def _compute_float_offset(self):
+        """Position d'enregistrement brute (en pas, flottante) pour les
+        contrôleurs continus (CC, Pitch Bend) : ni arrondie au pas, ni
+        quantifiée — contrairement à _compute_record_offset, réservé aux
+        notes (Phase 7 étape 5a décision 1, factorisé en 6b1).
+
+        0.0 pour un événement anticipé (count-in pré-armé) et pour l'arrondi
+        flottant en toute fin de boucle (time_val >= total_steps).
+        """
+        now          = time.perf_counter()
+        total_steps  = self._pattern._num_bars * self._pattern._num_steps
+        measure_secs = total_steps * self.step_duration
+        ref          = self._measure_start if self._measure_start is not None else now
+        time_val     = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
+        if time_val >= total_steps:
+            time_val = 0.0
+        return time_val
+
     #--------------------------------------------------------------------------
 
     def record_hit(self, pad_idx, velocity=100, channel=0):
@@ -1027,15 +1041,22 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_bend(self, bend_value):
-        """Enregistre un point d'automation pitch bend dans _bend_tape de la piste courante."""
-        now          = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
-        ref          = self._measure_start if self._measure_start is not None else now
-        float_offset = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
-        track_bends  = self._pattern._bend_tape[self._cur_track]
-        track_bends.append((float_offset, bend_value))
+    def record_bend(self, bend_value, channel=0):
+        """Enregistre un point d'automation Pitch Bend dans _tape (etype=ETYPE_BEND).
+
+        Position flottante brute, comme record_cc (contrôleur continu, voir
+        _compute_float_offset). Pas de dédoublonnage. Remplace _bend_tape
+        depuis la Phase 7 étape 6b1 (docs/DESIGN.md § 6a1)."""
+        time_val = self._compute_float_offset()
+        bar_idx, step_idx = self._pattern._time_to_bar_step(time_val)
+        track = self._cur_track
+        with self._pattern._lock:
+            self._pattern._ensure_track_count(track + 1)
+            self._pattern._tape[track].append(
+                TapeEvent(ETYPE_BEND, channel=channel,
+                          payload={"value": bend_value}, time=time_val)
+            )
+        return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
 
@@ -1071,13 +1092,7 @@ class DrumPlayer:
         record_bend) : un CC est un contrôleur continu, un balayage de
         molette tassé sur le pas serait rejoué en escalier (Phase 7 étape
         5b, docs/DESIGN.md § 5a décision 1)."""
-        now          = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
-        ref          = self._measure_start if self._measure_start is not None else now
-        time_val     = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
-        if time_val >= total_steps:   # arrondi flottant en toute fin de boucle
-            time_val = 0.0
+        time_val = self._compute_float_offset()
         bar_idx, step_idx = self._pattern._time_to_bar_step(time_val)
         track = self._cur_track
         with self._pattern._lock:
