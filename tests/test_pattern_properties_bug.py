@@ -5,14 +5,16 @@
 
     Avant la fusion _curpattern/_tape, les actions "Doubler"/"Diviser par 2"/
     "Redimensionner" faisaient `pat.load_pattern(live._curpattern)` (grille
-    seule) SANS resynchroniser _tape/_bend_tape/_mod_tape vers l'objet Pattern
-    stocké dans _pattern_list. Un pattern doublé contenant des notes K/P (ou
-    de l'automation bend/mod) perdait donc la synchronisation entre la grille
-    et la tape dans le store.
+    seule) SANS resynchroniser _tape/_bend_tape vers l'objet Pattern stocké
+    dans _pattern_list. Un pattern doublé contenant des notes K/P (ou de
+    l'automation bend) perdait donc la synchronisation entre la grille et
+    la tape dans le store.
 
     La fusion en une seule structure (_tape) corrige ce bug par construction :
-    Pattern.copy_from() clone dims + _tape + _bend_tape + _mod_tape en un seul
-    appel, il est donc impossible d'oublier une partie de l'état.
+    Pattern.copy_from() clone dims + _tape + _bend_tape en un seul appel, il
+    est donc impossible d'oublier une partie de l'état. (_mod_tape a existé
+    puis a été supprimé en Phase 7 étape 5h — CC#1 vit dans _tape comme tout
+    CC depuis 5b ; les assertions qui le visaient spécifiquement ont disparu.)
 
     Ce test reproduit directement la séquence Python (sans wx) : l'essentiel
     du bug est dans la logique pure, pas dans le dialog.
@@ -38,7 +40,6 @@ def _make_live_with_kp(num_bars=2, num_steps=16):
     add_tape_at(live, 0, 0, 4, TapeEvent(ETYPE_KIT, payload={"note": 36, "vel": 90}))
     add_tape_at(live, 0, 1, 2, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 60, "vel": 80, "bend": 50}))
     live._bend_tape[0].append((5.0, 1000))
-    live._mod_tape[0].append((3.0, 64))
     return player
 
 
@@ -57,7 +58,7 @@ def _fixed_sync(pat, live):
 # ---------------------------------------------------------------------------
 
 def test_buggy_sync_loses_kp_after_double():
-    """Documente le bug : load_pattern seul perd K/P/bend/mod après Doubler."""
+    """Documente le bug : load_pattern seul perd K/P/bend après Doubler."""
     player = _make_live_with_kp(num_bars=2)
     live   = player._pattern
     pat    = Pattern()
@@ -69,15 +70,14 @@ def test_buggy_sync_loses_kp_after_double():
     # La grille (G) a bien été doublée...
     assert pat.get_cell(0, 0, 0, 0) == 100
     assert pat.get_cell(0, 0, 2, 0) == 100   # copie de la mesure 0 → mesure 2
-    # ...mais K/P/bend/mod ont disparu (bug) : pat._tape ne contient QUE des G
+    # ...mais K/P/bend ont disparu (bug) : pat._tape ne contient QUE des G
     assert all(ev.etype == ETYPE_GRID for ev in all_tape_events(pat))
     assert pat._bend_tape == [[] for _ in range(pat._num_tracks)]
-    assert pat._mod_tape  == [[] for _ in range(pat._num_tracks)]
-    print("  bug confirmé : load_pattern seul perd K/P/bend/mod après Doubler : OK")
+    print("  bug confirmé : load_pattern seul perd K/P/bend après Doubler : OK")
 
 
 def test_fixed_sync_preserves_everything_after_double():
-    """copy_from() transfère G + K/P + bend/mod, avec bar_idx décalé de `half`."""
+    """copy_from() transfère G + K/P + bend, avec bar_idx décalé de `half`."""
     player = _make_live_with_kp(num_bars=2)
     live   = player._pattern
     pat    = Pattern()
@@ -98,11 +98,10 @@ def test_fixed_sync_preserves_everything_after_double():
     assert k_bars == [0, 2]   # original bar=0, copie bar=0+half(2)
     assert p_bars == [1, 3]   # original bar=1, copie bar=1+half(2)
 
-    # bend/mod également dupliqués avec l'offset de mesures
+    # bend également dupliqué avec l'offset de mesures
     assert pat._bend_tape[0] == live._bend_tape[0]
-    assert pat._mod_tape[0]  == live._mod_tape[0]
     assert len(pat._bend_tape[0]) == 2   # (5.0, ...) + copie (5.0+32, ...)
-    print("  fix confirmé : copy_from() préserve G + K/P + bend/mod après Doubler : OK")
+    print("  fix confirmé : copy_from() préserve G + K/P + bend après Doubler : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +135,6 @@ def test_fixed_sync_preserves_kp_after_halve():
     assert pat._num_bars == 2
     assert pat._tape == live._tape
     assert pat._bend_tape == live._bend_tape
-    assert pat._mod_tape  == live._mod_tape
     # Les notes K (bar=0) et P (bar=1) sont dans la moitié conservée
     etypes = {ev.etype for ev in all_tape_events(pat)}
     assert etypes == {ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH}

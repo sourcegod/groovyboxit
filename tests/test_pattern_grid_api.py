@@ -197,13 +197,12 @@ def test_to_dense_grid_matches_iter_grid():
 # copy_from
 # ---------------------------------------------------------------------------
 
-def test_copy_from_copies_dims_tape_bend_mod():
+def test_copy_from_copies_dims_tape_bend():
     src = Pattern()
     src.resize(3, 32)
     src.set_cell(0, 1, 2, 10, 90)
     add_tape_at(src, 0, 2, 10, _K(60, 90))
     src._bend_tape[0].append((5.0, 1000))
-    src._mod_tape[0].append((5.0, 64))
 
     dst = Pattern()
     dst.copy_from(src)
@@ -213,8 +212,7 @@ def test_copy_from_copies_dims_tape_bend_mod():
     assert dst.get_cell(0, 1, 2, 10) == 90
     assert any(ev.etype == ETYPE_KIT for ev in tape_at(dst, 0, 2, 10))
     assert dst._bend_tape[0] == [(5.0, 1000)]
-    assert dst._mod_tape[0]  == [(5.0, 64)]
-    print("  copy_from copie dims + tape + bend + mod : OK")
+    print("  copy_from copie dims + tape + bend (_mod_tape supprimé en 5h) : OK")
 
 
 def test_copy_from_is_independent_copy():

@@ -32,9 +32,8 @@ def _make_pattern():
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=500, payload={"note": 60, "vel": 100}))
     add_tape_at(p, 1, 0, 4, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 80, "bend": 0}))
 
-    # Automation bend/mod piste 0
+    # Automation bend piste 0 (_mod_tape supprimé en Phase 7 étape 5h)
     p._bend_tape[0] = [(2, 100), (6, -200)]
-    p._mod_tape[0]  = [(1, 64)]
     return p
 
 
@@ -197,9 +196,8 @@ def test_all_events_includes_bend():
 
 
 def test_all_events_no_longer_includes_mod_type():
-    """Phase 7 étape 5f : _mod_tape n'est plus une source de get_all_events
-    (_make_pattern pose pourtant p._mod_tape[0] = [(1, 64)]) — CC#1 n'a plus
-    de type "mod" séparé."""
+    """Phase 7 étape 5f/5h : "mod" n'est plus un type d'événement réel —
+    get_all_events ne le produit plus (CC#1 remonte comme "cc")."""
     me = MidiEditor()
     p  = _make_pattern()
     ev = me.get_all_events(p, [0])

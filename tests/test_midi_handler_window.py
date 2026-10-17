@@ -102,13 +102,20 @@ class _FakeMidiStatusCtrl:
 
 
 class _FakePlayer:
+    """Pas de record_mod ici volontairement (Phase 7 étape 5h) : si on_cc
+    l'appelait encore pour CC#1, ce serait un AttributeError — garde-fou de
+    non-régression pour test_on_cc_cc1_does_not_call_record_mod."""
     def __init__(self):
         self.recording  = False
         self._cur_track = 0
         self.recorded_programs = []   # [(program, channel), ...] via record_program_change
+        self.recorded_ccs      = []   # [(cc_num, value, channel), ...] via record_cc
 
     def record_program_change(self, program, channel=0):
         self.recorded_programs.append((program, channel))
+
+    def record_cc(self, cc_num, value, channel=0):
+        self.recorded_ccs.append((cc_num, value, channel))
 
 
 class _FakeRouter:
@@ -117,6 +124,9 @@ class _FakeRouter:
 
     def assign_slot(self, track, slot_idx):
         self.assigned_slot = (track, slot_idx)
+
+    def synth_ready(self):
+        return False
 
 
 class _FakeWinNoEditor:
@@ -202,3 +212,24 @@ def test_on_program_change_no_capture_when_not_recording():
     handler = mh.MidiHandler(win)
     handler.on_program_change(41, 3)
     assert win._player.recorded_programs == []
+
+
+# ---------------------------------------------------------------------------
+# MidiHandler.on_cc — CC#1 n'a plus qu'une seule capture (Phase 7 étape 5h)
+# ---------------------------------------------------------------------------
+
+def test_on_cc_cc1_does_not_call_record_mod():
+    """record_mod a disparu en 5h — _FakePlayer ne le définit pas exprès :
+    si on_cc l'appelait encore, cet appel lèverait AttributeError."""
+    win = _FakeWinNoEditor()
+    win._player.recording = True
+    handler = mh.MidiHandler(win)
+    handler.on_cc(1, 90, 0)   # ne doit pas lever
+
+
+def test_on_cc_cc1_captured_once_via_record_cc():
+    win = _FakeWinNoEditor()
+    win._player.recording = True
+    handler = mh.MidiHandler(win)
+    handler.on_cc(1, 90, 0)
+    assert win._player.recorded_ccs == [(1, 90, 0)]
