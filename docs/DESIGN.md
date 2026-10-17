@@ -1122,3 +1122,198 @@ un futur chantier de suppression de structure. La migration de `_bend_tape`
 vers `_tape` (même schéma probable) reste explicitement hors périmètre de
 ce chantier (voir Portée exclue ci-dessus), à numéroter séparément si elle
 est un jour entreprise.
+
+---
+
+## Phase 7 étape 6a1 — Migration `_bend_tape` → `_tape`/`ETYPE_BEND` (Pitch Bend)
+
+### Numérotation des commits de ce chantier
+
+À partir de ce chantier, chaque étape prévue porte un suffixe numérique :
+`6a1`, `6b1`, `6c1`… Un commit non prévu qui s'avère nécessaire en cours
+de route se range sous l'étape à laquelle il se rattache avec le suffixe
+suivant (`6a2`, `6b2`, `6b3`…), sans décaler les lettres des étapes
+suivantes (décidé le 2026-10-17).
+
+### Origine du besoin
+
+Suite directe de l'étape 5 (demandée le 2026-10-17) : après CC#1, le
+Pitch Bend est la **dernière automation** qui vit hors de `_tape`, dans une
+structure parallèle `_bend_tape`. But : une seule source de vérité pour
+tous les événements d'une piste (GRID/KIT/PATCH/CC/PGM/BEND), préalable à
+l'import/export MIDI.
+
+Différence avec l'étape 5 : il n'existe **aucune copie** du Pitch Bend dans
+`_tape` aujourd'hui (pas de doublon à arbitrer), mais **aucun etype** non
+plus — il faut en créer un. Et le Pitch Bend n'est pas un CC (statut MIDI
+`0xE0`, valeur 14 bits signée, pas de `cc_num`) : il ne peut pas se fondre
+dans `ETYPE_CC` comme CC#1 l'a fait.
+
+### État des lieux constaté en code (2026-10-17, 1656 tests verts)
+
+**Où vit `_bend_tape`** (liste par piste de tuples `(float_offset, value)`,
+`value` dans -8192..+8191, ni `TapeEvent`, ni canal, ni verrou) :
+- `pattern.py` : `__init__` (L159), `copy_from`, `new_pattern`,
+  `reset_pattern`, `clear_track`, `double_bars`, `halve_bars`, `resize`,
+  `to_dict` (clé `"bend_tape"`), `from_dict` (lecture tolérante, complétée
+  à `_num_tracks`).
+- `drum_player.py` : `BEND_TAPE_EVENT = -4`, `_on_bend_tape_cb`, boucle
+  `_run_thread` qui construit les `BEND_TAPE_EVENT` (L488-494) **hors du
+  snapshot sous verrou** de `_tape`, et les dispatche (L558-561) ;
+  `record_bend()` (L1030), sans canal ni verrou.
+- `ui/main_window.py:131` : `_on_bend_tape_cb = self._router.on_bend_tape`.
+- `ui/midi_handler_window.py::on_pitch_bend` (L203) : `record_bend(bend)`
+  (le canal reçu n'est pas transmis).
+- `track_router.py::on_bend_tape` (L396) : applique la valeur au moteur
+  du slot de la piste — inchangé par ce chantier.
+- `track_editor.py::_erase_tape_range` : efface la plage dans `_bend_tape`.
+- `midi/midi_editor.py` : `get_all_events` produit des entrées
+  `type="bend"` (sans `etype`, `channel` ni `event_idx`) ;
+  `edit_bend_event` (chirurgie directe sur la liste de tuples) ;
+  `filter_events` (`etype_filter="bend"`, bornes `bend_lo/hi`) ;
+  `delete_event` **ne gère pas** `"bend"` (point non supprimable).
+- UI : `mew_display.py` (2 branches `"bend"`, format Ctrl+2 sans index ni
+  canal, contrairement à CC/PGM), `mew_editing.py` (dispatch
+  `"bend"` → `edit_bend_event`), `midi_editor_dialogs.py::_CcEventEditDialog`
+  (branche `"bend"`, bornes -8192..8191), `dialogs_temporal.py::EventFilterDialog`
+  (`_TYPE_BEND`, groupe de bornes Pitch Bend Bas/Haut).
+- Tests : ~25 tests `_bend_tape`/`record_bend` dans `test_tape.py`
+  (L1166-1476), plus `test_pattern_properties_bug.py`,
+  `test_pattern_grid_api.py`, `test_track_editor.py` (fixture
+  `_make_pattern` qui **assigne** `p._bend_tape` — le même piège que
+  `_mod_tape` en 5i), `test_midi_editor.py`, `test_midi_editor_filter.py`,
+  `test_cc_event_edit_dialog.py`, `test_midi_editor_window.py`,
+  `test_event_filter_dialog.py`.
+
+**Hors `_bend_tape`, sans rapport avec ce chantier** : le champ `"bend"`
+du payload `ETYPE_PATCH` (valeur du bend au moment du note-on, rejouée par
+`on_patch_tape`) et le payload `{"bend":}` de `MidiMessage` PitchBend
+(`midi_parser.py`). Restent tels quels.
+
+**Bugs existants que la migration corrige d'elle-même** (constatés en
+relisant, aucun test ne les couvre aujourd'hui) :
+1. **`Pattern.resize` ne ré-encode pas `_bend_tape`** quand `num_steps`
+   change : il filtre seulement `off < total_steps`. Passer de 16 à 32 pas
+   par mesure déplace un bend posé à la mesure 2 pas 1 (`off=16`) vers la
+   mesure 1 pas 17. `_tape` passe déjà par le décodage/ré-encodage bar/step
+   avec fraction (5b).
+2. **Ctrl+X avec limiteurs perd les bends** : `_erase_tape_range` les
+   efface, mais `_extract` ne les met pas dans le presse-papier (il ne lit
+   que `_tape`). Même chose pour Ctrl+C/Ctrl+V de piste : les bends ne
+   suivent pas. Une fois dans `_tape`, `_extract`/`paste` (génériques par
+   etype, fraction conservée depuis 5d) les prennent en charge.
+3. **`edit_bend_event` perd la fraction même si la position ne change
+   pas** : il recalcule toujours `n_off = bar*num_steps+step` (entier).
+   `_replace_tape_event` conserve déjà le `time` d'origine dans ce cas (5b).
+4. **Itération de `_bend_tape` sans verrou** dans `_run_thread` pendant
+   que `record_bend` y ajoute : le snapshot sous `_pattern._lock` couvrira
+   les bends comme le reste.
+
+**Chemins génériques qui fonctionneront sans modification** (ils
+recopient `ev.etype`/`ev.payload` sans dispatch) : `copy_from`,
+`double_bars`, `halve_bars`, `resize`, `to_dict`/`from_dict` (`tape_v2`),
+`clear_track`, `TrackEditor._extract`/`paste`/fusion,
+`_erase_tape_range` (partie `_tape`), `_events_by_time`,
+`quantize_manager` (ne traite que KIT/PATCH, ignore le reste).
+
+**Chemins à dispatch explicite à compléter** :
+- `drum_player._run_thread` : nouvelle branche `ETYPE_BEND`.
+- `ui/mw_project.py::_clipboard_to_dict` (ignore silencieusement un etype
+  inconnu → bend perdu à la sauvegarde du presse-papier) et
+  `_clipboard_from_dict` (sa branche `else` finale traite tout etype
+  inconnu comme KIT/PATCH → enregistrement BEND **mal relu**). Branches
+  `ETYPE_BEND` explicites dans les deux.
+- `midi/midi_editor.py` : `get_cc_pgm_events` (ou équivalent) pour
+  remonter les `ETYPE_BEND`, `delete_event`, `edit_bend_event`.
+
+**Changement de comportement assumé** : `Pattern.is_empty()` (`not
+any(self._tape)`) deviendra faux pour un pattern ne contenant que du
+Pitch Bend — cohérent avec CC/PGM, qui sont déjà dans ce cas.
+
+### Décisions validées (utilisateur, 2026-10-17)
+
+1. **Nouvel etype `ETYPE_BEND = "BEND"`, payload `{"value": bend}`**
+   (-8192..+8191, 0 = centre), `dur=0`, `channel` = canal MIDI d'origine
+   (comme CC/PGM). Pas de `cc_num`.
+   - `"value"` plutôt que `"bend"` : même clé que `ETYPE_CC`, que le dict
+     d'événement de l'éditeur (`e["value"]`, déjà utilisé par le filtre
+     `bend_lo/hi` et `_CcEventEditDialog`), et que la future traduction
+     export MIDI (etype → statut, `value` → octets de données). La clé
+     `"bend"` reste réservée au payload PATCH (bend au note-on), ce qui
+     évite toute confusion entre les deux.
+   - *Écarté* : réutiliser `ETYPE_CC` avec un `cc_num` fictif (ex. -1 ou
+     128) — fausserait le filtre CC 0..127, `describe_cc`, l'édition Entrée
+     (bornes 0..127) et l'export MIDI ; le Pitch Bend est un type de
+     message MIDI à part entière.
+2. **Capture en temps flottant non quantifié** (règle de 5a décision 1,
+   déjà celle de `record_bend` aujourd'hui) : `record_bend(bend, channel=0)`
+   ajoute un `TapeEvent(ETYPE_BEND, …)` sous `_pattern._lock`. Le calcul
+   de l'offset flottant (dont la garde `time_val >= total_steps` que
+   `record_bend` n'a pas) est **factorisé** avec `record_cc` dans un helper
+   privé `_compute_float_offset()` plutôt que dupliqué une troisième fois.
+   `on_pitch_bend` transmet le canal reçu.
+3. **Lecture : on garde `BEND_TAPE_EVENT`, `_on_bend_tape_cb` et
+   `TrackRouter.on_bend_tape`** — seule la source change (branche
+   `ETYPE_BEND` dans la boucle sur le snapshot de `_tape`, la boucle
+   séparée sur `_bend_tape` disparaît). Aucun changement dans
+   `TrackRouter` ni dans le câblage de `main_window`.
+   - *Écarté* : router via `CC_TAPE_EVENT` (le Pitch Bend n'est pas un CC,
+     voir décision 1).
+4. **Suppression complète de `_bend_tape`** : attribut et toutes ses
+   branches dans `Pattern`, `TrackEditor._erase_tape_range`,
+   `drum_player._run_thread`, `MidiEditor`. Avant de clore : `grep -rn
+   _bend_tape` sur **tout** le dépôt, tests compris (leçon de 5i).
+5. **Rétrocompatibilité `.gvp` : migration à l'ouverture.** `to_dict`
+   n'écrit plus `"bend_tape"`. `from_dict` convertit chaque `(off, val)`
+   de `"bend_tape"` (si présente) en `TapeEvent(ETYPE_BEND, channel=0,
+   payload={"value": val}, time=off)` ajouté à `_tape[t]`. Pas de doublon
+   à retirer (contrairement à `mod_tape`) ; `channel=0` faute
+   d'information dans l'ancien format.
+6. **Éditeur MIDI : `"bend"` reste un type réel** (pas un alias comme
+   `"mod"`) — le filtre `etype_filter="bend"` et ses bornes `bend_lo/hi`,
+   le groupe Pitch Bend de `EventFilterDialog`, la branche `"bend"` de
+   `_CcEventEditDialog` restent inchangés.
+   - Les entrées `"bend"` sont produites depuis `_tape` (par la même
+     passe `_events_by_time` que CC/PGM, donc `event_idx` cohérent tous
+     etypes confondus) et gagnent `etype`, `channel`, `event_idx`.
+   - `edit_bend_event` passe par `_replace_tape_event` (fraction
+     conservée si position inchangée — corrige le bug 3).
+   - `delete_event` accepte `"bend"` (via `_delete_tape_event`) : un
+     point de bend devient supprimable, comme CC/PGM depuis 4i.
+   - Ctrl+2 : la ligne bend adopte le format des autres types
+     (« `i: position, Canal c, Pitch Bend, Valeur +v` ») au lieu de
+     l'ancien `Tr01  Bend:+v` sans index ni canal. Le format Ctrl+1
+     (mode Notes) n'affiche pas les bends, inchangé.
+
+### Portée explicitement exclue de ce chantier
+
+- Le champ `"bend"` du payload `ETYPE_PATCH` (bend figé au note-on) :
+  inchangé, sa coexistence avec l'automation `ETYPE_BEND` est un sujet
+  musical distinct.
+- `TrackRouter.on_bend_tape` et le moteur synthé (application du bend).
+- Quantisation des bends (comme les CC, ignorés par `quantize_manager`).
+- `copy_events`/`paste_events` « niveau événement » pour bend/CC/PGM
+  (inchangé depuis 4a, notes seulement).
+- Changement de canal d'un bend existant à l'édition (comme CC/PGM).
+- Bends déjà enregistrés dans des presets existants : migrés tels quels
+  avec `channel=0`, aucun recalage.
+
+### Découpage en commits
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **6a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **6b1** | Implémentation — `ETYPE_BEND` (constante + docstring `TapeEvent`) ; helper `_compute_float_offset` partagé par `record_cc`/`record_bend` ; `record_bend(bend, channel)` écrit dans `_tape` ; `on_pitch_bend` passe le canal ; branche `ETYPE_BEND` dans `_run_thread` (boucle `_bend_tape` retirée). Suite rouge jusqu'à 6c1 (tests `record_bend`/`_run_thread` de `test_tape.py`) — à signaler dans le titre. | `pattern.py`, `drum_player.py`, `ui/midi_handler_window.py` |
+| **6c1** | Tests — `record_bend` crée un `ETYPE_BEND` flottant non quantifié avec canal, sur la piste courante ; garde de fin de boucle ; `record_cc` inchangé après factorisation ; lecture d'un `ETYPE_BEND` → `_on_bend_tape_cb(track, value)` une seule fois ; adaptation des tests `record_bend` existants. | `test_tape.py`, `test_drum_player_cc.py`, `test_midi_handler_window.py` |
+| **6d1** | Implémentation — éditeur MIDI (décision 6) : bends remontés depuis `_tape` avec `event_idx`/`channel`/`etype`, `edit_bend_event` via `_replace_tape_event`, `delete_event` accepte `"bend"`, nouveau format Ctrl+2. | `midi/midi_editor.py`, `ui/mew_display.py` |
+| **6e1** | Tests — bend listé avec `event_idx` cohérent à côté d'une note/CC au même `time` ; édition valeur seule conserve la fraction ; déplacement → pas entier ; suppression ; filtre `"bend"` + bornes ; libellé Ctrl+2. Adaptation des tests qui posaient `_bend_tape` à la main. | `test_midi_editor*.py`, `test_cc_event_edit_dialog.py`, `test_midi_editor_window.py`, `test_event_filter_dialog.py` |
+| **6f1** | Implémentation — presse-papiers `mw_project` : branches `ETYPE_BEND` dans `_clipboard_to_dict`/`_clipboard_from_dict` (avec fraction). | `ui/mw_project.py` |
+| **6g1** | Tests — Ctrl+X/Ctrl+C/Ctrl+V de piste transportent les bends (fraction comprise, corrige le bug 2) ; round-trip dict du presse-papier avec un bend ; enregistrement BEND non relu comme KIT/PATCH. | `test_track_editor.py`, test presse-papier `mw_project` existant |
+| **6h1** | Implémentation — suppression de `_bend_tape` (décision 4) + migration `.gvp` à l'ouverture (décision 5). Suite rouge jusqu'à 6i1 — à signaler dans le titre. | `pattern.py`, `track_editor.py`, `drum_player.py` |
+| **6i1** | Tests — retrait/adaptation des tests `_bend_tape` (dont la fixture `test_track_editor.py::_make_pattern`) ; migration `from_dict` (`bend_tape` seul, avec notes/CC existants, absente) ; `to_dict` sans `"bend_tape"` ; `resize` 16→32 pas garde la position musicale d'un bend (corrige le bug 1) ; `double_bars`/`halve_bars`/`copy_from` sur `ETYPE_BEND`. | `test_tape.py`, `test_pattern_*.py`, `test_track_editor.py` |
+| **6j1** | Doc — clôture (DESIGN.md, `docs/SPECS.md` si concerné, mémoire), `grep -rn _bend_tape` sur tout le dépôt, `pytest tests/` complet vert. | `docs/DESIGN.md` |
+
+Ordre choisi : capture/lecture d'abord (6b1-6c1), pendant que `_bend_tape`
+existe encore comme attribut vide — l'éditeur (6d1) et le presse-papier
+(6f1) peuvent alors être testés sur `ETYPE_BEND` seul, et la suppression
+de la structure (6h1) n'arrive qu'en dernier, comme en 5h.
