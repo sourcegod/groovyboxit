@@ -623,6 +623,14 @@ où le format MIDI permet un Program Change à tout moment pendant la lecture.
 
 - `phase_incr` flottant dans le driver audio pour un pitch bend sans artefact
 - Automation : enregistrement de la trajectoire complète pendant Rec, relecture exacte
+- Capturé dans `_tape` (etype `ETYPE_BEND`, payload `{"value"}` -8192..+8191,
+  canal MIDI d'origine), en temps flottant non quantifié comme les CC
+  (Phase 7 étape 6). Relecture via `TrackRouter.on_bend_tape`. La structure
+  historique dédiée `_bend_tape` a été supprimée (Phase 7 étape 6h1) ; un
+  ancien `.gvp` qui en contient est converti à l'ouverture (canal 0).
+- Suit le copier/couper/coller de piste et l'effacement par limiteurs comme
+  les autres événements de `_tape`. Le champ `bend` d'une note PATCH (bend
+  figé au note-on) est distinct et inchangé.
 
 ### Mod Wheel CC#1 — LFO vibrato
 
@@ -962,16 +970,16 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
 - Ctrl+1 (MODE_NOTES, mode par défaut) : piste courante seulement, groupée par
   accord (format historique : `BBT  TrNN  Nom  Vel:NNN  [Dur:NNNms]`)
 - Ctrl+2 (MODE_ALL) : tous les événements des pistes sélectionnées (grille +
-  tape KIT/PATCH + CC), en **liste plate, sans regroupement**, un événement
-  par ligne :
+  tape KIT/PATCH + CC/Program Change/Pitch Bend), en **liste plate, sans
+  regroupement**, un événement par ligne :
   - Note : `index: position, Canal N, Note, numéro (nom), Durée NNNms, Vel NNN`
-  - CC (mod wheel, seul CC enregistré pour l'instant) :
-    `index: position, Canal N, CC, Numéro 1, Valeur NNN`
-  - Pitch Bend : format inchangé (`BBT  TrNN  Bend:+NNN`), pas encore intégré
-    au format Note/CC ci-dessus
+  - CC générique : `index: position, Canal N, CC, Numéro NN (nom), Valeur NNN`
+  - Program Change : `index: position, Canal N, Program Change, Program NN (nom)`
+  - Pitch Bend : `index: position, Canal N, Pitch Bend, Valeur +NNN`
+    (même format que les autres types depuis la Phase 7 étape 6d1)
   - `index` = position 1-based de la ligne dans la liste affichée (pas un
-    compteur d'accord) ; `Canal` = numéro de piste (aucun canal MIDI par
-    piste dans le modèle actuel — voir généralisation TapeEvent à venir)
+    compteur d'accord) ; `Canal` = canal MIDI réel de l'événement
+    (`TapeEvent.channel`, 0-15)
 
 **Navigation :**
 - Mode Notes (Ctrl+1) : ←/→ = groupe temporel (accord) précédent/suivant
@@ -1015,11 +1023,16 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   (`_MidiEventEditDialog`) — le listbox de note/pad reflète la même convention que
   la liste (`_dialog_note_choices`) : PATCH → note MIDI brute, KIT → nom de pad,
   GRID → résolu selon le slot (pitch réel si synthé, nom de pad sinon)
-- Entrée sur un événement Pitch Bend ou CC (mod wheel), en MODE_ALL (Ctrl+2)
-  uniquement : dialog dédié position (Bar/Beat/Tick) + valeur
-  (`_CcEventEditDialog`, bend -8192..8191 ou CC 0..127) — `edit_bend_event`/
-  `edit_mod_event` dans `MidiEditor`
-- Suppr : supprimer l'événement
+- Entrée sur un événement Pitch Bend, CC ou Program Change, en MODE_ALL
+  (Ctrl+2) uniquement : dialog dédié position (Bar/Beat/Tick) + valeur
+  (`_CcEventEditDialog`, bend -8192..8191, CC/program 0..127) —
+  `edit_bend_event`/`edit_cc_event`/`edit_pgm_event` dans `MidiEditor`. Valeur
+  seule modifiée → position exacte (fraction de pas) conservée ; position
+  modifiée → posé sur le pas entier choisi
+- Suppr : supprimer la ou les notes (CC/Program Change/Pitch Bend :
+  supprimables via `MidiEditor.delete_event`, pas encore depuis l'interface)
+- Limiteurs (i/o) : le limiteur droit inclut tout son pas, fraction comprise
+  (un CC/bend à 5.4 est dans une plage qui finit au pas 5 — Phase 7 étape 6g2)
 - Ctrl+C/X/V : presse-papier événements (cross-pistes)
 - Ctrl+Z / Shift+Z : Undo/Redo
 - Ctrl+Shift+Q : QuantizeDialog

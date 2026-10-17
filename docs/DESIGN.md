@@ -1343,3 +1343,42 @@ de la structure (6h1) n'arrive qu'en dernier, comme en 5h.
   entier (`ev.time < lim_r + 1`, `offset >= int(pos_to) + 1`), même règle
   que le collage en 5d. Les notes (toujours au pas entier) ne changent
   pas de comportement.
+- **6h1-6i1** — conformes au plan. En 6i1, vérifié en plus en lecture
+  seule que les `.gvp`/preset du dépôt (`data/`) se chargent ; aucun ne
+  contient de point `bend_tape`, la conversion n'est donc éprouvée que
+  par les tests (`project_01.gvp` garde une clé `"bend_tape"` vide,
+  convertie et retirée à sa prochaine sauvegarde).
+
+### Clôture (6j1)
+
+**6a1-6i1 FAITS** (commits `737497e`..`76cec7a`, 1689 tests passed) —
+**chantier Phase 7 étape 6 complet**. Les 6 décisions sont en place :
+`ETYPE_BEND` (payload `{"value"}` + canal) capturé en temps flottant via
+`_compute_float_offset` partagé avec `record_cc` (6b1/6c1) ; rejoué par le
+même chemin `BEND_TAPE_EVENT` → `on_bend_tape` depuis le snapshot sous verrou
+de `_tape` ; éditeur MIDI sur `_tape`, `"bend"` type réel, supprimable,
+même format Ctrl+2 que CC/PGM (6d1/6e1) ; presse-papier de piste et sa
+sérialisation (6f1/6g1) ; `_bend_tape` supprimé + migration `.gvp` (6h1/6i1).
+
+**Toutes les automations vivent désormais dans `_tape`** (GRID/KIT/PATCH/
+CC/PGM/BEND) : plus aucune structure parallèle, préalable à l'import/export
+MIDI.
+
+Les 4 bugs pré-existants du plan sont corrigés et testés (resize 16→32 pas,
+Ctrl+X avec limiteurs, fraction perdue à l'édition, itération sans verrou —
+ce dernier par construction, sans test dédié). Un 5e, hors plan, corrigé en
+6g2 (limiteur droit / `pos_to` excluant la fraction de leur pas).
+
+`grep -rn _bend_tape` final sur tout le dépôt : dans `src/`, plus que des
+commentaires historiques et la lecture de l'ancienne clé `"bend_tape"` par
+`from_dict` ; dans `tests/`, idem plus les tests de migration ; aucune
+assignation résiduelle (fixture `test_track_editor.py` nettoyée en 6i1).
+`docs/SPECS.md` mis à jour (Pitch Bend, format Ctrl+2, édition, limiteurs).
+
+**Restent hors périmètre** (inchangés, voir Portée exclue) : champ `"bend"`
+des notes PATCH, Suppr de CC/PGM/bend depuis l'interface de l'éditeur,
+`on_pitch_bend` qui ne capture rien si aucun synthé n'est prêt (retour
+anticipé avant `record_bend`, comportement antérieur à ce chantier).
+
+Convention de numérotation `6a1`/`6b1`… (suffixe numérique pour les commits
+imprévus) éprouvée : un seul commit imprévu, `6g2`.
