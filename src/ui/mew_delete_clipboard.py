@@ -4,6 +4,19 @@ import wx
 class DeleteClipboardMixin:
     """MidiEditorWindow — suppression, limiteurs et presse-papier d'événements."""
 
+    # Types supprimables depuis l'interface (Phase 7 étape 7b1 : CC, Program
+    # Change et Pitch Bend rejoignent les notes).
+    _DELETABLE_TYPES = ("note", "cc", "pgm", "bend")
+
+    @staticmethod
+    def _deleted_name(e):
+        """Nom d'un événement non-note pour les messages de suppression."""
+        if e["type"] == "cc":
+            return f"CC#{e.get('cc_num')}"
+        if e["type"] == "pgm":
+            return "Program Change"
+        return "Pitch Bend"
+
     def _delete_event(self):
         if not self._events:
             return
@@ -11,54 +24,72 @@ class DeleteClipboardMixin:
         cur = self._midi_editor._cur_idx
 
         if self._selected_indices:
-            # Supprimer toutes les notes sélectionnées (G uniquement)
-            targets = sorted(
-                [i for i in self._selected_indices
-                 if self._events[i].get("type") == "note"],
-                reverse=True
-            )
+            # Supprimer tous les événements sélectionnés, quel que soit leur
+            # type (notes, CC, Program Change, Pitch Bend)
+            targets = [self._events[i] for i in sorted(self._selected_indices)
+                       if self._events[i].get("type") in self._DELETABLE_TYPES]
             if not targets:
-                self._set_status("Aucune note sélectionnée supprimable")
+                self._set_status("Aucun événement sélectionné supprimable")
                 return
-            self._add_undo(f"Suppr {len(targets)} note(s) sélectionnée(s)")
-            deleted = 0
-            for idx in targets:
-                if self._midi_editor.delete_event(pat, self._events[idx]):
-                    deleted += 1
+            only_notes = all(e["type"] == "note" for e in targets)
+            if only_notes:
+                self._add_undo(f"Suppr {len(targets)} note(s) sélectionnée(s)")
+            else:
+                self._add_undo(f"Suppr {len(targets)} événement(s) sélectionné(s)")
+            deleted = self._midi_editor.delete_events(pat, targets)
             if deleted:
                 self._parent._player._compute_offsets()
                 self._clear_selection()
                 self._midi_editor._cur_idx = max(0, cur - deleted)
                 self._refresh()
-                self._set_status(f"{deleted} note(s) supprimée(s)")
+                if only_notes:
+                    self._set_status(f"{deleted} note(s) supprimée(s)")
+                else:
+                    self._set_status(f"{deleted} événement(s) supprimé(s)")
             else:
                 self._parent._pop_last_undo()
-        else:
-            # Supprimer le groupe (accord) courant
-            group = self._midi_editor.group_indices(self._events, cur)
-            targets = [i for i in group if self._events[i].get("type") == "note"]
-            if not targets:
-                self._set_status("Suppression non disponible pour ce type")
-                return
-            n = len(targets)
-            ev0 = self._events[targets[0]]
+            return
+
+        cur_ev = self._events[min(cur, len(self._events) - 1)]
+        if cur_ev.get("type") in ("cc", "pgm", "bend"):
+            # CC / Program Change / Pitch Bend sous le curseur : cet
+            # événement seul (comme Entrée, qui édite la ligne courante)
+            name = self._deleted_name(cur_ev)
             self._add_undo(
-                f"Suppr {'accord' if n > 1 else 'note'} "
-                f"Tr{ev0['track']+1} B{ev0['bar']+1}:S{ev0['step']+1}"
+                f"Suppr {name} Tr{cur_ev['track']+1} B{cur_ev['bar']+1}:S{cur_ev['step']+1}"
             )
-            deleted = sum(
-                1 for idx in sorted(targets, reverse=True)
-                if self._midi_editor.delete_event(pat, self._events[idx])
-            )
-            if deleted:
+            if self._midi_editor.delete_events(pat, [cur_ev]):
                 self._parent._player._compute_offsets()
-                self._midi_editor._cur_idx = max(0, cur - deleted)
+                self._midi_editor._cur_idx = max(0, cur - 1)
                 self._refresh()
-                self._set_status(
-                    f"{'Accord' if n > 1 else 'Note'} supprimé(e) ({deleted} note(s))"
-                )
+                self._set_status(f"{name} supprimé")
             else:
                 self._parent._pop_last_undo()
+            return
+
+        # Supprimer le groupe (accord) courant — notes seulement, les CC/PGM/
+        # bends au même offset sont conservés
+        group = self._midi_editor.group_indices(self._events, cur)
+        targets = [self._events[i] for i in group if self._events[i].get("type") == "note"]
+        if not targets:
+            self._set_status("Suppression non disponible pour ce type")
+            return
+        n = len(targets)
+        ev0 = targets[0]
+        self._add_undo(
+            f"Suppr {'accord' if n > 1 else 'note'} "
+            f"Tr{ev0['track']+1} B{ev0['bar']+1}:S{ev0['step']+1}"
+        )
+        deleted = self._midi_editor.delete_events(pat, targets)
+        if deleted:
+            self._parent._player._compute_offsets()
+            self._midi_editor._cur_idx = max(0, cur - deleted)
+            self._refresh()
+            self._set_status(
+                f"{'Accord' if n > 1 else 'Note'} supprimé(e) ({deleted} note(s))"
+            )
+        else:
+            self._parent._pop_last_undo()
 
     # ------------------------------------------------------------------
     # Limiteurs (délégation vers TrackEditor du parent)

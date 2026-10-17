@@ -295,6 +295,20 @@ class MidiEditor:
             return self._delete_tape_event(pattern, ev)
         return False
 
+    def delete_events(self, pattern, evs):
+        """Supprime plusieurs événements. Retourne le nombre supprimé.
+
+        Ordre (track, offset, event_idx) décroissant (Phase 7 étape 7b1) :
+        chaque suppression retire une entrée de _tape à la même position et
+        décale les event_idx supérieurs — en commençant par le plus grand,
+        aucun event_idx encore à traiter n'est décalé. L'ordre d'affichage
+        (notes triées par pad) ne convient pas : un accord PATCH enregistré
+        67 puis 60 n'était supprimé qu'à moitié.
+        """
+        ordered = sorted(evs, key=lambda e: (e["track"], e["offset"], e.get("event_idx", -1)),
+                         reverse=True)
+        return sum(1 for ev in ordered if self.delete_event(pattern, ev))
+
     def _delete_grid_event(self, pattern, ev):
         t, pad, b, s = ev["track"], ev["pad"], ev["bar"], ev["step"]
         if not (0 <= t < pattern._num_tracks):
