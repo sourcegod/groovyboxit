@@ -1570,3 +1570,58 @@ Ordre choisi :
 - D2 avant D3, parce que la pose d'un bend au note-on (D3) complète la
   capture de la molette (D2) et que ses tests de non-doublon en dépendent.
 - Dans D3, la capture/relecture passe avant la migration, comme en 6.
+
+### Avancement et écarts constatés
+
+- **7b1/7c1** (`87239f9`, `0f4d25b`) — conformes au plan. La contre-épreuve
+  des tests de fenêtre sur le code d'avant 7b1 n'est pas possible (le
+  fichier de tests ne s'importe pas sans `_deleted_name`) : le bug A reste
+  démontré par la reproduction de 7a1 et par les tests de
+  `MidiEditor.delete_events`.
+- **7d1/7e1** (`e7bb8b3`, `4c99d05`) — conformes. Contre-épreuve : 3 tests
+  rouges sur l'ancien code (capture sans synthé, statut brut, bout en bout
+  avec un vrai `DrumPlayer`).
+- **7f1/7g1** (`d8769a9`, `e5f4a76`) — conformes. La règle d'état est dans
+  `Pattern._bend_state_at`/`_chase_bend`, partagée avec la migration.
+  Point noté, non traité : à temps égal, `_bend_state_at` retient le
+  dernier `ETYPE_BEND` dans l'ordre de `_tape`, alors que la relecture
+  (`events.sort()` sur les tuples) les rejoue triés par valeur — deux bends
+  différents exactement au même temps sur une piste peuvent donc laisser un
+  état final différent de celui calculé. Cas non produit par la capture
+  (temps flottants) ; à reprendre si l'import MIDI en crée.
+- **7h1/7i1** (`e94603b`, `3efbb59`) — conformes. Les tests qui
+  construisaient encore des notes PATCH avec `"bend"` (fixtures de
+  `test_midi_editor.py`, `test_pattern_grid_api.py`,
+  `test_pattern_properties_bug.py`, `test_transport.py`) sont passés au
+  nouveau format ; l'ancien n'existe plus que via `_P_old` dans les tests
+  de migration.
+
+### Clôture (7j1)
+
+**7a1-7i1 FAITS** (commits `7a289b9`..`3efbb59`, 1746 tests passed) —
+**chantier Phase 7 étape 7 complet**. Les trois points laissés par le
+chantier 6 sont résolus :
+
+- **D1** — Suppr de l'éditeur MIDI supprime tout type d'événement
+  (sélection ; curseur sur CC/PGM/bend → cet événement seul ; curseur sur
+  une note → l'accord, bends du même pas conservés). Bug A corrigé :
+  `MidiEditor.delete_events` supprime par `event_idx` décroissant, un
+  accord KIT/PATCH n'est plus supprimé à moitié.
+- **D2** — `on_pitch_bend` capture même sans synthé prêt.
+- **D3** — le bend est un état de canal : plus de champ `"bend"` par note
+  PATCH (capture, relecture, éditeur, presse-papier, collage), bend tenu au
+  note-on reporté en `ETYPE_BEND`, anciens fichiers convertis à l'ouverture.
+  Le bend n'a plus qu'une source de vérité, préalable à l'export MIDI.
+
+`grep -rn '"bend"'` final sur tout le dépôt : dans `src/`, plus que la
+migration (`Pattern.from_dict`/`_migrate_patch_note_bends`), la colonne
+gardée du presse-papier (`mw_project`, écrite à 0) et des usages sans
+rapport (message Pitch Bend du parser MIDI, type d'événement `"bend"` de
+l'éditeur et du filtre) ; dans `tests/`, les tests de migration
+(`_P_old`) et d'ancien presse-papier. `docs/SPECS.md` mis à jour (Pitch
+Bend, Suppr, et description de `TapeEvent`/`_tape`/format `tape_v2`, qui
+décrivait encore la structure d'avant la Phase 7).
+
+Restent hors périmètre : copier/coller « niveau événement » de l'éditeur
+pour CC/PGM/bend, quantisation des bends, le cas des bends à temps égal
+ci-dessus.

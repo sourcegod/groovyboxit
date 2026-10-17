@@ -434,16 +434,23 @@ Pattern
 ### TapeEvent — capture MIDI unifiée
 
 ```python
-TapeEvent = namedtuple("TapeEvent", ["etype", "note", "vel", "dur", "bend"])
+TapeEvent(etype, dur=0, channel=0, payload={...}, time=pas)   # + id unique
 ```
 
-| `etype` | Source | Description |
+| `etype` | Source | `payload` |
 |---|---|---|
-| `"G"` | Grille | Pas issu de `_curpattern` (grille 16×16), note = numéro de pad |
-| `"K"` | Kit MIDI | Note MIDI brute (indépendante du kit_offset), bend = 0 |
-| `"P"` | Patch SYNTH | Note MIDI absolue + durée réelle + pitch bend en cents |
+| `ETYPE_GRID` | Grille | `{"pad", "vel"}` |
+| `ETYPE_KIT` | Kit MIDI | `{"note", "vel"}` — note MIDI brute (indépendante du kit_offset) |
+| `ETYPE_PATCH` | Patch SYNTH | `{"note", "vel"}` — note MIDI absolue + durée réelle (`dur`) |
+| `ETYPE_CC` | Control Change | `{"cc_num", "value"}` |
+| `ETYPE_PGM` | Program Change | `{"program"}` |
+| `ETYPE_BEND` | Pitch Bend | `{"value"}` -8192..+8191 |
 
-Toutes les sources sont stockées dans `_tape = {(track, bar, step): [TapeEvent, …]}`. La grille (`etype="G"`) remplace l'ancien `_curpattern` comme structure canonique.
+Toutes les sources sont stockées dans `_tape[track] = [TapeEvent, …]` (liste
+plate par piste, `time` en pas cumulés ; flottant non quantifié pour CC et
+Pitch Bend). La grille (`ETYPE_GRID`) remplace l'ancien `_curpattern` comme
+structure canonique. Une note PATCH ne porte plus de bend (Phase 7 étape 7) :
+voir Pitch Bend temps réel.
 
 ### Quantisation
 
@@ -629,8 +636,20 @@ où le format MIDI permet un Program Change à tout moment pendant la lecture.
   historique dédiée `_bend_tape` a été supprimée (Phase 7 étape 6h1) ; un
   ancien `.gvp` qui en contient est converti à l'ouverture (canal 0).
 - Suit le copier/couper/coller de piste et l'effacement par limiteurs comme
-  les autres événements de `_tape`. Le champ `bend` d'une note PATCH (bend
-  figé au note-on) est distinct et inchangé.
+  les autres événements de `_tape`.
+- Capturé même si aucun synthé n'est prêt sur la piste courante (comme les
+  CC) ; statut « Pitch Bend: +N » (valeur brute) dans ce cas, en demi-tons
+  sinon (Phase 7 étape 7d1).
+- Le bend est un **état de canal**, comme en MIDI : une note PATCH ne porte
+  plus de bend (Phase 7 étape 7f1) et joue avec l'état courant du moteur.
+  Une molette tenue au note-on pendant Rec pose un point `ETYPE_BEND` au
+  temps de la note si l'état de la piste y diffère (bend tenu avant
+  d'armer l'enregistrement conservé, sans doublon). À temps égal, le bend
+  est rejoué avant la note. Conséquence : deux notes qui se chevauchent
+  partagent le même bend.
+- Ancien champ `bend` par note (presets sauvés avant la Phase 7 étape 7h1) :
+  converti à l'ouverture en points `ETYPE_BEND` selon la même règle, puis
+  retiré des notes.
 
 ### Mod Wheel CC#1 — LFO vibrato
 
@@ -884,7 +903,7 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
       "track_pans":    [0, "…"],
       "voices":        [{ "name": "", "volume": 100, "pan": 0, "mute": false,
                           "solo": false, "duration_ms": 500 }, "…"],
-      "tape":          [[track, bar, step, etype, note, vel, dur_ms, bend], "…"]
+      "tape_v2":       [[[time, etype, dur_ms, channel, payload], "…"], "… (une liste par piste)"]
     },
     "…"
   ],
@@ -1029,8 +1048,13 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   `edit_bend_event`/`edit_cc_event`/`edit_pgm_event` dans `MidiEditor`. Valeur
   seule modifiée → position exacte (fraction de pas) conservée ; position
   modifiée → posé sur le pas entier choisi
-- Suppr : supprimer la ou les notes (CC/Program Change/Pitch Bend :
-  supprimables via `MidiEditor.delete_event`, pas encore depuis l'interface)
+- Suppr : supprimer l'élément courant ou la sélection (Phase 7 étape 7b1)
+  - sélection : tous les événements sélectionnés, quel que soit leur type
+    (notes, CC, Program Change, Pitch Bend)
+  - sans sélection, curseur sur une note : l'accord entier (les CC/PGM/bends
+    du même pas sont conservés)
+  - sans sélection, curseur sur un CC, un Program Change ou un Pitch Bend
+    (Ctrl+2) : cet événement seul
 - Limiteurs (i/o) : le limiteur droit inclut tout son pas, fraction comprise
   (un CC/bend à 5.4 est dans une plage qui finit au pas 5 — Phase 7 étape 6g2)
 - Ctrl+C/X/V : presse-papier événements (cross-pistes)
@@ -1287,8 +1311,8 @@ Le double-clic sur un item valide directement la sélection (`EVT_LISTBOX_DCLICK
 - CC : dispatch vers les handlers volume, pan, sustain, all-off, mod wheel, pitch bend
 
 ### _tape (capture MIDI unifiée)
-- `_tape = {(track, bar, step): [TapeEvent, …]}`
-- `TapeEvent(etype, note, vel, dur, bend)` — etype G/K/P
+- `_tape[track] = [TapeEvent, …]` (liste plate par piste)
+- `TapeEvent(etype, dur, channel, payload, time)` — etype GRID/KIT/PATCH/CC/PGM/BEND
 - Protégé par `threading.RLock` pour accès thread-safe (lecture MIDI + thread player)
 
 ---
