@@ -1317,3 +1317,17 @@ Ordre choisi : capture/lecture d'abord (6b1-6c1), pendant que `_bend_tape`
 existe encore comme attribut vide — l'éditeur (6d1) et le presse-papier
 (6f1) peuvent alors être testés sur `ETYPE_BEND` seul, et la suppression
 de la structure (6h1) n'arrive qu'en dernier, comme en 5h.
+
+### Avancement et écarts constatés
+
+- **6b1** (`61eb827`) — conforme au plan.
+- **6c1** — un écart : la garde « fin de boucle » de
+  `_compute_float_offset` (`time_val >= total_steps` → 0.0) **n'est pas
+  testée**. Une recherche numérique (tous les BPM entiers 40-300, et
+  200 000 durées de pas aléatoires, avec la plus grande valeur flottante
+  inférieure à la durée de boucle) n'a trouvé aucun cas où
+  `((now-ref) % measure_secs) / step_duration` atteint `total_steps`. La
+  garde reste en place par prudence (elle existait déjà dans `record_cc`),
+  sans test qui la déclenche. Le rejeu est testé sur la vraie boucle
+  `_run_thread` (`play_pattern` à 600 BPM), pas sur une copie de sa
+  logique comme l'ancien test `test_run_thread_build_bend_tape_events`.

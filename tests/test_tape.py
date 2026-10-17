@@ -17,7 +17,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from drum_player import DrumPlayer
 from tape_test_utils import (
     tape_at, has_tape_at, set_tape_at, add_tape_at, all_tape_events,
@@ -1268,33 +1268,105 @@ def test_from_dict_bend_tape_pads_to_num_tracks():
     assert p2._bend_tape[1] == []
     print("  from_dict bend_tape incomplet → complété avec [] : OK")
 
+def _bends(pattern, track):
+    """Événements ETYPE_BEND d'une piste de _tape (Phase 7 étape 6b1)."""
+    return [ev for ev in pattern._tape[track] if ev.etype == ETYPE_BEND]
+
 def test_record_bend_stores_float_offset_and_value():
+    """Phase 7 étape 6b1 : record_bend écrit un TapeEvent ETYPE_BEND dans
+    _tape (plus dans _bend_tape), payload {"value": bend}, dur=0."""
     pl = _make_player()
     pl.record_bend(2048)
-    bends = pl._pattern._bend_tape[0]
+    bends = _bends(pl._pattern, 0)
     assert len(bends) == 1
-    off, val = bends[0]
-    assert isinstance(off, float)
-    assert val == 2048
-    print("  record_bend stocke (float_offset, bend_value) : OK")
+    ev = bends[0]
+    assert isinstance(ev.time, float)
+    assert ev.payload == {"value": 2048}
+    assert ev.dur == 0
+    assert ev.channel == 0
+    print("  record_bend stocke TapeEvent(BEND, value=2048) dans _tape : OK")
+
+def test_record_bend_stores_channel():
+    pl = _make_player()
+    pl.record_bend(-100, channel=9)
+    assert _bends(pl._pattern, 0)[0].channel == 9
+    print("  record_bend conserve le canal MIDI d'origine : OK")
 
 def test_record_bend_multiple_points_accumulate():
     pl = _make_player()
     pl.record_bend(0)
     pl.record_bend(4096)
     pl.record_bend(-4096)
-    bends = pl._pattern._bend_tape[0]
+    bends = _bends(pl._pattern, 0)
     assert len(bends) == 3
-    assert [b for _, b in bends] == [0, 4096, -4096]
+    assert [ev.payload["value"] for ev in bends] == [0, 4096, -4096]
     print("  record_bend accumule plusieurs points sans déduplication : OK")
 
 def test_record_bend_uses_cur_track():
     pl = _make_player()
     pl._cur_track = 3
     pl.record_bend(1234)
-    assert pl._pattern._bend_tape[3] != []
-    assert pl._pattern._bend_tape[0] == []
+    assert _bends(pl._pattern, 3) != []
+    assert _bends(pl._pattern, 0) == []
     print("  record_bend enregistre sur la piste courante : OK")
+
+def test_record_bend_does_not_touch_bend_tape():
+    """_bend_tape n'est plus alimenté (supprimé en 6h1)."""
+    pl = _make_player()
+    pl.record_bend(1234)
+    assert all(t == [] for t in pl._pattern._bend_tape)
+    print("  record_bend n'écrit plus dans _bend_tape : OK")
+
+def test_record_bend_returns_bar_step():
+    pl = _make_player()
+    pl._pattern.resize(2, 16)
+    pl._measure_start = time.perf_counter() - 19.4 * pl.step_duration
+    bar_idx, step_idx = pl.record_bend(500)
+    assert (bar_idx, step_idx) == (1, 3)
+    print("  record_bend retourne (bar_idx, step_idx) tronqués : OK")
+
+def test_record_bend_stores_fractional_time():
+    """Contrôleur continu : position sous-pas conservée (comme record_cc)."""
+    pl = _player_at_offset(3.4)
+    pl.record_bend(1000)
+    ev = _bends(pl._pattern, 0)[0]
+    assert 3.35 < ev.time < 3.6, ev.time
+    assert ev.time != int(ev.time)
+    print("  record_bend stocke une position fractionnaire (≈3.4) : OK")
+
+def test_record_bend_ignores_record_quantization():
+    """La quantisation d'enregistrement reste réservée aux notes."""
+    pl = _player_at_offset(3.4)
+    pl._quant_in_recording = True
+    pl.quant_idx = 7   # 1/16 → calerait au pas 3
+    pl.record_bend(1000)
+    pl.record_hit(0)
+    bend = _bends(pl._pattern, 0)[0]
+    hit  = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_GRID][0]
+    assert bend.time != int(bend.time)
+    assert hit.time == 3
+    print("  record_bend ignore la quantisation d'enregistrement : OK")
+
+def test_record_bend_count_in_gives_zero():
+    pl = _make_player()
+    pl._measure_start = time.perf_counter() + 10
+    pl.record_bend(1000)
+    assert _bends(pl._pattern, 0)[0].time == 0.0
+    print("  record_bend pendant le count-in → position 0 : OK")
+
+def test_compute_float_offset_shared_by_cc_and_bend():
+    """record_cc et record_bend tirent leur position du même helper (6b1) :
+    à horloge égale, même position."""
+    from unittest import mock
+    pl = _player_at_offset(7.25)
+    with mock.patch("drum_player.time.perf_counter", return_value=time.perf_counter()):
+        pl.record_cc(74, 10)
+        pl.record_bend(10)
+    cc   = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_CC][0]
+    bend = _bends(pl._pattern, 0)[0]
+    assert cc.time == bend.time
+    assert 7.2 < bend.time < 7.4
+    print("  record_cc / record_bend : même position via _compute_float_offset : OK")
 
 def test_bend_tape_callback_receives_track_and_value():
     received = []
@@ -1319,20 +1391,29 @@ def test_bend_tape_no_callback_is_safe():
     except Exception as e:
         assert False, f"Exception inattendue : {e}"
 
-def test_run_thread_build_bend_tape_events():
+def test_run_thread_replays_bend_from_tape():
+    """Phase 7 étape 6b1 : la vraie boucle _run_thread rejoue les ETYPE_BEND
+    de _tape vers _on_bend_tape_cb(track, value), dans l'ordre, une seule
+    fois par point et par passage (plus de source _bend_tape parallèle)."""
+    import threading
     pl = _make_player()
-    pl._pattern._bend_tape[0] = [(4.0, 2048), (12.0, -1024)]
-    events = []
-    for t_idx, track_bends in enumerate(pl._pattern._bend_tape):
-        for float_off, bend_val in list(track_bends):
-            t_sec = float_off * pl.step_duration
-            events.append((t_sec, pl.BEND_TAPE_EVENT, (t_idx, bend_val), 0))
-    assert len(events) == 2
-    _, etype, (ti, bv), _ = events[0]
-    assert etype == pl.BEND_TAPE_EVENT
-    assert ti == 0
-    assert bv == 2048
-    print("  _run_thread construit les BEND_TAPE_EVENTs correctement : OK")
+    pl.set_bpm(600)                       # pas = 25 ms, boucle d'1 mesure = 0,4 s
+    pl._pattern._tape[1].append(TapeEvent(ETYPE_BEND, channel=2, payload={"value": 100},  time=0.0))
+    pl._pattern._tape[1].append(TapeEvent(ETYPE_BEND, channel=2, payload={"value": -200}, time=1.5))
+    received = []
+    done = threading.Event()
+    def _cb(t, v):
+        received.append((t, v))
+        if len(received) >= 2:
+            done.set()
+    pl._on_bend_tape_cb = _cb
+    try:
+        pl.play_pattern()
+        assert done.wait(2.0), f"bends non rejoués : {received}"
+    finally:
+        pl.stop_pattern()
+    assert received[:2] == [(1, 100), (1, -200)]
+    print("  _run_thread rejoue les ETYPE_BEND de _tape vers on_bend_tape_cb : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -1340,16 +1421,15 @@ def test_run_thread_build_bend_tape_events():
 # ---------------------------------------------------------------------------
 
 def _flush_pattern_to_store(pat, player_pattern):
-    """Simule _flush_pattern_to_store de MainWindow."""
+    """Simule _flush_pattern_to_store de MainWindow (bends inclus dans
+    _tape depuis la Phase 7 étape 6b1)."""
     flush_tape(pat, player_pattern)
-    pat._bend_tape = [list(t) for t in player_pattern._bend_tape]
 
 def _apply_pattern_from_store(player_pattern, store_pat):
     """Simule _apply_pattern_from_store de MainWindow."""
     flush_tape(player_pattern, store_pat)
-    player_pattern._bend_tape = [list(t) for t in store_pat._bend_tape]
 
-def test_flush_and_apply_preserve_bend_tape():
+def test_flush_and_apply_preserve_bends():
     pl = _make_player()
     pl.record_bend(2048)
     pl.record_bend(-1000)
@@ -1357,14 +1437,13 @@ def test_flush_and_apply_preserve_bend_tape():
     store_pat = Pattern()
     _flush_pattern_to_store(store_pat, pl._pattern)
 
-    assert store_pat._bend_tape[0] != [], "flush doit copier _bend_tape"
-    assert len(store_pat._bend_tape[0]) == 2
+    assert len(_bends(store_pat, 0)) == 2, "flush doit copier les ETYPE_BEND"
 
     player2 = _make_player()
     _apply_pattern_from_store(player2._pattern, store_pat)
 
-    assert player2._pattern._bend_tape[0] == pl._pattern._bend_tape[0]
-    print("  flush+apply store préserve _bend_tape (régression) : OK")
+    assert tapes_equal_strict(player2._pattern._tape, pl._pattern._tape)
+    print("  flush+apply store préserve les ETYPE_BEND (régression) : OK")
 
 def test_flush_and_apply_roundtrip_via_todict():
     pl = _make_player()
@@ -1382,9 +1461,10 @@ def test_flush_and_apply_roundtrip_via_todict():
     player2 = _make_player()
     _apply_pattern_from_store(player2._pattern, loaded_pat)
 
-    assert player2._pattern._bend_tape[0] == pl._pattern._bend_tape[0]
-    assert player2._pattern._bend_tape[3] == pl._pattern._bend_tape[3]
-    print("  cycle complet record→flush→to_dict→from_dict→apply préserve _bend_tape : OK")
+    assert len(_bends(player2._pattern, 0)) == 2
+    assert len(_bends(player2._pattern, 3)) == 1
+    assert tapes_equal_strict(player2._pattern._tape, pl._pattern._tape)
+    print("  cycle complet record→flush→to_dict→from_dict→apply préserve les ETYPE_BEND : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -1418,7 +1498,7 @@ def test_to_dict_does_not_raise_after_record_bend():
     try:
         pl._pattern.to_dict()
     except Exception as e:
-        assert False, f"to_dict lève une exception sur bend_tape runtime : {e}"
+        assert False, f"to_dict lève une exception sur ETYPE_BEND runtime : {e}"
     print("  to_dict ne lève pas d'exception sur données de record_bend : OK")
 
 def test_integration_record_json_reload():
@@ -1434,7 +1514,6 @@ def test_integration_record_json_reload():
 
     store = Pattern()
     flush_tape(store, pl._pattern)
-    store._bend_tape = [list(t) for t in pl._pattern._bend_tape]
 
     try:
         json_str = _json.dumps(store.to_dict(), separators=(',', ':'))
@@ -1446,11 +1525,10 @@ def test_integration_record_json_reload():
 
     pl2 = _make_player()
     flush_tape(pl2._pattern, restored)
-    pl2._pattern._bend_tape = [list(t) for t in restored._bend_tape]
 
     assert tapes_equal_strict(pl2._pattern._tape, pl._pattern._tape), "_tape perdu"
-    assert pl2._pattern._bend_tape == pl._pattern._bend_tape, "bend_tape perdu"
-    print("  intégration record→JSON→rechargement préserve _tape + _bend_tape : OK")
+    assert len(_bends(pl2._pattern, 0)) == 2, "ETYPE_BEND perdus"
+    print("  intégration record→JSON→rechargement préserve _tape (bends compris) : OK")
 
 def test_integration_record_json_reload_all_tracks():
     """Même test sur plusieurs pistes simultanément."""
@@ -1463,17 +1541,15 @@ def test_integration_record_json_reload_all_tracks():
 
     store = Pattern()
     flush_tape(store, pl._pattern)
-    store._bend_tape = [list(t) for t in pl._pattern._bend_tape]
 
     restored = Pattern()
     restored.from_dict(_json.loads(_json.dumps(store.to_dict(), separators=(',', ':'))))
 
     pl2 = _make_player()
     flush_tape(pl2._pattern, restored)
-    pl2._pattern._bend_tape = [list(t) for t in restored._bend_tape]
 
     assert tapes_equal_strict(pl2._pattern._tape, pl._pattern._tape)
-    assert pl2._pattern._bend_tape == pl._pattern._bend_tape
+    assert len(_bends(pl2._pattern, 2)) == 1
     print("  intégration multi-pistes record→JSON→rechargement : OK")
 
 
@@ -1969,14 +2045,22 @@ if __name__ == "__main__":
     test_roundtrip_bend_tape()
     test_from_dict_without_bend_tape_gives_empty()
     test_from_dict_bend_tape_pads_to_num_tracks()
+    # Automation Pitch Bend — ETYPE_BEND dans _tape (Phase 7 étape 6b1)
     test_record_bend_stores_float_offset_and_value()
+    test_record_bend_stores_channel()
     test_record_bend_multiple_points_accumulate()
     test_record_bend_uses_cur_track()
+    test_record_bend_does_not_touch_bend_tape()
+    test_record_bend_returns_bar_step()
+    test_record_bend_stores_fractional_time()
+    test_record_bend_ignores_record_quantization()
+    test_record_bend_count_in_gives_zero()
+    test_compute_float_offset_shared_by_cc_and_bend()
     test_bend_tape_callback_receives_track_and_value()
     test_bend_tape_no_callback_is_safe()
-    test_run_thread_build_bend_tape_events()
+    test_run_thread_replays_bend_from_tape()
     # Régression — flush/apply store
-    test_flush_and_apply_preserve_bend_tape()
+    test_flush_and_apply_preserve_bends()
     test_flush_and_apply_roundtrip_via_todict()
     # Tests préventifs — utilise les méthodes record_* (données runtime réelles)
     test_to_dict_does_not_raise_after_record_patch_note()

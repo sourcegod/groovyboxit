@@ -233,3 +233,57 @@ def test_on_cc_cc1_captured_once_via_record_cc():
     handler = mh.MidiHandler(win)
     handler.on_cc(1, 90, 0)
     assert win._player.recorded_ccs == [(1, 90, 0)]
+
+
+# ---------------------------------------------------------------------------
+# MidiHandler.on_pitch_bend — capture avec le canal (Phase 7 étape 6b1)
+# ---------------------------------------------------------------------------
+
+class _FakeSynth:
+    pitch_bend           = 0
+    pitch_bend_semitones = 0.0
+
+    def apply_pitch_bend(self):
+        pass
+
+
+class _FakeRouterSynthReady(_FakeRouter):
+    def __init__(self):
+        super().__init__()
+        self.synth          = _FakeSynth()
+        self._synth_slot_idx = None
+        self._slot_synths   = {}
+
+    def synth_ready(self):
+        return True
+
+
+class _FakeBendPlayer(_FakePlayer):
+    def __init__(self):
+        super().__init__()
+        self.recorded_bends = []   # [(bend, channel), ...] via record_bend
+
+    def record_bend(self, bend_value, channel=0):
+        self.recorded_bends.append((bend_value, channel))
+
+
+def _bend_win():
+    win = _FakeWinNoEditor()
+    win._player = _FakeBendPlayer()
+    win._router = _FakeRouterSynthReady()
+    return win
+
+
+def test_on_pitch_bend_captures_with_channel_when_recording():
+    win = _bend_win()
+    win._player.recording = True
+    handler = mh.MidiHandler(win)
+    handler.on_pitch_bend(-1234, 5)
+    assert win._player.recorded_bends == [(-1234, 5)]
+
+
+def test_on_pitch_bend_no_capture_when_not_recording():
+    win = _bend_win()
+    handler = mh.MidiHandler(win)
+    handler.on_pitch_bend(-1234, 5)
+    assert win._player.recorded_bends == []
