@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from track_editor import TrackEditor
 from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at
 
@@ -1038,6 +1038,120 @@ def test_clipboard_from_dict_old_format_without_frac_defaults_to_zero():
     assert by_etype[ETYPE_PATCH].payload == {"note": 64, "vel": 80, "bend": 1234}
     assert by_etype[ETYPE_CC].payload    == {"cc_num": 74, "value": 90}
     assert by_etype[ETYPE_PGM].payload   == {"program": 41}
+
+
+
+# ---------------------------------------------------------------------------
+# Presse-papier et Pitch Bend (ETYPE_BEND dans _tape, Phase 7 étape 6g1)
+# ---------------------------------------------------------------------------
+
+def _bends(events):
+    return sorted((round(ev.time, 6), ev.payload["value"], ev.channel)
+                  for ev in events if ev.etype == ETYPE_BEND)
+
+
+def _pattern_with_bends():
+    """Piste 0 : une note GRID au pas 3 et deux bends du même pas (3.4, 3.7)."""
+    p = _make_pattern()
+    p.set_cell(0, 2, 0, 3, 100)
+    p._tape[0].append(TapeEvent(ETYPE_BEND, channel=2, payload={"value": 4000},  time=3.4))
+    p._tape[0].append(TapeEvent(ETYPE_BEND, channel=2, payload={"value": -1000}, time=3.7))
+    return p
+
+
+def test_copy_paste_preserves_bends():
+    """Ctrl+C/Ctrl+V de piste : les bends suivent (valeur, canal, fraction) —
+    ils étaient perdus tant qu'ils vivaient dans _bend_tape."""
+    te = TrackEditor()
+    p  = _pattern_with_bends()
+    te.copy(p, 0)
+    te.paste(p, 1)
+    assert _bends(p._tape[1]) == [(3.4, 4000, 2), (3.7, -1000, 2)]
+
+
+def test_paste_bend_offset_by_destination_bar():
+    te = TrackEditor()
+    p  = _pattern_with_bends()
+    te.copy(p, 0)
+    te.paste(p, 1, dest_bar=1)   # mesure 1 → 16 + 3.x
+    assert [t for t, _, _ in _bends(p._tape[1])] == [19.4, 19.7]
+
+
+def test_erase_grid_with_limiters_moves_bends_to_clipboard():
+    """Ctrl+X avec limiteurs : les bends de la plage sont effacés ET mis dans
+    le presse-papier (bug 2 du plan 6a1 : ils étaient effacés sans être
+    copiés), puis recollés à l'identique."""
+    te = TrackEditor()
+    p  = _pattern_with_bends()
+    te.set_lim_left(2)
+    te.set_lim_right(4)
+    te.erase_grid(p, 0)
+
+    assert _bends(p._tape[0]) == []
+    clip = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    assert [(v, c) for _, v, c in _bends(clip)] == [(4000, 2), (-1000, 2)]
+
+    te.reset_lims()
+    te.paste(p, 0)
+    assert _bends(p._tape[0]) == [(3.4, 4000, 2), (3.7, -1000, 2)]
+
+
+def test_erase_with_limiters_keeps_bends_outside_range():
+    te = TrackEditor()
+    p  = _pattern_with_bends()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 7}, time=10.5))
+    te.set_lim_left(2)
+    te.set_lim_right(4)
+    te.erase(p, 0)
+    assert _bends(p._tape[0]) == [(10.5, 7, 0)]
+
+
+def test_paste_replace_cleans_fractional_bend_at_destination():
+    """Remplace : un bend fractionnaire présent au pas ciblé est nettoyé."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p.set_cell(0, 2, 0, 3, 100)
+    p._tape[1].append(TapeEvent(ETYPE_BEND, payload={"value": 55}, time=3.9))
+    te.copy(p, 0)
+    te.paste(p, 1)
+    assert _bends(p._tape[1]) == []
+
+
+def test_clipboard_roundtrip_preserves_bends():
+    """Sauvegarde/relecture .gvp du presse-papier (branches ETYPE_BEND de
+    6f1) : valeur, canal et fraction conservés, dur=0."""
+    te = TrackEditor()
+    p  = _pattern_with_bends()
+    te.copy(p, 0)
+    win = _FakeClipboardWindow(te)
+
+    d = win._clipboard_to_dict()
+    recs = sorted((r for r in d["tape"] if r[0] == ETYPE_BEND), key=lambda r: r[-1])
+    assert [r[:6] for r in recs] == [[ETYPE_BEND, 0, 0, 3, 4000, 2],
+                                     [ETYPE_BEND, 0, 0, 3, -1000, 2]]
+    assert [round(r[6], 6) for r in recs] == [0.4, 0.7]
+
+    te._clipboard = None
+    win._clipboard_from_dict(d)
+    events = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    assert _bends(events) == [(0.4, 4000, 2), (0.7, -1000, 2)]
+    assert all(ev.dur == 0 for ev in events if ev.etype == ETYPE_BEND)
+
+
+def test_clipboard_from_dict_bend_not_read_as_note():
+    """Un enregistrement BEND n'est plus relu comme KIT/PATCH par la branche
+    `else` ; channel/frac absents → 0."""
+    te  = TrackEditor()
+    d   = {"num_tracks": 1, "num_bars": 1, "num_steps": 16,
+           "tape": [[ETYPE_BEND, 0, 0, 5, -8192]]}
+    win = _FakeClipboardWindow(te)
+    win._clipboard_from_dict(d)
+    events = [ev for evs in te._clipboard.tape.values() for ev in evs]
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.etype   == ETYPE_BEND
+    assert ev.payload == {"value": -8192}
+    assert (ev.channel, ev.time, ev.dur) == (0, 0.0, 0)
 
 
 if __name__ == "__main__":
