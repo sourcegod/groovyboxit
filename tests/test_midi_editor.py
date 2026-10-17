@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at
 from midi.midi_editor import MidiEditor
 
@@ -32,8 +32,10 @@ def _make_pattern():
     add_tape_at(p, 0, 0, 0, TapeEvent(ETYPE_KIT, dur=500, payload={"note": 60, "vel": 100}))
     add_tape_at(p, 1, 0, 4, TapeEvent(ETYPE_PATCH, dur=300, payload={"note": 64, "vel": 80, "bend": 0}))
 
-    # Automation bend piste 0 (_mod_tape supprimé en Phase 7 étape 5h)
-    p._bend_tape[0] = [(2, 100), (6, -200)]
+    # Automation bend piste 0 — ETYPE_BEND dans _tape depuis la Phase 7
+    # étape 6d1 (_mod_tape supprimé en 5h, _bend_tape plus lu par l'éditeur)
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 100},  time=2))
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": -200}, time=6))
     return p
 
 
@@ -193,6 +195,29 @@ def test_all_events_includes_bend():
     ev = me.get_all_events(p, [0])
     bends = [e for e in ev if e["type"] == "bend"]
     assert len(bends) == 2
+    assert [(e["offset"], e["value"]) for e in bends] == [(2, 100), (6, -200)]
+    assert all(e["etype"] == ETYPE_BEND and e["channel"] == 0 for e in bends)
+
+
+def test_all_events_ignores_bend_tape():
+    """Phase 7 étape 6d1 : _bend_tape n'est plus une source de l'éditeur."""
+    me = MidiEditor()
+    p  = Pattern()
+    p._bend_tape[0] = [(3.0, 1000)]
+    assert [e for e in me.get_all_events(p, [0]) if e["type"] == "bend"] == []
+
+
+def test_bend_excluded_from_note_events():
+    me = MidiEditor()
+    p  = _make_pattern()
+    assert all(e["type"] == "note" for e in me.get_note_events(p, 0))
+
+
+def test_all_events_bend_respects_limiters():
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_all_events(p, [0], lim_left=4, lim_right=10)
+    assert [e["value"] for e in ev if e["type"] == "bend"] == [-200]
 
 
 def test_all_events_no_longer_includes_mod_type():
@@ -265,11 +290,14 @@ def test_delete_out_of_bounds_track():
     assert me.delete_event(p, ev) is False
 
 
-def test_delete_bend_returns_false():
+def test_delete_bend_not_found_returns_false():
+    """Phase 7 étape 6d1 : un bend est supprimable (dans _tape), mais un
+    event_idx qui ne résout rien est refusé sans rien toucher."""
     me = MidiEditor()
     p  = _make_pattern()
-    ev = {"type": "bend"}
+    ev = dict(_bend_ev(p), event_idx=99)
     assert me.delete_event(p, ev) is False
+    assert _bend_points(p) == [(2, 100), (6, -200)]
 
 
 def test_delete_mod_returns_false():
@@ -452,8 +480,14 @@ def test_insert_note_default_channel_zero():
 # ---------------------------------------------------------------------------
 
 def _bend_ev(p, offset=2, value=100):
-    return {"type": "bend", "track": 0, "bar": offset // p._num_steps,
-            "step": offset % p._num_steps, "offset": offset, "value": value}
+    """Relit l'event_info d'un bend depuis le pattern (event_idx à jour)."""
+    me = MidiEditor()
+    return [e for e in me.get_cc_pgm_events(p, 0)
+            if e["type"] == "bend" and e["offset"] == offset and e["value"] == value][0]
+
+
+def _bend_points(p, track=0):
+    return sorted((e.time, e.payload["value"]) for e in p._tape[track] if e.etype == ETYPE_BEND)
 
 
 def test_edit_bend_value():
@@ -463,8 +497,8 @@ def test_edit_bend_value():
     result = me.edit_bend_event(p, ev, new_value=500)
     assert result is not None
     assert result["value"] == 500
-    assert (2, 100) not in p._bend_tape[0]
-    assert (2, 500) in p._bend_tape[0]
+    assert result["etype"] == ETYPE_BEND
+    assert _bend_points(p) == [(2, 500), (6, -200)]
 
 
 def test_edit_bend_move_position():
@@ -475,8 +509,37 @@ def test_edit_bend_move_position():
     assert result["bar"]    == 1
     assert result["step"]   == 3
     assert result["offset"] == 1 * p._num_steps + 3
-    assert (2, 100) not in p._bend_tape[0]
-    assert (result["offset"], 100) in p._bend_tape[0]
+    assert _bend_points(p) == [(6, -200), (result["offset"], 100)]
+
+
+def test_edit_bend_value_keeps_fractional_time():
+    """Phase 7 étape 6d1 : valeur seule → time fractionnaire conservé
+    (l'ancienne version sur _bend_tape le ramenait au pas entier)."""
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 10}, time=5.37))
+    ev = me.get_cc_pgm_events(p, 0)[0]
+    res = me.edit_bend_event(p, ev, new_value=20)
+    assert res["offset"] == 5.37
+    assert _bend_points(p) == [(5.37, 20)]
+
+
+def test_edit_bend_move_lands_on_integer_step():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 10}, time=5.37))
+    ev = me.get_cc_pgm_events(p, 0)[0]
+    me.edit_bend_event(p, ev, new_step=9)
+    assert _bend_points(p) == [(9, 10)]
+
+
+def test_edit_bend_keeps_channel():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, channel=4, payload={"value": 10}, time=1))
+    res = me.edit_bend_event(p, me.get_cc_pgm_events(p, 0)[0], new_value=-10)
+    assert res["channel"] == 4
+    assert [e.channel for e in p._tape[0]] == [4]
 
 
 def test_edit_bend_value_clamped():
@@ -494,14 +557,15 @@ def test_edit_bend_out_of_bounds_returns_none():
     p  = _make_pattern()
     ev = _bend_ev(p)
     assert me.edit_bend_event(p, ev, new_bar=999) is None
-    assert (2, 100) in p._bend_tape[0]   # inchangé
+    assert (2, 100) in _bend_points(p)   # inchangé
 
 
 def test_edit_bend_not_found_returns_none():
     me = MidiEditor()
     p  = _make_pattern()
-    ev = _bend_ev(p, offset=99, value=1)
+    ev = dict(_bend_ev(p), event_idx=99)
     assert me.edit_bend_event(p, ev, new_value=50) is None
+    assert _bend_points(p) == [(2, 100), (6, -200)]
 
 
 # ---------------------------------------------------------------------------
@@ -1583,12 +1647,50 @@ def test_delete_event_pgm_removes_the_pgm_not_its_neighbours():
     assert [e.etype for e in at4] == [ETYPE_GRID, ETYPE_CC]
 
 
-def test_delete_event_bend_still_refused():
-    """Non-régression : bend/mod vivent hors de _tape, delete_event les refuse."""
+def test_delete_event_bend():
+    """Phase 7 étape 6d1 : un bend vit dans _tape, delete_event le supprime
+    (comme CC/PGM depuis 4i) sans toucher la note/CC/PGM de la même position."""
     me = MidiEditor()
     p  = _pattern_with_cc_pgm()
-    assert me.delete_event(p, {"type": "bend", "track": 0, "bar": 0,
-                               "step": 2, "offset": 2, "value": 100}) is False
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_BEND, payload={"value": 300}))
+    bend = [e for e in me.get_cc_pgm_events(p, 0) if e["type"] == "bend"][0]
+    assert me.delete_event(p, bend) is True
+    assert [e.etype for e in tape_at(p, 0, 0, 4)] == [ETYPE_GRID, ETYPE_CC, ETYPE_PGM]
+
+
+def test_bend_event_idx_shared_with_note_cc_pgm():
+    """event_idx du bend compté parmi tous les etypes de sa position : il
+    résout bien le bend (pas la note/CC/PGM voisins) à l'édition."""
+    me = MidiEditor()
+    p  = _pattern_with_cc_pgm()
+    add_tape_at(p, 0, 0, 4, TapeEvent(ETYPE_BEND, payload={"value": 300}))
+    bend = [e for e in me.get_cc_pgm_events(p, 0) if e["type"] == "bend"][0]
+    assert bend["event_idx"] == 3            # GRID, CC, PGM, BEND
+    res = me.edit_bend_event(p, bend, new_value=-300)
+    assert res is not None
+    at4 = tape_at(p, 0, 0, 4)
+    assert [e.etype for e in at4] == [ETYPE_GRID, ETYPE_CC, ETYPE_PGM, ETYPE_BEND]
+    assert at4[3].payload == {"value": -300}
+    assert at4[1].payload == {"cc_num": 74, "value": 90}   # CC intact
+
+
+def test_delete_fractional_bend():
+    me = MidiEditor()
+    p  = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 1}, time=3.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 5}, time=3))
+    bend = [e for e in me.get_cc_pgm_events(p, 0) if e["type"] == "bend"][0]
+    assert me.delete_event(p, bend) is True
+    assert [e.etype for e in p._tape[0]] == [ETYPE_CC]
+
+
+def test_filter_bend_on_real_events():
+    """Le filtre "bend" et ses bornes s'appliquent aux bends lus dans _tape."""
+    me = MidiEditor()
+    p  = _make_pattern()
+    ev = me.get_all_events(p, [0])
+    crit = {"active": True, "etype_filter": "bend", "bend_lo": -8192, "bend_hi": 0}
+    assert [ev[i]["value"] for i in me.filter_events(ev, crit)] == [-200]
 
 
 # --- edit_cc_event --------------------------------------------------------

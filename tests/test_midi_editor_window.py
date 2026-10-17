@@ -279,10 +279,17 @@ def test_event_label_all_cc1_shows_modulation_wheel_name():
         "    1: 1:1:1, Canal 2, CC, Numéro 1 (Modulation Wheel), Valeur 90"
 
 
-def test_event_label_all_bend_format_unchanged():
+def test_event_label_all_bend_format():
+    """Phase 7 étape 6d1 : même format que les autres types (index, canal)."""
     win = _FakeEventLabelWindow()
-    ev  = {"type": "bend", "track": 0, "bar": 0, "step": 0, "value": 500}
-    assert win._event_label_all(0, ev) == "    1:1:1  Tr01  Bend:+500"
+    ev  = {"type": "bend", "track": 0, "bar": 0, "step": 0, "value": 500, "channel": 3}
+    assert win._event_label_all(0, ev) == "    1: 1:1:1, Canal 3, Pitch Bend, Valeur +500"
+
+
+def test_event_label_all_bend_negative_value():
+    win = _FakeEventLabelWindow()
+    ev  = {"type": "bend", "track": 0, "bar": 0, "step": 0, "value": -8192, "channel": 0}
+    assert win._event_label_all(4, ev) == "    5: 1:1:1, Canal 0, Pitch Bend, Valeur -8192"
 
 
 # ---------------------------------------------------------------------------

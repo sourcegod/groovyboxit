@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import wx
-from pattern import Pattern, TapeEvent, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, TapeEvent, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from midi.midi_editor import MidiEditor
 from ui.midi_editor_dialogs import _CcEventEditDialog
 import ui.mew_editing as mew_editing
@@ -220,12 +220,16 @@ def test_edit_cc_dialog_pops_undo_when_edit_refused(monkeypatch):
 
 
 def test_edit_cc_dialog_still_handles_bend(monkeypatch):
-    """Non-régression : bend passe toujours par edit_bend_event."""
+    """Non-régression : bend passe toujours par edit_bend_event — sur un
+    ETYPE_BEND de _tape depuis la Phase 7 étape 6d1, voisin du CC/PGM."""
     win, p = _win_with_cc_pgm(monkeypatch)
-    p._bend_tape[0] = [(4, 100)]
-    ev = {"type": "bend", "track": 0, "bar": 0, "step": 4, "offset": 4, "value": 100}
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 100}, time=p._bar_step_to_time(0, 4)))
+    ev = [e for e in win._midi_editor.get_cc_pgm_events(p, 0) if e["type"] == "bend"][0]
     win._edit_cc_dialog(ev)
-    assert (3, 55) in p._bend_tape[0]
+    bend = [e for e in p._tape[0] if e.etype == ETYPE_BEND][0]
+    assert bend.payload == {"value": 55}
+    assert bend.time == p._bar_step_to_time(0, 3)
+    assert [e.etype for e in p._tape[0] if e.time == p._bar_step_to_time(0, 4)] == [ETYPE_CC, ETYPE_PGM]
     assert "Bend" in win.undos[0]
 
 
