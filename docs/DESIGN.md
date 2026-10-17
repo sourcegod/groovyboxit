@@ -1091,3 +1091,34 @@ perdraient ou rateraient une partie fractionnaire :
 | **5h** | Implémentation — suppression de `_mod_tape` (décision 2) + migration `.gvp` à l'ouverture (décision 3). Suite rouge jusqu'à 5i (tests `_mod_tape` de `test_tape.py` obsolètes) — à signaler dans le titre du commit. | `pattern.py`, `drum_player.py`, `ui/main_window.py`, `ui/midi_handler_window.py`, `track_editor.py` |
 | **5i** | Tests — retrait/adaptation des tests `_mod_tape` ; migration `from_dict` (mod_tape seul, mod_tape + doublon CC#1, mod_tape vide qui garde les CC#1) ; `to_dict` sans `"mod_tape"` ; CC#1 rejoué une seule fois ; `on_cc` n'appelle plus `record_mod`. | `test_tape.py`, `test_pattern_*.py`, `test_track_editor.py`, `test_midi_handler_window.py` |
 | **5j** | Doc — clôture (DESIGN.md, mémoire), `pytest tests/` complet vert. | `docs/DESIGN.md` |
+
+**5b-5j FAITS** (commits `37e9441`..`4b85a6b`, 1656 tests passed) —
+**chantier Phase 7 étape 5 complet**. Les 4 décisions sont en place : CC en
+temps flottant non quantifié (5b/5c, `ev["offset"]` plutôt que bar/step
+reconstruit partout où ça comptait) ; presse-papiers `TrackEditor`/
+`mw_project.py` sûrs vis-à-vis de la fraction (5d/5e) ; éditeur MIDI un seul
+type `"cc"`, `"mod"` devenu un simple alias de filtre (5f/5g) ;
+`_mod_tape` entièrement supprimé avec migration `.gvp` à l'ouverture (5h/5i).
+CC#1 (Mod Wheel) n'a plus qu'une seule source de vérité, dans `_tape`, comme
+GRID/KIT/PATCH/PGM l'ont déjà pour le reste.
+
+Deux pièges trouvés en cours de route, hors plan d'origine, tous deux
+corrigés immédiatement :
+- En 5d : le nettoyage en mode remplace/fusion des presse-papiers comparait
+  `ev.time` par égalité exacte — un CC fractionnaire déjà présent à
+  destination aurait survécu à un collage "remplace". Comparaison par pas
+  entier (`int(ev.time) != time`) à la place.
+- En 5i : `test_track_editor.py::_make_pattern` posait encore
+  `p._mod_tape = [...]`, une assignation qui aurait recréé l'attribut sans
+  lever (contrairement à une lecture) — repéré en relisant tout le dépôt
+  après coup, pas par un échec de test. Réflexe à garder : `grep -rn` sur le
+  nom complet de la structure supprimée avant de clore un chantier de ce
+  genre, ne pas se fier uniquement à la suite de tests.
+
+5h et 5i ont été committés séparément bien que faits dans la même session
+(impl rouge connue, puis tests qui ramènent au vert), pour garder le
+découpage du plan lisible dans l'historique — convention à reprendre pour
+un futur chantier de suppression de structure. La migration de `_bend_tape`
+vers `_tape` (même schéma probable) reste explicitement hors périmètre de
+ce chantier (voir Portée exclue ci-dessus), à numéroter séparément si elle
+est un jour entreprise.
