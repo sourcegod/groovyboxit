@@ -1382,3 +1382,191 @@ anticipé avant `record_bend`, comportement antérieur à ce chantier).
 
 Convention de numérotation `6a1`/`6b1`… (suffixe numérique pour les commits
 imprévus) éprouvée : un seul commit imprévu, `6g2`.
+
+---
+
+## Phase 7 étape 7a1 — Points restants du Pitch Bend : Suppr, capture sans synthé, champ `"bend"` des notes PATCH
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en 6 : `7a1`, `7b1`, `7c1`… ; un commit imprévu inséré
+après `7b1` s'appelle `7b2`, `7b3`, etc.
+
+### Origine du besoin
+
+Le chantier 6 a laissé trois points hors périmètre (voir sa section
+« Clôture (6j1) »). Ce chantier les traite, plus un bug trouvé en écrivant
+ce plan.
+
+### État des lieux constaté en code (2026-10-17, 1689 tests verts)
+
+**Point 1 — Suppr dans l'éditeur MIDI** (`ui/mew_delete_clipboard.py::_delete_event`).
+- Avec une sélection, seules les notes (`type == "note"`) sont gardées ;
+  sinon le message est « Aucune note sélectionnée supprimable ».
+- Sans sélection, c'est le groupe au même offset (`group_indices`), filtré
+  sur les notes ; sinon le message est « Suppression non disponible pour ce
+  type ».
+- Pourtant, `MidiEditor.delete_event` sait déjà supprimer `"cc"`, `"pgm"` et
+  `"bend"` (depuis 4i et 6d1). Il ne manque que l'interface.
+- En Ctrl+1 (`MODE_NOTES`), la liste ne contient que des notes.
+- En Ctrl+2 (`MODE_ALL`), elle contient aussi CC, PGM et Pitch Bend.
+- Entrée en Ctrl+2 édite l'événement sous le curseur, quel que soit son type.
+
+**Bug pré-existant trouvé (bug A) — suppression d'un accord KIT/PATCH.**
+- `_delete_tape_event` retrouve un événement par `time` + `event_idx`.
+  `event_idx` est sa position parmi tous les événements de la piste à ce
+  `time`, dans l'ordre de `_tape`.
+- `get_note_events` trie l'affichage par `(offset, pad)`, donc dans un ordre
+  qui peut différer de `event_idx`.
+- `_delete_event` supprime « à l'envers de l'affichage ». Après la première
+  suppression, les `event_idx` restants sont décalés.
+- Reproduit hors suite : deux notes PATCH au temps 0, 67 puis 60 dans
+  `_tape`. Affichage : 60 (idx 1), 67 (idx 0). `delete_event` sur les deux
+  à l'envers de l'affichage → `[True, False]`, **la note 60 reste**.
+- Pas de souci pour les notes GRID seules (elles passent par `set_cell`,
+  par pad). Mais un mélange GRID + KIT/PATCH, ou demain note + bend au
+  même pas, est touché.
+
+**Point 2 — `on_pitch_bend` sans synthé** (`ui/midi_handler_window.py`).
+- `if not win._router.synth_ready(): return` arrive **avant**
+  `record_bend`.
+- Si la piste courante n'a pas de synthé chargé, la molette n'est donc pas
+  enregistrée.
+- À l'inverse, `on_cc` enregistre (`record_cc`) avant tout effet live.
+- La relecture (`TrackRouter.on_bend_tape`) ignore déjà proprement une
+  piste dont le slot n'est pas un synthé.
+
+**Point 3 — champ `"bend"` des notes PATCH.**
+- À la capture, `_handle_synth_note_on` lit `synth.pitch_bend` (0 si pas de
+  synthé) et le passe à `record_patch_note(…, bend=)`, qui l'écrit dans le
+  payload `{"note","vel","bend"}`.
+- À la relecture, `_run_thread` le passe à `on_patch_tape(…, bend)`.
+  `on_patch_tape` pose `engine.pitch_bend = bend` le temps du `play()`,
+  puis **restaure l'ancienne valeur**. Le bend est donc propre à la note,
+  pas un état de canal.
+- Il y a deux sources de vérité pour le bend :
+  - le payload de la note, valeur figée à son départ ;
+  - les `ETYPE_BEND`, état du canal.
+  Elles peuvent se contredire au même pas.
+- Le MIDI ne connaît que l'état de canal : un fichier `.mid` n'a pas de
+  bend par note. C'est un frein pour l'import/export et le mode Rack GM.
+- Ordre de rejeu à `t_sec` égal : `events.sort()` trie sur le marqueur, donc
+  `BEND_TAPE_EVENT` (-4) passe avant `PATCH_TAPE_EVENT` (-3). Un bend posé au
+  même temps qu'une note s'applique donc avant elle.
+- Autres porteurs du champ :
+  - `MidiEditor` (dicts de notes, `edit_tape_note`, insertion,
+    duplication) ;
+  - presse-papier `mw_project` (`rec[7]` pour PATCH) ;
+  - `TrackEditor` (collage) ;
+  - `Pattern.from_dict` (ancien format `patch_tape`, `rec[6]`) ;
+  - le docstring `TapeEvent`.
+- Données réelles : les `.gvp` et le preset de `data/` ne contiennent
+  **aucun** `"bend"` non nul.
+
+### Décisions proposées (à valider par l'utilisateur)
+
+**D1 — Suppr dans l'éditeur supprime tout type d'événement.**
+- Avec une sélection : tous les événements sélectionnés sont supprimés,
+  quel que soit leur type.
+- Sans sélection, curseur sur une note : comportement inchangé, l'accord
+  entier est supprimé. Les CC, PGM et bends au même offset sont conservés.
+- Sans sélection, curseur sur un CC, un PGM ou un bend : seul cet événement
+  est supprimé (même logique qu'Entrée, qui édite la ligne sous le
+  curseur).
+- Messages et libellés d'undo :
+  - « Pitch Bend supprimé » ;
+  - « CC#7 supprimé » ;
+  - « Program Change supprimé » ;
+  - « N événement(s) supprimé(s) » pour une sélection mixte ;
+  - les messages actuels sont gardés quand la sélection ne contient que
+    des notes.
+- Correction du bug A au même endroit :
+  - nouvelle méthode `MidiEditor.delete_events(pattern, evs)` ;
+  - elle supprime dans l'ordre `(track, time, event_idx)` décroissant, si
+    bien qu'aucune suppression ne décale un `event_idx` encore à traiter ;
+  - elle s'applique aussi aux notes GRID (`set_cell` retire l'entrée `_tape`
+    à son propre index) ;
+  - elle retourne le nombre d'événements supprimés ;
+  - `_delete_event` l'utilise dans les deux branches.
+
+**D2 — `on_pitch_bend` enregistre même sans synthé.**
+- `record_bend(bend, channel)` est appelé si `recording`, **avant** le test
+  `synth_ready()`, comme dans `on_cc`.
+- Sans synthé, le message de statut devient « Pitch Bend: +1234 » (valeur
+  brute). Les demi-tons dépendent du moteur.
+- L'effet live et le log sont inchangés quand un synthé est prêt.
+
+**D3 — le bend devient un état de canal uniquement (option B, recommandée).**
+- **Capture.** `record_patch_note` n'écrit plus `"bend"` dans le payload.
+  Si la valeur de bend reçue diffère de l'état de bend de la piste à cet
+  instant, il pose d'abord un `ETYPE_BEND` (même canal) **au temps de la
+  note**. L'état de bend est la valeur du dernier `ETYPE_BEND` de la piste
+  de temps ≤ celui de la note, ou 0 s'il n'y en a pas.
+  - Un bend tenu *avant* d'armer l'enregistrement est ainsi conservé (c'est
+    ce que le champ servait à faire).
+  - Il n'y a pas de doublon quand `on_pitch_bend` (D2) a déjà enregistré
+    la même valeur.
+- **Relecture.**
+  - `on_patch_tape` perd le paramètre `bend` et l'écrasement/restauration
+    de `engine.pitch_bend` : la note joue avec l'état courant du moteur ;
+  - le tuple `PATCH_TAPE_EVENT` de `_run_thread` perd le bend ;
+  - l'ordre de tri (-4 avant -3) garantit qu'un bend au même temps
+    s'applique avant la note.
+- **Éditeur et presse-papier.**
+  - Le champ `"bend"` disparaît des dicts de notes et des payloads créés
+    par l'insertion, la duplication et l'édition.
+  - Le presse-papier `mw_project` garde la même position d'enregistrement,
+    pour lire un presse-papier sauvé avant ce chantier. Il y écrit 0 et
+    ignore la valeur à la lecture.
+  - Même chose pour le collage de `TrackEditor`.
+- **Migration à l'ouverture (`from_dict`, `tape_v2` et ancien
+  `patch_tape`).**
+  - Pour chaque piste, on parcourt ses notes PATCH par temps croissant et on
+    applique la même règle qu'à la capture. Les `ETYPE_BEND` qui
+    reproduisent le bend de départ de chaque note sont posés : une note
+    à 0 après une note pliée remet donc l'état à 0.
+  - Puis `"bend"` est retiré des payloads.
+  - Seule différence assumée : deux notes qui se chevauchent partagent
+    désormais le même bend, comme en MIDI.
+  - Aucune donnée réelle n'est concernée, la conversion n'est éprouvée que
+    par les tests.
+
+Alternatives écartées :
+- **A — garder le champ tel quel.** Deux sources de vérité qui peuvent se
+  contredire, et rien à exporter en MIDI.
+- **C — retirer le champ sans poser de bend au note-on.** Un bend tenu avant
+  d'armer l'enregistrement serait perdu, alors qu'il est capturé
+  aujourd'hui.
+
+### Portée explicitement exclue de ce chantier
+
+- Suppr en Ctrl+1 (`MODE_NOTES`) : la liste ne contient que des notes, donc
+  le comportement ne change pas (hors correction du bug A).
+- `copy_events`/`paste_events` « niveau événement » de l'éditeur pour
+  CC/PGM/bend (notes seulement depuis 4a).
+- Quantisation des bends, `TrackRouter.on_bend_tape`, moteur synthé.
+- Application live du bend à un moteur de slot quand aucun synthé n'est
+  « courant » (D2 ne touche que la capture).
+- Champ `"bend"` du `MidiMessage` du parser (c'est le message Pitch Bend
+  lui-même, sans rapport).
+
+### Découpage en commits proposé (à valider avant de coder)
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **7a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **7b1** | Implémentation — D1 : `MidiEditor.delete_events` (ordre `event_idx` décroissant, corrige le bug A) ; `_delete_event` supprime tout type en sélection, et l'événement sous le curseur s'il n'est pas une note ; messages/undo. | `midi/midi_editor.py`, `ui/mew_delete_clipboard.py` |
+| **7c1** | Tests — accord PATCH 67/60 entièrement supprimé (bug A) ; mélange GRID + PATCH + bend au même pas ; Suppr Ctrl+2 sur un bend/CC/PGM seul ; sélection mixte ; curseur sur une note avec bend au même offset (bend conservé) ; undo restaure ; messages. | `test_midi_editor.py`, `test_midi_editor_window.py` |
+| **7d1** | Implémentation — D2 : `record_bend` avant `synth_ready()` dans `on_pitch_bend`, statut sans synthé. | `ui/midi_handler_window.py` |
+| **7e1** | Tests — enregistrement sans synthé prêt (`ETYPE_BEND` créé, statut brut) ; pas d'enregistrement hors `recording` ; cas synthé prêt inchangé. | `test_midi_handler_window.py` |
+| **7f1** | Implémentation — D3 capture/relecture : `record_patch_note` sans `"bend"` + pose d'un `ETYPE_BEND` si l'état de piste diffère ; `_run_thread`/`on_patch_tape` sans bend ; docstring `TapeEvent`. Suite rouge jusqu'à 7g1 — à signaler dans le titre. | `drum_player.py`, `track_router.py`, `pattern.py` |
+| **7g1** | Tests — note avec bend tenu → un `ETYPE_BEND` au temps de la note, payload sans `"bend"` ; pas de doublon si l'état est déjà égal ; bend 0 sans état antérieur → aucun `ETYPE_BEND` ; rejeu réel : bend appliqué avant la note au même temps ; adaptation des tests existants. | `test_tape.py`, `test_midi_handler_window.py`, tests `on_patch_tape` |
+| **7h1** | Implémentation — D3 éditeur/presse-papier/migration : champ retiré de `MidiEditor` et `TrackEditor`, presse-papier `mw_project` (position gardée, valeur ignorée), migration `from_dict` (`tape_v2` et `patch_tape`). Suite rouge jusqu'à 7i1 — à signaler dans le titre. | `midi/midi_editor.py`, `track_editor.py`, `ui/mw_project.py`, `pattern.py` |
+| **7i1** | Tests — migration : notes pliées → `ETYPE_BEND` équivalents, retour à 0 sur la note suivante non pliée, payloads nettoyés, fichier sans bend inchangé ; presse-papier ancien format ; éditeur sans champ `"bend"` ; adaptation des tests existants. | `test_tape.py`, `test_pattern_*.py`, `test_midi_editor.py`, `test_track_editor.py` |
+| **7j1** | Doc — clôture (DESIGN.md, `docs/SPECS.md` : Suppr, Pitch Bend), `grep -rn '"bend"'` sur tout le dépôt, `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+Ordre choisi :
+- D1 d'abord : indépendant, et il corrige un bug.
+- D2 avant D3, parce que la pose d'un bend au note-on (D3) complète la
+  capture de la molette (D2) et que ses tests de non-doublon en dépendent.
+- Dans D3, la capture/relecture passe avant la migration, comme en 6.
