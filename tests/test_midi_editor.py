@@ -1861,3 +1861,32 @@ def test_edit_pgm_event_out_of_bounds_returns_none():
     p  = _pattern_with_cc_pgm()
     assert me.edit_pgm_event(p, _pgm_ev(me, p), new_bar=999) is None
     assert [e for e in tape_at(p, 0, 0, 4) if e.etype == ETYPE_PGM]   # inchangé
+
+
+# ---------------------------------------------------------------------------
+# Limiteur droit / filtre pos_to inclusifs sur le pas entier (Phase 7 étape 6g2)
+# ---------------------------------------------------------------------------
+
+def _pattern_fractional_edge():
+    """CC et bend fractionnaires sur le pas 5 (5.4), un CC au pas 6 pile."""
+    p = Pattern()
+    p.resize(2, 16)
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 1}, time=5.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 2}, time=5.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 3}, time=6))
+    return p
+
+
+def test_all_events_right_limiter_includes_fraction_of_its_step():
+    """Limiteur droit sur le pas 5 : un CC/bend à 5.4 est dans la plage
+    (avant 6g2 : comparé à 5.4 > 5, il était exclu) ; le pas 6 ne l'est pas."""
+    me = MidiEditor()
+    ev = me.get_all_events(_pattern_fractional_edge(), [0], lim_left=2, lim_right=5)
+    assert sorted((e["type"], e["offset"]) for e in ev) == [("bend", 5.4), ("cc", 5.4)]
+
+
+def test_filter_pos_to_includes_fraction_of_its_step():
+    me = MidiEditor()
+    ev = me.get_all_events(_pattern_fractional_edge(), [0])
+    crit = {"active": True, "etype_filter": "all", "pos_from": 0, "pos_to": 5}
+    assert sorted(ev[i]["offset"] for i in me.filter_events(ev, crit)) == [5.4, 5.4]

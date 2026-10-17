@@ -53,7 +53,10 @@ class MidiEditor:
         for offset in sorted(by_time):
             if lim_left  is not None and offset < lim_left:
                 continue
-            if lim_right is not None and offset > lim_right:
+            # Limiteur droit inclusif sur le PAS entier (Phase 7 étape 6g2) :
+            # un CC/bend fractionnaire du pas lim_right (ex. 5.4 pour
+            # lim_right=5) est dans la plage.
+            if lim_right is not None and offset >= lim_right + 1:
                 continue
             b, s = pattern._time_to_bar_step(offset)
             for i, ev in enumerate(by_time[offset]):
@@ -205,7 +208,9 @@ class MidiEditor:
             cc_num_lo/hi int   — bornes sur e["cc_num"], type "cc" seulement
             cc_val_lo/hi int   — bornes sur e["value"],  type "cc" seulement
             pgm_lo/hi    int   — bornes sur e["program"], type "pgm" seulement
-            pos_from/to  num   — bornes sur e["offset"], tous types
+            pos_from/to  num   — bornes en pas sur e["offset"], tous types ;
+                                 pos_to inclut tout le pas qui le contient
+                                 (fraction comprise, Phase 7 étape 6g2)
         """
         if not criteria.get("active", True):
             matched = set(range(len(events)))
@@ -234,7 +239,7 @@ class MidiEditor:
             offset = e["offset"]
             if pos_from is not None and offset < pos_from:
                 continue
-            if pos_to is not None and offset > pos_to:
+            if pos_to is not None and offset >= int(pos_to) + 1:   # pas de pos_to inclus (6g2)
                 continue
 
             if etype_filter == "mod":

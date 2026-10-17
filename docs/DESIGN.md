@@ -1331,3 +1331,15 @@ de la structure (6h1) n'arrive qu'en dernier, comme en 5h.
   sans test qui la déclenche. Le rejeu est testé sur la vraie boucle
   `_run_thread` (`play_pattern` à 600 BPM), pas sur une copie de sa
   logique comme l'ancien test `test_run_thread_build_bend_tape_events`.
+- **6d1-6g1** — conformes au plan. Constaté en 6d1 : Suppr dans l'interface
+  de l'éditeur ne supprime que les notes (CC/PGM/bend supprimables
+  seulement via `MidiEditor.delete_event`) — inchangé, hors périmètre.
+- **6g2** (commit imprévu, correction + tests) — bug pré-existant trouvé en
+  6g1 : le limiteur droit, censé inclure son pas, était comparé par
+  `ev.time <= lim_r`. Un CC (depuis 5b) ou un bend à 5.4 avec limiteur
+  droit sur 5 n'était ni effacé (`TrackEditor._erase_tape_range`) ni
+  listé dans Ctrl+2 (`MidiEditor._events_by_time`) ; même défaut pour la
+  borne `pos_to` de `filter_events`. Correction : comparaison au pas
+  entier (`ev.time < lim_r + 1`, `offset >= int(pos_to) + 1`), même règle
+  que le collage en 5d. Les notes (toujours au pas entier) ne changent
+  pas de comportement.

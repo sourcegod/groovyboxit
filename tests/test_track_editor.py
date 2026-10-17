@@ -1154,6 +1154,37 @@ def test_clipboard_from_dict_bend_not_read_as_note():
     assert (ev.channel, ev.time, ev.dur) == (0, 0.0, 0)
 
 
+
+# ---------------------------------------------------------------------------
+# Limiteur droit inclusif sur le pas entier (Phase 7 étape 6g2)
+# ---------------------------------------------------------------------------
+
+def test_erase_with_limiters_includes_fraction_of_right_step():
+    """Limiteur droit sur le pas 5 : un CC/bend à 5.4 est effacé (avant 6g2,
+    5.4 <= 5 étant faux, il survivait) ; un CC au pas 6 pile est gardé."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 1}, time=5.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 1, "value": 2}, time=5.4))
+    p._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 3}, time=6))
+    te.set_lim_left(2)
+    te.set_lim_right(5)
+    te.erase(p, 0)
+    assert [(ev.etype, ev.time) for ev in p._tape[0]] == [(ETYPE_CC, 6)]
+
+
+def test_erase_with_limiters_left_bound_unchanged():
+    """Limiteur gauche inchangé : un événement à 1.9 (pas 1) reste hors plage
+    [2, 5]."""
+    te = TrackEditor()
+    p  = _make_pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 1}, time=1.9))
+    te.set_lim_left(2)
+    te.set_lim_right(5)
+    te.erase(p, 0)
+    assert [ev.time for ev in p._tape[0]] == [1.9]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = failed = 0

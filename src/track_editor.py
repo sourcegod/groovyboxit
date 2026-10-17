@@ -400,11 +400,15 @@ class TrackEditor:
                 self._erase_tape_range(pattern, t, lim_l, lim_r)
 
     def _erase_tape_range(self, pattern, track, lim_l, lim_r):
-        """Efface _tape et _bend_tape pour `track` dans [lim_l, lim_r]."""
+        """Efface _tape et _bend_tape pour `track` dans [lim_l, lim_r].
+
+        lim_r inclut tout son pas (Phase 7 étape 6g2) : un CC/bend
+        fractionnaire du pas lim_r (ex. 5.4 pour lim_r=5) est effacé aussi.
+        """
         with pattern._lock:
             if track < len(pattern._tape):
                 track_list = pattern._tape[track]
-                track_list[:] = [ev for ev in track_list if not (lim_l <= ev.time <= lim_r)]
+                track_list[:] = [ev for ev in track_list if not (lim_l <= ev.time < lim_r + 1)]
         if track < len(pattern._bend_tape):
             pattern._bend_tape[track] = [
                 (off, b) for off, b in pattern._bend_tape[track]
