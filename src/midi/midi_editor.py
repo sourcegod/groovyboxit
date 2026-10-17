@@ -102,7 +102,6 @@ class MidiEditor:
                     "pad":       ev.payload.get("note"),   # KIT: index pad kit ; PATCH: note MIDI brute
                     "vel":       ev.payload.get("vel"),
                     "dur":       ev.dur,
-                    "bend":      ev.payload.get("bend", 0),
                     "channel":   ev.channel,
                     "event_idx": i,
                 })
@@ -407,7 +406,6 @@ class MidiEditor:
         n_bar   = new_bar  if new_bar  is not None else ev["bar"]
         n_step  = new_step if new_step is not None else ev["step"]
         n_dur   = max(10,  new_dur  if new_dur  is not None else ev.get("dur", 500))
-        n_bend  = ev.get("bend", 0)
         n_channel = max(0, min(15, new_channel if new_channel is not None else ev.get("channel", 0)))
         if n_bar < 0 or n_bar >= pattern._num_bars:
             return None
@@ -423,8 +421,6 @@ class MidiEditor:
                 return None
             del track_list[matches[old_idx]]
             payload = {"note": n_note, "vel": n_vel}
-            if etype == ETYPE_PATCH:
-                payload["bend"] = n_bend
             track_list.append(TapeEvent(etype, dur=n_dur, channel=n_channel, payload=payload, time=new_time))
             new_idx = sum(1 for e in track_list if e.time == new_time) - 1
         return {
@@ -437,7 +433,6 @@ class MidiEditor:
             "pad":       n_note,
             "vel":       n_vel,
             "dur":       n_dur,
-            "bend":      n_bend,
             "channel":   n_channel,
             "event_idx": new_idx,
         }
@@ -731,8 +726,6 @@ class MidiEditor:
             time    = pattern._bar_step_to_time(ev["bar"], ev["step"])
             channel = ev.get("channel", 0)
             payload = {"note": ev["pad"], "vel": ev["vel"]}
-            if etype == ETYPE_PATCH:
-                payload["bend"] = ev.get("bend", 0)
             with pattern._lock:
                 pattern._ensure_track_count(t + 1)
                 track_list = pattern._tape[t]
@@ -750,7 +743,6 @@ class MidiEditor:
                 "pad":       ev["pad"],
                 "vel":       ev["vel"],
                 "dur":       ev.get("dur", 500),
-                "bend":      ev.get("bend", 0),
                 "channel":   channel,
                 "event_idx": new_idx,
             }
@@ -765,7 +757,7 @@ class MidiEditor:
             return mid
         return None
 
-    def insert_note(self, pattern, etype, track, bar, step, pad, vel=100, dur=500, bend=0, channel=0):
+    def insert_note(self, pattern, etype, track, bar, step, pad, vel=100, dur=500, channel=0):
         """Insère une nouvelle note à (track, bar, step).
 
         etype GRID : `pad` est un index de pad (borné 0..num_pads-1).
@@ -806,8 +798,6 @@ class MidiEditor:
         dur     = max(10, dur)
         time    = pattern._bar_step_to_time(bar, step)
         payload = {"note": pad, "vel": vel}
-        if etype == ETYPE_PATCH:
-            payload["bend"] = bend
         with pattern._lock:
             pattern._ensure_track_count(track + 1)
             track_list = pattern._tape[track]
@@ -823,7 +813,6 @@ class MidiEditor:
             "pad":       pad,
             "vel":       vel,
             "dur":       dur,
-            "bend":      bend,
             "channel":   channel,
             "event_idx": new_idx,
         }

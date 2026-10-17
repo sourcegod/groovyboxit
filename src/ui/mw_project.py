@@ -295,8 +295,11 @@ class ProjectMixin:
                     tape_list.append([ETYPE_KIT, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
                                        ev.dur, ev.channel, frac])
                 elif ev.etype == ETYPE_PATCH:
+                    # rec[7] : ancien champ "bend" par note, toujours 0 depuis
+                    # la Phase 7 étape 7h1 — position gardée pour relire les
+                    # presse-papiers sauvés avant.
                     tape_list.append([ETYPE_PATCH, t, b, s, ev.payload.get("note"), ev.payload.get("vel"),
-                                       ev.dur, ev.payload.get("bend", 0), ev.channel, frac])
+                                       ev.dur, 0, ev.channel, frac])
                 elif ev.etype == ETYPE_CC:
                     tape_list.append([ETYPE_CC, t, b, s, ev.payload.get("cc_num"),
                                        ev.payload.get("value"), ev.channel, frac])
@@ -363,7 +366,7 @@ class ProjectMixin:
                 t, b, s, note, vel, dur = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
                 payload = {"note": note, "vel": vel}
                 if etype == ETYPE_PATCH:
-                    payload["bend"] = rec[7] if len(rec) > 7 else 0
+                    # rec[7] (ancien bend par note) ignoré depuis la Phase 7 étape 7h1
                     channel = rec[8] if len(rec) > 8 else 0
                     frac    = rec[9] if len(rec) > 9 else 0.0
                 else:

@@ -535,6 +535,10 @@ class Pattern:
         d'information) ajouté à _tape[piste]. Pas de doublon à retirer :
         contrairement au CC#1, le Pitch Bend n'avait aucune copie dans
         'tape_v2' avant 6b1.
+
+        Migration du champ "bend" des notes PATCH (Phase 7 étape 7h1) : voir
+        _migrate_patch_note_bends, appliquée en dernier (après 'bend_tape')
+        pour tenir compte des ETYPE_BEND déjà présents.
         """
         self._name       = d.get("name", "")
         self._bpm        = d.get("bpm", 100)
@@ -572,6 +576,7 @@ class Pattern:
                 dur  = rec[5] if len(rec) > 5 else 0
                 bend = rec[6] if len(rec) > 6 else 0
                 self._ensure_track_count(t + 1)
+                # "bend" converti en ETYPE_BEND par _migrate_patch_note_bends
                 self._tape[t].append(TapeEvent(ETYPE_PATCH, dur=dur,
                                                 payload={"note": note, "vel": vel, "bend": bend},
                                                 time=self._bar_step_to_time(b, s)))
@@ -603,3 +608,28 @@ class Pattern:
                 self._tape[t].append(
                     TapeEvent(ETYPE_CC, channel=0, payload={"cc_num": 1, "value": val}, time=off)
                 )
+        self._migrate_patch_note_bends()
+
+    def _migrate_patch_note_bends(self):
+        """Convertit le champ "bend" des notes PATCH (presets sauvés avant la
+        Phase 7 étape 7h1) en ETYPE_BEND, puis le retire des payloads.
+
+        Avant 7f1, chaque note imposait son bend (0 compris) au moteur le
+        temps de son note-on. Par piste, les notes portant ce champ sont
+        parcourues par temps croissant et la même règle qu'à la capture leur
+        est appliquée (Pattern._chase_bend) : un ETYPE_BEND n'est posé au
+        temps de la note que si l'état de bend de la piste y diffère — une
+        note à 0 après une note pliée remet donc l'état à 0. Différence
+        assumée : deux notes qui se chevauchent partagent désormais le même
+        bend, comme en MIDI. Payload remplacé (pas modifié en place : il
+        peut venir du dict JSON de l'appelant).
+        """
+        with self._lock:
+            for t, track_list in enumerate(self._tape):
+                old = sorted((ev for ev in track_list
+                              if ev.etype == ETYPE_PATCH and "bend" in ev.payload),
+                             key=lambda ev: ev.time)
+                for ev in old:
+                    bend = ev.payload.get("bend", 0)
+                    ev.payload = {k: v for k, v in ev.payload.items() if k != "bend"}
+                    self._chase_bend(t, ev.time, bend, ev.channel)
