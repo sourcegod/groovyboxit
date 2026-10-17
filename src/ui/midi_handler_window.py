@@ -207,8 +207,8 @@ class MidiHandler:
         """Control Change MIDI reçu — CC#1 = Mod, CC#7 = Volume, CC#10 = Pan, CC#64 = Sustain, CC#123 = All Notes Off.
 
         Capturé dans _tape (etype ETYPE_CC, Phase 7 étape 4f) indépendamment
-        de l'effet live ci-dessous — y compris CC#1, dupliqué avec _mod_tape
-        (voir docs/DESIGN.md § Phase 7 étape 4a, décision 1)."""
+        de l'effet live ci-dessous — y compris CC#1 (_mod_tape supprimé en
+        étape 5h, CC#1 n'a plus qu'une seule copie, dans _tape)."""
         self._notify_editor_midi("cc", channel, cc_num=cc_num, value=value)
         win = self._win
         if win._player.recording:
@@ -234,8 +234,6 @@ class MidiHandler:
             if win._router.synth_ready():
                 win._router.synth.set_mod_wheel(value)
                 win._show_status(f"Mod Wheel: {value}")
-            if win._player.recording:
-                win._player.record_mod(value)
         elif cc_num == 7:                          # CC#7 : Volume standard
             vol = round(value * 100 / 127)
             if win._track_list.HasFocus():

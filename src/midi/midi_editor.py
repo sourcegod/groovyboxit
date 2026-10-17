@@ -182,12 +182,12 @@ class MidiEditor:
                         "value":  val,
                     })
 
-        # Note (Phase 7 étape 5f) : plus de bloc "Automation mod wheel" ici.
-        # CC#1 (Mod Wheel) n'a plus de type "mod" séparé depuis _mod_tape —
-        # il est déjà remonté comme un "cc" ordinaire par get_cc_pgm_events
-        # ci-dessus (capturé dans _tape depuis l'étape 4f). _mod_tape existe
-        # encore à ce stade (lecture seule, TrackRouter.on_mod_tape) mais
-        # n'est plus une source pour l'éditeur — voir Portée de l'étape 5a.
+        # Note (Phase 7 étape 5f/5h) : plus de bloc "Automation mod wheel"
+        # ici. CC#1 (Mod Wheel) n'a plus de type "mod" séparé — il est déjà
+        # remonté comme un "cc" ordinaire par get_cc_pgm_events ci-dessus
+        # (capturé dans _tape depuis l'étape 4f). _mod_tape lui-même a
+        # disparu en 5h (TrackRouter.on_mod_tape reste, appelé par on_cc_tape
+        # à la lecture pour cc_num==1).
 
         events.sort(key=lambda e: (e["offset"], e["track"]))
         return events
@@ -516,8 +516,7 @@ class MidiEditor:
 
     # Note (Phase 7 étape 5f) : edit_mod_event a disparu — CC#1 (Mod Wheel)
     # n'a plus de type "mod" séparé, il est édité par edit_cc_event comme
-    # n'importe quel CC générique (_mod_tape existe encore, lu uniquement
-    # par TrackRouter.on_mod_tape à la lecture, pas par l'éditeur).
+    # n'importe quel CC générique (_mod_tape lui-même supprimé en 5h).
 
     def _replace_tape_event(self, pattern, ev, etype, payload, new_bar, new_step):
         """Remplace le TapeEvent repéré par (time, event_idx) par un nouveau de

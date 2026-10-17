@@ -27,7 +27,8 @@ class DrumPlayer:
     KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
     PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
     BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements d'automation pitch bend
-    MOD_TAPE_EVENT   = -5   # marqueur interne pour les événements d'automation mod wheel
+    # MOD_TAPE_EVENT (-5) supprimé en Phase 7 étape 5h : CC#1 rejoué via
+    # CC_TAPE_EVENT (_tape), qui délègue déjà à on_mod_tape (TrackRouter.on_cc_tape).
     CC_TAPE_EVENT    = -7   # marqueur interne pour les événements CC générique (etype ETYPE_CC de _tape)
     PGM_TAPE_EVENT   = -8   # marqueur interne pour les événements Program Change (etype ETYPE_PGM de _tape)
 
@@ -82,7 +83,6 @@ class DrumPlayer:
         self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture kit_tape
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
-        self._on_mod_tape_cb      = None  # callback(track_idx, mod_value) lecture automation mod wheel
         self._on_cc_tape_cb              = None  # callback(track_idx, cc_num, value) lecture CC générique
         self._on_program_change_tape_cb  = None  # callback(track_idx, program) lecture Program Change
         self._pending_patch       = {}    # {midi_note: (track, TapeEvent.id, t_start)} — note_on en attente de note_off
@@ -492,13 +492,6 @@ class DrumPlayer:
                         t_sec = (float_off - lp_start) * self.step_duration
                         if t_sec > elapsed - 0.002:
                             events.append((t_sec, self.BEND_TAPE_EVENT, (t_idx, bend_val), 0))
-                for t_idx, track_mods in enumerate(self._pattern._mod_tape):
-                    for float_off, mod_val in list(track_mods):
-                        if not (lp_start <= float_off <= lp_end):
-                            continue
-                        t_sec = (float_off - lp_start) * self.step_duration
-                        if t_sec > elapsed - 0.002:
-                            events.append((t_sec, self.MOD_TAPE_EVENT, (t_idx, mod_val), 0))
             events.extend(self._metro.build_events(
                 loop_bars, self._pattern._num_steps, self._pattern._num_beats,
                 self.step_duration, elapsed))
@@ -566,10 +559,6 @@ class DrumPlayer:
                     t_idx, bend_val = evt_data
                     if self._on_bend_tape_cb:
                         self._on_bend_tape_cb(t_idx, bend_val)
-                elif track_or_type == self.MOD_TAPE_EVENT:
-                    t_idx, mod_val = evt_data
-                    if self._on_mod_tape_cb:
-                        self._on_mod_tape_cb(t_idx, mod_val)
                 elif track_or_type == self.CC_TAPE_EVENT:
                     t_idx, cc_num, value = evt_data
                     if self._on_cc_tape_cb:
@@ -1050,15 +1039,8 @@ class DrumPlayer:
 
     #--------------------------------------------------------------------------
 
-    def record_mod(self, mod_value):
-        """Enregistre un point d'automation mod wheel dans _mod_tape de la piste courante."""
-        now          = time.perf_counter()
-        total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
-        ref          = self._measure_start if self._measure_start is not None else now
-        float_offset = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
-        track_mods   = self._pattern._mod_tape[self._cur_track]
-        track_mods.append((float_offset, mod_value))
+    # record_mod supprimé en Phase 7 étape 5h : CC#1 (Mod Wheel) est déjà
+    # capturé dans _tape via record_cc (appelé pour tout CC depuis 4f).
 
     #--------------------------------------------------------------------------
 
