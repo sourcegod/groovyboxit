@@ -11,6 +11,8 @@ import os
 import threading
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from unittest.mock import patch
@@ -1380,3 +1382,69 @@ if __name__ == "__main__":
     print("Tests on_cc_tape / on_program_change_tape : OK")
 
     print("Tous les tests : OK")
+
+
+# ---------------------------------------------------------------------------
+# on_patch_tape — plus de bend par note (Phase 7 étape 7g1)
+# ---------------------------------------------------------------------------
+
+class _FakeBendEngine(FakeSynthEngine):
+    """Moteur factice avec un état de Pitch Bend, et qui note la valeur du
+    bend au moment de chaque play()."""
+    def __init__(self):
+        super().__init__()
+        self._loaded              = True
+        self.pitch_bend           = 0
+        self.bend_at_play         = []
+
+    @property
+    def pitch_bend_semitones(self):
+        return self.pitch_bend / 8192 * 2.0
+
+    def apply_pitch_bend(self):
+        pass
+
+    def play(self, midi, vol=1.0, pan=0, duration_ms=0):
+        super().play(midi, vol, pan, duration_ms)
+        self.bend_at_play.append(self.pitch_bend)
+
+
+def _patch_router():
+    router, _, _ = _make_router()
+    eng = _FakeBendEngine()
+    router._slot_synths[1] = eng
+    router._track_slots[0] = 1
+    return router, eng
+
+
+def test_on_patch_tape_takes_no_bend_argument():
+    router, eng = _patch_router()
+    with patch("track_router.threading.Timer"):
+        router.on_patch_tape(0, 60, 100, 10)
+    assert [m for m, _, _ in eng._played] == [60]
+    with pytest.raises(TypeError):
+        router.on_patch_tape(0, 60, 100, 10, 2048)
+
+
+def test_on_patch_tape_plays_with_current_engine_bend_state():
+    """La note joue avec l'état courant du moteur (posé par on_bend_tape) et
+    ne le modifie pas — plus d'écrasement/restauration propre à la note."""
+    router, eng = _patch_router()
+    router.on_bend_tape(0, 3000)
+    with patch("track_router.threading.Timer"):
+        router.on_patch_tape(0, 64, 100, 10)
+    assert eng.bend_at_play == [3000]
+    assert eng.pitch_bend == 3000
+
+
+def test_on_patch_tape_bend_state_persists_across_notes():
+    """Comme en MIDI : l'état de bend vaut pour toutes les notes suivantes,
+    jusqu'au prochain point (avant 7f1, chaque note imposait son propre bend)."""
+    router, eng = _patch_router()
+    router.on_bend_tape(0, -1500)
+    with patch("track_router.threading.Timer"):
+        router.on_patch_tape(0, 60, 100, 10)
+        router.on_patch_tape(0, 62, 100, 10)
+        router.on_bend_tape(0, 0)
+        router.on_patch_tape(0, 64, 100, 10)
+    assert eng.bend_at_play == [-1500, -1500, 0]

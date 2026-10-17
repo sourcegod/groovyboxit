@@ -570,7 +570,7 @@ def test_run_thread_build_cc_and_pgm_events_mixed_with_patch():
     construction des événements de lecture. Piège identifié en 4a : l'ancien
     `else` catch-all aurait lu le CC/PGM comme un PATCH (note=None, bend=0)."""
     pl = _make_player()
-    pl.record_patch_note(60, 100, 500, bend=1234)
+    pl.record_patch_note(60, 100, 500)
     pl.record_cc(74, 90)
     pl.record_program_change(5)
 
@@ -585,7 +585,7 @@ def test_run_thread_build_cc_and_pgm_events_mixed_with_patch():
                                (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
             elif ev.etype == ETYPE_PATCH:
                 events.append((pl.PATCH_TAPE_EVENT,
-                               (t_idx, ev.payload.get("note"), ev.dur, ev.payload.get("bend", 0)),
+                               (t_idx, ev.payload.get("note"), ev.dur),
                                ev.payload.get("vel")))
             elif ev.etype == ETYPE_CC:
                 events.append((pl.CC_TAPE_EVENT,
@@ -596,8 +596,8 @@ def test_run_thread_build_cc_and_pgm_events_mixed_with_patch():
     by_type = {e[0]: e for e in events}
     assert len(events) == 3, "GRID/KIT/PATCH/CC/PGM exhaustifs, aucun événement fantôme"
 
-    _, (t_idx, note, dur, bend), vel = by_type[pl.PATCH_TAPE_EVENT]
-    assert (note, bend, vel) == (60, 1234, 100), \
+    _, (t_idx, note, dur), vel = by_type[pl.PATCH_TAPE_EVENT]
+    assert (note, dur, vel) == (60, 500, 100), \
         "le PATCH voisin d'un CC/PGM garde ses vraies valeurs (pas de note=None)"
 
     _, (t_idx, cc_num, value), _ = by_type[pl.CC_TAPE_EVENT]
@@ -1103,63 +1103,164 @@ def test_kit_tape_no_callback_is_safe():
 # Simulation Pitch Bend — enregistrement et lecture
 # ---------------------------------------------------------------------------
 
-def test_record_patch_note_stores_bend():
-    """record_patch_note stocke le bend dans TapeEvent.payload["bend"]."""
-    pl = _make_player()
-    bend_val = 4096
-    pl.record_patch_note(60, 100, 500, bend=bend_val)
-    events = pl._pattern._tape[0]
-    assert len(events) == 1
-    ev = events[0]
-    assert ev.etype == ETYPE_PATCH
-    assert ev.payload.get("note") == 60
-    assert ev.payload.get("bend", 0) == bend_val
-    print(f"  record_patch_note stocke bend={bend_val} dans TapeEvent : OK")
+def _patch_notes(pattern, track):
+    return [ev for ev in pattern._tape[track] if ev.etype == ETYPE_PATCH]
 
-def test_record_patch_note_bend_zero_by_default():
-    """Sans pitch bend actif, TapeEvent.payload["bend"] doit être 0."""
+def test_record_patch_note_payload_has_no_bend():
+    """Phase 7 étape 7f1 : la note PATCH ne porte plus de bend, même tenu."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500, bend=4096)
+    notes = _patch_notes(pl._pattern, 0)
+    assert len(notes) == 1
+    assert notes[0].payload == {"note": 60, "vel": 100}
+    print("  record_patch_note : payload sans \"bend\" : OK")
+
+def test_record_patch_note_with_held_bend_chases_etype_bend():
+    """Bend tenu au note-on (état de piste à 0) → un ETYPE_BEND au temps de
+    la note, avec le canal de la note."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500, bend=4096, channel=3)
+    note  = _patch_notes(pl._pattern, 0)[0]
+    bends = _bends(pl._pattern, 0)
+    assert len(bends) == 1
+    assert bends[0].time == note.time
+    assert bends[0].payload == {"value": 4096}
+    assert bends[0].channel == 3
+    print("  record_patch_note bend tenu → ETYPE_BEND au temps de la note : OK")
+
+def test_record_patch_note_bend_zero_without_state_adds_nothing():
+    """Sans bend actif ni état antérieur : aucun ETYPE_BEND."""
     pl = _make_player()
     pl.record_patch_note(60, 100, 500)
-    events = pl._pattern._tape[0]
-    assert events[0].payload.get("bend", 0) == 0
-    print('  record_patch_note sans bend → TapeEvent.payload["bend"] = 0 : OK')
+    assert _bends(pl._pattern, 0) == []
+    assert "bend" not in _patch_notes(pl._pattern, 0)[0].payload
+    print("  record_patch_note sans bend → aucun ETYPE_BEND : OK")
 
-def test_record_patch_note_off_preserves_bend():
-    """record_patch_note_off (durée MIDI) préserve le bend dans TapeEvent."""
+def test_record_patch_note_no_duplicate_when_state_already_equal():
+    """Bend déjà enregistré à la même valeur avant la note (par
+    on_pitch_bend/record_bend) → pas de second point."""
     pl = _make_player()
-    bend_val = -8192
-    pl.record_patch_note(60, 100, bend=bend_val)   # duration_ms=None → pending
+    pl._pattern._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 2048}, time=0.0))
+    pl.record_patch_note(60, 100, 500, bend=2048)
+    assert [ev.payload["value"] for ev in _bends(pl._pattern, 0)] == [2048]
+    print("  record_patch_note : pas de doublon si l'état est déjà égal : OK")
+
+def test_record_patch_note_bend_back_to_zero_after_bent_state():
+    """État de piste plié (2048) et molette revenue au centre au note-on :
+    un ETYPE_BEND 0 remet l'état au centre au temps de la note."""
+    pl = _make_player()
+    pl._pattern._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 2048}, time=0.0))
+    pl.record_patch_note(60, 100, 500, bend=0)
+    note = _patch_notes(pl._pattern, 0)[0]
+    bends = _bends(pl._pattern, 0)
+    assert len(bends) == 2
+    assert (bends[-1].time, bends[-1].payload["value"]) == (note.time, 0)
+    assert pl._pattern._bend_state_at(0, note.time) == 0
+    print("  record_patch_note : retour au centre → ETYPE_BEND 0 : OK")
+
+def test_record_patch_note_replaced_note_does_not_duplicate_bend():
+    """Deux fois la même note au même pas (remplacement) avec le même bend
+    tenu : un seul ETYPE_BEND."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, 500, bend=1000)
+    pl.record_patch_note(60, 110, 500, bend=1000)
+    assert len(_patch_notes(pl._pattern, 0)) == 1
+    assert len(_bends(pl._pattern, 0)) == 1
+    print("  note remplacée au même pas : un seul ETYPE_BEND : OK")
+
+def test_record_patch_note_off_keeps_chased_bend():
+    """record_patch_note_off (durée MIDI) ne touche pas au point de bend posé
+    au note-on, et la note n'a toujours pas de champ bend."""
+    pl = _make_player()
+    pl.record_patch_note(60, 100, bend=-8192)   # duration_ms=None → pending
     pl.record_patch_note_off(60)
-    events = pl._pattern._tape[0]
-    ev = events[0]
-    assert ev.payload.get("bend", 0) == bend_val, f"bend {bend_val} doit être conservé après note_off"
-    assert ev.dur > 0, "durée doit être > 0 après note_off"
-    print(f"  record_patch_note_off préserve bend={bend_val} dans TapeEvent : OK")
+    note = _patch_notes(pl._pattern, 0)[0]
+    assert note.dur > 0, "durée doit être > 0 après note_off"
+    assert "bend" not in note.payload
+    assert [ev.payload["value"] for ev in _bends(pl._pattern, 0)] == [-8192]
+    print("  record_patch_note_off garde le ETYPE_BEND du note-on : OK")
 
-def test_run_thread_dispatch_passes_bend_to_callback():
-    """Simule le dispatch _run_thread : on_patch_tape_cb reçoit (t, n, v, d, bend)."""
-    received = []
+def test_run_thread_replays_chased_bend_before_note_same_time():
+    """Vraie boucle _run_thread : au même temps, le ETYPE_BEND posé au
+    note-on est rejoué AVANT la note (BEND_TAPE_EVENT=-4 trié avant
+    PATCH_TAPE_EVENT=-3), et on_patch_tape_cb reçoit 4 arguments, sans bend."""
+    import threading
     pl = _make_player()
-    pl._on_patch_tape_cb = lambda t, n, v, d, b=0: received.append((t, n, v, d, b))
+    pl.set_bpm(600)
+    pl._pattern._tape[0].append(TapeEvent(ETYPE_PATCH, dur=50,
+                                          payload={"note": 60, "vel": 100}, time=2.0))
+    pl._pattern._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 3000}, time=2.0))
+    order = []
+    done  = threading.Event()
+    pl._on_bend_tape_cb  = lambda t, v: order.append(("bend", t, v))
+    def _note_cb(t, n, v, d):
+        order.append(("note", t, n, v, d))
+        done.set()
+    pl._on_patch_tape_cb = _note_cb
+    try:
+        pl.play_pattern()
+        assert done.wait(2.0), f"note non rejouée : {order}"
+    finally:
+        pl.stop_pattern()
+    assert order[:2] == [("bend", 0, 3000), ("note", 0, 60, 100, 50)]
+    print("  _run_thread : bend du note-on rejoué avant la note, callback à 4 args : OK")
 
-    bend_val = 8191
-    pl.record_patch_note(60, 100, 500, bend=bend_val)
-    key = tape_positions(pl._pattern, track=0)[0]
-    _, bar_idx, step_idx = key
 
-    note_list = tape_at(pl._pattern, *key)
-    for ev in list(note_list):
-        if ev.etype != ETYPE_PATCH:
-            continue
-        t_idx = 0
-        if not pl.erasing:
-            pl._on_patch_tape_cb(t_idx, ev.payload.get("note"), ev.payload.get("vel"), ev.dur, ev.payload.get("bend", 0))
+# ---------------------------------------------------------------------------
+# Pattern._bend_state_at / _chase_bend (Phase 7 étape 7f1)
+# ---------------------------------------------------------------------------
 
-    assert len(received) == 1
-    t, n, v, d, b = received[0]
-    assert n == 60
-    assert b == bend_val
-    print(f"  _run_thread dispatch : callback reçoit bend={bend_val} correctement : OK")
+def _state_pattern():
+    p = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 100}, time=1.0))
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 300}, time=4.5))
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 200}, time=3.0))
+    p._tape[0].append(TapeEvent(ETYPE_PATCH, payload={"note": 60, "vel": 100}, time=5.0))
+    p._tape[1].append(TapeEvent(ETYPE_BEND, payload={"value": -50}, time=0.0))
+    return p
+
+def test_bend_state_at_zero_before_any_bend():
+    assert _state_pattern()._bend_state_at(0, 0.5) == 0
+
+def test_bend_state_at_latest_time_not_list_order():
+    p = _state_pattern()
+    assert p._bend_state_at(0, 1.0) == 100
+    assert p._bend_state_at(0, 3.9) == 200     # 3.0 posé après 4.5 dans la liste
+    assert p._bend_state_at(0, 4.5) == 300
+    assert p._bend_state_at(0, 99.0) == 300
+
+def test_bend_state_at_ignores_future_and_other_tracks():
+    p = _state_pattern()
+    assert p._bend_state_at(0, 2.9) == 100
+    assert p._bend_state_at(1, 5.0) == -50
+    assert p._bend_state_at(7, 5.0) == 0       # piste sans bend
+    assert p._bend_state_at(42, 5.0) == 0      # piste inexistante
+
+def test_bend_state_at_same_time_last_in_tape_wins():
+    p = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 10}, time=2.0))
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 20}, time=2.0))
+    assert p._bend_state_at(0, 2.0) == 20
+
+def test_chase_bend_adds_point_when_state_differs():
+    p = _state_pattern()
+    assert p._chase_bend(0, 5.0, 999, channel=4) is True
+    ev = p._tape[0][-1]
+    assert (ev.etype, ev.time, ev.payload, ev.channel) == (ETYPE_BEND, 5.0, {"value": 999}, 4)
+    assert p._bend_state_at(0, 5.0) == 999
+
+def test_chase_bend_noop_when_state_equal():
+    p = _state_pattern()
+    n = len(p._tape[0])
+    assert p._chase_bend(0, 5.0, 300) is False
+    assert p._chase_bend(0, 0.0, 0) is False
+    assert len(p._tape[0]) == n
+
+def test_chase_bend_extends_tracks():
+    p = Pattern()
+    n = len(p._tape)
+    assert p._chase_bend(n + 2, 0.0, 512) is True
+    assert len(p._tape) == n + 3
 
 
 # ---------------------------------------------------------------------------
@@ -1575,7 +1676,11 @@ def test_integration_record_json_reload():
     flush_tape(pl2._pattern, restored)
 
     assert tapes_equal_strict(pl2._pattern._tape, pl._pattern._tape), "_tape perdu"
-    assert len(_bends(pl2._pattern, 0)) == 2, "ETYPE_BEND perdus"
+    # 2 points record_bend + 2 posés au note-on par les notes pliées (Phase 7
+    # étape 7f1 : 0 → 2048 puis 2048 → -1000)
+    assert len(_bends(pl2._pattern, 0)) == 4, "ETYPE_BEND perdus"
+    assert all("bend" not in ev.payload
+               for ev in pl2._pattern._tape[0] if ev.etype == ETYPE_PATCH)
     print("  intégration record→JSON→rechargement préserve _tape (bends compris) : OK")
 
 def test_integration_record_json_reload_all_tracks():
