@@ -199,14 +199,6 @@ def test_all_events_includes_bend():
     assert all(e["etype"] == ETYPE_BEND and e["channel"] == 0 for e in bends)
 
 
-def test_all_events_ignores_bend_tape():
-    """Phase 7 étape 6d1 : _bend_tape n'est plus une source de l'éditeur."""
-    me = MidiEditor()
-    p  = Pattern()
-    p._bend_tape[0] = [(3.0, 1000)]
-    assert [e for e in me.get_all_events(p, [0]) if e["type"] == "bend"] == []
-
-
 def test_bend_excluded_from_note_events():
     me = MidiEditor()
     p  = _make_pattern()

@@ -1,7 +1,7 @@
 #python3
 """
     File: tests/test_tape.py
-    Tests unitaires de _tape (TapeEvent), _bend_tape :
+    Tests unitaires de _tape (TapeEvent, Pitch Bend compris — ETYPE_BEND depuis 6b1) :
     structure Pattern, lifecycle (new/reset/double/halve/resize),
     sérialisation to_dict/from_dict, enregistrement DrumPlayer,
     et durée note_on→note_off pour les événements patch.
@@ -1163,110 +1163,165 @@ def test_run_thread_dispatch_passes_bend_to_callback():
 
 
 # ---------------------------------------------------------------------------
-# Automation Pitch Bend — _bend_tape
+# Automation Pitch Bend — ETYPE_BEND dans _tape (_bend_tape supprimé en 6h1)
 # ---------------------------------------------------------------------------
 
-def test_bend_tape_initially_empty():
-    p = Pattern()
-    assert isinstance(p._bend_tape, list)
-    assert len(p._bend_tape) == p._num_tracks
-    assert all(t == [] for t in p._bend_tape)
-    print("  _bend_tape vide à l'init (liste de listes) : OK")
+def _bend(value, time, channel=0):
+    return TapeEvent(ETYPE_BEND, channel=channel, payload={"value": value}, time=time)
 
-def test_new_pattern_resets_bend_tape():
+def _bend_pts(pattern, track):
+    """(time, value) des ETYPE_BEND d'une piste, triés."""
+    return sorted((ev.time, ev.payload["value"])
+                  for ev in pattern._tape[track] if ev.etype == ETYPE_BEND)
+
+def test_pattern_has_no_bend_tape_attribute():
+    """Phase 7 étape 6h1 : l'attribut _bend_tape a disparu de Pattern."""
+    assert not hasattr(Pattern(), "_bend_tape")
+    print("  Pattern n'a plus l'attribut _bend_tape : OK")
+
+def test_new_pattern_resets_bends():
     p = Pattern()
-    p._bend_tape[0] = [(4.0, 2048)]
+    p._tape[0].append(_bend(2048, 4.0))
     p.new_pattern()
-    assert all(t == [] for t in p._bend_tape)
-    print("  new_pattern efface _bend_tape : OK")
+    assert _bend_pts(p, 0) == []
+    print("  new_pattern efface les ETYPE_BEND : OK")
 
-def test_reset_pattern_clears_bend_tape():
+def test_reset_pattern_clears_bends():
     p = Pattern()
-    p._bend_tape[1] = [(8.0, -1024)]
+    p._tape[1].append(_bend(-1024, 8.0))
     p.reset_pattern()
-    assert all(t == [] for t in p._bend_tape)
-    print("  reset_pattern efface _bend_tape : OK")
+    assert _bend_pts(p, 1) == []
+    print("  reset_pattern efface les ETYPE_BEND : OK")
 
-def test_clear_track_clears_bend_tape_for_track():
+def test_clear_track_clears_bends_for_track():
     p = Pattern()
     p.new_pattern(1, 16)
-    p._bend_tape[0] = [(2.0, 4096)]
-    p._bend_tape[1] = [(3.0, -2000)]
+    p._tape[0].append(_bend(4096, 2.0))
+    p._tape[1].append(_bend(-2000, 3.0))
     p.clear_track(0)
-    assert p._bend_tape[0] == [], "piste 0 effacée"
-    assert p._bend_tape[1] == [(3.0, -2000)], "piste 1 intacte"
-    print("  clear_track efface _bend_tape[track] sans toucher les autres : OK")
+    assert _bend_pts(p, 0) == [], "piste 0 effacée"
+    assert _bend_pts(p, 1) == [(3.0, -2000)], "piste 1 intacte"
+    print("  clear_track efface les bends de la piste sans toucher les autres : OK")
 
-def test_double_bars_duplicates_bend_tape():
+def test_double_bars_duplicates_bends():
     p = Pattern()
     p.new_pattern(2, 16)
-    p._bend_tape[0] = [(4.0, 2048), (10.0, -1024)]
+    p._tape[0] += [_bend(2048, 4.0, channel=3), _bend(-1024, 10.5)]
     p.double_bars()
-    offsets = [off for off, _ in p._bend_tape[0]]
-    assert 4.0  in offsets
-    assert 10.0 in offsets
-    assert 36.0 in offsets
-    assert 42.0 in offsets
-    print("  double_bars duplique _bend_tape avec offset + half_steps : OK")
+    assert _bend_pts(p, 0) == [(4.0, 2048), (10.5, -1024), (36.0, 2048), (42.5, -1024)]
+    assert [ev.channel for ev in p._tape[0] if ev.payload["value"] == 2048] == [3, 3]
+    print("  double_bars duplique les bends (offset + half_steps, canal, fraction) : OK")
 
-def test_double_bars_preserves_bend_values():
-    p = Pattern()
-    p.new_pattern(1, 16)
-    p._bend_tape[0] = [(3.0, 8191)]
-    p.double_bars()
-    vals = [b for _, b in p._bend_tape[0]]
-    assert vals.count(8191) == 2
-    print("  double_bars préserve les valeurs bend dans les copies : OK")
-
-def test_halve_bars_filters_bend_tape():
+def test_halve_bars_filters_bends():
     p = Pattern()
     p.new_pattern(4, 16)
-    p._bend_tape[0] = [(5.0, 1000), (20.0, -500), (35.0, 2000)]
+    p._tape[0] += [_bend(1000, 5.0), _bend(-500, 20.0), _bend(2000, 35.0)]
     p.halve_bars()
-    offsets = [off for off, _ in p._bend_tape[0]]
-    assert 5.0  in offsets
-    assert 20.0 in offsets
-    assert 35.0 not in offsets
-    print("  halve_bars filtre _bend_tape : OK")
+    assert _bend_pts(p, 0) == [(5.0, 1000), (20.0, -500)]
+    print("  halve_bars filtre les bends : OK")
 
-def test_resize_filters_bend_tape():
+def test_resize_filters_bends():
     p = Pattern()
     p.new_pattern(4, 16)
-    p._bend_tape[0] = [(5.0, 100), (40.0, -200)]
+    p._tape[0] += [_bend(100, 5.0), _bend(-200, 40.0)]
     p.resize(2, 16)
-    offsets = [off for off, _ in p._bend_tape[0]]
-    assert 5.0  in offsets
-    assert 40.0 not in offsets
-    print("  resize filtre _bend_tape : OK")
+    assert _bend_pts(p, 0) == [(5.0, 100)]
+    print("  resize filtre les bends hors pattern : OK")
 
-def test_roundtrip_bend_tape():
+def test_resize_reencodes_bend_position_when_num_steps_changes():
+    """Bug 1 du plan 6a1 : _bend_tape n'était que filtré, jamais ré-encodé.
+    Un bend à la mesure 2 pas 1 (time 17.25 en 16 pas/mesure) reste à la
+    mesure 2 pas 1 en 32 pas/mesure (time 33.25), fraction comprise."""
+    p = Pattern()
+    p.new_pattern(2, 16)
+    p._tape[0].append(_bend(700, 17.25))
+    p.resize(2, 32)
+    assert _bend_pts(p, 0) == [(33.25, 700)]
+    print("  resize 16→32 pas garde la position musicale d'un bend : OK")
+
+def test_copy_from_copies_bends():
+    src = Pattern()
+    src._tape[0].append(_bend(1000, 5.5, channel=4))
+    dst = Pattern()
+    dst.copy_from(src)
+    assert _bend_pts(dst, 0) == [(5.5, 1000)]
+    assert dst._tape[0][0].channel == 4
+    print("  copy_from copie les ETYPE_BEND : OK")
+
+def test_roundtrip_bends():
     src = Pattern()
     src.new_pattern(1, 16)
-    src._bend_tape[0] = [(2.5, 4096), (7.0, -2000)]
-    src._bend_tape[2] = [(1.0, 8191)]
+    src._tape[0] += [_bend(4096, 2.5, channel=1), _bend(-2000, 7.0)]
+    src._tape[2].append(_bend(8191, 1.0))
     dst = Pattern()
     dst.from_dict(src.to_dict())
-    assert dst._bend_tape[0] == src._bend_tape[0]
-    assert dst._bend_tape[2] == src._bend_tape[2]
-    print("  to_dict → from_dict _bend_tape round-trip : OK")
+    assert tapes_equal_strict(dst._tape, src._tape)
+    print("  to_dict → from_dict des ETYPE_BEND (tape_v2) round-trip : OK")
 
-def test_from_dict_without_bend_tape_gives_empty():
+def test_to_dict_no_longer_writes_bend_tape_key():
     p = Pattern()
-    p.from_dict({"curpattern": Pattern().to_dense_grid()})
-    assert isinstance(p._bend_tape, list)
-    assert all(t == [] for t in p._bend_tape)
-    print("  from_dict sans bend_tape → listes vides (rétrocompat) : OK")
+    p._tape[0].append(_bend(10, 1.0))
+    assert "bend_tape" not in p.to_dict()
+    print("  to_dict n'écrit plus la clé bend_tape : OK")
 
-def test_from_dict_bend_tape_pads_to_num_tracks():
+def test_from_dict_without_bend_tape_key_is_noop():
+    """Preset sauvé après 6h1 : rien à migrer, ETYPE_BEND de tape_v2 gardés."""
+    src = Pattern()
+    src._tape[0].append(_bend(10, 1.5))
     p = Pattern()
-    d = p.to_dict()
-    d["bend_tape"] = [[(1.0, 100)]]
+    p.from_dict(src.to_dict())
+    assert _bend_pts(p, 0) == [(1.5, 10)]
+    print("  from_dict sans clé bend_tape : rien à migrer : OK")
+
+def test_from_dict_migrates_bend_tape_to_etype_bend():
+    """Preset ancien (tape_v2 + bend_tape) : chaque (off, val) devient un
+    ETYPE_BEND channel=0, time flottant conservé, aux côtés des événements
+    déjà présents (pas de doublon possible : pas de copie avant 6b1)."""
+    src = Pattern()
+    src.set_cell(0, 2, 0, 3, 100)
+    src._tape[0].append(TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 90}, time=4))
+    d = src.to_dict()
+    d["bend_tape"] = [[[2.5, 4096], [7.0, -2000]], [], [[1.0, 8191]]]   # forme JSON
+    p = Pattern()
+    p.from_dict(d)
+    assert _bend_pts(p, 0) == [(2.5, 4096), (7.0, -2000)]
+    assert _bend_pts(p, 1) == []
+    assert _bend_pts(p, 2) == [(1.0, 8191)]
+    bends = [ev for ev in p._tape[0] if ev.etype == ETYPE_BEND]
+    assert all(ev.channel == 0 and ev.dur == 0 for ev in bends)
+    assert {ev.etype for ev in p._tape[0]} == {ETYPE_GRID, ETYPE_CC, ETYPE_BEND}
+    print("  from_dict migre bend_tape en ETYPE_BEND (notes/CC conservés) : OK")
+
+def test_from_dict_migrates_bend_tape_from_legacy_format():
+    """Très ancien format (curpattern, sans tape_v2) + bend_tape."""
+    d = {"curpattern": Pattern().to_dense_grid(), "bend_tape": [[(3.0, 100)]]}
+    p = Pattern()
+    p.from_dict(d)
+    assert _bend_pts(p, 0) == [(3.0, 100)]
+    print("  from_dict migre bend_tape depuis l'ancien format curpattern : OK")
+
+def test_from_dict_bend_tape_beyond_num_tracks_extends_tape():
+    src = Pattern()
+    d = src.to_dict()
+    n = src._num_tracks
+    d["bend_tape"] = [[] for _ in range(n)] + [[(1.0, 5)]]
+    p = Pattern()
+    p.from_dict(d)
+    assert _bend_pts(p, n) == [(1.0, 5)]
+    print("  from_dict : bend_tape plus long que tape_v2 → piste ajoutée : OK")
+
+def test_migrated_bends_are_replayed_and_resaved():
+    """Après migration, re-sauvegarde : plus de clé bend_tape, bends dans tape_v2."""
+    d = Pattern().to_dict()
+    d["bend_tape"] = [[(2.5, 4096)]]
+    p = Pattern()
+    p.from_dict(d)
+    d2 = p.to_dict()
+    assert "bend_tape" not in d2
     p2 = Pattern()
-    p2.from_dict(d)
-    assert len(p2._bend_tape) == p2._num_tracks
-    assert p2._bend_tape[0] == [(1.0, 100)]
-    assert p2._bend_tape[1] == []
-    print("  from_dict bend_tape incomplet → complété avec [] : OK")
+    p2.from_dict(d2)
+    assert _bend_pts(p2, 0) == [(2.5, 4096)]
+    print("  bends migrés re-sauvés dans tape_v2, sans clé bend_tape : OK")
 
 def _bends(pattern, track):
     """Événements ETYPE_BEND d'une piste de _tape (Phase 7 étape 6b1)."""
@@ -1309,13 +1364,6 @@ def test_record_bend_uses_cur_track():
     assert _bends(pl._pattern, 3) != []
     assert _bends(pl._pattern, 0) == []
     print("  record_bend enregistre sur la piste courante : OK")
-
-def test_record_bend_does_not_touch_bend_tape():
-    """_bend_tape n'est plus alimenté (supprimé en 6h1)."""
-    pl = _make_player()
-    pl.record_bend(1234)
-    assert all(t == [] for t in pl._pattern._bend_tape)
-    print("  record_bend n'écrit plus dans _bend_tape : OK")
 
 def test_record_bend_returns_bar_step():
     pl = _make_player()
@@ -2033,24 +2081,28 @@ if __name__ == "__main__":
     test_record_patch_note_bend_zero_by_default()
     test_record_patch_note_off_preserves_bend()
     test_run_thread_dispatch_passes_bend_to_callback()
-    # Automation Pitch Bend — _bend_tape
-    test_bend_tape_initially_empty()
-    test_new_pattern_resets_bend_tape()
-    test_reset_pattern_clears_bend_tape()
-    test_clear_track_clears_bend_tape_for_track()
-    test_double_bars_duplicates_bend_tape()
-    test_double_bars_preserves_bend_values()
-    test_halve_bars_filters_bend_tape()
-    test_resize_filters_bend_tape()
-    test_roundtrip_bend_tape()
-    test_from_dict_without_bend_tape_gives_empty()
-    test_from_dict_bend_tape_pads_to_num_tracks()
+    # Automation Pitch Bend — structure (_bend_tape supprimé en 6h1) + migration .gvp
+    test_pattern_has_no_bend_tape_attribute()
+    test_new_pattern_resets_bends()
+    test_reset_pattern_clears_bends()
+    test_clear_track_clears_bends_for_track()
+    test_double_bars_duplicates_bends()
+    test_halve_bars_filters_bends()
+    test_resize_filters_bends()
+    test_resize_reencodes_bend_position_when_num_steps_changes()
+    test_copy_from_copies_bends()
+    test_roundtrip_bends()
+    test_to_dict_no_longer_writes_bend_tape_key()
+    test_from_dict_without_bend_tape_key_is_noop()
+    test_from_dict_migrates_bend_tape_to_etype_bend()
+    test_from_dict_migrates_bend_tape_from_legacy_format()
+    test_from_dict_bend_tape_beyond_num_tracks_extends_tape()
+    test_migrated_bends_are_replayed_and_resaved()
     # Automation Pitch Bend — ETYPE_BEND dans _tape (Phase 7 étape 6b1)
     test_record_bend_stores_float_offset_and_value()
     test_record_bend_stores_channel()
     test_record_bend_multiple_points_accumulate()
     test_record_bend_uses_cur_track()
-    test_record_bend_does_not_touch_bend_tape()
     test_record_bend_returns_bar_step()
     test_record_bend_stores_fractional_time()
     test_record_bend_ignores_record_quantization()

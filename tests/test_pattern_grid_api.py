@@ -13,7 +13,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_BEND
 from tape_test_utils import tape_at, has_tape_at, set_tape_at, add_tape_at, same_events
 
 
@@ -202,7 +202,7 @@ def test_copy_from_copies_dims_tape_bend():
     src.resize(3, 32)
     src.set_cell(0, 1, 2, 10, 90)
     add_tape_at(src, 0, 2, 10, _K(60, 90))
-    src._bend_tape[0].append((5.0, 1000))
+    src._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 1000}, time=5.0))
 
     dst = Pattern()
     dst.copy_from(src)
@@ -211,8 +211,9 @@ def test_copy_from_copies_dims_tape_bend():
     assert dst._num_steps == 32
     assert dst.get_cell(0, 1, 2, 10) == 90
     assert any(ev.etype == ETYPE_KIT for ev in tape_at(dst, 0, 2, 10))
-    assert dst._bend_tape[0] == [(5.0, 1000)]
-    print("  copy_from copie dims + tape + bend (_mod_tape supprimé en 5h) : OK")
+    assert [(ev.time, ev.payload) for ev in dst._tape[0] if ev.etype == ETYPE_BEND] == \
+        [(5.0, {"value": 1000})]
+    print("  copy_from copie dims + tape, bends compris (_mod_tape 5h, _bend_tape 6h1 supprimés) : OK")
 
 
 def test_copy_from_is_independent_copy():
@@ -222,10 +223,10 @@ def test_copy_from_is_independent_copy():
     dst.copy_from(src)
 
     src.set_cell(0, 0, 0, 0, 0)          # modifie la source après coup
-    src._bend_tape[0].append((1.0, 500))
+    src._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 500}, time=1.0))
 
     assert dst.get_cell(0, 0, 0, 0) == 100   # dst inchangé
-    assert dst._bend_tape[0] == []
+    assert [ev for ev in dst._tape[0] if ev.etype == ETYPE_BEND] == []
     print("  copy_from produit une copie indépendante : OK")
 
 
