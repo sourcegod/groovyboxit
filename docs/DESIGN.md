@@ -1844,3 +1844,8 @@ Ordre choisi :
   il faut un `".."` de plus pour que `bend_log.txt` reste à la racine du
   dépôt. `os` et `TapeEvent`, devenus inutiles dans `drum_player.py`, sont
   retirés.
+- **8d1** — conforme. `drum_player.py` tombe à 165 lignes : imports,
+  `__init__`, propriétés et délégations `_qm`. `DrumPlayer` reçoit une
+  docstring qui renvoie aux mixins. `time` et les `ETYPE_*`, devenus
+  inutiles, sont retirés. L'import `LoopWindow`, déjà inutilisé avant le
+  chantier, est laissé tel quel.
