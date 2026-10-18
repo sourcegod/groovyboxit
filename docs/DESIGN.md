@@ -1881,3 +1881,49 @@ Ordre choisi :
   9 fichiers de tests, en comptant le nouveau `test_playback_loop.py` de
   8f1. `test_tape.py` a deux imports. Index vérifié avant le commit.
   Aucun test ne lit `drum_player.py` par son chemin.
+
+### Clôture (8h1)
+
+**8a1-8g1 FAITS** (commits `a0fe487`..`79e83b5`, 1777 tests passed) —
+**chantier Phase 7 étape 8 complet**. Aucun changement de comportement :
+les 1746 tests d'avant le chantier passent sans autre modification que
+les imports et le patch `perf_counter`, et 31 tests ont été ajoutés.
+
+Résultat, `src/drum_player.py` (1148 lignes) devient le package
+`src/player/` :
+
+| Fichier | Lignes | Contenu |
+|---|---|---|
+| `drum_player.py` | 165 | `DrumPlayer` : état (`__init__`), propriétés, délégations `_qm` |
+| `dp_transport.py` | 126 | `TransportMixin` |
+| `dp_position.py` | 164 | `PositionMixin` |
+| `dp_playback.py` | 290 | `PlaybackLoopMixin` : `_run_thread` (56 lignes) et ses trois étapes |
+| `dp_live.py` | 55 | `LivePlayMixin` |
+| `dp_recording.py` | 278 | `RecordingMixin` et `_bend_log` |
+| `dp_erase.py` | 126 | `EraseMixin` |
+
+Écarts au plan, détaillés plus haut :
+- 8c1 : chemin `_BEND_LOG_PATH` ;
+- 8e1 : attente de fin de mesure dans `_on_measure_end` ;
+- 8g1 : 12 imports au lieu de 10.
+
+`grep -rn "drum_player"` final : hors cette section et les sections
+historiques de ce fichier, il ne reste que les imports
+`from player.drum_player import DrumPlayer` (2 dans `src/ui/`, 10 dans
+`tests/`), le nom d'un test (`test_drum_player_has_no_mod_tape_remnants`)
+et l'arborescence de `docs/SPECS.md`, qui liste maintenant `player/`.
+
+Restent hors périmètre :
+- rassembler les quatre copies de `_bend_log` (reporté à une prochaine
+  étape) ;
+- l'import inutilisé `LoopWindow` de `drum_player.py` ;
+- la borne basse redondante de la fenêtre de boucle dans
+  `_build_measure_events` (voir 8f1) ;
+- le reste de l'arborescence de `docs/SPECS.md`, en retard sur la Phase 7
+  étape 3 : `midi_editor.py` et `midi_manager.py` y sont encore listés
+  dans `src/` au lieu de `src/midi/`, et `ui/midi_handler.py` sous son
+  ancien nom ;
+- l'arborescence de `CLAUDE.md`, qui décrit la structure prévue au départ
+  du projet et non les fichiers actuels.
+
+Suite : l'Import/Export MIDI, en commençant par l'export.

@@ -43,7 +43,6 @@ groovyboxit/
 │   ├── app_config.py     # Chargement data/config.json, chemins configurables
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
 │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
-│   ├── drum_player.py    # Séquenceur : lecture, enregistrement, note repeat
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
 │   ├── metronome.py      # Classe Metronome isolée
@@ -64,6 +63,14 @@ groovyboxit/
 │   ├── track_router.py   # Routage piste→slot→SynthEngine, dispatch audio
 │   ├── undo_manager.py   # UndoManager : historique annulations/rétablissements
 │   ├── voice_manager.py  # Volume, pan, mute, solo, durée par pad
+│   ├── player/           # Séquenceur DrumPlayer (Phase 7 étape 8)
+│   │   ├── drum_player.py  # DrumPlayer : état (__init__), propriétés, délégations quantisation
+│   │   ├── dp_transport.py # Mixin : thread, play/stop/pause, song, click, BPM
+│   │   ├── dp_position.py  # Mixin : position du playhead, statut, déplacements
+│   │   ├── dp_playback.py  # Mixin : boucle de lecture _run_thread et ses 3 étapes
+│   │   ├── dp_live.py      # Mixin : jeu live des pads, Note Repeat, volume, pan
+│   │   ├── dp_recording.py # Mixin : enregistrement (record_*), positions de capture
+│   │   └── dp_erase.py     # Mixin : mode Erase
 │   └── ui/
 │       ├── dialogs.py          # Boîtes de dialogue (explorateur)
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
