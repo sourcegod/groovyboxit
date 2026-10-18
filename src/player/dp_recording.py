@@ -1,18 +1,7 @@
 import time
-import os
 
 from pattern import Pattern, TapeEvent, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
-
-# Fichier de log pitch bend — activé si GROOVY_BEND_LOG=1
-_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
-_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "bend_log.txt")
-
-def _bend_log(msg):
-    if not _BEND_LOG:
-        return
-    ts = time.strftime("%H:%M:%S")
-    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"[{ts}] {msg}\n")
+from bend_log import bend_log
 
 
 class RecordingMixin:
@@ -178,7 +167,7 @@ class RecordingMixin:
             self._pending_patch[midi_note] = (track, new_ev.id, now)
         else:
             self._pending_patch.pop(midi_note, None)
-        _bend_log(f"REC note_on  note={midi_note} vel={vel} dur={dur} bend={bend} "
+        bend_log(f"REC note_on  note={midi_note} vel={vel} dur={dur} bend={bend} "
                   f"→ bar={bar_idx} step={step_idx} track={self._cur_track}")
         return bar_idx, step_idx
 
@@ -198,7 +187,7 @@ class RecordingMixin:
                     break
             else:
                 return
-        _bend_log(f"REC note_off note={midi_note} dur_finale={duration_ms}ms")
+        bend_log(f"REC note_off note={midi_note} dur_finale={duration_ms}ms")
 
     #--------------------------------------------------------------------------
 

@@ -7,19 +7,9 @@
 """
 
 import threading
-import os, time as _time
 from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
 from rack import InstrumentType
-
-_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
-_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "bend_log.txt")
-
-def _bend_log(msg):
-    if not _BEND_LOG:
-        return
-    ts = _time.strftime("%H:%M:%S")
-    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"[{ts}] {msg}\n")
+from bend_log import bend_log
 
 
 class TrackRouter:
@@ -385,7 +375,7 @@ class TrackRouter:
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
             pan = self._track_pans[track_idx]
             dur = duration_ms if duration_ms > 0 else 500
-            _bend_log(f"PLAY note={midi_note} bend={engine.pitch_bend} "
+            bend_log(f"PLAY note={midi_note} bend={engine.pitch_bend} "
                       f"({engine.pitch_bend_semitones:+.3f}st) engine_id={id(engine)}")
             engine.play(midi_note, vol, pan, dur)
             threading.Timer(dur / 1000.0, engine.stop, [midi_note]).start()
@@ -402,7 +392,7 @@ class TrackRouter:
         if engine and engine.is_loaded():
             engine.pitch_bend = bend_value
             engine.apply_pitch_bend()
-            _bend_log(f"BEND_AUTO track={track_idx} bend={bend_value} "
+            bend_log(f"BEND_AUTO track={track_idx} bend={bend_value} "
                       f"({engine.pitch_bend_semitones:+.3f}st)")
 
     def on_mod_tape(self, track_idx, mod_value):

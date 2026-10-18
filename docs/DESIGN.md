@@ -2047,3 +2047,10 @@ Alternatives écartées :
   enregistrement avec `GROOVY_BEND_LOG=1` est impossible ici, faute de
   clavier MIDI. Elle est remplacée par un appel direct de chaque module
   avec le drapeau allumé, qui doit écrire dans le même fichier.
+
+### Avancement et écarts constatés
+
+- **9b1** — conforme. Avec `GROOVY_BEND_LOG=1`, les quatre modules
+  pointent sur la même fonction et écrivent une ligne chacun dans
+  `bend_log.txt` à la racine du dépôt. `git check-ignore` confirme que
+  ce fichier est ignoré.
