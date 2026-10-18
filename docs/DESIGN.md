@@ -2054,3 +2054,14 @@ Alternatives écartées :
   pointent sur la même fonction et écrivent une ligne chacun dans
   `bend_log.txt` à la racine du dépôt. `git check-ignore` confirme que
   ce fichier est ignoré.
+- **9c1** — conforme, avec un test de plus que prévu (texte non ASCII,
+  les messages `ENGINE_PLAY` contiennent « → »). 9 tests dans
+  `tests/test_bend_log.py`, 1786 au total.
+  - Le fichier de log des tests va dans `tmp_path`, grâce au `monkeypatch`
+    de `_ENABLED` et `_LOG_PATH` : les tests n'écrivent jamais à la racine
+    du dépôt.
+  - Contre-épreuve sur le code d'avant 9b1 : les tests ne s'importent pas,
+    `bend_log.py` n'existant pas encore. C'est peu parlant, d'où une
+    contre-épreuve par mutations volontaires de `bend_log.py`. Les 5 sont
+    détectées : écriture en mode `"w"`, drapeau ignoré, horodatage retiré,
+    chemin hors de la racine, encodage ASCII.
