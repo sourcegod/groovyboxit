@@ -1834,3 +1834,13 @@ Ordre choisi :
 - Chaque commit de 8b1 à 8g1 laisse la suite verte : pas de paire
   implémentation/tests rouge dans ce chantier (8e1 est couvert par les
   tests existants, 8f1 ajoute des tests).
+
+### Avancement et écarts constatés
+
+- **8b1** (`e7a444c`) — conforme. `import math`, devenu inutile dans
+  `drum_player.py`, est retiré.
+- **8c1** — un seul écart au déplacement à l'identique : `_BEND_LOG_PATH`
+  est calculé depuis `dirname(__file__)`. Dans `src/player/dp_recording.py`,
+  il faut un `".."` de plus pour que `bend_log.txt` reste à la racine du
+  dépôt. `os` et `TapeEvent`, devenus inutiles dans `drum_player.py`, sont
+  retirés.

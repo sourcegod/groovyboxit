@@ -1509,7 +1509,7 @@ def test_compute_float_offset_shared_by_cc_and_bend():
     à horloge égale, même position."""
     from unittest import mock
     pl = _player_at_offset(7.25)
-    with mock.patch("drum_player.time.perf_counter", return_value=time.perf_counter()):
+    with mock.patch("player.dp_recording.time.perf_counter", return_value=time.perf_counter()):
         pl.record_cc(74, 10)
         pl.record_bend(10)
     cc   = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_CC][0]
