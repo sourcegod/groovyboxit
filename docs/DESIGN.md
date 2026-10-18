@@ -1849,3 +1849,16 @@ Ordre choisi :
   docstring qui renvoie aux mixins. `time` et les `ETYPE_*`, devenus
   inutiles, sont retirés. L'import `LoopWindow`, déjà inutilisé avant le
   chantier, est laissé tel quel.
+- **8e1** — un écart à D3 : l'attente de **fin de mesure** part dans
+  `_on_measure_end` au lieu de rester dans `_run_thread`.
+  - Le bloc `else` du `for` enchaîne trois choses : le pré-armement du
+    dernier count-in, qui doit se faire *avant* l'attente ; l'attente
+    elle-même ; puis la décision (count-in, compteur de boucle, song,
+    pause), qui se fait *après*.
+  - Garder l'attente dans `_run_thread` aurait coupé la logique du count-in
+    en deux et demandé une quatrième méthode.
+  - L'attente de chaque **événement** et le `for … else` restent bien dans
+    `_run_thread`, qui fait maintenant 56 lignes.
+  - Les corps des trois méthodes sont repris à l'identique, à l'indentation
+    près : la comparaison du diff avec `-w` ne montre que les appels, les
+    signatures, les docstrings et les `return`.
