@@ -2065,3 +2065,31 @@ Alternatives écartées :
     contre-épreuve par mutations volontaires de `bend_log.py`. Les 5 sont
     détectées : écriture en mode `"w"`, drapeau ignoré, horodatage retiré,
     chemin hors de la racine, encodage ASCII.
+
+### Clôture (9d1)
+
+**9a1-9c1 FAITS** (commits `943f351`..`abe04a9`, 1786 tests passed) —
+**chantier Phase 7 étape 9 complet**.
+
+- **D1** — `src/bend_log.py` remplace les quatre copies de `_bend_log` :
+  un seul drapeau, un seul chemin, une seule fonction `bend_log(msg)`,
+  utilisée par `player/dp_recording.py`, `track_router.py`,
+  `synth_engine.py` et `ui/midi_handler_window.py`. Le comportement, le
+  fichier et le format sont inchangés. Le code compte 10 lignes de moins.
+- **D2** — le drapeau est toujours lu à l'import. Les tests le changent par
+  `monkeypatch`.
+- **D3** — `bend_log.txt` est dans `.gitignore`.
+
+Le chemin vers la racine n'est plus écrit qu'une fois. Déplacer un
+fichier qui utilise le log ne demande donc plus de le corriger, comme
+il avait fallu le faire en Phase 7 étape 8c1.
+
+`grep -rn "_bend_log\|_BEND_LOG"` final : hors des sections historiques
+de ce fichier, ces noms n'apparaissent plus que dans les docstrings de
+`bend_log.py` et de `test_bend_log.py`, et dans le test qui vérifie leur
+absence (`test_no_local_copy_left`). `docs/SPECS.md` liste
+`bend_log.py` dans son arborescence.
+
+Rien n'est laissé hors périmètre en plus de ce que le plan excluait.
+
+Suite : l'Import/Export MIDI, en commençant par l'export.

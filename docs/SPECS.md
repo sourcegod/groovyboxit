@@ -43,6 +43,7 @@ groovyboxit/
 │   ├── app_config.py     # Chargement data/config.json, chemins configurables
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
 │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
+│   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
 │   ├── metronome.py      # Classe Metronome isolée
