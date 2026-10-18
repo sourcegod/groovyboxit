@@ -1625,3 +1625,212 @@ décrivait encore la structure d'avant la Phase 7).
 Restent hors périmètre : copier/coller « niveau événement » de l'éditeur
 pour CC/PGM/bend, quantisation des bends, le cas des bends à temps égal
 ci-dessus.
+
+---
+
+## Phase 7 étape 8a1 — Découpage de `drum_player.py` en mixins
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 et 7 : `8a1`, `8b1`, `8c1`… ; un
+commit imprévu inséré après `8b1` s'appelle `8b2`, `8b3`, etc.
+
+### Origine du besoin
+
+- `src/drum_player.py` fait 1148 lignes. C'est de loin le plus gros fichier
+  de `src/` : le suivant, `pattern.py`, fait 635 lignes.
+- Décision de l'utilisateur (2026-10-17) : découper ce fichier **avant** le
+  chantier Import/Export MIDI, pour partir d'un code découpé.
+- Précédents : Phase 5 étapes 11a–12a (gros fichiers éclatés en mixins ou
+  par composition) et Phase 6 étape 12a (`midi_editor_window.py`, 2401 →
+  101 lignes, 10 mixins `ui/mew_*.py`).
+
+### État des lieux constaté en code (2026-10-18, 1746 tests verts)
+
+**Une seule classe, `DrumPlayer`, plus un helper de module.**
+- `_bend_log` (l. 13-22) : log pitch bend activé par `GROOVY_BEND_LOG=1`.
+  Il est utilisé seulement par `record_patch_note`/`record_patch_note_off`.
+  Trois autres copies identiques existent dans `track_router.py`,
+  `synth_engine.py` et `ui/midi_handler_window.py`.
+- Sept constantes de classe `*_EVENT` (l. 25-33). Elles ne servent qu'à
+  `_run_thread`. Un test lit `DrumPlayer.GRID_EVENT`.
+- `__init__` (l. 35-109) : environ 75 attributs d'état, partagés par toutes
+  les responsabilités ci-dessous.
+- Deux objets sont déjà extraits par composition : `QuantizeManager`
+  (`self._qm`, qui reçoit le player comme `owner`) et `LoopManager`
+  (`self._lm`). `Metronome` (`self._metro`) et `VoiceManager` aussi.
+
+**Responsabilités repérées (lignes actuelles) :**
+
+| Bloc | Méthodes | Lignes | Taille |
+|---|---|---|---|
+| Propriétés | `_loop_remaining`, `float_offsets`, `clicking`, `click_in_recording` | 112-145 | ~35 |
+| Thread et transport | `start_thread`, `stop_thread`, `play_pattern`, `stop_pattern`, `play_song`, `pause_pattern`, `play_click`, `stop_click`, `stop_all`, `set_bpm` | 148-227, 389-419, 1129-1134 | ~120 |
+| Position et navigation | `goto_start`, `goto_end`, `_go_to_offset`, `_current_offset`, `position_str`, `time_str`, `move_by_ticks/beats/seconds/bars`, `navigate_bar` | 229-387 | ~160 |
+| Boucle de lecture | `_run_thread` (une seule méthode) | 422-669 | ~250 |
+| Délégations quantisation | `apply_quant_row`, `double_pattern`, `halve_pattern`, `apply_quant_to_pattern`, `_compute_offsets`, `load_pattern` | 672-701 | ~30 |
+| Jeu live et Note Repeat | `play_sound`, `start_note_repeat`, `stop_note_repeat`, `update_nr_rate`, `set_volume`, `set_pan`, `_mix_pan` | 705-744, 1137-1146 | ~55 |
+| Enregistrement | `record_pattern`, `record_pattern_with_count_in`, `stop_record`, `start_replace_recording`, `_record_nr_hit`, `_compute_record_offset`, `_compute_float_offset`, `record_hit`, `record_patch_note`, `record_patch_note_off`, `record_bend`, `record_kit_note`, `record_cc`, `record_program_change` | 747-792, 897-915, 935-1127 | ~265 |
+| Effacement (Erase) | `toggle_erase`, `_erase_tape_event`, `erase_hit`, `erase_patch_tape_note`, `_clear_offset` | 794-895, 917-933 | ~120 |
+
+**Couplage avec le reste du code.**
+- Deux importeurs dans `src/` (`ui/main_window.py`,
+  `ui/midi_handler_window.py`) et huit fichiers de tests font
+  `from drum_player import DrumPlayer`.
+- L'interface accède à environ 70 attributs et méthodes différents de
+  `_player` (`_pattern` et `_cur_track` 51 fois chacun, `voice_manager` 39
+  fois, `_compute_offsets` 22 fois…). Les tests en touchent environ 150,
+  dont beaucoup d'attributs privés (`_measure_start`, `_pending_patch`,
+  `_count_in`…).
+- Un seul patch de module dans les tests :
+  `mock.patch("drum_player.time.perf_counter")`
+  (`test_tape.py::test_compute_float_offset_shared_by_cc_and_bend`). Il
+  vise `_compute_float_offset`, donc il cassera si cette méthode change de
+  module.
+- Toutes les méthodes lisent et écrivent l'état commun : `playing`,
+  `recording`, `_measure_start`, `step_duration`, `_pattern`, `_wakeup`…
+
+**`_run_thread` (250 lignes) mélange trois choses dans une seule boucle :**
+1. construire la liste des événements de la mesure (tape, métronome, Note
+   Repeat), l. 448-497 ;
+2. attendre puis distribuer chaque événement selon son marqueur, l. 499-578 ;
+3. gérer la fin de mesure : count-in, compteur de boucle, enchaînement
+   des patterns d'un song, pause en fin de pattern, l. 579-669.
+
+La variable locale `measure_start` est modifiée par les points 2 et 3, et
+le `for … else` lie la fin de mesure au fait que la boucle d'événements
+n'a pas été interrompue par `_wakeup`.
+
+### Décisions validées (utilisateur, 2026-10-18)
+
+**D1 — des mixins, pas de la composition.**
+- Chaque bloc du tableau devient une classe mixin sans `__init__`, dans
+  son propre fichier. `DrumPlayer` hérite de tous les mixins et garde
+  `__init__`, les propriétés et les délégations de quantisation.
+- L'état reste dans `DrumPlayer.__init__`, comme aujourd'hui. Les mixins
+  lisent et écrivent `self.<attribut>` sans changement de code.
+- L'interface publique et privée ne change pas. Aucun des ~70 accès de
+  l'interface ni des ~150 accès des tests n'est à réécrire.
+- C'est le modèle de `midi_editor_window.py` (Phase 6 étape 12a,
+  `ui/mew_*.py`).
+
+Alternative écartée — **composition** (un `Recorder`, un `Transport`…
+qui reçoivent le player comme `owner`, comme `QuantizeManager`) :
+- il faudrait des délégations pour chaque méthode publique, soit une
+  trentaine de méthodes d'une ligne dans `DrumPlayer`, ou bien réécrire les
+  appelants (`_player.recorder.record_hit(...)`) ;
+- l'état étant entièrement partagé, chaque objet passerait son temps à
+  lire `self._p.<attribut>` : la séparation ne serait que de façade.
+
+**D2 — package `src/player/`, qui accueille aussi `drum_player.py` en fin
+de chantier.**
+- Les mixins vont dans un nouveau package `src/player/`, comme `src/midi/`
+  (Phase 7 étape 3a) :
+
+  | Fichier | Classe | Contenu |
+  |---|---|---|
+  | `player/dp_transport.py` | `TransportMixin` | thread, play/stop/pause, song, click, `stop_all`, `set_bpm` |
+  | `player/dp_position.py` | `PositionMixin` | position, chaînes de statut, déplacements, `navigate_bar` |
+  | `player/dp_playback.py` | `PlaybackLoopMixin` | `_run_thread` et les constantes `*_EVENT` |
+  | `player/dp_live.py` | `LivePlayMixin` | `play_sound`, Note Repeat, volume, pan |
+  | `player/dp_recording.py` | `RecordingMixin` | armement de l'enregistrement, calcul des positions, tous les `record_*`, `_record_nr_hit`, `_bend_log` |
+  | `player/dp_erase.py` | `EraseMixin` | `toggle_erase`, effacement au passage et ciblé, `_clear_offset` |
+
+- Pendant les déplacements des mixins, `src/drum_player.py` reste à sa
+  place : les commits 8b1-8e1 ne touchent pas aux importeurs.
+- **Dernier commit de code (8g1) : `drum_player.py` est déplacé dans
+  `src/player/drum_player.py`** (`git mv`), pour le rangement. Il ne
+  contient plus alors que la classe `DrumPlayer` (~200 lignes : imports,
+  `__init__`, propriétés, délégations `_qm`). Les deux importeurs de
+  `src/` et les huit fichiers de tests passent à
+  `from player.drum_player import DrumPlayer`.
+- Préfixe `dp_` : même logique que `mew_` (MidiEditorWindow) et `mw_`
+  (MainWindow), il dit à quelle classe le mixin appartient.
+- Noms de classe sans préfixe, comme les `mew_*` : `PositionMixin` plutôt
+  que `NavigationMixin`, pour ne pas faire doublon avec
+  `ui/mew_navigation.py::NavigationMixin`.
+- Imports : absolus, comme le reste de `src/` (`from pattern import …`,
+  `from player.dp_recording import RecordingMixin`).
+- Les constantes `*_EVENT` passent dans `PlaybackLoopMixin` :
+  `DrumPlayer.GRID_EVENT` reste accessible par héritage.
+
+**D3 — déplacer d'abord, restructurer `_run_thread` ensuite, dans des
+commits séparés.**
+- Les commits de déplacement (8b1-8d1) copient le code **à l'identique** :
+  pas de renommage, pas de reformatage, `git diff --color-moved` doit
+  montrer des blocs déplacés et rien d'autre.
+- Ensuite seulement (8e1), `_run_thread` est découpé en trois méthodes du
+  même mixin, une par point de l'état des lieux :
+  - `_build_measure_events(lp_start, lp_end, total_steps, loop_bars, elapsed)`
+    → la liste triée ;
+  - `_dispatch_event(track_or_type, evt_data, velocity, t_sec)` → le
+    grand `if/elif` sur le marqueur ;
+  - `_on_measure_end(measure_start, measure_secs, lp_start)` → retourne
+    le nouveau `measure_start`, pour garder la variable locale
+    explicite.
+  - L'attente active (`while … sleep`) et le `for … else` restent dans
+    `_run_thread`, qui retombe à ~50 lignes.
+- Raison : un déplacement pur se relit en un coup d'œil ; un découpage de
+  méthode demande une vraie relecture. Les mélanger cacherait un
+  éventuel changement de comportement dans un gros diff.
+- C'est aussi la zone que l'export MIDI devra comprendre (ordre de rejeu,
+  temps des événements).
+
+**D4 — les patchs de test suivent le code.**
+- `mock.patch("drum_player.time.perf_counter")` devient
+  `mock.patch("player.dp_recording.time.perf_counter")` dans le même
+  commit que le déplacement de `_compute_float_offset` (8c1), pour garder
+  la suite verte à chaque commit.
+- Le déplacement de `drum_player.py` (8g1) met à jour les imports des
+  tests dans le même commit. Vérifier le contenu indexé avant de
+  committer : un `git add -A` après un `git mv` suivi d'éditions peut
+  rater des lignes.
+
+### Portée explicitement exclue de ce chantier
+
+- Tout changement de comportement. La suite de tests existante (1746)
+  doit passer à chaque commit sans autre modification que les patchs et
+  imports de D4.
+- **Rassembler les quatre copies de `_bend_log`** (`drum_player.py`,
+  `track_router.py`, `synth_engine.py`, `ui/midi_handler_window.py`) dans
+  un module commun : **reporté à une prochaine étape**, après ce
+  chantier. Ici, la copie de `drum_player.py` suit simplement
+  `RecordingMixin` dans `player/dp_recording.py`.
+- Déplacer de l'état hors de `DrumPlayer.__init__` (par exemple l'état
+  du song vers un objet `SongState`) : ce serait un changement de
+  structure de données, pas un découpage de fichier.
+- `QuantizeManager`, `LoopManager`, `Metronome` : déjà séparés, non
+  touchés.
+- L'Import/Export MIDI lui-même. Il ne s'ajoutera probablement pas à
+  `DrumPlayer` : la lecture/écriture d'un `.mid` travaille sur un
+  `Pattern`, elle ira plutôt dans `src/midi/`. Ce sera décidé dans son
+  propre plan.
+
+### Découpage en commits
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **8a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **8b1** | Refactor — package `src/player/` (`__init__.py`), `TransportMixin` et `PositionMixin` déplacés à l'identique, `DrumPlayer` en hérite. | `drum_player.py`, `player/__init__.py`, `player/dp_transport.py`, `player/dp_position.py` |
+| **8c1** | Refactor — `RecordingMixin` (avec `_bend_log`) et `EraseMixin` déplacés à l'identique ; patch de test de D4. | `drum_player.py`, `player/dp_recording.py`, `player/dp_erase.py`, `tests/test_tape.py` |
+| **8d1** | Refactor — `LivePlayMixin` et `PlaybackLoopMixin` (avec les constantes `*_EVENT`) déplacés à l'identique. `drum_player.py` ne garde que `__init__`, les propriétés et les délégations. | `drum_player.py`, `player/dp_live.py`, `player/dp_playback.py` |
+| **8e1** | Refactor — `_run_thread` découpé en `_build_measure_events`, `_dispatch_event`, `_on_measure_end` (D3). Comportement inchangé. | `player/dp_playback.py` |
+| **8f1** | Tests — tests unitaires des trois nouvelles méthodes : liste d'événements (fenêtre de boucle, filtre `elapsed`, ordre bend avant note au même temps, Note Repeat) ; distribution vers les bons callbacks ; fin de mesure (count-in, compteur de boucle, enchaînement et bouclage de song, pause en fin de pattern). | `tests/test_playback_loop.py` (nouveau) |
+| **8g1** | Refactor — `git mv src/drum_player.py src/player/drum_player.py` ; imports mis à jour (`from player.drum_player import DrumPlayer`). | `player/drum_player.py`, `ui/main_window.py`, `ui/midi_handler_window.py`, 8 fichiers de `tests/` |
+| **8h1** | Doc — clôture (DESIGN.md, structure de `CLAUDE.md`/`docs/SPECS.md` si elle liste les fichiers), `grep -rn "drum_player"` sur tout le dépôt, `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, autres docs si besoin |
+
+Ordre choisi :
+- Deux mixins par commit, par paires de blocs voisins, pour garder des
+  diffs lisibles.
+- Transport/position d'abord : ce sont les blocs les moins couplés au
+  reste (ils n'appellent que `start_thread`/`stop_thread` et
+  `_current_offset`).
+- `_run_thread` en dernier parmi les mixins : c'est lui qui appelle
+  presque tous les autres blocs (`_clear_offset`, `_erase_tape_event`,
+  `_record_nr_hit`, `_mix_pan`, `_compute_offsets`).
+- Déplacement de `drum_player.py` après tout le reste : le fichier est
+  alors petit, et le commit ne contient que le `git mv` et des lignes
+  d'import.
+- Chaque commit de 8b1 à 8g1 laisse la suite verte : pas de paire
+  implémentation/tests rouge dans ce chantier (8e1 est couvert par les
+  tests existants, 8f1 ajoute des tests).
