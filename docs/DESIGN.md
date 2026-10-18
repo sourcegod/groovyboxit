@@ -1927,3 +1927,123 @@ Restent hors périmètre :
   du projet et non les fichiers actuels.
 
 Suite : l'Import/Export MIDI, en commençant par l'export.
+
+---
+
+## Phase 7 étape 9a1 — Un seul `_bend_log` pour tout le projet
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 8 : `9a1`, `9b1`, `9c1`… ; un
+commit imprévu inséré après `9b1` s'appelle `9b2`, `9b3`, etc.
+
+### Origine du besoin
+
+La Phase 7 étape 8a1 a relevé quatre copies de `_bend_log` et a reporté
+leur regroupement à une étape suivante. C'est cette étape, demandée par
+l'utilisateur le 2026-10-18.
+
+### État des lieux constaté en code (2026-10-18, 1777 tests verts)
+
+**Quatre copies du même helper.** Chacune a un drapeau, un chemin et une
+fonction :
+
+```python
+_BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
+_BEND_LOG_PATH = os.path.join(os.path.dirname(__file__), <..>, "bend_log.txt")
+
+def _bend_log(msg):
+    if not _BEND_LOG:
+        return
+    ts = time.strftime("%H:%M:%S")
+    with open(_BEND_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {msg}\n")
+```
+
+| Fichier | Chemin vers la racine | Alias de `time` | Appels | Messages |
+|---|---|---|---|---|
+| `player/dp_recording.py` | `"..", ".."` | `time` | 2 | `REC note_on`, `REC note_off` |
+| `track_router.py` | `".."` | `_time` | 2 | `PLAY`, `BEND_AUTO` |
+| `synth_engine.py` | `".."` | `_time` | 2 | `ENGINE_PLAY` (deux variantes) |
+| `ui/midi_handler_window.py` | `"..", ".."` | `_time` | 2 | `BEND_SET`, `REC_READ` |
+
+- Les quatre copies écrivent dans le même fichier, `bend_log.txt` à la
+  racine du dépôt. Seule la profondeur du fichier change le nombre de
+  `".."`. C'est cette différence qui a demandé une correction en Phase 7
+  étape 8c1, quand `dp_recording.py` a changé de dossier.
+- Le drapeau est lu une fois, à l'import de chaque module.
+- Imports qui ne servent qu'au log :
+  - `track_router.py` : `os` et `_time` (`import os, time as _time`) ;
+  - `ui/midi_handler_window.py` : `os` et `_time` ;
+  - `synth_engine.py` : `_time` seulement, `os` sert ailleurs ;
+  - `dp_recording.py` : `os` seulement, `time` sert ailleurs
+    (`perf_counter`).
+- Aucun test ne couvre le log, et aucun ne patche `_bend_log` ou
+  `_BEND_LOG`.
+- `bend_log.txt` n'est pas dans `.gitignore`. Il n'existe pas en ce moment
+  dans le dépôt.
+- Le projet n'utilise pas le module `logging` de Python.
+
+### Décisions validées (utilisateur, 2026-10-18)
+
+**D1 — un module `src/bend_log.py`, avec une fonction publique
+`bend_log(msg)`.**
+- Le module contient le drapeau `_ENABLED`, le chemin `_LOG_PATH` et
+  `bend_log(msg)`, avec exactement le comportement actuel : même variable
+  d'environnement, même fichier, même format `[HH:MM:SS] message`.
+- Placé à la racine de `src/`, à côté de `app_config.py` : il n'appartient
+  à aucun sous-package. Le chemin vers la racine du dépôt n'est donc
+  écrit qu'une fois, `".."`.
+- Les quatre fichiers font `from bend_log import bend_log`, et leurs 8
+  appels passent de `_bend_log(...)` à `bend_log(...)`. Leurs copies et
+  les imports qui ne servaient qu'au log sont retirés.
+- Les messages ne changent pas.
+
+Alternatives écartées :
+- **Module `logging` de Python** (un logger `"groovy.bend"` avec un
+  `FileHandler`). Ce serait plus standard, mais il faudrait configurer les
+  handlers au démarrage, et le format changerait. Le besoin, un fichier de
+  traces activé à la demande pour déboguer le pitch bend, ne le justifie
+  pas.
+- **Un log générique** `debug_log(channel, msg)`, prévu pour d'autres
+  traces. Aucun autre besoin n'existe aujourd'hui. Il sera facile de
+  généraliser `bend_log.py` le jour où il y en aura un.
+- **Garder le nom `_bend_log` aux appels** (`from bend_log import
+  bend_log as _bend_log`), pour un diff plus court. Un alias qui cache une
+  fonction publique sous un nom privé rend le code moins clair, pour un
+  gain de 8 lignes.
+
+**D2 — lecture du drapeau inchangée, à l'import du module.**
+- Comme aujourd'hui, `GROOVY_BEND_LOG=1` doit être posée avant de lancer
+  l'application.
+- Les tests changent `bend_log._ENABLED` et `bend_log._LOG_PATH` par
+  `monkeypatch`, sans toucher à l'environnement.
+
+**D3 — `bend_log.txt` ajouté à `.gitignore`.**
+- C'est un fichier de traces local. Il ne doit pas être committé par
+  erreur après une session de débogage.
+
+### Portée explicitement exclue de ce chantier
+
+- Le contenu et le nombre des messages de log.
+- Les autres traces de débogage du projet (`print` éventuels) et toute
+  adoption du module `logging`.
+- Le reste de l'arborescence de `docs/SPECS.md`, en retard sur la Phase 7
+  étape 3 (voir la clôture de la Phase 7 étape 8). Seule la ligne de
+  `bend_log.py` y est ajoutée.
+
+### Découpage en commits
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **9a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **9b1** | Implémentation — `src/bend_log.py` (D1, D2) ; les quatre copies sont remplacées par l'import, 8 appels renommés, imports devenus inutiles retirés ; `bend_log.txt` dans `.gitignore` (D3). | `bend_log.py`, `player/dp_recording.py`, `track_router.py`, `synth_engine.py`, `ui/midi_handler_window.py`, `.gitignore` |
+| **9c1** | Tests — drapeau éteint : aucun fichier créé ; drapeau allumé : une ligne `[HH:MM:SS] message` ajoutée par appel, à la suite des précédentes ; chemin par défaut à la racine du dépôt ; les quatre modules appellent la même fonction et n'ont plus de copie (`_BEND_LOG` absent). | `tests/test_bend_log.py` (nouveau) |
+| **9d1** | Doc — clôture (DESIGN.md, ligne `bend_log.py` dans l'arborescence de `docs/SPECS.md`), `grep -rn "_bend_log\|_BEND_LOG"` sur tout le dépôt, `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- 9b1 laisse la suite verte, puisqu'aucun test ne touche le log : pas de
+  paire implémentation/tests rouge dans ce chantier.
+- Avant de committer 9b1, une vérification à la main : lancer un
+  enregistrement avec `GROOVY_BEND_LOG=1` est impossible ici, faute de
+  clavier MIDI. Elle est remplacée par un appel direct de chaque module
+  avec le drapeau allumé, qui doit écrire dans le même fichier.
