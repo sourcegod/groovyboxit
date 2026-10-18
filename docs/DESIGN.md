@@ -2093,3 +2093,407 @@ absence (`test_no_local_copy_left`). `docs/SPECS.md` liste
 Rien n'est laissé hors périmètre en plus de ce que le plan excluait.
 
 Suite : l'Import/Export MIDI, en commençant par l'export.
+
+---
+
+## Phase 7 étape 10a1 — Export MIDI (.mid) du pattern courant
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 9 : `10a1`, `10b1`, `10c1`… ; un
+commit imprévu inséré après `10b1` s'appelle `10b2`, `10b3`, etc.
+
+### Origine du besoin
+
+C'est le but final annoncé dès la Phase 7 étape 1b (§ « Conformité avec le
+but final ») : l'import et l'export de fichiers MIDI standard (SMF). Les
+préalables sont faits :
+- toutes les données d'un pattern vivent dans `_tape`, avec `time` flottant
+  et `channel` (Phase 7 étapes 1, 4, 5, 6) ;
+- le bend est un état de canal, porté par les seuls `ETYPE_BEND`, comme en
+  MIDI (Phase 7 étape 7).
+
+L'utilisateur a demandé le 2026-10-18 d'attaquer l'export en premier.
+L'import fera l'objet d'une partie séparée. En validant le plan, il a
+ajouté :
+- un `requirements.txt` ;
+- un canal commun aux pistes qui partagent un même synthé ;
+- un canal réglable par piste ;
+- des patterns à 16 pistes par défaut.
+
+### État des lieux constaté en code (2026-10-18, 1786 tests verts)
+
+**Les données.** `Pattern._tape[t]` est une liste plate de `TapeEvent` par
+piste (`pattern.py:17`) :
+
+| etype | payload | `dur` | Rejeu (`dp_playback.py`, `track_router.py`) |
+|---|---|---|---|
+| `GRID` | `pad`, `vel` (0..127, 100 par défaut) | ms, 0 = durée de la voix du pad | slot SYNTH : note `_kb_notes_play[pad]` ; sinon `drum_sounds[pad]` |
+| `KIT` | `note`, `vel` | toujours 0 (one-shot, `record_kit_note`) | `snd.play_note(note)`, quel que soit le slot |
+| `PATCH` | `note`, `vel` | ms, 0 = 500 ms | muet si le slot de la piste n'est pas SYNTH |
+| `CC` | `cc_num`, `value` | 0 | 64/120/121/123 globaux ; 1, 7, 10 sur la piste |
+| `PGM` | `program` | 0 | pont provisoire `assign_slot(track, program % 16)` |
+| `BEND` | `value` (-8192..+8191) | 0 | moteur du slot SYNTH, plage ±2 demi-tons (`synth_engine.py:108`, défaut GM) |
+
+- `channel` est le canal d'origine, capturé en live (`dp_recording.py`).
+  Il vaut 0 pour tout ce qui vient de la grille ou du Numpad.
+- La note jouée pour un `GRID` dépend de l'état hors `_tape` :
+  - sur une piste SYNTH, `scale_midi_notes(pattern._kb_scale,
+    pattern._kb_root_midi, 16)[pad]` (`track_router.py:91`, figé par
+    pattern via `set_playback_kb`) ;
+  - sur une piste kit, `drum_sounds[pad]`, c'est-à-dire la note
+    `snd.kit_base + snd.kit_offset + pad` (`sound_manager.py:164`), et
+    `kit_base` vient du kit chargé (36 par défaut).
+- La durée par défaut d'un `GRID` vient du `VoiceManager` du player
+  (`voice_manager.get_duration_ms(pad)`). Le nom d'une piste (F2) est
+  stocké au même endroit, `voice_manager.get_name(track)`
+  (`mw_tracks.py:78`).
+- L'état de mixage de chaque piste vit dans `TrackRouter` :
+  `_track_slots`, `_track_mutes`, `_track_solos`, `_track_volumes`,
+  `_track_pans`. `Pattern` n'en garde une copie qu'au rangement dans le
+  store (`mw_patterns.py`), et c'est cette copie qui est sérialisée.
+
+**Nombre de pistes : 8, en dur à plusieurs endroits.**
+- `Pattern._num_tracks = 8` (`pattern.py:130`), alors que
+  `Pattern.MAX_TRACKS = 16`.
+- `TrackRouter.NUM_TRACKS = 8` (`track_router.py:36`) dimensionne ses
+  listes de pistes.
+- La liste des pistes de la fenêtre principale : `range(8)`
+  (`main_window.py:282`).
+- `docs/SPECS.md` annonce « 8 pistes par pattern ».
+- `from_dict` relit `num_tracks` (8 pour tout `.gvp` existant), et les
+  listes `track_*` telles quelles.
+- La plupart des autres lectures passent déjà par `pattern._num_tracks`.
+
+**Ordre de rejeu à temps égal.** `_build_measure_events` trie des tuples
+`(t_sec, marqueur, données, vélocité)`. Les marqueurs donnent l'ordre
+`PGM (-8)`, `CC (-7)`, `GRID (-6)`, `BEND (-4)`, `PATCH (-3)`, `KIT (-2)` :
+le bend passe avant les notes PATCH. Point resté ouvert en Phase 7
+étape 7 : deux `BEND` au même temps sur une piste.
+- Le tri compare ensuite `données = (t_idx, value)` : c'est la valeur la
+  plus haute qui est appliquée en dernier.
+- `Pattern._bend_state_at`, lui, retient le dernier dans l'ordre de `_tape`.
+- Les deux peuvent donc différer.
+
+**Le temps : une incohérence du lecteur.** Le pas réel est toujours une
+double croche, quel que soit `_num_steps` :
+- `step_duration = 60.0 / bpm / 4` est écrit à quatre endroits :
+  `drum_player.py:40`, `dp_transport.py:125` (`set_bpm`), et
+  `dp_playback.py:260` et `:275` (enchaînement du song) ;
+- tout le reste place un temps tous les `_num_steps // _num_beats` pas :
+  le métronome (`metronome.py:51`), la quantisation, les dialogues
+  temporels, `dp_position.py` et l'éditeur MIDI.
+
+Conséquence : un pattern de 32 pas en 4/4 dure deux fois plus longtemps
+que ne l'annonce son BPM, et le métronome y bat à BPM/2 (BPM/4 pour 64 pas,
+BPM/8 pour 128 pas).
+- Le Note Repeat compense sans le savoir : `interval = 16.0 / denom` pas
+  (`dp_playback.py:122`) suppose 16 pas par mesure.
+- `_num_beats` vaut toujours 4. Il n'est ni sérialisé, ni copié par
+  `copy_from`, ni modifiable dans l'UI.
+- `_denumerator` n'est lu nulle part.
+- `step_duration` n'est recalculé que par `set_bpm`. L'enchaînement du song
+  ne le recalcule que si le BPM change (`if next_pat._bpm != self.bpm`).
+- Les patterns de 16 pas, le cas par défaut, ne sont pas touchés : pour eux,
+  la formule actuelle est juste.
+
+**Les outils.** `mido` 1.3.3 est installé avec `python-rtmidi` 1.5.8, mais
+le projet ne l'importe nulle part (`midi_manager.py` utilise `rtmidi`
+directement).
+- Il n'existe ni `requirements.txt` ni module d'écriture SMF.
+- Dépendances tierces réellement importées par `src/` et `tools/` :
+  `wx`, `pygame`, `sounddevice`, `numpy`, `soundfile`, `pyrubberband`,
+  `rtmidi`.
+- La table des dépendances est dans `docs/SPECS.md`.
+
+**Raccourci.** Ctrl+Shift+E est pris (« Choisir la ligne + quant et générer
+le motif », `key_handler_ctrl.py:143`). Alt+Shift+E est libre dans la
+fenêtre principale, l'éditeur MIDI et la fenêtre Songs.
+
+### Décisions validées (utilisateur, 2026-10-18)
+
+**D1 — corriger d'abord le lecteur : un pas dure
+`60 · num_beats / (bpm · num_steps)` secondes.**
+- Un temps (une noire, `_denumerator` restant ignoré) dure exactement
+  `60 / bpm`, quelle que soit la résolution. Le lecteur est alors d'accord
+  avec le métronome, la quantisation et l'affichage.
+- Pour 16 pas et 4 temps, la formule redonne `60 / bpm / 4` : les patterns
+  par défaut ne changent pas.
+- Une seule méthode `DrumPlayer._update_step_duration()` calcule la valeur
+  à partir de `self.bpm` et du pattern live. Elle remplace les quatre
+  copies de la formule, et elle est appelée :
+  - par `set_bpm` ;
+  - à chaque enchaînement de pattern du song, que le BPM change ou non ;
+  - après un redimensionnement du pattern live
+    (`mw_patterns._resize_live_pattern`).
+- Le Note Repeat passe de `16.0 / denom` à `num_steps / denom` pas : une
+  division `1/denom` reste une fraction de la mesure.
+- Effet accepté : les patterns existants de 32, 64 ou 128 pas jouent 2, 4
+  ou 8 fois plus vite qu'avant, désormais au tempo affiché. Les durées
+  `dur`, en ms, ne bougent pas.
+
+Alternatives écartées :
+- **Garder le lecteur et exporter « son et mesures fidèles »** (tempo
+  `4·bpm·num_beats/num_steps`). Le .mid sonnerait comme l'appli, mais le
+  tempo écrit différerait du BPM affiché, et l'incohérence resterait.
+- **Exporter tempo = BPM sans corriger le lecteur.** Le .mid sonnerait plus
+  vite que l'appli dès 32 pas.
+
+**D2 — 16 pistes par pattern par défaut.**
+- On passe aux 16 canaux MIDI : `Pattern._num_tracks = 16`,
+  `TrackRouter.NUM_TRACKS = 16`, et la liste des pistes de la fenêtre
+  principale suit `_num_tracks`, sans `range(8)` en dur.
+- **Migration** : `from_dict` porte tout pattern de moins de 16 pistes à 16.
+  - `_tape` est complété par des pistes vides ;
+  - chaque liste `track_*` est complétée par sa valeur par défaut (slot 0,
+    pas de mute ni de solo, volume 100, pan 0, canal auto).
+  - Un `.gvp` existant s'ouvre donc avec 16 pistes, les 8 premières
+    inchangées.
+- Les autres lectures passent déjà par `pattern._num_tracks` : elles
+  suivent sans changement.
+
+Alternative écartée : garder 8 pistes pour les anciens patterns et 16 pour
+les nouveaux. Le nombre de pistes varierait d'un pattern à l'autre, alors
+que `TrackRouter` a des listes de taille fixe.
+
+**D3 — portée : le pattern courant.**
+- On exporte le pattern live (`player._pattern`), avec l'état courant de
+  `TrackRouter` et du `VoiceManager`, même s'il n'est pas encore rangé dans
+  le store.
+- Toute la longueur est exportée, de la mesure 1 à `_num_bars`, sans tenir
+  compte des loop points, de `_loop_count` ni de `_start_bar`.
+- Le song viendra dans une étape ultérieure, avec le même moteur : on
+  enchaînera les patterns et on posera un meta tempo à chaque changement de
+  BPM.
+
+Alternatives écartées : pattern et song dès le départ, ou projet entier.
+Le song et le projet posent d'autres questions (tempo variable,
+organisation des pistes), qu'il vaut mieux traiter une fois le moteur
+éprouvé.
+
+**D4 — SMF de type 1, PPQ = 480.**
+- **Piste 0 (conductor)** à tick 0 :
+  - `track_name` = nom du pattern, ou `Pattern_NN` s'il n'en a pas ;
+  - `set_tempo` = `bpm2tempo(bpm)`, exact grâce à D1 ;
+  - `time_signature` = `num_beats/4`.
+- **Une piste SMF par piste Groovebox non vide**, dans l'ordre, avec
+  `track_name` = nom de la piste (F2), ou `Track NN` (numéro d'origine,
+  1-based). Les pistes vides sont omises.
+- Chaque piste se termine par `end_of_track` au plus tard de deux instants :
+  la fin du pattern (`num_bars · num_steps` pas) ou le dernier note-off.
+  Ainsi la longueur du pattern est conservée même si sa dernière mesure
+  est vide.
+- Avec 480 ticks par noire, l'écart reste sous 0,3 ms à 120 BPM pour les
+  `time` flottants de la capture live.
+
+Alternatives écartées :
+- **Type 0** : une seule piste, et l'import ne retrouverait pas le découpage
+  en pistes.
+- **PPQ 96 ou 960** : 96 est trop grossier pour le timing libre, 960
+  n'apporte rien d'audible.
+
+**D5 — canal MIDI de chaque piste : automatique par défaut, réglable dans
+les propriétés de la piste.**
+
+Chaque piste reçoit un canal, et l'export y écrit tous ses événements.
+Le canal se résout ainsi :
+
+1. **Canal choisi par l'utilisateur.** Il prime sur tout le reste, y
+   compris le canal 10 des événements `KIT`.
+2. **Sinon, canal automatique :**
+   - une piste kit (slot qui n'est pas de type SYNTH : kit, vide ou autre)
+     va sur le canal 10 ;
+   - une piste SYNTH va sur le canal de son slot. Les slots SYNTH distincts
+     reçoivent les canaux 1 à 9, puis 11 à 16, dans l'ordre de la première
+     piste qui les utilise. **Toutes les pistes qui partagent un même slot
+     (même synthé ou patch) ont donc le même canal.**
+   - Si plus de 15 slots SYNTH distincts sont utilisés, ce qui suppose 16
+     slots synthé sur 16 pistes, le seizième partage le canal 16. C'est une
+     limite documentée.
+3. **Exception en mode automatique** : un événement `KIT` d'une piste
+   SYNTH est écrit sur le canal 10, puisque le rejeu le joue sur le kit
+   quel que soit le slot.
+
+Exemple : piste 1 sur un kit, pistes 2 et 4 sur le slot 3 (synthé),
+piste 3 sur le slot 5 (synthé). On obtient piste 1 → 10, pistes 2 et 4 →
+1, piste 3 → 2.
+
+- **Données** : `_track_channels`, une liste de 16 entrées `None` (auto)
+  ou 0..15.
+  - Comme les autres réglages de piste, elle vit dans `TrackRouter`, est
+    copiée dans `Pattern` au rangement, et est sérialisée dans le `.gvp`
+    sous `track_channels`.
+  - Si la clé est absente, toutes les pistes sont en auto.
+- **La résolution** se fait dans une fonction pure,
+  `resolve_track_channels(track_is_synth, track_slots, track_channels)`,
+  placée dans `src/midi/track_channels.py`. L'export s'en sert, et le
+  dialogue de propriétés aussi, pour afficher le canal auto.
+- **Dialogue** : `TrackPropertiesDialog` gagne une `ListBox` « Canal », de
+  17 entrées : `Auto (canal N)` puis `Canal 1` à `Canal 16`.
+  - Elle se place après Slots dans l'ordre Tab.
+  - Elle a le même aperçu en temps réel et le même Annuler que les autres
+    champs.
+  - L'action entre dans l'Undo comme les autres propriétés de piste.
+- **Portée** : le canal de piste ne sert qu'à l'export pour l'instant. Le
+  rejeu et la capture ne changent pas, et `ev.channel` reste le canal
+  d'origine capturé. Ce réglage prépare l'adressage par canal du mode Rack
+  GM.
+- `ev.channel` n'est pas écrit dans le fichier : c'est une perte assumée,
+  le fichier sonnant juste dans un lecteur GM.
+- Le choix manuel ne vérifie pas les collisions. Deux slots différents
+  réglés sur un même canal partagent ce canal : c'est la responsabilité de
+  l'utilisateur.
+
+Alternatives écartées :
+- **Le canal d'origine `ev.channel`**, fidèle et utile à l'aller-retour.
+  Mais tout ce qui vient de la grille est sur le canal 1, et le fichier ne
+  sonnerait pas juste dans un lecteur GM.
+- **Un canal par piste** (canal = numéro de piste, ou piste mélodique
+  `t → t` en sautant le canal 10). Deux pistes jouant le même synthé
+  auraient alors deux canaux, et donc deux instruments à régler dans un
+  lecteur GM.
+- **Canal = numéro de slot du Rack** : il s'appuie sur le pont
+  `assign_slot`, qui est provisoire, et il gaspille des canaux quand les
+  slots utilisés sont épars.
+
+**D6 — notes, vélocités, durées.**
+- **Note d'un `GRID`** : sur une piste SYNTH,
+  `scale_midi_notes(pattern._kb_scale, pattern._kb_root_midi, 16)[pad]` ;
+  sur une piste kit, `kit_note_base + pad`, avec
+  `kit_note_base = snd.kit_base + snd.kit_offset`, l'état courant, comme
+  au rejeu.
+- **`KIT` et `PATCH`** : la note du payload.
+- **Vélocité** : celle du payload, bornée à 1..127, une vélocité 0 valant
+  note-off en MIDI.
+- **Durées** :
+  - `GRID` : `dur` s'il est positif, sinon la durée de la voix du pad
+    (`voice_manager`) ;
+  - `PATCH` : `dur` s'il est positif, sinon 500 ms, comme au rejeu ;
+  - `KIT` : un pas (one-shot), puisque `dur` y vaut toujours 0. Un lecteur
+    GM ignore de toute façon le note-off sur le canal 10.
+- **Conversions** :
+  - temps : `tick = round(time · PPQ · num_beats / num_steps)` ;
+  - durée : `ticks = round(dur_ms / 1000 · bpm / 60 · PPQ)`, au minimum
+    1 tick ;
+  - c'est cohérent avec D1 : un temps dure `60 / bpm` secondes.
+- **Notes qui se chevauchent** : une même note sur un même canal, rejouée
+  avant son note-off, recevrait ce note-off au milieu de la note suivante.
+  Le note-off de la première est donc avancé juste avant le note-on
+  suivant, comme le ferait un clavier. Cette règle vaut à l'intérieur d'une
+  piste SMF. Entre pistes qui partagent un canal (D5), le cas est laissé au
+  lecteur.
+
+**D7 — ordre d'écriture à tick égal.**
+- L'ordre est : note-off, `PGM`, `CC`, `BEND`, note-on. C'est celui du
+  rejeu (PGM, CC, bend, notes), avec les note-off d'abord, pour qu'une note
+  qui finit libère la place avant celle qui commence.
+- À catégorie égale, le tri est stable sur l'ordre de `_tape`. Deux `BEND`
+  au même temps : le dernier dans `_tape` gagne, comme dans
+  `_bend_state_at` (donc l'éditeur et le chase du bend). L'écart avec le
+  tri du rejeu (valeur la plus haute en dernier) est noté hors périmètre.
+
+**D8 — `mido` pour écrire le fichier, et un `requirements.txt`.**
+- `mido` est déjà installé et servira aussi à l'import. Le code à écrire et
+  à tester se limite à la traduction `_tape` → messages, sans codec SMF
+  maison.
+- **`requirements.txt`** à la racine du dépôt, avec les dépendances
+  tierces réellement importées. On y met un plancher de version, celui
+  installé le 2026-10-18 :
+  ```
+  wxPython>=4.2.3
+  pygame>=2.6.1
+  sounddevice>=0.5.5
+  numpy>=2.4.3
+  soundfile>=0.13.1
+  pyrubberband>=0.4.0
+  python-rtmidi>=1.5.8
+  mido>=1.3.3
+  ```
+  - `pytest` sert seulement aux tests. Il est indiqué en commentaire dans
+    le fichier, avec la commande d'installation Debian
+    (`pip3 install ... --break-system-packages`), plutôt que d'être exigé.
+  - `pedalboard`, marqué « futur » dans `docs/SPECS.md`, n'y est pas.
+- `mido` est ajouté à la table des dépendances de `docs/SPECS.md`.
+
+Alternative écartée : écrire le SMF à la main (MThd/MTrk, delta-times en
+VLQ). Aucune dépendance, mais il y aurait plus de code et de tests, et un
+parseur à écrire aussi pour l'import.
+
+**D9 — un module `src/midi/midi_export.py`, sans wx ni player.**
+- `build_pattern_midi(pattern, track_channels, track_is_synth,
+  track_names, kit_note_base, voice_durations) -> mido.MidiFile` contient
+  toute la logique de D4, D6 et D7.
+  - `track_channels` est déjà résolu par `resolve_track_channels` (D5).
+  - Les états hors `Pattern` lui sont passés en paramètres : type de slot
+    de chaque piste, noms des pistes, `kit_base + kit_offset`, durées des
+    voix.
+- `export_pattern(path, ...)` appelle `build_pattern_midi`, puis
+  `MidiFile.save(path)`.
+- Lecture de `_tape` sous `pattern._lock`, sur une copie, comme
+  `_build_measure_events`.
+- La fonction se teste sans wx, en relisant le fichier avec `mido`.
+
+**D10 — UI : Alt+Shift+E.**
+- Dans la fenêtre principale et dans l'éditeur MIDI (même pattern live),
+  Alt+Shift+E ouvre un `wx.FileDialog` d'enregistrement :
+  - filtre `*.mid` ;
+  - nom proposé : le libellé du pattern, nettoyé, plus `.mid` ;
+  - dossier proposé : `AppConfig.exports_dir`, nouvelle clé `exports_dir`,
+    qui vaut par défaut le dossier `EXPORTS` voisin de `projects_dir` et
+    est créé au besoin ;
+  - `wx.FD_OVERWRITE_PROMPT`.
+- Le résultat s'affiche dans la barre de statut : `Pattern NN exporté :
+  <fichier>`, ou le message d'erreur. Orca l'annonce.
+- La fenêtre Songs n'a pas d'export dans ce chantier : il viendra avec le
+  song (D3).
+- `docs/shortcuts.md` est mis à jour.
+
+### Portée explicitement exclue de ce chantier
+
+- L'export d'un song ou du projet entier, et le tempo variable (D3).
+- L'import MIDI.
+- L'effet du canal de piste sur le rejeu ou la capture live (D5). Il ne
+  sert qu'à l'export en attendant le mode Rack GM.
+- Le volume et le pan des pistes (CC7/CC10 initiaux) : plusieurs pistes
+  peuvent partager un canal (D5), et leurs réglages entreraient en
+  conflit. Mute et solo sont ignorés : toutes les pistes non vides sont
+  exportées.
+- Le canal d'origine `ev.channel`, perdu à l'export (D5). L'aller-retour
+  export/import sans perte sera à revoir avec l'import.
+- La plage de bend (RPN 0) : elle vaut ±2 demi-tons, le défaut GM, donc
+  rien à écrire tant qu'elle n'est pas réglable.
+- `_denumerator` et un `_num_beats` réglable (D1 garde la noire comme
+  temps).
+- L'écart du rejeu sur deux `BEND` au même temps (D7) : c'est un correctif
+  séparé de `_build_measure_events`, s'il est voulu.
+- L'export depuis la fenêtre Songs (D10).
+- Le passage de 16 à 128 pads (chantier futur séparé).
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **10a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **10b1** | Implémentation — `_update_step_duration()` (D1) remplace les quatre formules ; appels dans `set_bpm`, l'enchaînement du song (sans condition) et `_resize_live_pattern` ; Note Repeat en `num_steps / denom`. | `player/drum_player.py`, `player/dp_transport.py`, `player/dp_playback.py`, `ui/mw_patterns.py` |
+| **10c1** | Tests — durée du pas pour 16/32/64/128 pas ; 16 pas inchangé ; recalcul à l'enchaînement du song à BPM égal mais à `num_steps` différent ; recalcul au redimensionnement ; métronome à un clic par `60/bpm` ; intervalle du Note Repeat. Mise à jour des tests existants qui supposaient `60/bpm/4` avec un `num_steps` autre que 16, s'il y en a. | `tests/test_transport.py`, `tests/test_playback_loop.py`, … |
+| **10d1** | Implémentation — 16 pistes par défaut (D2) : `Pattern`, `TrackRouter.NUM_TRACKS`, liste des pistes de la fenêtre principale, migration dans `from_dict`. | `pattern.py`, `track_router.py`, `ui/main_window.py`, `docs/SPECS.md` |
+| **10e1** | Tests — nouveau pattern à 16 pistes ; ancien `.gvp` à 8 pistes porté à 16, avec ses 8 premières pistes et ses `track_*` inchangés ; navigation et sélection jusqu'à la piste 16 ; mise à jour des tests qui supposaient 8 pistes. | `tests/test_pattern.py`, `tests/test_pattern_serialization.py`, `tests/test_track_router.py`, … |
+| **10f1** | Implémentation — canal de piste (D5) : `resolve_track_channels` ; `_track_channels` dans `TrackRouter` et `Pattern`, avec rangement, chargement et sérialisation `track_channels` ; `ListBox` Canal dans `TrackPropertiesDialog`, aperçu, Annuler et Undo. | `midi/track_channels.py` (nouveau), `track_router.py`, `pattern.py`, `ui/dialogs_properties.py`, `ui/mw_tracks.py`, `ui/mw_patterns.py` |
+| **10g1** | Tests — résolution : kit sur 10, slots SYNTH partagés sur un même canal, ordre d'attribution, saut du canal 10, seizième slot synthé, canal manuel prioritaire ; sérialisation (clé absente = auto) ; dialogue : libellé `Auto (canal N)`, choix, Annuler, Undo. | `tests/test_track_channels.py` (nouveau), `tests/test_track_properties_dialog.py`, `tests/test_pattern_serialization.py` |
+| **10h1** | Implémentation — `src/midi/midi_export.py` (D4, D6, D7, D9) ; `requirements.txt` (D8). | `midi/midi_export.py` (nouveau), `requirements.txt` (nouveau), `docs/SPECS.md` (dépendance `mido`) |
+| **10i1** | Tests — relecture par `mido` : en-tête type 1 et PPQ ; conductor (nom, tempo, signature) ; une piste par piste non vide, avec son nom ; canaux reçus de D5, et `KIT` sur le canal 10 en auto ; notes GRID synth/kit, KIT, PATCH ; vélocités bornées ; durées par défaut ; conversions de temps à 16 et 32 pas ; chevauchement ; ordre à tick égal et deux BEND au même temps ; CC/PGM/BEND ; `end_of_track` à la fin du pattern ; pattern vide. | `tests/test_midi_export.py` (nouveau) |
+| **10j1** | Implémentation — Alt+Shift+E dans la fenêtre principale et l'éditeur MIDI ; `FileDialog` ; `AppConfig.exports_dir` ; statut (D10). | `ui/key_handler_alt.py`, `ui/mew_keymap.py`, `ui/mw_project.py`, `app_config.py`, `docs/shortcuts.md` |
+| **10k1** | Tests — `exports_dir` (défaut, valeur relative, valeur absolue) ; le handler appelle l'export avec les bons paramètres (FileDialog simulé) ; Annuler n'écrit rien ; erreur d'écriture affichée. | `tests/test_app_config.py`, `tests/test_midi_export_ui.py` (nouveau) |
+| **10l1** | Doc — clôture (DESIGN.md, `docs/SPECS.md` : arborescence, 16 pistes, canal de piste, export MIDI), `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- 10b1 et 10d1 peuvent casser des tests existants, qui figent `60/bpm/4`
+  sur plus de 16 pas, ou 8 pistes. Si `pytest` est rouge à l'un de ces
+  commits, le titre le dira, et le commit de tests suivant le réparera.
+- Avant de committer 10b1 : une écoute à la main d'un pattern de 32 pas,
+  dont le métronome doit battre au BPM affiché.
+- Avant de committer 10d1 : ouvrir un `.gvp` existant et vérifier que les
+  8 premières pistes jouent comme avant.
+- Avant de committer 10h1 : un fichier exporté est ouvert dans un lecteur
+  externe (`timidity` ou un DAW, s'il y en a un), pour vérifier qu'il se
+  lit, le tempo, la batterie sur le canal 10, et deux pistes au même
+  synthé sur un seul canal.
