@@ -1862,3 +1862,17 @@ Ordre choisi :
   - Les corps des trois méthodes sont repris à l'identique, à l'indentation
     près : la comparaison du diff avec `-w` ne montre que les appels, les
     signatures, les docstrings et les `return`.
+- **8f1** — conforme. 31 tests dans `tests/test_playback_loop.py`, qui
+  appellent les trois méthodes directement, sans lancer le thread
+  (1777 tests au total).
+  - Contre-épreuve par mutations volontaires de `dp_playback.py` : 9
+    mutations sur 10 font échouer au moins un test (tolérance de 2 ms,
+    vélocité, override de durée, filtre Note Repeat, avance du song, pause
+    en fin de pattern, garde `_wakeup` du count-in, attente de fin de
+    mesure…).
+  - La seule non détectée retire la borne basse de la fenêtre de boucle
+    (`lp_start <= float_off`). Elle est sans effet : un événement avant
+    `lp_start` a un `t_sec` négatif, déjà exclu par le filtre
+    `t_sec > elapsed - 0.002` puisque `elapsed >= 0`. Ce n'est donc pas un
+    trou de couverture. Le code n'est pas modifié, ce chantier ne change
+    pas le comportement.
