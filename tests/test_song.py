@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from song import Song
 from pattern import Pattern
-from drum_player import DrumPlayer
+from player.drum_player import DrumPlayer
 
 
 # ---------------------------------------------------------------------------

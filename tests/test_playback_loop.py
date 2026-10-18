@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pattern import Pattern, TapeEvent, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from metronome import Metronome
-from drum_player import DrumPlayer
+from player.drum_player import DrumPlayer
 
 
 # ---------------------------------------------------------------------------

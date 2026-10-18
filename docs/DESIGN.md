@@ -1876,3 +1876,8 @@ Ordre choisi :
     `t_sec > elapsed - 0.002` puisque `elapsed >= 0`. Ce n'est donc pas un
     trou de couverture. Le code n'est pas modifié, ce chantier ne change
     pas le comportement.
+- **8g1** — conforme. `git mv` à 100 % de similarité (contenu inchangé).
+  12 imports dans 11 fichiers, au lieu des 10 prévus : 2 dans `src/ui/` et
+  9 fichiers de tests, en comptant le nouveau `test_playback_loop.py` de
+  8f1. `test_tape.py` a deux imports. Index vérifié avant le commit.
+  Aucun test ne lit `drum_player.py` par son chemin.

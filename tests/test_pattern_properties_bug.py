@@ -27,7 +27,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_BEND
-from drum_player import DrumPlayer
+from player.drum_player import DrumPlayer
 from tape_test_utils import add_tape_at, all_tape_events
 
 

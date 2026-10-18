@@ -18,7 +18,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
-from drum_player import DrumPlayer
+from player.drum_player import DrumPlayer
 from tape_test_utils import (
     tape_at, has_tape_at, set_tape_at, add_tape_at, all_tape_events,
     assign_tape, flush_tape, tapes_equal_strict, tape_positions, same_events,
@@ -1814,7 +1814,7 @@ def test_from_dict_mod_tape_only_affects_its_own_track():
 
 def test_grid_event_constant_value():
     """GRID_EVENT vaut -6."""
-    from drum_player import DrumPlayer
+    from player.drum_player import DrumPlayer
     assert DrumPlayer.GRID_EVENT == -6
     print("  DrumPlayer.GRID_EVENT == -6 : OK")
 

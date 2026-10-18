@@ -369,7 +369,7 @@ class _NullSoundManager:
 def test_on_pitch_bend_without_synth_writes_etype_bend_in_real_tape():
     """Bout en bout avec un vrai DrumPlayer : un ETYPE_BEND arrive dans _tape
     de la piste courante, avec son canal, alors qu'aucun synthé n'est prêt."""
-    from drum_player import DrumPlayer
+    from player.drum_player import DrumPlayer
     from pattern import ETYPE_BEND
     player = DrumPlayer(_NullSoundManager())
     player._measure_start = None

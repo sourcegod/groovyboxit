@@ -7,7 +7,7 @@
 """
 import wx
 import os, time as _time
-from drum_player import DrumPlayer
+from player.drum_player import DrumPlayer
 from pattern import Pattern
 
 _BEND_LOG = os.environ.get("GROOVY_BEND_LOG") == "1"
