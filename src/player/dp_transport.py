@@ -122,5 +122,5 @@ class TransportMixin:
     def set_bpm(self, bpm):
         if 1 <= bpm <= 600:
             self.bpm = bpm
-            self.step_duration = 60.0 / self.bpm / 4
+            self._update_step_duration()
             self._wakeup.set()

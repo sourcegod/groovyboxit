@@ -2511,3 +2511,21 @@ parseur à écrire aussi pour l'import.
 - Avant de committer 10h1 : un fichier exporté est ouvert dans un lecteur
   externe (`timidity` ou un DAW, s'il y en a un), pour vérifier qu'il se
   lit, le tempo, et la batterie sur le canal 10.
+
+### Avancement et écarts constatés
+
+- **10b1** — conforme à D1, avec deux appels de plus que prévu.
+  `_num_steps` du pattern live change aussi à deux autres endroits :
+  - l'action « Nouveau » du dialogue de propriétés du pattern
+    (`mw_patterns.py`, `live.new_pattern(num_bars, num_steps)`) ;
+  - `DrumPlayer.load_pattern` (matrice dense).
+
+  Les deux appellent désormais `_update_step_duration()`.
+  - L'annulation passe par `_apply_pattern_from_store` → `set_bpm`, et
+    l'ouverture d'un projet aussi : elles sont déjà couvertes.
+  - `step_duration` reste un attribut, et non une propriété calculée :
+    plusieurs tests l'affectent directement.
+
+  À 120 BPM, une mesure de 4 temps dure 2,0 s pour 16, 32, 64 et 128 pas.
+  `pytest tests/` est resté vert (1786) : aucun test existant ne figeait
+  `60/bpm/4` sur un pattern de plus de 16 pas.

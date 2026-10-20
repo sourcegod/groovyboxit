@@ -119,7 +119,7 @@ class PlaybackLoopMixin:
         if self._note_repeat_active:
             denom    = Pattern.QUANT_STEPS[self._nr_quant_idx]
             nr_step  = 0.0
-            interval = 16.0 / denom   # en pas (float)
+            interval = self._pattern._num_steps / denom   # 1/denom de mesure, en pas (float)
             while nr_step < total_steps:
                 t_sec = nr_step * self.step_duration
                 if t_sec > elapsed - 0.002:
@@ -255,9 +255,9 @@ class PlaybackLoopMixin:
                     next_pat = self._pattern_list_ref[next_idx]
                     self._pattern.copy_from(next_pat)
                     self._pattern._looping = False
-                    if next_pat._bpm != self.bpm:
-                        self.bpm           = next_pat._bpm
-                        self.step_duration = 60.0 / self.bpm / 4
+                    # Recalcul même à BPM égal : _num_steps peut changer
+                    self.bpm = next_pat._bpm
+                    self._update_step_duration()
                     self._compute_offsets()
                     measure_start = next_measure_start
                     if self._on_song_advance_cb:
@@ -270,9 +270,8 @@ class PlaybackLoopMixin:
                         first_pat = self._pattern_list_ref[first_idx]
                         self._pattern.copy_from(first_pat)
                         self._pattern._looping = False
-                        if first_pat._bpm != self.bpm:
-                            self.bpm           = first_pat._bpm
-                            self.step_duration = 60.0 / self.bpm / 4
+                        self.bpm = first_pat._bpm
+                        self._update_step_duration()
                         self._compute_offsets()
                         measure_start = next_measure_start
                         if self._on_song_advance_cb:

@@ -37,7 +37,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._on_track_play_cb = None  # callback(track_idx, pad_idx, vol, pan)
         self.last_played_pad = None
         self.voice_manager = VoiceManager(self._pattern._num_pads)
-        self.step_duration = 60.0 / self.bpm / 4
+        self._update_step_duration()
         self.quant_idx = 7  # défaut: 1/16
         self._grid_idx = Pattern.GRID_DEFAULT_IDX   # grille globale (navigation + quantise)
         # État du dialog Quantiser (post-processing)
@@ -158,8 +158,18 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
 
     #--------------------------------------------------------------------------
 
+    def _update_step_duration(self):
+        """Durée d'un pas en secondes : un temps (noire) dure 60/bpm, quelle
+        que soit la résolution _num_steps (Phase 7 étape 10b1). À rappeler
+        dès que bpm, _num_steps ou _num_beats du pattern live changent."""
+        pat = self._pattern
+        self.step_duration = 60.0 * pat._num_beats / (self.bpm * pat._num_steps)
+
+    #--------------------------------------------------------------------------
+
     def load_pattern(self, pattern):
         self._pattern.load_pattern(pattern)
+        self._update_step_duration()
         self._compute_offsets()
 
     #--------------------------------------------------------------------------

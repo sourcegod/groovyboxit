@@ -417,6 +417,7 @@ class PatternMixin:
                 self._add_undo(f"Nouveau pattern {self._cur_pattern_idx + 1:02d}")
                 pat.new_pattern(num_bars, num_steps)
                 live.new_pattern(num_bars, num_steps)
+                self._player._update_step_duration()
                 self._player._compute_offsets()
                 self._refresh_grid()
                 self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: nouveau")
@@ -451,5 +452,6 @@ class PatternMixin:
     def _resize_live_pattern(self, num_bars, num_steps):
         live = self._player._pattern
         live.resize(num_bars, num_steps)
+        self._player._update_step_duration()
         self._pattern_list[self._cur_pattern_idx].copy_from(live)
         self._player._compute_offsets()
