@@ -2606,3 +2606,36 @@ parseur à écrire aussi pour l'import.
   - Les tests de `test_key_manager.py` qui appuient sur R, Shift+R, Ctrl+R
     ou E échouent à ce commit, car leur `FakeWindow` n'a pas `_take_begin`.
     Ils sont réparés en 10d3, avec les tests de la prise.
+- **10d3** — tests de la prise. 21 nouveaux tests, 1830 au total, dont 15
+  encore rouges, ceux de 10d1, à réparer en 10e1.
+  - `tests/test_live_take.py`, 16 tests sur une fenêtre factice qui utilise
+    les vrais `_add_undo`, `_take_begin` et `_take_end_if_idle` :
+    - prise vide retirée, que le projet ait été modifié avant ou non ;
+    - prise jouée gardée ;
+    - Remplacement et Erase qui effacent sans rien jouer : prise gardée ;
+    - payload modifié : prise gardée ;
+    - pas de fermeture pendant Rec, Erase ou décompte ;
+    - deuxième ouverture pendant une prise : un seul Undo ;
+    - sauvegarde pendant une prise vide ;
+    - autre action annulable pendant la prise ;
+    - entrée de la prise déjà annulée par Ctrl+Z ;
+    - changement de pattern pendant la prise ;
+    - branchement dans `MainWindow._on_char_hook` et `_on_close`.
+  - `test_key_manager.py` : la `FakeWindow` gagne `_take_begin`, qui note
+    l'état du player au moment de l'appel. On vérifie ainsi que R,
+    Shift+R, Ctrl+R et E ouvrent la prise avant de lancer le Rec ou
+    l'Erase. Les arrêts n'ouvrent pas de prise. Un nouveau test couvre E
+    quand Erase est déjà actif.
+  - `test_undo_manager.py` : 3 tests de `last_entry`.
+  - Contre-épreuve par 14 mutations volontaires de 10d2, toutes détectées :
+    - signature ignorée, entrée jamais retirée, pas d'attente du repos ;
+    - sauvegarde ignorée, entrée non vérifiée, deuxième prise ouverte ;
+    - payload hors signature ;
+    - prise ouverte après le Rec, prise ouverte aussi à la désactivation
+      d'Erase ;
+    - Ctrl+R sans prise, Shift+R sans prise ;
+    - `_on_char_hook` sans fermeture, `_on_close` sans fermeture ;
+    - `last_entry` qui renvoie la première entrée.
+  - Écart corrigé avant le commit : le test de `_on_char_hook` dépendait de
+    l'ordre des tests, car `wx.Window.FindFocus` exige un `wx.App`. Il est
+    maintenant remplacé par `monkeypatch`.

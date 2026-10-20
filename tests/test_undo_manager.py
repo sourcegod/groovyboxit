@@ -277,3 +277,29 @@ def test_new_action_after_undo_clears_redo():
     assert not m.can_redo()
     assert m.can_undo()
     assert m.undo().title == "A3"
+
+
+# ---------------------------------------------------------------------------
+# last_entry (Phase 7 étape 10d2)
+# ---------------------------------------------------------------------------
+
+def test_last_entry_empty_is_none():
+    assert UndoManager().last_entry() is None
+
+
+def test_last_entry_returns_without_removing():
+    mgr = UndoManager()
+    mgr.add("A", _state(1))
+    mgr.add("B", _state(2))
+    e = mgr.last_entry()
+    assert e.title == "B"
+    assert mgr.last_entry() is e
+    assert [x.title for x in mgr.history_list()] == ["B", "A"]
+
+
+def test_last_entry_follows_pop_last():
+    mgr = UndoManager()
+    mgr.add("A", _state(1))
+    mgr.add("B", _state(2))
+    mgr.pop_last()
+    assert mgr.last_entry().title == "A"

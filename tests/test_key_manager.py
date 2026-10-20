@@ -290,6 +290,10 @@ class FakeWindow:
     def _nr_cancel_release(self):         self.calls.append('_nr_cancel_release')
     def _update_bpm_display(self):        self.calls.append('_update_bpm_display')
     def _add_undo(self, title):           self.calls.append(('_add_undo', title))
+    def _take_begin(self, title):
+        # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
+        self.calls.append(('_take_begin', title,
+                           self._player.recording or self._player.erasing))
     def _undo_action(self):               self.calls.append('_undo_action')
     def _redo_action(self):               self.calls.append('_redo_action')
     def _undo_history_dialog(self):       self.calls.append('_undo_history_dialog')
@@ -510,6 +514,7 @@ def test_ctrl_r_starts_count_in():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('R'), ctrl=True))
     assert 'record_pattern_with_count_in' in win._player.calls
+    assert ('_take_begin', 'Enregistrement piste 1', False) in win.calls
     teardown(app)
     print("  Ctrl+R → record_pattern_with_count_in() : OK")
 
@@ -662,6 +667,7 @@ def test_r_starts_recording():
     win._player.recording = False
     km.handle(FakeEvent(key=ord('R')))
     assert 'record_pattern' in win._player.calls
+    assert ('_take_begin', 'Enregistrement piste 1', False) in win.calls
     teardown(app)
     print("  R → record_pattern() (si non en rec) : OK")
 
@@ -670,6 +676,7 @@ def test_r_stops_recording():
     win._player.recording = True
     km.handle(FakeEvent(key=ord('R')))
     assert 'stop_record' in win._player.calls
+    assert not any(c[0] == '_take_begin' for c in win.calls if isinstance(c, tuple))
     teardown(app)
     print("  R → stop_record() (si en rec) : OK")
 
@@ -678,6 +685,7 @@ def test_shift_r_starts_replace_recording():
     win._player.replace_recording = False
     km.handle(FakeEvent(key=ord('R'), shift=True))
     assert 'start_replace_recording' in win._player.calls
+    assert ('_take_begin', 'Remplacement piste 1', False) in win.calls
     teardown(app)
     print("  Shift+R → start_replace_recording() : OK")
 
@@ -686,6 +694,7 @@ def test_shift_r_stops_replace_recording():
     win._player.replace_recording = True
     km.handle(FakeEvent(key=ord('R'), shift=True))
     assert 'stop_record' in win._player.calls
+    assert not any(c[0] == '_take_begin' for c in win.calls if isinstance(c, tuple))
     teardown(app)
     print("  Shift+R (actif) → stop_record() : OK")
 
@@ -726,8 +735,18 @@ def test_e_toggles_erase():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('E')))
     assert 'toggle_erase' in win._player.calls
+    assert ('_take_begin', 'Erase piste 1', False) in win.calls
     teardown(app)
-    print("  E → toggle_erase() : OK")
+    print("  E → toggle_erase() + ouverture de prise : OK")
+
+def test_e_turning_erase_off_opens_no_take():
+    app, win, km = make_km()
+    win._player.erasing = True
+    km.handle(FakeEvent(key=ord('E')))
+    assert win._player.erasing is False
+    assert not any(c[0] == '_take_begin' for c in win.calls if isinstance(c, tuple))
+    teardown(app)
+    print("  E (Erase actif) → désactive sans ouvrir de prise : OK")
 
 def test_x_toggles_pad_mute():
     app, win, km = make_km()
