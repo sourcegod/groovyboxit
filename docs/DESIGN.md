@@ -2639,3 +2639,38 @@ parseur à écrire aussi pour l'import.
   - Écart corrigé avant le commit : le test de `_on_char_hook` dépendait de
     l'ordre des tests, car `wx.Window.FindFocus` exige un `wx.App`. Il est
     maintenant remplacé par `monkeypatch`.
+- **10e1** — tests des 16 pistes. La suite redevient verte : 1841 tests.
+  - **15 tests existants mis à jour.** Ils figeaient 8 pistes et lisent
+    maintenant `Pattern.DEFAULT_NUM_TRACKS` ou `TrackRouter.NUM_TRACKS` au
+    lieu d'un `8` en dur.
+    - `test_track_router.py` : 6 tests.
+    - `test_pattern_serialization.py` : 7 tests, et son `NUM_TRACKS` suit
+      la constante.
+    - `test_pattern.py` : 2 tests.
+
+    Aucune assertion n'a changé de sens.
+  - **Nouveau fichier `tests/test_sixteen_tracks.py`**, 11 tests :
+    - valeurs par défaut à 16 pistes, router aligné ;
+    - migration d'un preset `tape_v2` à 8 pistes : 8 premières pistes
+      inchangées, pistes 9 à 16 vides avec les réglages par défaut ;
+    - migration de l'ancien format `curpattern` à 8 pistes ;
+    - preset sans clés `track_*` ;
+    - dict de l'appelant intact, listes non partagées ;
+    - preset à 16 pistes relu tel quel ;
+    - preset migré réécrit à 16 pistes ;
+    - grille et tape de la piste 16 conservées ;
+    - solo sur la piste 16 ;
+    - sélection Shift+↓ jusqu'à la piste 16, puis Ctrl+A.
+  - **Contre-épreuve par 6 mutations volontaires de 10d1** :
+    - détectées : `DEFAULT_NUM_TRACKS = 8`, migration non appelée, listes
+      étendues en place, `_tape` non complété, `TrackRouter.NUM_TRACKS = 8` ;
+    - non détectée : « `_tracks` non complété ».
+  - **Écart avec 10d1, corrigé** : la mutation non détectée a montré que la
+    ligne de `_extend_tracks` qui complétait `_tracks` était du code mort.
+    - `Pattern.__init__` crée déjà 16 objets `Track`, `from_dict` ne réduit
+      jamais cette liste, et rien d'autre ne la lit.
+    - La ligne est retirée de `pattern.py` dans ce commit.
+  - Non couvert par un test automatique : la liste des pistes de la
+    fenêtre principale, dimensionnée par `_num_tracks`, parce qu'il faudrait
+    construire la vraie `MainWindow`. Elle a été vérifiée à la main par
+    l'utilisateur en 10d1.

@@ -18,6 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from unittest.mock import patch
 from rack import Rack, InstrumentType
 from track_router import TrackRouter
+
+NUM_TRACKS = TrackRouter.NUM_TRACKS   # 16 depuis la Phase 7 étape 10d1
 from synth_engine import scale_midi_notes
 
 
@@ -116,7 +118,7 @@ def _make_router():
 
 def test_initial_state():
     router, _, _ = _make_router()
-    assert router._track_slots == [0] * 8
+    assert router._track_slots == [0] * NUM_TRACKS
     assert router._slot_synths == {}
     assert router._synth is None
     assert router._kit_synth is None
@@ -167,7 +169,7 @@ def test_precompute_async_noop_when_not_loaded():
 
 def test_slot_for_track_defaults_to_zero():
     router, _, _ = _make_router()
-    for t in range(8):
+    for t in range(NUM_TRACKS):
         assert router.slot_for_track(t) == 0
     print("  slot_for_track (défaut 0) : OK")
 
@@ -479,8 +481,8 @@ def test_on_play_two_synth_tracks_independent():
 
 def test_initial_mute_solo_state():
     router, _, _ = _make_router()
-    assert router._track_mutes == [False] * 8
-    assert router._track_solos == [False] * 8
+    assert router._track_mutes == [False] * NUM_TRACKS
+    assert router._track_solos == [False] * NUM_TRACKS
     print("  mute/solo état initial : OK")
 
 
@@ -491,7 +493,7 @@ def test_toggle_track_mute_on():
     result = router.toggle_track_mute(2)
     assert result is True
     assert router._track_mutes[2] is True
-    assert all(not router._track_mutes[i] for i in range(8) if i != 2)
+    assert all(not router._track_mutes[i] for i in range(NUM_TRACKS) if i != 2)
     print("  toggle_track_mute (activer) : OK")
 
 
@@ -516,16 +518,16 @@ def test_toggle_track_mute_twice_restores():
 
 def test_unmute_all_tracks():
     router, _, _ = _make_router()
-    router._track_mutes = [True] * 8
+    router._track_mutes = [True] * NUM_TRACKS
     router.unmute_all_tracks()
-    assert router._track_mutes == [False] * 8
+    assert router._track_mutes == [False] * NUM_TRACKS
     print("  unmute_all_tracks : OK")
 
 
 def test_unmute_all_tracks_noop_when_clear():
     router, _, _ = _make_router()
     router.unmute_all_tracks()   # ne doit pas lever
-    assert router._track_mutes == [False] * 8
+    assert router._track_mutes == [False] * NUM_TRACKS
     print("  unmute_all_tracks (déjà vide) : OK")
 
 
@@ -536,7 +538,7 @@ def test_toggle_track_solo_on():
     result = router.toggle_track_solo(1)
     assert result is True
     assert router._track_solos[1] is True
-    assert all(not router._track_solos[i] for i in range(8) if i != 1)
+    assert all(not router._track_solos[i] for i in range(NUM_TRACKS) if i != 1)
     print("  toggle_track_solo (activer) : OK")
 
 
@@ -564,7 +566,7 @@ def test_multiple_solos_independent():
     router.toggle_track_solo(3)
     assert router._track_solos[0] is True
     assert router._track_solos[3] is True
-    assert all(not router._track_solos[i] for i in range(8) if i not in (0, 3))
+    assert all(not router._track_solos[i] for i in range(NUM_TRACKS) if i not in (0, 3))
     print("  toggle_track_solo solos multiples : OK")
 
 
@@ -572,9 +574,9 @@ def test_multiple_solos_independent():
 
 def test_unsolo_all_tracks():
     router, _, _ = _make_router()
-    router._track_solos = [True] * 8
+    router._track_solos = [True] * NUM_TRACKS
     router.unsolo_all_tracks()
-    assert router._track_solos == [False] * 8
+    assert router._track_solos == [False] * NUM_TRACKS
     print("  unsolo_all_tracks : OK")
 
 
@@ -582,7 +584,7 @@ def test_unsolo_all_tracks():
 
 def test_audible_by_default():
     router, _, _ = _make_router()
-    for t in range(8):
+    for t in range(NUM_TRACKS):
         assert router._track_is_audible(t) is True
     print("  _track_is_audible (défaut) : OK")
 
@@ -597,7 +599,7 @@ def test_muted_track_not_audible():
 def test_non_muted_tracks_still_audible():
     router, _, _ = _make_router()
     router._track_mutes[4] = True
-    for t in range(8):
+    for t in range(NUM_TRACKS):
         if t != 4:
             assert router._track_is_audible(t) is True
     print("  _track_is_audible (autres non-mutés) : OK")
@@ -607,7 +609,7 @@ def test_solo_makes_other_tracks_inaudible():
     router, _, _ = _make_router()
     router._track_solos[2] = True
     assert router._track_is_audible(2) is True
-    for t in range(8):
+    for t in range(NUM_TRACKS):
         if t != 2:
             assert router._track_is_audible(t) is False
     print("  _track_is_audible solo → autres silencieux : OK")
@@ -700,8 +702,8 @@ def test_on_play_synth_muted_silent():
 
 def test_initial_volume_pan_state():
     router, _, _ = _make_router()
-    assert router._track_volumes == [100] * 8
-    assert router._track_pans    == [0]   * 8
+    assert router._track_volumes == [100] * NUM_TRACKS
+    assert router._track_pans    == [0]   * NUM_TRACKS
     print("  volume/pan état initial : OK")
 
 
@@ -711,7 +713,7 @@ def test_set_get_track_volume():
     router, _, _ = _make_router()
     router.set_track_volume(3, 75)
     assert router.get_track_volume(3) == 75
-    assert all(router.get_track_volume(i) == 100 for i in range(8) if i != 3)
+    assert all(router.get_track_volume(i) == 100 for i in range(NUM_TRACKS) if i != 3)
     print("  set/get_track_volume : OK")
 
 
@@ -749,7 +751,7 @@ def test_set_get_track_pan():
     router, _, _ = _make_router()
     router.set_track_pan(5, -40)
     assert router.get_track_pan(5) == -40
-    assert all(router.get_track_pan(i) == 0 for i in range(8) if i != 5)
+    assert all(router.get_track_pan(i) == 0 for i in range(NUM_TRACKS) if i != 5)
     print("  set/get_track_pan : OK")
 
 

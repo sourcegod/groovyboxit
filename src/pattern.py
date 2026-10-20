@@ -628,7 +628,6 @@ class Pattern:
         self._track_solos   = pad(self._track_solos,   False)
         self._track_volumes = pad(self._track_volumes, 100)
         self._track_pans    = pad(self._track_pans,    0)
-        self._tracks        = self._tracks + [Track(i) for i in range(len(self._tracks), nt)]
 
     def _migrate_patch_note_bends(self):
         """Convertit le champ "bend" des notes PATCH (presets sauvés avant la

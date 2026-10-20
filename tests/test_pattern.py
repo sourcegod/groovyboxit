@@ -538,10 +538,10 @@ def test_from_dict_defaults_for_missing_fields():
 def test_from_dict_restores_track_slots():
     p = Pattern()
     src = Pattern()
-    src._track_slots = [3, 1, 0, 0, 0, 0, 0, 0]
+    src._track_slots = [3, 1] + [0] * (Pattern.DEFAULT_NUM_TRACKS - 2)
     d = src.to_dict()
     p.from_dict(d)
-    assert p._track_slots == [3, 1, 0, 0, 0, 0, 0, 0]
+    assert p._track_slots == src._track_slots
     print("  from_dict restaure _track_slots : OK")
 
 def test_from_dict_restores_voices():
@@ -557,8 +557,8 @@ def test_from_dict_missing_track_fields_keep_defaults():
     p = Pattern()
     p.from_dict({"curpattern": Pattern().to_dense_grid()})
     # Sans clés track_*, les listes par défaut doivent rester intactes
-    assert p._track_mutes   == [False] * 8
-    assert p._track_volumes == [100]   * 8
+    assert p._track_mutes   == [False] * Pattern.DEFAULT_NUM_TRACKS
+    assert p._track_volumes == [100]   * Pattern.DEFAULT_NUM_TRACKS
     print("  from_dict sans track_* → listes par défaut conservées : OK")
 
 def test_from_dict_preserves_kit_and_patch_tape():

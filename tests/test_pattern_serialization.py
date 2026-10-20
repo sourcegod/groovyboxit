@@ -20,7 +20,7 @@ from pattern import Pattern
 # Helpers
 # ---------------------------------------------------------------------------
 
-NUM_TRACKS = 8
+NUM_TRACKS = Pattern.DEFAULT_NUM_TRACKS   # 16 depuis la Phase 7 étape 10d1
 NUM_PADS   = 16
 NUM_STEPS  = 16
 
@@ -348,11 +348,11 @@ def test_json_backwards_compatible_no_track_fields():
     }
     loaded = _load_preset_dict(old_data)
     p = loaded[0]
-    assert p._track_slots   == [0]     * NUM_TRACKS, "Défaut [0]*8"
-    assert p._track_mutes   == [False] * NUM_TRACKS, "Défaut [False]*8"
-    assert p._track_solos   == [False] * NUM_TRACKS, "Défaut [False]*8"
-    assert p._track_volumes == [100]   * NUM_TRACKS, "Défaut [100]*8"
-    assert p._track_pans    == [0]     * NUM_TRACKS, "Défaut [0]*8"
+    assert p._track_slots   == [0]     * NUM_TRACKS, "Défaut [0]*16"
+    assert p._track_mutes   == [False] * NUM_TRACKS, "Défaut [False]*16"
+    assert p._track_solos   == [False] * NUM_TRACKS, "Défaut [False]*16"
+    assert p._track_volumes == [100]   * NUM_TRACKS, "Défaut [100]*16"
+    assert p._track_pans    == [0]     * NUM_TRACKS, "Défaut [0]*16"
     print("  backward-compat (champs mixage piste absents) : OK")
 
 
@@ -393,11 +393,12 @@ def _simulate_switch_pattern(pattern_list, cur_idx, router, new_idx):
 def test_switch_pattern_saves_all_track_state():
     """switch_pattern sauvegarde les 5 champs piste du router dans le pattern courant."""
     p0 = Pattern()
-    p0._track_slots   = [0, 1, 2, 0, 0, 0, 0, 0]
-    p0._track_mutes   = [False, True, False, False, False, False, False, False]
-    p0._track_solos   = [True,  False, False, False, False, False, False, False]
-    p0._track_volumes = [80, 100, 60, 100, 100, 100, 100, 100]
-    p0._track_pans    = [-20, 0, 30, 0, 0, 0, 0, 0]
+    rest = NUM_TRACKS - 3
+    p0._track_slots   = [0, 1, 2]           + [0]     * rest
+    p0._track_mutes   = [False, True, False] + [False] * rest
+    p0._track_solos   = [True,  False, False] + [False] * rest
+    p0._track_volumes = [80, 100, 60]       + [100]   * rest
+    p0._track_pans    = [-20, 0, 30]        + [0]     * rest
 
     p1 = Pattern()   # état par défaut
 
@@ -410,11 +411,11 @@ def test_switch_pattern_saves_all_track_state():
     )
     _simulate_switch_pattern([p0, p1], 0, router, 1)
 
-    assert p0._track_slots   == [0, 1, 2, 0, 0, 0, 0, 0]
-    assert p0._track_mutes   == [False, True, False, False, False, False, False, False]
-    assert p0._track_solos   == [True,  False, False, False, False, False, False, False]
-    assert p0._track_volumes == [80, 100, 60, 100, 100, 100, 100, 100]
-    assert p0._track_pans    == [-20, 0, 30, 0, 0, 0, 0, 0]
+    assert p0._track_slots   == [0, 1, 2]           + [0]     * rest
+    assert p0._track_mutes   == [False, True, False] + [False] * rest
+    assert p0._track_solos   == [True,  False, False] + [False] * rest
+    assert p0._track_volumes == [80, 100, 60]       + [100]   * rest
+    assert p0._track_pans    == [-20, 0, 30]        + [0]     * rest
     # Router doit avoir chargé les défauts de p1
     assert router._track_slots   == [0] * NUM_TRACKS
     assert router._track_mutes   == [False] * NUM_TRACKS
