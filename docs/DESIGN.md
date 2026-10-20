@@ -2529,3 +2529,26 @@ parseur à écrire aussi pour l'import.
   À 120 BPM, une mesure de 4 temps dure 2,0 s pour 16, 32, 64 et 128 pas.
   `pytest tests/` est resté vert (1786) : aucun test existant ne figeait
   `60/bpm/4` sur un pattern de plus de 16 pas.
+- **10c1** — conforme. `tests/test_step_duration.py` contient 24 tests, ce
+  qui porte le total à 1810. Ils couvrent :
+  - la formule à 16, 32, 64 et 128 pas, et 16 pas inchangé à plusieurs BPM ;
+  - `set_bpm` et `load_pattern` ;
+  - l'enchaînement du song et son retour au début, à BPM égal mais avec une
+    résolution différente ;
+  - Redimensionner (`_resize_live_pattern`), et les actions « Courant » et
+    « Nouveau » du dialogue de propriétés, simulé ;
+  - le métronome à un clic toutes les `60/bpm` secondes ;
+  - le Note Repeat en 1/16, qui donne 16 doubles croches par mesure quelle
+    que soit la résolution.
+
+  Pendant l'écoute de 10b1, le Note Repeat a semblé ne pas réagir aux
+  touches 1 à 9. La cause était le focus resté sur la liste des patterns
+  (exclusion volontaire, `key_handler_chars.py:261`), et non le code de
+  10b1. Ce comportement reste hors de ce chantier.
+  - Aucun test existant n'avait à changer.
+  - Contre-épreuve par 7 mutations volontaires, toutes détectées :
+    - l'ancienne formule `60/bpm/4` ;
+    - le recalcul conditionné au BPM, aux deux points du song ;
+    - le Note Repeat en `16/denom` ;
+    - un appel `_update_step_duration()` retiré, tour à tour dans
+      Redimensionner, Nouveau et `load_pattern`.
