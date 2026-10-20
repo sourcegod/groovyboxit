@@ -132,15 +132,20 @@ def _name_words(name):
 
 
 def guess_gm_program(name, drums=False):
-    """Programme (0-127) dont le nom GM partage le plus de mots avec `name` :
-    instruments GM 1, ou kits GM2 si drums. À égalité, le plus petit
-    programme ; aucun mot commun : 0 (Acoustic Grand Piano / Standard Kit).
-    Phase 7 étape 10h3, docs/DESIGN.md § 10h2 D11."""
+    """Programme (0-127) dont le nom GM correspond le mieux à `name` :
+    instruments GM 1, ou kits GM2 si drums. Un nom GM aux mêmes mots
+    l'emporte (« Electric Piano 1 » → 4, pas Electric Grand Piano) ; sinon
+    celui qui partage le plus de mots. À égalité, le plus petit programme ;
+    aucun mot commun : 0 (Acoustic Grand Piano / Standard Kit).
+    Phase 7 étape 10h3, docs/DESIGN.md § 10h2 D11 (correspondance exacte
+    ajoutée en 10h4)."""
     table = GM2_DRUMKITS if drums else list(enumerate(GM_PATCH_NAMES))
     words = _name_words(name or "")
-    best, best_score = 0, 0
+    best, best_score = 0, (False, 0)
     for program, gm_name in table:
-        score = len(words & _name_words(gm_name))
-        if score > best_score:
+        gm_words = _name_words(gm_name)
+        shared = len(words & gm_words)
+        score = (bool(words) and words == gm_words, shared)
+        if shared and score > best_score:
             best, best_score = program, score
     return best

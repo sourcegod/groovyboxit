@@ -2974,3 +2974,51 @@ compris.
     - le `FakeDlg` de `test_track_channels.py` n'a pas `get_program` ;
     - `on_change` passe à 7 valeurs ;
     - l'ordre Tab est désormais Canal → Programme → Volume.
+- **10h4** — tests du Program Change par slot. La suite redevient verte :
+  1893 tests.
+  - **Les 6 tests rouges de 10h3 sont réparés.**
+    - Le `FakeDlg` de `test_track_channels.py` a maintenant
+      `get_program`, et des valeurs à 7 éléments.
+    - `on_change` passe à 7 valeurs.
+    - L'ordre Tab est vérifié dans l'ordre de création. La liste
+      Programme, désactivée sans `slot_program`, n'accepte pas le focus.
+  - **`test_track_properties_dialog.py`**, 8 tests ajoutés :
+    - 128 instruments pour un synthé, avec les libellés « 1 - … » à
+      « 128 - Gunshot » ;
+    - 9 kits pour un kit ;
+    - liste vide et désactivée pour un slot vide ou sans `slot_program` ;
+    - programme inconnu : aucune sélection ;
+    - ordre Tab Canal → Programme → Volume ;
+    - liste rechargée au changement de slot, synthé ↔ kit ↔ vide ;
+    - `on_change` reçoit le numéro de kit et non l'index.
+  - **Nouveau fichier `tests/test_gm_program.py`**, 19 tests :
+    - déduction sur les 128 noms GM, les patches et les kits existants,
+      les chiffres ignorés, les noms vides ou inconnus ;
+    - `gm_program` : config, valeur invalide, types sans programme ;
+    - `set_gm_program` remplace `config` et borne la valeur. Un
+      instantané `rack.to_dict()` reste intact ;
+    - export : `program_change` en premier au tick 0 sur le canal de la
+      piste, rien si `None`, avant un `ETYPE_PGM` au tick 0, valeur
+      bornée ;
+    - `mw_tracks`, avec un dialogue factice qui joue l'aperçu : Ok avec
+      un autre programme, Annuler (les dicts `config` d'origine sont
+      remis, même pour un slot visité puis quitté), Ok sans changement,
+      programme changé puis rétabli, kit GM2 choisi sur un slot kit.
+  - **Écart avec 10h3, corrigé dans ce commit** (`midi_constants.py`). Le
+    test sur les 128 noms GM a révélé un défaut :
+    - « Electric Piano 1 » donnait Electric Grand Piano (2), qui partage
+      les mêmes 2 mots, au lieu d'Electric Piano 1 (4) ;
+    - une correspondance exacte des mots passe désormais avant le compte
+      des mots communs ;
+    - « Piano 1 » donne toujours 0, aucun nom GM ne se réduisant au seul
+      mot « piano » ;
+    - les exemples de D11 sont inchangés.
+  - **Contre-épreuve par 22 mutations volontaires**, toutes détectées :
+    - déduction : chiffres gardés, camelCase non coupé, correspondance
+      exacte ignorée, égalité inversée, table GM utilisée pour les kits ;
+    - `gm_program` et `set_gm_program` : config ignorée, bornes, kit
+      traité comme un synthé, tout type accepté, modification sur place ;
+    - export : Program Change mal placé ou sur le mauvais canal ;
+    - dialogue : liste, libellés, désactivation, rechargement, index ;
+    - `mw_tracks` : programme non écrit, Annuler sans restauration, kit
+      vu comme un synthé.

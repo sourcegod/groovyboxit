@@ -42,7 +42,8 @@ class FakeEvent:
 DEFAULT = dict(cur_slot_idx=2, volume=75, pan=-20, mute=True, solo=False, channel=3)
 
 
-def make_dlg(on_change=None, on_play_toggle=None, channel_after_slot=None, **kwargs):
+def make_dlg(on_change=None, on_play_toggle=None, channel_after_slot=None,
+             slot_program=None, **kwargs):
     """Crée un wx.App + frame parent + TrackPropertiesDialog."""
     params = {**DEFAULT, **kwargs}
     app   = wx.App(False)
@@ -58,6 +59,7 @@ def make_dlg(on_change=None, on_play_toggle=None, channel_after_slot=None, **kwa
         on_play_toggle=on_play_toggle,
         channel=params['channel'],
         channel_after_slot=channel_after_slot,
+        slot_program=slot_program,
     )
     return app, frame, dlg
 
@@ -111,7 +113,8 @@ def test_on_change_receives_initial_values_on_first_call():
     received = []
     app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a))
     dlg._on_widget_change(FakeEvent())
-    assert received == [(2, 75, -20, True, False, 3)]   # canal en 6e (10f1)
+    # canal en 6e (10f1), programme en 7e (10h3) : None sans slot_program
+    assert received == [(2, 75, -20, True, False, 3, None)]
     teardown(app, frame, dlg)
     print("  on_change reçoit les valeurs initiales : OK")
 
@@ -256,10 +259,14 @@ def test_initial_channel():
 def test_channel_list_follows_slots_in_tab_order():
     app, frame, dlg = make_dlg()
     order = [w for w in dlg.GetChildren() if w.AcceptsFocus()]
-    assert order.index(dlg._channels) == order.index(dlg._slots) + 1
-    assert order.index(dlg._vol) == order.index(dlg._channels) + 1
+    order = list(dlg.GetChildren())   # ordre de création = ordre Tab
+    assert order.index(dlg._channels) > order.index(dlg._slots)
+    assert order.index(dlg._programs) > order.index(dlg._channels)
+    assert order.index(dlg._vol) > order.index(dlg._programs)
+    focusable = [w for w in order if w.AcceptsFocus()]
+    assert focusable.index(dlg._channels) == focusable.index(dlg._slots) + 1
     teardown(app, frame, dlg)
-    print("  ordre Tab : Slots → Canal → Volume : OK")
+    print("  ordre Tab : Slots → Canal → Programme → Volume : OK")
 
 def test_on_change_reflects_new_channel():
     received = []
@@ -311,6 +318,94 @@ def test_channel_change_does_not_call_rule():
 
 
 # ---------------------------------------------------------------------------
+# Programme GM du slot (Phase 7 étape 10h3)
+# ---------------------------------------------------------------------------
+
+def _fake_slot_program(slot_idx):
+    """Slot 0 = kit (TR-808 Kit, 25), slot 2 = synthé (Drawbar Organ, 16),
+    slot 5 = synthé sans programme valide, autres = vides."""
+    return {0: ("kit", 25), 2: ("synth", 16), 5: ("synth", None)}.get(slot_idx, (None, None))
+
+def test_programs_list_for_synth_slot():
+    app, frame, dlg = make_dlg(slot_program=_fake_slot_program)   # slot initial 2
+    assert dlg._programs.GetCount() == 128
+    assert dlg._programs.GetString(0) == "1 - Acoustic Grand Piano"
+    assert dlg._programs.GetString(127) == "128 - Gunshot"
+    assert dlg._programs.IsEnabled()
+    assert dlg.get_program() == 16
+    assert dlg._programs.GetStringSelection() == "17 - Drawbar Organ"
+    teardown(app, frame, dlg)
+    print("  slot synthé : 128 instruments GM, programme du slot sélectionné : OK")
+
+def test_programs_list_for_kit_slot():
+    app, frame, dlg = make_dlg(slot_program=_fake_slot_program, cur_slot_idx=0)
+    assert dlg._programs.GetCount() == 9
+    assert dlg._programs.GetString(0) == "1 - Standard Kit"
+    assert dlg._programs.GetString(8) == "57 - SFX Kit"
+    assert dlg.get_program() == 25
+    assert dlg._programs.GetStringSelection() == "26 - TR-808 Kit"
+    teardown(app, frame, dlg)
+    print("  slot kit : 9 kits GM2, kit du slot sélectionné : OK")
+
+def test_programs_list_disabled_for_empty_slot():
+    app, frame, dlg = make_dlg(slot_program=_fake_slot_program, cur_slot_idx=7)
+    assert dlg._programs.GetCount() == 0
+    assert not dlg._programs.IsEnabled()
+    assert dlg.get_program() is None
+    teardown(app, frame, dlg)
+    print("  slot vide : liste vide et désactivée, programme None : OK")
+
+def test_programs_list_disabled_without_callback():
+    app, frame, dlg = make_dlg()
+    assert not dlg._programs.IsEnabled() and dlg.get_program() is None
+    teardown(app, frame, dlg)
+    print("  sans slot_program : liste désactivée : OK")
+
+def test_program_without_valid_value_has_no_selection():
+    app, frame, dlg = make_dlg(slot_program=_fake_slot_program, cur_slot_idx=5)
+    assert dlg._programs.GetCount() == 128
+    assert dlg.get_program() is None
+    teardown(app, frame, dlg)
+    print("  programme inconnu : liste remplie, aucune sélection : OK")
+
+def test_program_list_follows_channel_in_tab_order():
+    app, frame, dlg = make_dlg(slot_program=_fake_slot_program)
+    focusable = [w for w in dlg.GetChildren() if w.AcceptsFocus()]
+    assert focusable.index(dlg._programs) == focusable.index(dlg._channels) + 1
+    assert focusable.index(dlg._vol) == focusable.index(dlg._programs) + 1
+    teardown(app, frame, dlg)
+    print("  ordre Tab avec programme actif : Canal → Programme → Volume : OK")
+
+def test_slot_change_reloads_programs_synth_to_kit_and_back():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a),
+                               slot_program=_fake_slot_program)
+    dlg._slots.SetSelection(0)
+    dlg._on_slot_change(FakeEvent())
+    assert dlg._programs.GetCount() == 9 and dlg.get_program() == 25
+    assert received[-1][6] == 25
+    dlg._slots.SetSelection(7)
+    dlg._on_slot_change(FakeEvent())
+    assert not dlg._programs.IsEnabled() and received[-1][6] is None
+    dlg._slots.SetSelection(2)
+    dlg._on_slot_change(FakeEvent())
+    assert dlg._programs.GetCount() == 128 and dlg._programs.IsEnabled()
+    assert dlg.get_program() == 16
+    teardown(app, frame, dlg)
+    print("  changement de slot : liste rechargée (synthé ↔ kit ↔ vide) : OK")
+
+def test_on_change_reflects_chosen_program():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a),
+                               slot_program=_fake_slot_program, cur_slot_idx=0)
+    dlg._programs.SetSelection(3)          # 4e kit : Electronic Kit, programme 24
+    dlg._on_widget_change(FakeEvent())
+    assert received[-1][6] == 24 and dlg.get_program() == 24
+    teardown(app, frame, dlg)
+    print("  on_change reçoit le programme choisi (index → numéro de kit) : OK")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=== test_track_properties_dialog ===")
@@ -345,4 +440,13 @@ if __name__ == "__main__":
     test_slot_change_back_from_kit_restores_channel()
     test_slot_change_without_rule_keeps_channel()
     test_channel_change_does_not_call_rule()
+    # Programme GM du slot
+    test_programs_list_for_synth_slot()
+    test_programs_list_for_kit_slot()
+    test_programs_list_disabled_for_empty_slot()
+    test_programs_list_disabled_without_callback()
+    test_program_without_valid_value_has_no_selection()
+    test_program_list_follows_channel_in_tab_order()
+    test_slot_change_reloads_programs_synth_to_kit_and_back()
+    test_on_change_reflects_chosen_program()
     print("Tous les tests : OK")
