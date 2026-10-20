@@ -2117,7 +2117,6 @@ L'utilisateur a demandé le 2026-10-18 d'attaquer l'export en premier.
 L'import fera l'objet d'une partie séparée. En validant le plan, il a
 ajouté :
 - un `requirements.txt` ;
-- un canal commun aux pistes qui partagent un même synthé ;
 - un canal réglable par piste ;
 - des patterns à 16 pistes par défaut.
 
@@ -2246,7 +2245,7 @@ Alternatives écartées :
 - **Migration** : `from_dict` porte tout pattern de moins de 16 pistes à 16.
   - `_tape` est complété par des pistes vides ;
   - chaque liste `track_*` est complétée par sa valeur par défaut (slot 0,
-    pas de mute ni de solo, volume 100, pan 0, canal auto).
+    pas de mute ni de solo, volume 100, pan 0, canal par défaut, D5).
   - Un `.gvp` existant s'ouvre donc avec 16 pistes, les 8 premières
     inchangées.
 - Les autres lectures passent déjà par `pattern._num_tracks` : elles
@@ -2292,69 +2291,84 @@ Alternatives écartées :
 - **PPQ 96 ou 960** : 96 est trop grossier pour le timing libre, 960
   n'apporte rien d'audible.
 
-**D5 — canal MIDI de chaque piste : automatique par défaut, réglable dans
-les propriétés de la piste.**
+**D5 — canal MIDI de chaque piste : un canal stocké par piste, piste N →
+canal N par défaut, réglable dans les propriétés de la piste.** Cette
+décision a été simplifiée par l'utilisateur le 2026-10-20 (Phase 7 étape
+10a2). La version de 10a1 est rappelée dans les alternatives écartées.
 
-Chaque piste reçoit un canal, et l'export y écrit tous ses événements.
-Le canal se résout ainsi :
+Chaque piste porte un canal, une valeur stockée et non recalculée, et
+l'export y écrit tous ses événements, quel que soit leur etype.
 
-1. **Canal choisi par l'utilisateur.** Il prime sur tout le reste, y
-   compris le canal 10 des événements `KIT`.
-2. **Sinon, canal automatique :**
-   - une piste kit (slot qui n'est pas de type SYNTH : kit, vide ou autre)
-     va sur le canal 10 ;
-   - une piste SYNTH va sur le canal de son slot. Les slots SYNTH distincts
-     reçoivent les canaux 1 à 9, puis 11 à 16, dans l'ordre de la première
-     piste qui les utilise. **Toutes les pistes qui partagent un même slot
-     (même synthé ou patch) ont donc le même canal.**
-   - Si plus de 15 slots SYNTH distincts sont utilisés, ce qui suppose 16
-     slots synthé sur 16 pistes, le seizième partage le canal 16. C'est une
-     limite documentée.
-3. **Exception en mode automatique** : un événement `KIT` d'une piste
-   SYNTH est écrit sur le canal 10, puisque le rejeu le joue sur le kit
-   quel que soit le slot.
-
-Exemple : piste 1 sur un kit, pistes 2 et 4 sur le slot 3 (synthé),
-piste 3 sur le slot 5 (synthé). On obtient piste 1 → 10, pistes 2 et 4 →
-1, piste 3 → 2.
-
-- **Données** : `_track_channels`, une liste de 16 entrées `None` (auto)
-  ou 0..15.
-  - Comme les autres réglages de piste, elle vit dans `TrackRouter`, est
-    copiée dans `Pattern` au rangement, et est sérialisée dans le `.gvp`
-    sous `track_channels`.
-  - Si la clé est absente, toutes les pistes sont en auto.
-- **La résolution** se fait dans une fonction pure,
-  `resolve_track_channels(track_is_synth, track_slots, track_channels)`,
-  placée dans `src/midi/track_channels.py`. L'export s'en sert, et le
-  dialogue de propriétés aussi, pour afficher le canal auto.
-- **Dialogue** : `TrackPropertiesDialog` gagne une `ListBox` « Canal », de
-  17 entrées : `Auto (canal N)` puis `Canal 1` à `Canal 16`.
+- **Défaut** : la piste N reçoit le canal N, pour N de 1 à 16. La piste 10
+  est donc sur le canal 10, celui de la batterie GM. Toute piste au-delà de
+  la 16e reçoit le canal 16. Ce cas n'existe pas encore, puisque
+  `MAX_TRACKS = 16`, mais la règle est posée pour l'avenir.
+- **Assigner un slot kit à une piste** la met sur le canal 10. C'est le cas
+  par le choix du slot de la fenêtre principale (`_assign_track_slot`) et
+  par `TrackPropertiesDialog`.
+- **Assigner un slot qui n'est pas un kit** (synthé, vide ou autre) à une
+  piste dont le canal est 10 la ramène à son canal par défaut. La piste 10
+  reste donc sur le canal 10. Un autre canal choisi à la main n'est pas
+  touché.
+  - Limite assumée : aucun drapeau ne retient si le canal 10 a été choisi
+    à la main ou posé par un kit. Un 10 choisi à la main sur une piste
+    autre que la 10 revient donc lui aussi au défaut dès qu'on lui assigne
+    un synthé.
+- **Ce qui ne change pas le canal** :
+  - le pont provisoire Program Change → `assign_slot` (live et rejeu) ;
+  - la restauration des slots au chargement d'un projet ;
+  - le chargement d'un kit dans un slot.
+  
+  Pour cela, la règle est appliquée dans les deux actions utilisateur
+  ci-dessus, et non dans `TrackRouter.assign_slot`.
+- **Choix manuel** : `TrackPropertiesDialog` gagne une `ListBox` « Canal »
+  de 16 entrées, `Canal 1` à `Canal 16`.
   - Elle se place après Slots dans l'ordre Tab.
   - Elle a le même aperçu en temps réel et le même Annuler que les autres
     champs.
   - L'action entre dans l'Undo comme les autres propriétés de piste.
+  - Changer de slot dans le dialogue applique la règle du kit et met à jour
+    la sélection de la liste Canal. L'utilisateur peut ensuite la changer.
+  - Aucune vérification de collision : deux pistes sur un même canal le
+    partagent, c'est le choix de l'utilisateur.
+- **Données** : `_track_channels`, une liste d'entiers 0..15, avec
+  `min(t, 15)` pour la piste `t` (0-based) par défaut.
+  - Comme les autres réglages de piste, elle vit dans `TrackRouter`, est
+    copiée dans `Pattern` au rangement, et est sérialisée dans le `.gvp`
+    sous `track_channels`.
+  - Clé absente, cas d'un ancien `.gvp`, ou liste trop courte (migration
+    D2) : on complète avec le défaut par index.
+  - La règle du kit n'est pas rejouée sur les slots existants : un ancien
+    projet s'ouvre comme un nouveau pattern, canal N pour la piste N.
+  - Un nouveau pattern a aussi le canal N sur la piste N, bien que ses 16
+    pistes pointent par défaut sur le slot 1, qui est un kit (TR-707,
+    `main_window.py:112`). Seule une assignation explicite déclenche la
+    règle.
 - **Portée** : le canal de piste ne sert qu'à l'export pour l'instant. Le
   rejeu et la capture ne changent pas, et `ev.channel` reste le canal
   d'origine capturé. Ce réglage prépare l'adressage par canal du mode Rack
   GM.
-- `ev.channel` n'est pas écrit dans le fichier : c'est une perte assumée,
-  le fichier sonnant juste dans un lecteur GM.
-- Le choix manuel ne vérifie pas les collisions. Deux slots différents
-  réglés sur un même canal partagent ce canal : c'est la responsabilité de
-  l'utilisateur.
+- `ev.channel` n'est pas écrit dans le fichier : c'est une perte assumée.
+- Un événement `KIT` est écrit sur le canal de sa piste comme tout le
+  reste, même si la piste n'est pas sur le canal 10. Il n'y a pas
+  d'exception par etype.
+
+Exemple : piste 1 sur un kit (assigné), pistes 2 et 4 sur un même synthé,
+piste 3 sur un autre synthé. On obtient piste 1 → 10, piste 2 → 2,
+piste 3 → 3, piste 4 → 4. Pour que les pistes 2 et 4 partagent un canal,
+on règle la piste 4 sur le canal 2 dans ses propriétés.
 
 Alternatives écartées :
+- **Canal automatique calculé à l'export (version 10a1)**. Un canal par slot
+  SYNTH distinct, partagé par les pistes du même synthé, kit sur 10, avec
+  une surcharge manuelle `None`/0..15. Écartée le 2026-10-20 par
+  l'utilisateur, au profit d'une règle plus simple et visible : le canal
+  est une valeur de la piste, que l'utilisateur voit et règle, au lieu d'un
+  résultat recalculé selon les autres pistes.
 - **Le canal d'origine `ev.channel`**, fidèle et utile à l'aller-retour.
-  Mais tout ce qui vient de la grille est sur le canal 1, et le fichier ne
-  sonnerait pas juste dans un lecteur GM.
-- **Un canal par piste** (canal = numéro de piste, ou piste mélodique
-  `t → t` en sautant le canal 10). Deux pistes jouant le même synthé
-  auraient alors deux canaux, et donc deux instruments à régler dans un
-  lecteur GM.
+  Mais tout ce qui vient de la grille est sur le canal 1.
 - **Canal = numéro de slot du Rack** : il s'appuie sur le pont
-  `assign_slot`, qui est provisoire, et il gaspille des canaux quand les
-  slots utilisés sont épars.
+  `assign_slot`, qui est provisoire.
 
 **D6 — notes, vélocités, durées.**
 - **Note d'un `GRID`** : sur une piste SYNTH,
@@ -2423,7 +2437,7 @@ parseur à écrire aussi pour l'import.
 - `build_pattern_midi(pattern, track_channels, track_is_synth,
   track_names, kit_note_base, voice_durations) -> mido.MidiFile` contient
   toute la logique de D4, D6 et D7.
-  - `track_channels` est déjà résolu par `resolve_track_channels` (D5).
+  - `track_channels` est la liste stockée de `TrackRouter` (D5).
   - Les états hors `Pattern` lui sont passés en paramètres : type de slot
     de chaque piste, noms des pistes, `kit_base + kit_offset`, durées des
     voix.
@@ -2474,14 +2488,15 @@ parseur à écrire aussi pour l'import.
 | Étape | Contenu | Fichiers |
 |---|---|---|
 | **10a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **10a2** | Doc — D5 simplifiée : piste N → canal N, kit assigné → canal 10, réglage manuel. | `docs/DESIGN.md` |
 | **10b1** | Implémentation — `_update_step_duration()` (D1) remplace les quatre formules ; appels dans `set_bpm`, l'enchaînement du song (sans condition) et `_resize_live_pattern` ; Note Repeat en `num_steps / denom`. | `player/drum_player.py`, `player/dp_transport.py`, `player/dp_playback.py`, `ui/mw_patterns.py` |
 | **10c1** | Tests — durée du pas pour 16/32/64/128 pas ; 16 pas inchangé ; recalcul à l'enchaînement du song à BPM égal mais à `num_steps` différent ; recalcul au redimensionnement ; métronome à un clic par `60/bpm` ; intervalle du Note Repeat. Mise à jour des tests existants qui supposaient `60/bpm/4` avec un `num_steps` autre que 16, s'il y en a. | `tests/test_transport.py`, `tests/test_playback_loop.py`, … |
 | **10d1** | Implémentation — 16 pistes par défaut (D2) : `Pattern`, `TrackRouter.NUM_TRACKS`, liste des pistes de la fenêtre principale, migration dans `from_dict`. | `pattern.py`, `track_router.py`, `ui/main_window.py`, `docs/SPECS.md` |
 | **10e1** | Tests — nouveau pattern à 16 pistes ; ancien `.gvp` à 8 pistes porté à 16, avec ses 8 premières pistes et ses `track_*` inchangés ; navigation et sélection jusqu'à la piste 16 ; mise à jour des tests qui supposaient 8 pistes. | `tests/test_pattern.py`, `tests/test_pattern_serialization.py`, `tests/test_track_router.py`, … |
-| **10f1** | Implémentation — canal de piste (D5) : `resolve_track_channels` ; `_track_channels` dans `TrackRouter` et `Pattern`, avec rangement, chargement et sérialisation `track_channels` ; `ListBox` Canal dans `TrackPropertiesDialog`, aperçu, Annuler et Undo. | `midi/track_channels.py` (nouveau), `track_router.py`, `pattern.py`, `ui/dialogs_properties.py`, `ui/mw_tracks.py`, `ui/mw_patterns.py` |
-| **10g1** | Tests — résolution : kit sur 10, slots SYNTH partagés sur un même canal, ordre d'attribution, saut du canal 10, seizième slot synthé, canal manuel prioritaire ; sérialisation (clé absente = auto) ; dialogue : libellé `Auto (canal N)`, choix, Annuler, Undo. | `tests/test_track_channels.py` (nouveau), `tests/test_track_properties_dialog.py`, `tests/test_pattern_serialization.py` |
+| **10f1** | Implémentation — canal de piste (D5) : `_track_channels` dans `TrackRouter` et `Pattern` (défaut par index, rangement, chargement, sérialisation `track_channels`, complétion des listes courtes) ; règle du kit (canal 10, retour au défaut) dans `_assign_track_slot` et le dialogue ; `ListBox` Canal dans `TrackPropertiesDialog`, aperçu, Annuler et Undo. | `track_router.py`, `pattern.py`, `ui/dialogs_properties.py`, `ui/mw_tracks.py`, `ui/mw_patterns.py` |
+| **10g1** | Tests — défaut piste N → canal N ; assigner un kit → 10 ; puis un synthé → retour au défaut (piste 10 reste sur 10, canal manuel autre que 10 conservé) ; Program Change et chargement de projet sans effet sur le canal ; sérialisation (clé absente ou liste courte = défaut) ; dialogue : choix, règle du kit au changement de slot, Annuler, Undo. | `tests/test_track_channels.py` (nouveau), `tests/test_track_properties_dialog.py`, `tests/test_pattern_serialization.py` |
 | **10h1** | Implémentation — `src/midi/midi_export.py` (D4, D6, D7, D9) ; `requirements.txt` (D8). | `midi/midi_export.py` (nouveau), `requirements.txt` (nouveau), `docs/SPECS.md` (dépendance `mido`) |
-| **10i1** | Tests — relecture par `mido` : en-tête type 1 et PPQ ; conductor (nom, tempo, signature) ; une piste par piste non vide, avec son nom ; canaux reçus de D5, et `KIT` sur le canal 10 en auto ; notes GRID synth/kit, KIT, PATCH ; vélocités bornées ; durées par défaut ; conversions de temps à 16 et 32 pas ; chevauchement ; ordre à tick égal et deux BEND au même temps ; CC/PGM/BEND ; `end_of_track` à la fin du pattern ; pattern vide. | `tests/test_midi_export.py` (nouveau) |
+| **10i1** | Tests — relecture par `mido` : en-tête type 1 et PPQ ; conductor (nom, tempo, signature) ; une piste par piste non vide, avec son nom ; chaque événement sur le canal de sa piste (D5), `KIT` compris ; notes GRID synth/kit, KIT, PATCH ; vélocités bornées ; durées par défaut ; conversions de temps à 16 et 32 pas ; chevauchement ; ordre à tick égal et deux BEND au même temps ; CC/PGM/BEND ; `end_of_track` à la fin du pattern ; pattern vide. | `tests/test_midi_export.py` (nouveau) |
 | **10j1** | Implémentation — Alt+Shift+E dans la fenêtre principale et l'éditeur MIDI ; `FileDialog` ; `AppConfig.exports_dir` ; statut (D10). | `ui/key_handler_alt.py`, `ui/mew_keymap.py`, `ui/mw_project.py`, `app_config.py`, `docs/shortcuts.md` |
 | **10k1** | Tests — `exports_dir` (défaut, valeur relative, valeur absolue) ; le handler appelle l'export avec les bons paramètres (FileDialog simulé) ; Annuler n'écrit rien ; erreur d'écriture affichée. | `tests/test_app_config.py`, `tests/test_midi_export_ui.py` (nouveau) |
 | **10l1** | Doc — clôture (DESIGN.md, `docs/SPECS.md` : arborescence, 16 pistes, canal de piste, export MIDI), `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
@@ -2495,5 +2510,4 @@ parseur à écrire aussi pour l'import.
   8 premières pistes jouent comme avant.
 - Avant de committer 10h1 : un fichier exporté est ouvert dans un lecteur
   externe (`timidity` ou un DAW, s'il y en a un), pour vérifier qu'il se
-  lit, le tempo, la batterie sur le canal 10, et deux pistes au même
-  synthé sur un seul canal.
+  lit, le tempo, et la batterie sur le canal 10.
