@@ -2714,3 +2714,45 @@ parseur à écrire aussi pour l'import.
   - **Précision 3** : le test `test_on_change_receives_initial_values` de
     `test_track_properties_dialog.py` attend 5 arguments. Il est rouge à ce
     commit et sera mis à jour en 10g1.
+- **10g1** — tests du canal de piste. La suite redevient verte : 1866
+  tests.
+  - **`tests/test_track_channels.py`**, 18 tests :
+    - défaut piste N → canal N, plafonné à 16 ;
+    - aller-retour `to_dict`/`from_dict` ;
+    - clé absente ;
+    - liste courte complétée selon l'index, dict de l'appelant intact ;
+    - `set_track_channel` borné ;
+    - règles de `channel_after_slot` : kit → 10, retour au défaut, piste 10
+      sur 10, canal manuel gardé, slot vide ;
+    - `assign_slot_by_user` ;
+    - `assign_slot` seul et le pont Program Change ne touchent pas au
+      canal ;
+    - synchronisation par `_flush_pattern_to_store`,
+      `_apply_pattern_from_store` et l'enchaînement du song ;
+    - Ctrl+T : le statut annonce le canal ;
+    - dialogue de propriétés simulé : canal et règle transmis, Ok avec
+      changement, Ok sans changement et Annuler.
+  - **`test_track_properties_dialog.py`**, 7 tests ajoutés, et le test
+    `on_change` passe à 6 valeurs :
+    - liste de 16 canaux ;
+    - ordre Tab Slots → Canal → Volume ;
+    - `on_change` reçoit le canal ;
+    - règle appliquée au changement de slot, aller et retour ;
+    - sans règle, le canal ne change pas ;
+    - le choix manuel n'appelle pas la règle.
+  - **Écart avec 10f1, corrigé dans ce commit** (`pattern.py`). Le test de la
+    clé absente a montré un vrai bug :
+    - `from_dict` gardait les canaux déjà présents dans l'objet quand
+      `track_channels` manquait ;
+    - or Ctrl+O recharge un projet dans les `Pattern` existants
+      (`mw_project.py`, `self._pattern_list[i].from_dict(p)`) ;
+    - ouvrir un `.gvp` d'avant 10f1, c'est-à-dire tous les projets
+      existants, gardait donc les canaux du projet précédent.
+
+    Désormais, une clé absente remet les canaux par défaut. Les autres
+    clés `track_*` ont le même comportement depuis toujours. Il n'est pas
+    corrigé ici, car tous les `.gvp` existants contiennent ces clés.
+  - **Contre-épreuve par 21 mutations volontaires** de 10f1 et du
+    correctif, toutes détectées. Une première version de la mutation
+    « Canal créé après Pan » était mal construite. Elle a été refaite, et
+    elle est détectée.

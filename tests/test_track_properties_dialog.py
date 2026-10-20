@@ -39,10 +39,10 @@ class FakeEvent:
 # Helpers
 # ---------------------------------------------------------------------------
 
-DEFAULT = dict(cur_slot_idx=2, volume=75, pan=-20, mute=True, solo=False)
+DEFAULT = dict(cur_slot_idx=2, volume=75, pan=-20, mute=True, solo=False, channel=3)
 
 
-def make_dlg(on_change=None, on_play_toggle=None, **kwargs):
+def make_dlg(on_change=None, on_play_toggle=None, channel_after_slot=None, **kwargs):
     """Crée un wx.App + frame parent + TrackPropertiesDialog."""
     params = {**DEFAULT, **kwargs}
     app   = wx.App(False)
@@ -56,6 +56,8 @@ def make_dlg(on_change=None, on_play_toggle=None, **kwargs):
         params['solo'],
         on_change=on_change,
         on_play_toggle=on_play_toggle,
+        channel=params['channel'],
+        channel_after_slot=channel_after_slot,
     )
     return app, frame, dlg
 
@@ -109,7 +111,7 @@ def test_on_change_receives_initial_values_on_first_call():
     received = []
     app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a))
     dlg._on_widget_change(FakeEvent())
-    assert received == [(2, 75, -20, True, False)]
+    assert received == [(2, 75, -20, True, False, 3)]   # canal en 6e (10f1)
     teardown(app, frame, dlg)
     print("  on_change reçoit les valeurs initiales : OK")
 
@@ -233,6 +235,82 @@ def test_no_crash_without_play_toggle_callback():
 
 
 # ---------------------------------------------------------------------------
+# Canal MIDI (Phase 7 étape 10f1)
+# ---------------------------------------------------------------------------
+
+def _fake_kit_rule(slot_idx, channel):
+    """Règle simulée : slot 0 = kit → canal 10 ; autre slot sur 10 → canal 4."""
+    if slot_idx == 0:
+        return 9
+    return 3 if channel == 9 else channel
+
+def test_initial_channel():
+    app, frame, dlg = make_dlg()
+    assert dlg.get_channel() == 3
+    assert dlg._channels.GetCount() == 16
+    assert dlg._channels.GetString(0) == "Canal 1"
+    assert dlg._channels.GetString(15) == "Canal 16"
+    teardown(app, frame, dlg)
+    print("  liste Canal : 16 entrées, canal initial sélectionné : OK")
+
+def test_channel_list_follows_slots_in_tab_order():
+    app, frame, dlg = make_dlg()
+    order = [w for w in dlg.GetChildren() if w.AcceptsFocus()]
+    assert order.index(dlg._channels) == order.index(dlg._slots) + 1
+    assert order.index(dlg._vol) == order.index(dlg._channels) + 1
+    teardown(app, frame, dlg)
+    print("  ordre Tab : Slots → Canal → Volume : OK")
+
+def test_on_change_reflects_new_channel():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a))
+    dlg._channels.SetSelection(11)
+    dlg._on_widget_change(FakeEvent())
+    assert received[-1][5] == 11
+    assert dlg.get_channel() == 11
+    teardown(app, frame, dlg)
+    print("  on_change reflète le canal choisi : OK")
+
+def test_slot_change_to_kit_applies_channel_rule():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a),
+                               channel_after_slot=_fake_kit_rule)
+    dlg._slots.SetSelection(0)
+    ev = FakeEvent()
+    dlg._on_slot_change(ev)
+    assert dlg.get_channel() == 9
+    assert received[-1][0] == 0 and received[-1][5] == 9
+    assert ev.skipped
+    teardown(app, frame, dlg)
+    print("  slot kit → canal 10 dans la liste, aperçu transmis : OK")
+
+def test_slot_change_back_from_kit_restores_channel():
+    app, frame, dlg = make_dlg(channel_after_slot=_fake_kit_rule, channel=9)
+    dlg._slots.SetSelection(5)
+    dlg._on_slot_change(FakeEvent())
+    assert dlg.get_channel() == 3
+    teardown(app, frame, dlg)
+    print("  slot synthé depuis le canal 10 → canal par défaut : OK")
+
+def test_slot_change_without_rule_keeps_channel():
+    app, frame, dlg = make_dlg()
+    dlg._slots.SetSelection(0)
+    dlg._on_slot_change(FakeEvent())
+    assert dlg.get_channel() == 3
+    teardown(app, frame, dlg)
+    print("  sans règle : canal inchangé au changement de slot : OK")
+
+def test_channel_change_does_not_call_rule():
+    calls = []
+    app, frame, dlg = make_dlg(channel_after_slot=lambda s, c: calls.append((s, c)) or c)
+    dlg._channels.SetSelection(7)
+    dlg._on_widget_change(FakeEvent())
+    assert calls == [] and dlg.get_channel() == 7
+    teardown(app, frame, dlg)
+    print("  choix manuel du canal : règle non appliquée : OK")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=== test_track_properties_dialog ===")
@@ -259,4 +337,12 @@ if __name__ == "__main__":
     test_ctrl_p_not_skipped()
     test_p_without_ctrl_is_skipped()
     test_no_crash_without_play_toggle_callback()
+    # Canal MIDI
+    test_initial_channel()
+    test_channel_list_follows_slots_in_tab_order()
+    test_on_change_reflects_new_channel()
+    test_slot_change_to_kit_applies_channel_rule()
+    test_slot_change_back_from_kit_restores_channel()
+    test_slot_change_without_rule_keeps_channel()
+    test_channel_change_does_not_call_rule()
     print("Tous les tests : OK")

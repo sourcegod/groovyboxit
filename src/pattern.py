@@ -596,7 +596,10 @@ class Pattern:
         if "track_solos"   in d: self._track_solos   = d["track_solos"]
         if "track_volumes" in d: self._track_volumes = d["track_volumes"]
         if "track_pans"    in d: self._track_pans    = d["track_pans"]
-        if "track_channels" in d: self._track_channels = d["track_channels"]
+        # Clé absente (tout preset d'avant 10f1) : canaux par défaut, pas ceux
+        # que l'objet portait déjà — Ctrl+O recharge dans les Pattern existants.
+        self._track_channels = list(d.get("track_channels") or
+                                    [Pattern.default_channel(t) for t in range(self._num_tracks)])
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
