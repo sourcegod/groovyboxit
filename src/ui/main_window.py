@@ -279,7 +279,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         track_label = wx.StaticText(panel, label="Piste:")
         self._track_list = wx.ListBox(
             panel,
-            choices=[self._track_label(i) for i in range(8)],
+            choices=[self._track_label(i) for i in range(self._player._pattern._num_tracks)],
             style=wx.LB_SINGLE,
         )
         self._track_list.SetSelection(0)

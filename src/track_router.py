@@ -33,7 +33,7 @@ class TrackRouter:
     status_cb     : callable(str) — DOIT être thread-safe (envelopper wx.CallAfter)
     """
 
-    NUM_TRACKS      = 8
+    NUM_TRACKS      = 16   # = Pattern.DEFAULT_NUM_TRACKS (Phase 7 étape 10d1)
     KB_NUMPAD_NOTES = 16   # notes de gamme pour les Numpads (8 touches × 2 banques)
     KB_MIDI_NOTES   = 25   # notes de gamme pour le clavier MIDI
     KB_SYNTH_MIN    = 36   # C2 — borne basse du pré-calcul chromatique

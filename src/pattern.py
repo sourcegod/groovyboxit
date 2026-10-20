@@ -116,6 +116,7 @@ class Pattern:
     MAX_PATTERNS      = 99
     MAX_BARS          = 999
     MAX_TRACKS        = 16
+    DEFAULT_NUM_TRACKS = 16   # un canal MIDI par piste (Phase 7 étape 10d1)
     NUM_PADS          = 16
     _counter          = 0
 
@@ -127,7 +128,7 @@ class Pattern:
         self._num_beats   = 4     # numérateur de la signature rythmique
         self._num_steps   = 16    # pas par mesure : 16, 32, 64, 128
         self._num_bars    = 1     # nombre de mesures : 1..999
-        self._num_tracks  = 8
+        self._num_tracks  = Pattern.DEFAULT_NUM_TRACKS
         self._num_pads    = Pattern.NUM_PADS
         self._quant_steps = 16    # 1,2,3,4,6,8,12,16,24,32,48,64,96,128
         self._swing       = 0     # décalage groove 0..100 %
@@ -609,6 +610,25 @@ class Pattern:
                     TapeEvent(ETYPE_CC, channel=0, payload={"cc_num": 1, "value": val}, time=off)
                 )
         self._migrate_patch_note_bends()
+        self._extend_tracks(Pattern.DEFAULT_NUM_TRACKS)
+
+    def _extend_tracks(self, n):
+        """Porte le pattern à au moins n pistes (migration des presets à 8
+        pistes, Phase 7 étape 10d1) : _tape complété par des pistes vides,
+        listes track_* complétées par leurs valeurs par défaut. Listes
+        reconstruites, pas étendues en place : elles peuvent venir du dict
+        JSON de l'appelant (cache d'undo)."""
+        self._num_tracks = max(self._num_tracks, n)
+        nt = self._num_tracks
+        with self._lock:
+            self._ensure_track_count(nt)
+        pad = lambda lst, default: list(lst) + [default] * (nt - len(lst))
+        self._track_slots   = pad(self._track_slots,   0)
+        self._track_mutes   = pad(self._track_mutes,   False)
+        self._track_solos   = pad(self._track_solos,   False)
+        self._track_volumes = pad(self._track_volumes, 100)
+        self._track_pans    = pad(self._track_pans,    0)
+        self._tracks        = self._tracks + [Track(i) for i in range(len(self._tracks), nt)]
 
     def _migrate_patch_note_bends(self):
         """Convertit le champ "bend" des notes PATCH (presets sauvés avant la

@@ -52,7 +52,7 @@ groovebox/
 
 ### Phases futures
 - **Mode Synthé** : 16 hauteurs (pitchs) configurables sur un même WAV
-- **Mode Séquence** : 99 patterns, 8 pistes, 1–128 mesures, 16–128 pas/mesure, BPM par pattern
+- **Mode Séquence** : 99 patterns, 16 pistes, 1–128 mesures, 16–128 pas/mesure, BPM par pattern
 - **Mode Song** : 16 songs, liste ordonnée de patterns
 - **MIDI** : entrée pad MIDI externe, MIDI Clock entrant/sortant
 

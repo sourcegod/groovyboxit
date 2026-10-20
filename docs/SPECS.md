@@ -396,7 +396,7 @@ Deux comportements selon le type du slot courant :
 
 ```
 TrackRouter
-  ├── _track_slots[8]     slot assigné à chaque piste (défaut : slot 0)
+  ├── _track_slots[16]    slot assigné à chaque piste (défaut : slot 0)
   ├── _slot_synths        {slot_idx: SynthEngine} — un moteur par slot SYNTH commis
   ├── _synth              moteur de preview interactive (slot courant)
   ├── _kit_synth          moteur dédié au mode Keyboard/KIT pitché
@@ -425,17 +425,17 @@ Pattern
   ├── _loop_start    int | None (step de début de boucle ; None = début du pattern)
   ├── _loop_end      int | None (step de fin de boucle ; None = fin du pattern)
   ├── _loop_count    int (répétitions : 0 = infini)
-  ├── _track_slots   [int × 8]   slot assigné à chaque piste
-  ├── _track_mutes   [bool × 8]
-  ├── _track_solos   [bool × 8]
-  ├── _track_volumes [int × 8]   0..100
-  ├── _track_pans    [int × 8]   -100..+100
+  ├── _track_slots   [int × 16]  slot assigné à chaque piste
+  ├── _track_mutes   [bool × 16]
+  ├── _track_solos   [bool × 16]
+  ├── _track_volumes [int × 16]  0..100
+  ├── _track_pans    [int × 16]  -100..+100
   ├── _voices        [dict × 16] volume, pan, mute, solo, durée par pad
   └── _tape          {(track, bar, step): [TapeEvent]}  capture unifiée
 ```
 
 - 99 patterns disponibles (Pattern 01–99)
-- 8 pistes par pattern
+- 16 pistes par pattern (une par canal MIDI ; les presets à 8 pistes sont complétés au chargement, Phase 7 étape 10d1)
 - 16 pads par piste
 - Pas : vélocité 0 (inactif) ou 1–127 (actif avec vélocité)
 
@@ -975,7 +975,7 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
 | Liste Mode | ListBox | Mode Pad / Mode Keyboard |
 | Liste Gammes | ListBox | Gammes disponibles |
 | Liste Slots | ListBox | 16 slots du Rack |
-| Liste Pistes | ListBox | 8 pistes du pattern courant |
+| Liste Pistes | ListBox | 16 pistes du pattern courant |
 | Liste Pads | ListBox | 16 pads de la piste courante |
 | Liste Vel Level | ListBox | Niveaux de quantification vélocité MIDI |
 | Liste MIDI Ports | ListBox | Ports MIDI in disponibles |
