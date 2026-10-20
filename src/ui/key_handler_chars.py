@@ -107,6 +107,8 @@ class CharHandler:
 
         # E : bascule mode Erase
         if not ctrl and not shift and not alt and (ukey == ord('e') or key == ord('E')):
+            if not win._player.erasing:
+                win._take_begin(f"Erase piste {win._player._cur_track + 1}")
             now_erasing = win._midi_handler.toggle_erase()
             if now_erasing:
                 win._show_status("Erase: On")
@@ -231,6 +233,7 @@ class CharHandler:
                 win._refresh_track_list()
                 win._show_status("Replace Rec: Off")
             else:
+                win._take_begin(f"Remplacement piste {win._player._cur_track + 1}")
                 win._player.start_replace_recording()
                 win._refresh_track_list()
                 track_idx = win._player._cur_track
@@ -247,6 +250,7 @@ class CharHandler:
                 win._refresh_track_list()
                 win._show_status("Rec: Off")
             else:
+                win._take_begin(f"Enregistrement piste {win._player._cur_track + 1}")
                 win._player.record_pattern()
                 win._refresh_track_list()
                 track_idx = win._player._cur_track

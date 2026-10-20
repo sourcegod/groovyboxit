@@ -159,6 +159,7 @@ class CtrlHandler:
             win._quantize_from_grid()
             return True
         if not shift and not alt and key == ord('R'):
+            win._take_begin(f"Enregistrement piste {win._player._cur_track + 1}")
             win._player.record_pattern_with_count_in()
             n = win._player.count_in_bars
             win._refresh_track_list()

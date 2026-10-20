@@ -145,6 +145,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._player._on_song_cross_nav_cb = self._on_song_cross_nav
         self._project_path     = self._resolve_project_path()
         self._project_modified = False
+        self._take             = None   # prise live ouverte (mw_project._take_begin)
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
             on_note_on        = lambda n, v, c:  wx.CallAfter(self._midi_handler.on_note_on, n, v, c),
@@ -431,6 +432,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._show_status(f"Pan Global: {pan}")
 
     def _on_close(self, event):
+        self._take_end_if_idle()
         if self._project_modified:
             dlg = SaveConfirmDialog(
                 self,
@@ -553,3 +555,4 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             event.Skip()
             return
         self._key_manager.handle(event)
+        self._take_end_if_idle()

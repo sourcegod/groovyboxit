@@ -2552,3 +2552,57 @@ parseur à écrire aussi pour l'import.
     - le Note Repeat en `16/denom` ;
     - un appel `_update_step_duration()` retiré, tour à tour dans
       Redimensionner, Nouveau et `load_pattern`.
+- **10d1** — conforme. `Pattern._extend_tracks(n)` est appelé en fin de
+  `from_dict`. Il reconstruit les listes au lieu de les étendre en place, car
+  elles peuvent venir du dict de l'appelant (cache d'undo).
+  - Vérifié sur les trois `project_0N.gvp`, encore à l'ancien format
+    `curpattern`, 8 pistes. Après chargement, ils ont 16 pistes, les 8
+    premières inchangées, et le dict d'origine n'est pas modifié.
+  - L'utilisateur a validé à la main : 16 pistes, rejeu inchangé.
+  - Suite rouge, comme prévu : 15 tests figent 8 pistes, à réparer en 10e1.
+- **10d2** — commit imprévu, validé à la main par l'utilisateur (les quatre scénarios : prise vide, prise jouée, Remplacement à vide, Erase) : une prise live marque le projet modifié et
+  s'annule d'un bloc.
+  - **Constat de l'utilisateur pendant la vérification de 10d1** : après un
+    enregistrement live, la fermeture ne proposait pas d'enregistrer. Le
+    bug existait avant ce chantier. Seul `_add_undo` appelle
+    `_mark_modified`, et rien sur le chemin de l'enregistrement live (R,
+    Shift+R, Ctrl+R, Erase, notes du pavé numérique ou du clavier MIDI)
+    n'appelle `_add_undo`. Une prise n'était donc ni signalée à la
+    fermeture, ni annulable par Ctrl+Z.
+  - **Décision de l'utilisateur, 2026-10-20** : un Undo avant la prise, retiré
+    à la fin si rien n'a été enregistré. Enregistrer « du vide » pour
+    effacer une partie de piste doit compter comme une modification.
+  - **Mise en œuvre** (`ui/mw_project.py`) :
+    - `_take_begin(title)` appelle `_add_undo` (titres « Enregistrement
+      piste N », « Remplacement piste N », « Erase piste N ») et retient la
+      signature de `_tape` du pattern live, l'état « modifié » d'avant, et
+      l'entrée d'Undo créée.
+    - `_take_end_if_idle()` ferme la prise dès que le player n'enregistre
+      plus, n'efface plus et n'est plus en décompte. Si `_tape` est
+      identique et que l'entrée de la prise est toujours la dernière de
+      l'historique, elle est retirée, et l'état « modifié » est rétabli :
+      `was_modified and modifié actuel`, pour qu'une sauvegarde faite
+      pendant la prise reste prise en compte.
+    - Une prise déjà ouverte n'en ouvre pas une seconde : un Erase pendant
+      un Rec fait partie de la même prise.
+  - **Effacer sans jouer est couvert par construction** : en Remplacement
+    ou en Erase, les notes effacées au passage changent `_tape`, donc la
+    prise est gardée.
+  - **Ouvertures** : R, Shift+R, Ctrl+R (`key_handler_chars.py`,
+    `key_handler_ctrl.py`) et l'activation d'Erase.
+  - **Fermetures** : après chaque touche traitée par la fenêtre principale
+    (`MainWindow._on_char_hook`), ce qui couvre tous les arrêts au clavier
+    (R, Shift+R, E, V, Ctrl+F12…). Aussi au début de `_on_close`, de
+    `_new_project` et de `_open_project`.
+    - `_take` est remis à `None` au chargement et à la création d'un
+      projet.
+    - Un arrêt fait depuis l'éditeur MIDI ou la fenêtre Songs
+      (`handle_transport`) ne ferme la prise qu'à la touche suivante dans
+      la fenêtre principale, ou à la fermeture. Dans ce cas, une prise vide
+      peut garder le projet marqué modifié : c'est un faux positif sans
+      perte de données, accepté.
+  - **`UndoManager.last_entry()`** est une nouvelle méthode de lecture, qui
+    ne retire rien.
+  - Les tests de `test_key_manager.py` qui appuient sur R, Shift+R, Ctrl+R
+    ou E échouent à ce commit, car leur `FakeWindow` n'a pas `_take_begin`.
+    Ils sont réparés en 10d3, avec les tests de la prise.

@@ -77,6 +77,10 @@ class UndoManager:
         if self._history:
             self._history.pop()
 
+    def last_entry(self):
+        """Dernière entrée de l'historique (None si vide), sans la retirer."""
+        return self._history[-1] if self._history else None
+
     def undo(self):
         """Retourne l'entrée la plus récente de l'historique (à restaurer).
         Retourne None si l'historique est vide.

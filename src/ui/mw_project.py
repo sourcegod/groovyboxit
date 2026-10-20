@@ -28,6 +28,7 @@ class ProjectMixin:
         return os.path.join(projects_dir, ProjectManager.DEFAULT_NAME)
 
     def _new_project(self):
+        self._take_end_if_idle()
         if self._project_modified:
             from ui.dialogs import SaveConfirmDialog
             dlg = SaveConfirmDialog(
@@ -62,6 +63,7 @@ class ProjectMixin:
         if self._song_window:
             self._song_window.set_cur_song(0)
         self._project_path     = self._find_free_project_path()
+        self._take             = None
         self._project_modified = False
         self._update_title()
         self._show_status(f"Nouveau projet : {os.path.basename(self._project_path)}")
@@ -128,6 +130,7 @@ class ProjectMixin:
         self._save_project()
 
     def _open_project(self):
+        self._take_end_if_idle()
         if self._project_modified:
             from ui.dialogs import SaveConfirmDialog
             dlg = SaveConfirmDialog(
@@ -163,6 +166,7 @@ class ProjectMixin:
             self._project_modified = False
             self._update_title()
             return
+        self._take = None
         try:
             data = ProjectManager.load(self._project_path)
         except Exception as e:
@@ -436,6 +440,47 @@ class ProjectMixin:
     def _pop_last_undo(self):
         """Retire la dernière entrée undo (dialog annulé ou aucun changement)."""
         self._undo.pop_last()
+
+    #--------------------------------------------------------------------------
+    # Prise d'enregistrement live (Phase 7 étape 10d2) : un Undo avant la
+    # prise (R, Shift+R, Ctrl+R, Erase), retiré à la fin si _tape n'a pas
+    # changé. Effacer sans rien jouer (Remplacement, Erase) change _tape :
+    # la prise est alors gardée, et le projet reste marqué modifié.
+
+    def _tape_signature(self):
+        """Contenu de _tape du pattern live, comparable entre deux instants."""
+        live = self._player._pattern
+        with live._lock:
+            tape = [[(ev.time, ev.etype, ev.dur, ev.channel, sorted(ev.payload.items()))
+                     for ev in track_list] for track_list in live._tape]
+        return self._cur_pattern_idx, tape
+
+    def _take_begin(self, title):
+        """Ouvre une prise : Undo de l'état d'avant. Sans effet si une prise
+        est déjà ouverte (ex. Erase pendant un Rec : même prise)."""
+        if self._take is not None:
+            return
+        sig, was_modified = self._tape_signature(), self._project_modified
+        self._add_undo(title)
+        self._take = (sig, was_modified, self._undo.last_entry())
+
+    def _take_end_if_idle(self):
+        """Ferme la prise si le player n'enregistre ni n'efface plus. Si _tape
+        n'a pas changé et que l'Undo de la prise est toujours le dernier, il
+        est retiré et l'état « modifié » d'avant la prise est rétabli (sauf
+        sauvegarde entre-temps)."""
+        if self._take is None:
+            return
+        p = self._player
+        if p.recording or p.erasing or p._count_in > 0:
+            return
+        sig, was_modified, entry = self._take
+        self._take = None
+        if entry is not None and self._undo.last_entry() is entry \
+                and self._tape_signature() == sig:
+            self._undo.pop_last()
+            self._project_modified = was_modified and self._project_modified
+            self._update_title()
 
     def _undo_action(self):
         """Ctrl+Z : annule la dernière action."""
