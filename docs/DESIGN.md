@@ -2800,3 +2800,127 @@ parseur à écrire aussi pour l'import.
     indexé par pad, et il contient les libellés du kit (« Kick 2 »,
     « Kick 1 »…). Les pistes SMF portent donc ces noms tant qu'aucune
     piste n'a été renommée.
+
+### Phase 7 étape 10h2 — Plan complémentaire : Program Change par slot (instrument GM ou kit GM2), noms de pistes
+
+**Origine.** Écoute de 10h1 par l'utilisateur, le 2026-10-20. Sans Program
+Change, un lecteur GM joue toutes les pistes mélodiques avec son programme
+par défaut, le piano. Il faut écrire en tête de chaque piste l'instrument
+voulu. L'écoute a aussi montré des pistes SMF nommées d'après des pads
+(« Kick 2 »…).
+
+**État des lieux.**
+- Les patches (`PATCHS/*.json`) ne portent aucun numéro de programme GM :
+  seulement `name`, `loop` et `sounds` ou `samples`.
+- `InstrumentSlot.config` est un dict libre, sérialisé tel quel dans le
+  `.gvp` (`rack.to_dict`).
+- `midi_constants.GM_PATCH_NAMES` donne les 128 noms GM, l'index étant le
+  numéro de programme.
+- `midi_constants.GM2_DRUMKIT_NAMES` donne les 9 kits GM2 nommés, aux
+  programmes 0, 8, 16, 24, 25, 32, 40, 48 et 56. Les autres index ne sont
+  pas des noms.
+- Aucune boîte ne règle un slot : la liste des slots sert seulement à
+  choisir et assigner.
+- Le nom F2 d'une piste est stocké dans `voice_manager`, au même endroit
+  que les noms de pads. On ne peut donc pas savoir si une piste a été
+  renommée.
+
+**Décisions validées (utilisateur, 2026-10-20).**
+
+**D11 — un programme par slot : instrument GM pour un synthé, kit GM2
+pour un kit.** Pour les kits, c'est une suggestion de l'utilisateur après
+la première version de ce plan.
+- **Stockage** : `InstrumentSlot.config["gm_program"]`, de 0 à 127. Il
+  est sérialisé avec le Rack, sans changement de format.
+- **Clé absente**, cas de tous les slots existants : le programme est
+  déduit du nom du slot par `guess_gm_program(name, drums=False)`, une
+  fonction pure placée dans `midi_constants.py`. Avec `drums=True`, la
+  comparaison se fait avec les 9 kits GM2 au lieu des 128 instruments. La
+  déduction fonctionne ainsi :
+  - les mots du nom sont normalisés (minuscules, `_` et camelCase
+    séparés, chiffres ignorés) ;
+  - on retient le nom GM qui partage le plus de mots avec eux ;
+  - à égalité, le plus petit numéro l'emporte ;
+  - sans aucun mot commun, le programme 0 (Acoustic Grand Piano, ou
+    Standard Kit pour un kit).
+
+  Les chiffres sont ignorés : sinon « Piano 1 » donnerait « Electric
+  Piano 1 ». En contrepartie, « My 808 » donne Standard Kit.
+
+  Sur les patches existants, cela donne :
+  - « Piano 1 », « Yamaha Grand Piano » → 0, Acoustic Grand Piano ;
+  - « Acoustic Guitar 1 » → 24, Acoustic Guitar (nylon) ;
+  - « DrawbarOrgan » et « organ_b3_basic_fast » → 16 ;
+  - « Percussive Organ » → 17, « Rock Organ » → 18, « Church Organ » → 19,
+    « Reed Organ » → 20 ;
+  - kits : « TR-707 » → 25, TR-808 Kit, grâce au mot « tr » ;
+    « GM (FluidR3) » → 0, Standard Kit.
+- **Kits** : le programme choisit le kit GM2 ou GS. Un lecteur GM1 strict
+  peut l'ignorer et garder son kit standard, sans dommage.
+- **Export** : nouveau paramètre `track_programs`, avec par piste un
+  programme ou `None`.
+  - Un `program_change` est écrit au tick 0 sur le canal de la piste,
+    avant tout événement de `_tape`. Un `ETYPE_PGM` capturé au tick 0
+    passe donc après, et l'emporte.
+  - L'appelant donne le programme du slot de la piste si ce slot est un
+    synthé ou un kit. Pour un slot vide ou d'un autre type, il donne
+    `None`.
+- **Rejeu** : il ne change pas, puisque le son vient des échantillons. Le
+  programme ne sert qu'à l'export et au futur mode Rack GM.
+
+**D12 — nom de piste exporté = nom du slot.**
+- La piste SMF prend `InstrumentSlot.name`, par exemple « Acoustic
+  Guitar 1 » ou « TR-707 », et « Track NN » si le slot est vide.
+- Le nom F2 n'est pas utilisé tant qu'il est mêlé aux noms de pads.
+  Séparer les deux dans les données est un chantier distinct, hors
+  chantier 10.
+- Le module ne change pas, puisque `track_names` est déjà un paramètre :
+  c'est l'appelant (10j1) qui lui passe les noms de slots.
+
+**D13 — interface dans les propriétés de la piste.**
+- `TrackPropertiesDialog` gagne une `ListBox` « Programme GM du slot » de
+  128 entrées, « 1 - Acoustic Grand Piano » à « 128 - Gunshot », placée
+  après Canal dans l'ordre Tab.
+  - Elle montre le programme du slot sélectionné dans le dialogue.
+  - **Son contenu suit le type du slot.** Pour un synthé : les 128
+    instruments GM. Pour un kit : les 9 kits GM2, par exemple « 1 -
+    Standard Kit » ou « 26 - TR-808 Kit ». Le numéro affiché est le
+    programme + 1.
+  - Elle est désactivée pour un slot vide ou d'un autre type.
+  - Changer de slot dans le dialogue recharge la liste (instruments ou
+    kits) et y sélectionne le programme du nouveau slot.
+- Modifier le programme modifie le slot, donc toutes les pistes qui le
+  jouent, avec aperçu immédiat comme les autres champs.
+  - Annuler rétablit le programme d'origine de chaque slot touché.
+  - L'Undo du dialogue (10f1) couvre ce changement, car
+    `_capture_state` sérialise le Rack.
+  - Valider sans rien changer, programme compris, retire l'Undo comme
+    avant.
+
+**Alternatives écartées** :
+- un programme par piste, car deux pistes du même synthé pourraient
+  alors avoir deux instruments ;
+- une clé dans le fichier patch, qui obligerait à éditer les `.json` des
+  patches ;
+- une nouvelle boîte de propriétés du slot, qui ajouterait une boîte et
+  un raccourci ;
+- « Track NN » comme nom de piste par défaut, moins parlant que le nom de
+  l'instrument.
+
+**Hors périmètre** :
+- la séparation entre noms de pistes et noms de pads ;
+- la banque (CC0/CC32) ;
+- l'écriture de `gm_program` par l'outil d'extraction SF2 ;
+- les kits GS au-delà des 9 kits GM2 nommés.
+
+**Découpage inséré** (avant 10i1, inchangé) :
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **10h2** | Doc — ce plan complémentaire. | `docs/DESIGN.md` |
+| **10h3** | Implémentation — `guess_gm_program(name, drums)` ; `slot_gm_program(slot)` (config ou déduction, instruments ou kits selon le type) ; paramètre `track_programs` de l'export ; `ListBox` Programme dans `TrackPropertiesDialog` (instruments ou kits selon le slot), avec aperçu, Annuler et Undo, branchée dans `mw_tracks.py`. | `midi/midi_constants.py`, `rack.py`, `midi/midi_export.py`, `ui/dialogs_properties.py`, `ui/mw_tracks.py` |
+| **10h4** | Tests — déduction sur les noms GM, les kits GM2, les patches et kits existants ; `program_change` au tick 0 avant un `ETYPE_PGM`, kit compris ; `None` → rien d'écrit ; dialogue (128 instruments ou 9 kits selon le slot, ordre Tab, désactivé pour un slot vide, rechargé au changement de slot) ; Ok, Annuler et inchangé dans `mw_tracks`. | `tests/test_gm_program.py` (nouveau), `tests/test_track_properties_dialog.py`, `tests/test_track_channels.py` |
+
+Avant de committer 10h3, il faudra réécouter un export des patterns 1 et 2
+de `project_01.gvp`, cette fois avec leurs programmes, le kit TR-808
+compris.
