@@ -117,6 +117,13 @@ class Pattern:
     MAX_BARS          = 999
     MAX_TRACKS        = 16
     DEFAULT_NUM_TRACKS = 16   # un canal MIDI par piste (Phase 7 étape 10d1)
+    KIT_CHANNEL        = 9    # canal 10 (batterie GM), 0-based
+
+    @staticmethod
+    def default_channel(track_idx):
+        """Canal MIDI par défaut (0-based) de la piste : piste N → canal N,
+        canal 16 au-delà de la 16e (Phase 7 étape 10f1)."""
+        return min(track_idx, 15)
     NUM_PADS          = 16
     _counter          = 0
 
@@ -149,6 +156,8 @@ class Pattern:
         self._track_solos   = [False] * self._num_tracks
         self._track_volumes = [100]   * self._num_tracks
         self._track_pans    = [0]     * self._num_tracks
+        # canal MIDI (0..15) de chaque piste, utilisé par l'export (10f1)
+        self._track_channels = [Pattern.default_channel(t) for t in range(self._num_tracks)]
 
         # état des voix par pad : name, volume, pan, mute, solo, duration_ms
         self._voices = [
@@ -496,6 +505,7 @@ class Pattern:
             "track_solos":   self._track_solos,
             "track_volumes": self._track_volumes,
             "track_pans":    self._track_pans,
+            "track_channels": self._track_channels,
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
             "kb_root_midi":  self._kb_root_midi,
@@ -586,6 +596,7 @@ class Pattern:
         if "track_solos"   in d: self._track_solos   = d["track_solos"]
         if "track_volumes" in d: self._track_volumes = d["track_volumes"]
         if "track_pans"    in d: self._track_pans    = d["track_pans"]
+        if "track_channels" in d: self._track_channels = d["track_channels"]
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
@@ -615,7 +626,8 @@ class Pattern:
     def _extend_tracks(self, n):
         """Porte le pattern à au moins n pistes (migration des presets à 8
         pistes, Phase 7 étape 10d1) : _tape complété par des pistes vides,
-        listes track_* complétées par leurs valeurs par défaut. Listes
+        listes track_* complétées par leurs valeurs par défaut (canal par
+        défaut selon l'index pour track_channels, 10f1). Listes
         reconstruites, pas étendues en place : elles peuvent venir du dict
         JSON de l'appelant (cache d'undo)."""
         self._num_tracks = max(self._num_tracks, n)
@@ -628,6 +640,8 @@ class Pattern:
         self._track_solos   = pad(self._track_solos,   False)
         self._track_volumes = pad(self._track_volumes, 100)
         self._track_pans    = pad(self._track_pans,    0)
+        self._track_channels = list(self._track_channels) + [
+            Pattern.default_channel(t) for t in range(len(self._track_channels), nt)]
 
     def _migrate_patch_note_bends(self):
         """Convertit le champ "bend" des notes PATCH (presets sauvés avant la

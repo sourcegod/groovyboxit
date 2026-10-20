@@ -2,14 +2,20 @@ import wx
 
 
 class TrackPropertiesDialog(wx.Dialog):
+    _LIST_H = 90   # hauteur fixe de la liste des canaux
+
     def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
-                 on_change=None, on_play_toggle=None):
+                 on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None):
+        """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
+        channel) -> canal : règle appliquée quand l'utilisateur change de slot
+        (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
-        self._on_change      = on_change
-        self._on_play_toggle = on_play_toggle
+        self._on_change          = on_change
+        self._on_play_toggle     = on_play_toggle
+        self._channel_after_slot = channel_after_slot
 
-        # Ordre Tab : Mute → Solo → Slots → Volume → Pan
+        # Ordre Tab : Mute → Solo → Slots → Canal → Volume → Pan
         self._mute = wx.CheckBox(self, label="Mute")
         self._mute.SetValue(mute)
         self._solo = wx.CheckBox(self, label="Solo")
@@ -18,6 +24,15 @@ class TrackPropertiesDialog(wx.Dialog):
         slot_label  = wx.StaticText(self, label="Slot :")
         self._slots = wx.ListBox(self, choices=rack.labels(), style=wx.LB_SINGLE)
         self._slots.SetSelection(cur_slot_idx)
+
+        channel_label  = wx.StaticText(self, label="Canal :")
+        self._channels = wx.ListBox(
+            self,
+            choices=[f"Canal {c + 1}" for c in range(16)],
+            style=wx.LB_SINGLE,
+            size=(-1, self._LIST_H),
+        )
+        self._channels.SetSelection(channel)
 
         vol_label  = wx.StaticText(self, label="Volume :")
         self._vol  = wx.SpinCtrl(self, min=0, max=100, initial=volume)
@@ -45,6 +60,8 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(slot_label,  0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
         vbox.Add(self._slots, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(channel_label,  0, wx.LEFT | wx.RIGHT, 8)
+        vbox.Add(self._channels, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(check_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(grid,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
@@ -54,12 +71,20 @@ class TrackPropertiesDialog(wx.Dialog):
         # Aperçu en temps réel
         self._mute.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
         self._solo.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
-        self._slots.Bind(wx.EVT_LISTBOX, self._on_widget_change)
+        self._slots.Bind(wx.EVT_LISTBOX, self._on_slot_change)
+        self._channels.Bind(wx.EVT_LISTBOX, self._on_widget_change)
         self._vol.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self._pan.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
 
         self._mute.SetFocus()
+
+    def _on_slot_change(self, event):
+        """Changement de slot : règle du canal (kit → 10), puis aperçu."""
+        if self._channel_after_slot:
+            self._channels.SetSelection(self._channel_after_slot(
+                self._slots.GetSelection(), self._channels.GetSelection()))
+        self._on_widget_change(event)
 
     def _on_widget_change(self, event):
         if self._on_change:
@@ -69,6 +94,7 @@ class TrackPropertiesDialog(wx.Dialog):
                 self._pan.GetValue(),
                 self._mute.GetValue(),
                 self._solo.GetValue(),
+                self._channels.GetSelection(),
             )
         event.Skip()
 
@@ -84,6 +110,7 @@ class TrackPropertiesDialog(wx.Dialog):
     def get_pan(self):      return self._pan.GetValue()
     def get_mute(self):     return self._mute.GetValue()
     def get_solo(self):     return self._solo.GetValue()
+    def get_channel(self):  return self._channels.GetSelection()
 
 
 class PatternPropertiesDialog(wx.Dialog):

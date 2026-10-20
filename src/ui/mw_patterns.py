@@ -69,6 +69,7 @@ class PatternMixin:
         pat._track_solos   = self._router._track_solos[:]
         pat._track_volumes = self._router._track_volumes[:]
         pat._track_pans    = self._router._track_pans[:]
+        pat._track_channels = self._router._track_channels[:]
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
@@ -83,6 +84,7 @@ class PatternMixin:
         self._router._track_solos[:]   = new._track_solos
         self._router._track_volumes[:] = new._track_volumes
         self._router._track_pans[:]    = new._track_pans
+        self._router._track_channels[:] = new._track_channels
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
 
     def _play_toggle(self):

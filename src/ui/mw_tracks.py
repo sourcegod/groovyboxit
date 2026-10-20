@@ -8,24 +8,31 @@ class TrackMixin:
     def _assign_track_slot(self):
         track_idx = self._player._cur_track
         slot_idx  = self._cur_slot
-        self._router.assign_slot(track_idx, slot_idx)
+        # Choix de l'utilisateur : règle du canal (kit → 10, Phase 7 étape 10f1)
+        self._router.assign_slot_by_user(track_idx, slot_idx)
         self._refresh_track_list()
         slot = self._rack.get_slot(slot_idx)
         self._show_status(
-            f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name})"
+            f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name}), "
+            f"canal {self._router.get_track_channel(track_idx) + 1}"
         )
 
     def _track_properties_dialog(self):
         tidx = self._player._cur_track
         orig = dict(
-            slot   = self._router.slot_for_track(tidx),
-            volume = self._router.get_track_volume(tidx),
-            pan    = self._router.get_track_pan(tidx),
-            mute   = self._router._track_mutes[tidx],
-            solo   = self._router._track_solos[tidx],
+            slot    = self._router.slot_for_track(tidx),
+            volume  = self._router.get_track_volume(tidx),
+            pan     = self._router.get_track_pan(tidx),
+            mute    = self._router._track_mutes[tidx],
+            solo    = self._router._track_solos[tidx],
+            channel = self._router.get_track_channel(tidx),
         )
+        # Undo avant le dialog, retiré si Annuler ou rien de changé (Phase 7
+        # étape 10f1, même schéma que F2) ; l'état « modifié » est rétabli.
+        was_modified = self._project_modified
+        self._add_undo(f"Propriétés piste {tidx + 1}")
 
-        def apply(slot, vol, pan, mute, solo):
+        def apply(slot, vol, pan, mute, solo, channel):
             if slot != self._router.slot_for_track(tidx):
                 self._router.assign_slot(tidx, slot)
                 self._cur_slot = slot
@@ -34,21 +41,31 @@ class TrackMixin:
             self._router.set_track_pan(tidx, pan)
             self._router._track_mutes[tidx] = mute
             self._router._track_solos[tidx] = solo
+            self._router.set_track_channel(tidx, channel)
             self._refresh_track_list()
 
         dlg    = TrackPropertiesDialog(
             self, tidx, self._rack,
             orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'],
             on_change=apply, on_play_toggle=self._play_toggle,
+            channel=orig['channel'],
+            channel_after_slot=lambda slot, ch: self._router.channel_after_slot(tidx, slot, ch),
         )
         result = dlg.ShowModal()
-        if result == wx.ID_OK:
-            apply(dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
-                  dlg.get_mute(), dlg.get_solo())
+        values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
+                  dlg.get_mute(), dlg.get_solo(), dlg.get_channel())
+        if result == wx.ID_OK and values != tuple(orig.values()):
+            apply(*values)
             self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
         else:
-            apply(orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'])
-            self._show_status(f"Piste {tidx + 1}: modifications annulées")
+            apply(*orig.values())
+            self._pop_last_undo()
+            self._project_modified = was_modified
+            self._update_title()
+            if result == wx.ID_OK:
+                self._show_status(f"Piste {tidx + 1}: propriétés inchangées")
+            else:
+                self._show_status(f"Piste {tidx + 1}: modifications annulées")
         dlg.Destroy()
 
     def _rename_track(self):

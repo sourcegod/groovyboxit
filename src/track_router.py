@@ -9,6 +9,7 @@
 import threading
 from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
 from rack import InstrumentType
+from pattern import Pattern
 from bend_log import bend_log
 
 
@@ -51,6 +52,8 @@ class TrackRouter:
         self._track_solos    = [False] * self.NUM_TRACKS
         self._track_volumes  = [100]   * self.NUM_TRACKS  # 0..100
         self._track_pans     = [0]     * self.NUM_TRACKS  # -100..+100
+        self._track_channels = [Pattern.default_channel(t)    # 0..15 (export MIDI)
+                                for t in range(self.NUM_TRACKS)]
         self._slot_synths    = {}       # {slot_idx: SynthEngine}
         self._synth          = None     # moteur de preview
         self._synth_slot_idx = None     # slot_idx actuellement chargé dans _synth
@@ -281,6 +284,34 @@ class TrackRouter:
 
     def set_track_pan(self, track_idx, pan):
         self._track_pans[track_idx] = max(-100, min(100, pan))
+
+    # ------------------------------------------------------------------
+    # Canal MIDI par piste (Phase 7 étape 10f1, docs/DESIGN.md § 10a1 D5)
+    # ------------------------------------------------------------------
+
+    def get_track_channel(self, track_idx):
+        return self._track_channels[track_idx]
+
+    def set_track_channel(self, track_idx, channel):
+        self._track_channels[track_idx] = max(0, min(15, channel))
+
+    def channel_after_slot(self, track_idx, slot_idx, channel):
+        """Canal d'une piste à qui l'utilisateur assigne slot_idx : un kit la
+        met sur le canal 10 ; un autre slot la ramène à son canal par défaut
+        si elle était sur 10 ; sinon le canal ne change pas."""
+        if self._rack.get_slot(slot_idx).type == InstrumentType.KIT:
+            return Pattern.KIT_CHANNEL
+        if channel == Pattern.KIT_CHANNEL:
+            return Pattern.default_channel(track_idx)
+        return channel
+
+    def assign_slot_by_user(self, track_idx, slot_idx):
+        """assign_slot + règle du canal (kit → 10). Réservé aux choix de
+        l'utilisateur : le pont Program Change et le chargement d'un projet
+        appellent assign_slot seul, sans toucher au canal."""
+        self.assign_slot(track_idx, slot_idx)
+        self._track_channels[track_idx] = self.channel_after_slot(
+            track_idx, slot_idx, self._track_channels[track_idx])
 
     # ------------------------------------------------------------------
     # Lecture

@@ -2674,3 +2674,43 @@ parseur à écrire aussi pour l'import.
     fenêtre principale, dimensionnée par `_num_tracks`, parce qu'il faudrait
     construire la vraie `MainWindow`. Elle a été vérifiée à la main par
     l'utilisateur en 10d1.
+- **10f1** — canal de piste, validé à la main par l'utilisateur (ordre Tab, règle du kit dans le dialogue, Ok/Ctrl+Z, Annuler sans étoile, aller-retour .gvp), conforme à D5 (version 10a2), avec trois
+  précisions.
+  - **Données** :
+    - `Pattern.KIT_CHANNEL = 9` et `Pattern.default_channel(t) = min(t, 15)`,
+      le canal par défaut selon l'index ;
+    - `Pattern._track_channels` est sérialisé sous `track_channels` ;
+    - `_extend_tracks` complète cette liste avec le canal par défaut de
+      chaque index ;
+    - `TrackRouter._track_channels` est synchronisé comme les autres
+      réglages de piste : `_flush_pattern_to_store`,
+      `_apply_pattern_from_store`, et l'enchaînement du song dans
+      `mw_songs.py`.
+  - **Règle du kit** :
+    - `TrackRouter.channel_after_slot(track, slot, channel)` est la fonction
+      pure : kit → 9 ; autre slot sur 9 → défaut ; sinon inchangé ;
+    - `assign_slot_by_user` combine `assign_slot` et la règle ;
+    - `_assign_track_slot` l'utilise, et son message de statut annonce le
+      nouveau canal. Le pont Program Change et le chargement de projet
+      gardent `assign_slot`, sans effet sur le canal.
+  - **Dialogue** : `TrackPropertiesDialog` gagne les paramètres `channel` et
+    `channel_after_slot`, avec une `ListBox` « Canal 1 » à « Canal 16 »
+    placée après Slots dans l'ordre Tab.
+    - Changer de slot applique la règle et met à jour la sélection du
+      canal.
+    - `on_change` reçoit le canal en sixième argument.
+    - Nouvelle méthode `get_channel()`.
+  - **Précision 1, l'Undo** : contrairement à ce que disait D5 (« comme les
+    autres propriétés de piste »), le dialogue de propriétés de piste
+    n'avait aucun Undo, et un changement de slot, de volume ou de pan ne
+    marquait pas le projet modifié.
+    - Il pose maintenant un Undo avant de s'ouvrir, sur le schéma de F2.
+    - Cet Undo est retiré si l'on annule ou si rien n'a changé, et l'état
+      « modifié » d'avant est alors rétabli.
+    - Cela vaut pour toutes les propriétés, pas seulement le canal.
+  - **Précision 2** : le choix du slot dans la fenêtre principale
+    (`_assign_track_slot`) n'a toujours pas d'Undo. Ce comportement
+    préexistant est laissé tel quel, hors chantier.
+  - **Précision 3** : le test `test_on_change_receives_initial_values` de
+    `test_track_properties_dialog.py` attend 5 arguments. Il est rouge à ce
+    commit et sera mis à jour en 10g1.
