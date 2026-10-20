@@ -1,0 +1,18 @@
+# Dépendances de GroovyboxIt (Phase 7 étape 10h1).
+# Versions minimales : celles installées et testées le 2026-10-20.
+# Installation Debian (pip système) :
+#   pip3 install -r requirements.txt --break-system-packages
+wxPython>=4.2.3
+sounddevice>=0.5.5
+numpy>=2.4.3
+soundfile>=0.13.1
+pyrubberband>=0.4.0
+python-rtmidi>=1.5.8
+mido>=1.3.3
+
+# Non requis pour lancer l'application :
+# - pytest : la suite de tests (tests/) ;
+# - pygame>=2.6.1 : ancien driver audio optionnel (src/pygame_driver.py),
+#   utilisé seulement par tests/test_pygame_driver.py,
+#   tests/test_sound_manager.py et tools/bench_latency.py.
+#   pip3 install pytest pygame --break-system-packages

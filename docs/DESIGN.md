@@ -2756,3 +2756,47 @@ parseur à écrire aussi pour l'import.
     correctif, toutes détectées. Une première version de la mutation
     « Canal créé après Pan » était mal construite. Elle a été refaite, et
     elle est détectée.
+- **10h1** — `src/midi/midi_export.py` et `requirements.txt`, avec quatre
+  écarts au plan.
+  - **Écart 1, signature** : le pattern live ne porte ni la gamme, ni le
+    nom, ni le BPM, car `copy_from` ne recopie que les dimensions et
+    `_tape`. D6 calculait la note d'une case de grille synthé à partir de
+    `pattern._kb_scale`, ce qui aurait donné la gamme par défaut.
+    - `build_pattern_midi(pattern, *, name, bpm, track_channels,
+      track_is_synth, track_names, kit_note_base, synth_grid_notes,
+      voice_durations)` reçoit donc ces valeurs en arguments nommés.
+    - `synth_grid_notes` est la liste de lecture du router
+      (`_kb_notes_play`), exactement ce que joue le rejeu.
+  - **Écart 2, canaux** : un événement `KIT` est écrit sur le canal de sa
+    piste, comme le veut D5 révisée en 10a2. Le texte de D6 et D9, écrit
+    avant 10a2, ne le précisait pas.
+  - **Écart 3, doublons** : D6 ne traitait pas le cas d'une même note
+    jouée deux fois au même tick. Elle est écrite une seule fois, faute de
+    quoi un note-off serait placé avant son propre note-on.
+  - **Écart 4, `requirements.txt` sans pygame**, sur remarque de
+    l'utilisateur.
+    - Vérifié : avec `pygame` bloqué à l'import, `main`,
+      `ui.main_window`, le player et le MIDI se chargent.
+    - Seuls `src/pygame_driver.py` (ancien driver, plus importé par
+      l'application), `tests/test_pygame_driver.py`,
+      `tests/test_sound_manager.py` et `tools/bench_latency.py` l'utilisent.
+    - pygame est cité en commentaire avec pytest, comme dépendance
+      facultative.
+    - La table des dépendances de `docs/SPECS.md` est corrigée : elle
+      donnait encore pygame pour l'audio des kits. La ligne `mido` y est
+      ajoutée.
+  - **Vérification avant commit** : les patterns 1 et 2 de
+    `project_01.gvp` ont été exportés par un script, puisque l'interface
+    n'arrive qu'en 10j1. Les pistes sur un slot kit ont été mises sur le
+    canal 10, comme après une assignation.
+    - Relecture par mido : type 1, 480 ticks par noire, une piste
+      conductor puis une piste par piste non vide, canaux 1, 3, 4 et 10,
+      note-on et note-off appariés.
+    - Rendu sans erreur par FluidSynth (FluidR3_GM).
+    - Écoute par l'utilisateur : les deux fichiers se lisent, les notes des instruments et la batterie sont reconnaissables. Mais sans Program Change, toutes les pistes mélodiques jouent le son de piano par défaut. Ce manque est traité en 10h2 et suivantes.
+  - **Constat à trancher, hors de ce commit** : le nom de piste exporté
+    vient de `voice_manager.get_name(t)`. C'est le même stockage que le
+    nom F2 et que l'affichage de la liste des pistes. Or ce stockage est
+    indexé par pad, et il contient les libellés du kit (« Kick 2 »,
+    « Kick 1 »…). Les pistes SMF portent donc ces noms tant qu'aucune
+    piste n'a été renommée.

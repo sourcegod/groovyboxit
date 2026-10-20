@@ -24,12 +24,13 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Rôle | Bibliothèque |
 |---|---|
 | GUI | `wxPython` |
-| Audio (one-shot, kit) | `pygame.mixer` (PygameDriver) |
-| Audio polyphonique | `sounddevice` + `numpy` (SoundDeviceDriver — driver par défaut) |
+| Audio (kit et synthé) | `sounddevice` + `numpy` (SoundDeviceDriver — seul driver utilisé par l'application) |
+| Audio (ancien driver, optionnel) | `pygame.mixer` (PygameDriver) — non requis pour lancer l'application, utilisé seulement par des tests et `tools/bench_latency.py` |
 | Pitch shifting | `pyrubberband` (bindings Python de Rubber Band C++) |
 | Lecture WAV | `soundfile` |
 | Traitement audio | `numpy` |
 | MIDI in/out | `rtmidi` (via `python-rtmidi`) |
+| Fichiers MIDI (.mid) | `mido` — export du pattern (Phase 7 étape 10h1) |
 | Effets (futur) | `pedalboard` (Spotify) |
 
 ---
