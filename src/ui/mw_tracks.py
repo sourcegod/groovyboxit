@@ -1,4 +1,5 @@
 import wx
+from rack import InstrumentType
 from .dialogs import TrackPropertiesDialog
 
 
@@ -27,12 +28,16 @@ class TrackMixin:
             solo    = self._router._track_solos[tidx],
             channel = self._router.get_track_channel(tidx),
         )
+        orig['program'] = self._rack.get_slot(orig['slot']).gm_program()
+        # config d'origine de chaque slot dont le programme a été changé,
+        # pour Annuler (Phase 7 étape 10h3) ; set_gm_program remplace config
+        saved_configs = {}
         # Undo avant le dialog, retiré si Annuler ou rien de changé (Phase 7
         # étape 10f1, même schéma que F2) ; l'état « modifié » est rétabli.
         was_modified = self._project_modified
         self._add_undo(f"Propriétés piste {tidx + 1}")
 
-        def apply(slot, vol, pan, mute, solo, channel):
+        def apply(slot, vol, pan, mute, solo, channel, program):
             if slot != self._router.slot_for_track(tidx):
                 self._router.assign_slot(tidx, slot)
                 self._cur_slot = slot
@@ -42,7 +47,16 @@ class TrackMixin:
             self._router._track_mutes[tidx] = mute
             self._router._track_solos[tidx] = solo
             self._router.set_track_channel(tidx, channel)
+            slot_obj = self._rack.get_slot(slot)
+            if program is not None and slot_obj.gm_program() != program:
+                saved_configs.setdefault(slot, slot_obj.config)
+                slot_obj.set_gm_program(program)
             self._refresh_track_list()
+
+        def slot_program(slot):
+            slot_obj = self._rack.get_slot(slot)
+            kind = {InstrumentType.SYNTH: "synth", InstrumentType.KIT: "kit"}.get(slot_obj.type)
+            return kind, slot_obj.gm_program()
 
         dlg    = TrackPropertiesDialog(
             self, tidx, self._rack,
@@ -50,15 +64,18 @@ class TrackMixin:
             on_change=apply, on_play_toggle=self._play_toggle,
             channel=orig['channel'],
             channel_after_slot=lambda slot, ch: self._router.channel_after_slot(tidx, slot, ch),
+            slot_program=slot_program,
         )
         result = dlg.ShowModal()
         values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
-                  dlg.get_mute(), dlg.get_solo(), dlg.get_channel())
+                  dlg.get_mute(), dlg.get_solo(), dlg.get_channel(), dlg.get_program())
         if result == wx.ID_OK and values != tuple(orig.values()):
             apply(*values)
             self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
         else:
             apply(*orig.values())
+            for slot, config in saved_configs.items():
+                self._rack.get_slot(slot).config = config
             self._pop_last_undo()
             self._project_modified = was_modified
             self._update_title()

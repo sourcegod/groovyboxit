@@ -47,6 +47,25 @@ class InstrumentSlot:
 
     # ------------------------------------------------------------------
 
+    def gm_program(self):
+        """Programme GM du slot (Phase 7 étape 10h3) : instrument GM pour un
+        synthé, kit GM2 pour un kit ; config["gm_program"] s'il est réglé,
+        sinon déduit du nom. None pour un slot vide ou d'un autre type."""
+        if self.type not in (InstrumentType.SYNTH, InstrumentType.KIT):
+            return None
+        program = self.config.get("gm_program")
+        if isinstance(program, int) and 0 <= program <= 127:
+            return program
+        from midi.midi_constants import guess_gm_program
+        return guess_gm_program(self.name, drums=self.type == InstrumentType.KIT)
+
+    def set_gm_program(self, program):
+        """Règle config["gm_program"]. config est remplacé, jamais modifié en
+        place : to_dict le partage avec les instantanés d'Undo."""
+        self.config = {**self.config, "gm_program": max(0, min(127, int(program)))}
+
+    # ------------------------------------------------------------------
+
     def clear(self):
         self.type    = None
         self.name    = ""

@@ -1,21 +1,29 @@
 import wx
 
+from midi.midi_constants import GM_PATCH_NAMES, GM2_DRUMKITS
+
 
 class TrackPropertiesDialog(wx.Dialog):
     _LIST_H = 90   # hauteur fixe de la liste des canaux
 
     def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
-                 on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None):
+                 on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None,
+                 slot_program=None):
         """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
         channel) -> canal : règle appliquée quand l'utilisateur change de slot
-        (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé."""
+        (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé.
+        slot_program(slot_idx) -> (genre, programme) : genre "synth"
+        (instruments GM), "kit" (kits GM2) ou None (liste désactivée) —
+        Phase 7 étape 10h3 ; None = liste toujours désactivée."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
         self._on_change          = on_change
         self._on_play_toggle     = on_play_toggle
         self._channel_after_slot = channel_after_slot
+        self._slot_program       = slot_program
+        self._program_values     = []   # programme de chaque entrée de la liste
 
-        # Ordre Tab : Mute → Solo → Slots → Canal → Volume → Pan
+        # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Volume → Pan
         self._mute = wx.CheckBox(self, label="Mute")
         self._mute.SetValue(mute)
         self._solo = wx.CheckBox(self, label="Solo")
@@ -33,6 +41,10 @@ class TrackPropertiesDialog(wx.Dialog):
             size=(-1, self._LIST_H),
         )
         self._channels.SetSelection(channel)
+
+        program_label  = wx.StaticText(self, label="Programme GM du slot :")
+        self._programs = wx.ListBox(self, style=wx.LB_SINGLE, size=(-1, self._LIST_H))
+        self._load_programs(cur_slot_idx)
 
         vol_label  = wx.StaticText(self, label="Volume :")
         self._vol  = wx.SpinCtrl(self, min=0, max=100, initial=volume)
@@ -62,6 +74,8 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox.Add(self._slots, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(channel_label,  0, wx.LEFT | wx.RIGHT, 8)
         vbox.Add(self._channels, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        vbox.Add(program_label,  0, wx.LEFT | wx.RIGHT, 8)
+        vbox.Add(self._programs, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(check_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(grid,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
@@ -73,17 +87,37 @@ class TrackPropertiesDialog(wx.Dialog):
         self._solo.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
         self._slots.Bind(wx.EVT_LISTBOX, self._on_slot_change)
         self._channels.Bind(wx.EVT_LISTBOX, self._on_widget_change)
+        self._programs.Bind(wx.EVT_LISTBOX, self._on_widget_change)
         self._vol.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self._pan.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
 
         self._mute.SetFocus()
 
+    def _load_programs(self, slot_idx):
+        """Remplit la liste des programmes selon le genre du slot :
+        128 instruments GM (synthé), kits GM2 (kit), vide et désactivée sinon."""
+        kind, program = self._slot_program(slot_idx) if self._slot_program else (None, None)
+        if kind == "synth":
+            entries = list(enumerate(GM_PATCH_NAMES))
+        elif kind == "kit":
+            entries = GM2_DRUMKITS
+        else:
+            entries = []
+        self._program_values = [p for p, _ in entries]
+        self._programs.Set([f"{p + 1} - {n}" for p, n in entries])
+        if program in self._program_values:
+            self._programs.SetSelection(self._program_values.index(program))
+        self._programs.Enable(bool(entries))
+
     def _on_slot_change(self, event):
-        """Changement de slot : règle du canal (kit → 10), puis aperçu."""
+        """Changement de slot : règle du canal (kit → 10), liste des
+        programmes du nouveau slot, puis aperçu."""
+        slot_idx = self._slots.GetSelection()
         if self._channel_after_slot:
             self._channels.SetSelection(self._channel_after_slot(
-                self._slots.GetSelection(), self._channels.GetSelection()))
+                slot_idx, self._channels.GetSelection()))
+        self._load_programs(slot_idx)
         self._on_widget_change(event)
 
     def _on_widget_change(self, event):
@@ -95,6 +129,7 @@ class TrackPropertiesDialog(wx.Dialog):
                 self._mute.GetValue(),
                 self._solo.GetValue(),
                 self._channels.GetSelection(),
+                self.get_program(),
             )
         event.Skip()
 
@@ -111,6 +146,11 @@ class TrackPropertiesDialog(wx.Dialog):
     def get_mute(self):     return self._mute.GetValue()
     def get_solo(self):     return self._solo.GetValue()
     def get_channel(self):  return self._channels.GetSelection()
+
+    def get_program(self):
+        """Programme sélectionné (0-127), None si la liste est vide ou sans sélection."""
+        sel = self._programs.GetSelection()
+        return self._program_values[sel] if 0 <= sel < len(self._program_values) else None
 
 
 class PatternPropertiesDialog(wx.Dialog):

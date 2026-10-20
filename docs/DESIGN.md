@@ -2924,3 +2924,53 @@ la première version de ce plan.
 Avant de committer 10h3, il faudra réécouter un export des patterns 1 et 2
 de `project_01.gvp`, cette fois avec leurs programmes, le kit TR-808
 compris.
+- **10h3** — conforme au plan 10h2, avec un point de vigilance et une
+  limite.
+  - **Ce qui est livré** :
+    - `midi_constants.py` : `GM2_DRUMKITS`, c'est-à-dire les 9 kits nommés
+      sous forme de couples (programme, nom), et
+      `guess_gm_program(name, drums)` ;
+    - `InstrumentSlot.gm_program()` lit la config si elle est valide,
+      sinon déduit le programme ; il renvoie `None` hors synthé et kit ;
+    - `InstrumentSlot.set_gm_program()` ;
+    - le paramètre `track_programs` de l'export : un `program_change` au
+      tick 0, de rang -1, donc avant un `ETYPE_PGM` capturé au même tick ;
+    - la `ListBox` « Programme GM du slot » de `TrackPropertiesDialog`.
+      Elle prend un nouveau paramètre `slot_program(slot)` qui renvoie
+      (genre, programme) et une méthode `get_program()`. `on_change`
+      reçoit 7 valeurs.
+  - **Point de vigilance, l'Undo** : `InstrumentSlot.to_dict` renvoie le
+    dict `config` lui-même, si bien que les instantanés d'Undo
+    (`_capture_state` → `rack.to_dict()`) le partagent. Modifier `config`
+    sur place aurait aussi modifié l'état mémorisé pour Ctrl+Z.
+    - `set_gm_program` remplace donc `config` par un nouveau dict.
+    - Pour Annuler, `mw_tracks` garde le dict d'origine de chaque slot
+      touché et le remet en place.
+  - **Limite** : changer le programme d'un slot A dans le dialogue, puis
+    choisir un slot B et valider, garde le nouveau programme de A. C'est
+    cohérent avec « modifier le programme modifie le slot ».
+  - **Vérification d'export** : patterns 1 et 2 de `project_01.gvp`,
+    relus par mido.
+    - Pistes nommées « Acoustic Guitar 1 » (canal 1, programme 25),
+      « TR-707 » (canal 10, TR-808 Kit, 26), « DrawbarOrgan » (canal 3,
+      17), « Piano 1 » (canal 4, 1). Tous les programmes sont au tick 0.
+    - Numéros affichés de 1 à 128.
+  - **Écoute par l'utilisateur** : instruments et kit reconnus. L'orgue
+    semblait absent du pattern 1. Vérification faite, le Program Change
+    était bien appliqué : les rendus avec les programmes 1 et 17
+    diffèrent. L'orgue sortait au même niveau que le piano, mais couvert
+    par la guitare et la batterie. L'utilisateur l'a confirmé à l'oreille
+    sur la piste seule.
+  - **Constats de l'écoute**, pour la suite :
+    - les volumes de piste ne sont pas exportés : ce sera l'étape 10h5,
+      volume et pan, à la demande de l'utilisateur ;
+    - un ancien projet garde sa piste kit sur le canal N, par exemple 2.
+      Le Program Change du kit y choisit alors un instrument mélodique :
+      sur le canal 2, la TR-707 joue en Acoustic Guitar (steel). La
+      réponse viendra plus tard : soit migrer en passant les kits sur 10,
+      soit réassigner le kit à la main.
+  - **Suite rouge à ce commit**, 6 tests de l'ancienne interface du
+    dialogue, à mettre à jour en 10h4 :
+    - le `FakeDlg` de `test_track_channels.py` n'a pas `get_program` ;
+    - `on_change` passe à 7 valeurs ;
+    - l'ordre Tab est désormais Canal → Programme → Volume.

@@ -32,7 +32,7 @@ def _clamp(v, lo, hi):
 
 def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_names, kit_note_base, synth_grid_notes,
-                       voice_durations):
+                       voice_durations, track_programs=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -44,6 +44,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     synth_grid_notes : notes de lecture du pad sur une piste SYNTH
                        (TrackRouter._kb_notes_play)
     voice_durations  : durée en ms de chaque pad (GRID sans dur propre)
+    track_programs   : programme (0-127) écrit au tick 0 de chaque piste, ou
+                       None (slot vide) — Phase 7 étape 10h3 ; None = aucun
     """
     num_steps = pattern._num_steps
     num_beats = pattern._num_beats
@@ -72,6 +74,11 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             continue
         ch = track_channels[t]
         timed = []     # (tick, ordre, rang dans _tape, message)
+        program = track_programs[t] if track_programs else None
+        if program is not None:
+            # rang -1 : avant un ETYPE_PGM capturé au tick 0, qui l'emporte
+            timed.append((0, _ORDER_PGM, -1, mido.Message(
+                "program_change", channel=ch, program=_clamp(program, 0, 127))))
         notes = []     # (début, fin, note, vélocité, rang) avant chevauchements
         for seq, ev in enumerate(events):
             start = tick(ev.time)

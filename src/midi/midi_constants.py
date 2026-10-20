@@ -3,10 +3,12 @@
     File: src/midi/midi_constants.py
     Tables de description MIDI pures (aucune dépendance rtmidi/wx) :
     noms des Control Change, noms des patchs General MIDI 1,
-    noms des kits de batterie General MIDI 2.
+    noms des kits de batterie General MIDI 2, déduction d'un programme
+    d'après un nom d'instrument (Phase 7 étape 10h3).
     Date: Mon, 21/09/2026
     Author: Coolbrother
 """
+import re
 
 # Noms des Control Change standard MIDI 1.0 (CC non listés : sans nom).
 # Déplacé depuis src/ui/midi_handler.py (Phase 7 étape 2b).
@@ -117,3 +119,28 @@ GM2_DRUMKIT_NAMES[32] = "Jazz Kit"
 GM2_DRUMKIT_NAMES[40] = "Brush Kit"
 GM2_DRUMKIT_NAMES[48] = "Orchestra Kit"
 GM2_DRUMKIT_NAMES[56] = "SFX Kit"
+
+# Kits GM2 nommés : [(program, nom)], dans l'ordre des programmes.
+GM2_DRUMKITS = [(p, n) for p, n in enumerate(GM2_DRUMKIT_NAMES) if isinstance(n, str)]
+
+
+def _name_words(name):
+    """Mots d'un nom, en minuscules : camelCase et séparateurs coupés,
+    chiffres ignorés (« Piano 1 » ne doit pas donner « Electric Piano 1 »)."""
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+    return {w for w in re.split(r"[^a-z]+", name.lower()) if w}
+
+
+def guess_gm_program(name, drums=False):
+    """Programme (0-127) dont le nom GM partage le plus de mots avec `name` :
+    instruments GM 1, ou kits GM2 si drums. À égalité, le plus petit
+    programme ; aucun mot commun : 0 (Acoustic Grand Piano / Standard Kit).
+    Phase 7 étape 10h3, docs/DESIGN.md § 10h2 D11."""
+    table = GM2_DRUMKITS if drums else list(enumerate(GM_PATCH_NAMES))
+    words = _name_words(name or "")
+    best, best_score = 0, 0
+    for program, gm_name in table:
+        score = len(words & _name_words(gm_name))
+        if score > best_score:
+            best, best_score = program, score
+    return best
