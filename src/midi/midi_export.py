@@ -30,15 +30,30 @@ def _clamp(v, lo, hi):
     return max(lo, min(hi, int(v)))
 
 
+def volume_to_cc7(volume):
+    """Volume de piste 0..100 → CC#7 0..127, inverse exact de
+    TrackRouter.on_cc_tape (round(value * 100 / 127))."""
+    return _clamp(round(volume * 127 / 100), 0, 127)
+
+
+def pan_to_cc10(pan):
+    """Pan de piste -100..+100 → CC#10 1..127, 64 au centre, inverse de
+    TrackRouter.on_cc_tape (round((value - 64) * 100 / 63)) à ±1 près :
+    127 valeurs pour 201 positions."""
+    return _clamp(64 + round(pan * 63 / 100), 1, 127)
+
+
 def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_names, kit_note_base, synth_grid_notes,
-                       voice_durations, track_programs=None):
+                       voice_durations, track_programs=None,
+                       track_volumes=None, track_pans=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
     bpm              : tempo du player (un temps = 60/bpm, Phase 7 étape 10b1)
     track_channels   : canal 0..15 de chaque piste (TrackRouter, D5)
-    track_is_synth   : bool par piste — slot SYNTH (note GRID = gamme)
+    track_is_synth   : bool par piste — slot SYNTH (note GRID = gamme ; sans
+                       SYNTH, les notes PATCH, muettes au rejeu, sont omises)
     track_names      : nom de chaque piste ("" = "Track NN")
     kit_note_base    : snd.kit_base + snd.kit_offset (note GRID d'une piste kit)
     synth_grid_notes : notes de lecture du pad sur une piste SYNTH
@@ -46,6 +61,9 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     voice_durations  : durée en ms de chaque pad (GRID sans dur propre)
     track_programs   : programme (0-127) écrit au tick 0 de chaque piste, ou
                        None (slot vide) — Phase 7 étape 10h3 ; None = aucun
+    track_volumes    : volume 0..100 de chaque piste → CC#7 au tick 0
+    track_pans       : pan -100..+100 de chaque piste → CC#10 au tick 0
+                       (Phase 7 étape 10h5 ; None = rien d'écrit)
     """
     num_steps = pattern._num_steps
     num_beats = pattern._num_beats
@@ -79,6 +97,16 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             # rang -1 : avant un ETYPE_PGM capturé au tick 0, qui l'emporte
             timed.append((0, _ORDER_PGM, -1, mido.Message(
                 "program_change", channel=ch, program=_clamp(program, 0, 127))))
+        # Volume puis pan au tick 0, après le programme et avant les CC de
+        # _tape au même tick (rangs négatifs), qui l'emportent donc.
+        if track_volumes:
+            timed.append((0, _ORDER_CC, -2, mido.Message(
+                "control_change", channel=ch, control=7,
+                value=volume_to_cc7(track_volumes[t]))))
+        if track_pans:
+            timed.append((0, _ORDER_CC, -1, mido.Message(
+                "control_change", channel=ch, control=10,
+                value=pan_to_cc10(track_pans[t]))))
         notes = []     # (début, fin, note, vélocité, rang) avant chevauchements
         for seq, ev in enumerate(events):
             start = tick(ev.time)
@@ -96,6 +124,10 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 notes.append((start, start + max(1, tick(1)), p.get("note", 0),
                               p.get("vel", 100), seq))
             elif ev.etype == ETYPE_PATCH:
+                # Muette au rejeu sur une piste sans slot SYNTH
+                # (TrackRouter.on_patch_tape) : non exportée (Phase 7 étape 10h5)
+                if not track_is_synth[t]:
+                    continue
                 ms = ev.dur if ev.dur > 0 else PATCH_DEFAULT_MS
                 notes.append((start, start + ms_ticks(ms), p.get("note", 0),
                               p.get("vel", 100), seq))

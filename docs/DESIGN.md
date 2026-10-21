@@ -3022,3 +3022,62 @@ compris.
     - dialogue : liste, libellés, désactivation, rechargement, index ;
     - `mw_tracks` : programme non écrit, Annuler sans restauration, kit
       vu comme un synthé.
+- **10h5** — implémentation : volume et pan de piste exportés, demandés
+  par l'utilisateur après l'écoute de 10h3, et notes PATCH muettes omises.
+  Cela lève l'exclusion « volume et pan des pistes » de D10.
+  - **Découpage** : les tests sont dans un commit séparé, 10h6, à la
+    demande de l'utilisateur (« quelle qu'en soit la taille »). La
+    migration des kits annoncée en 10h6/10h7 devient donc **10h7/10h8**.
+  - **Décisions** :
+    - nouveaux paramètres `track_volumes` (0..100) et `track_pans`
+      (-100..+100) de `build_pattern_midi`. L'appelant (10j1) passera les
+      listes de `TrackRouter` ;
+    - au tick 0 de chaque piste, l'ordre est : Program Change, puis CC7,
+      puis CC10. Ils sont écrits pour toute piste non vide, kit compris, et
+      même sans programme ;
+    - un CC7 ou un CC10 capturé dans `_tape` au tick 0 vient après, et
+      l'emporte ;
+    - les conversions sont l'inverse de `TrackRouter.on_cc_tape` :
+      `volume_to_cc7(v) = round(v·127/100)`, avec un aller-retour exact
+      sur 0..100 ; `pan_to_cc10(p) = 64 + round(p·63/100)`, borné à
+      1..127, avec −100, 0 et +100 donnant 1, 64 et 127 ;
+    - pour le pan, l'aller-retour se fait à ±1 près, car le CC10 n'a que
+      127 valeurs pour 201 positions. 74 positions sont touchées, 50 par
+      exemple revenant à 51 ;
+    - le volume 100 donne CC7 = 127, et non le 100 par défaut d'un lecteur
+      GM : une piste à fond dans l'appli est à fond dans le fichier ;
+    - canal partagé entre plusieurs pistes : chaque piste écrit ses
+      valeurs, et le lecteur garde la dernière reçue. C'était la raison de
+      l'exclusion initiale, acceptée désormais ;
+    - toujours exclus : mute et solo, ainsi que le volume et le pan des
+      pads (`voice_manager`), qui sont par pad et non par piste.
+  - **Notes PATCH d'une piste sans slot synthé, non exportées.** Ce point
+    a été demandé par l'utilisateur pendant l'écoute de 10h5.
+    - Au rejeu, elles sont muettes (`TrackRouter.on_patch_tape`). Un
+      lecteur GM les jouait pourtant, sur le canal du kit : la piste
+      TR-707 du pattern 1 de `project_01.gvp` avait ainsi 15 notes PATCH,
+      de 50 à 60, jouées en ride, chinese cymbal et toms aigus.
+    - Ce comportement remplace la phrase de D6 « les données sont
+      conservées », au nom du principe « le fichier sonne comme l'appli ».
+    - Les notes GRID et KIT d'une piste kit restent exportées. Une piste
+      qui n'aurait que des PATCH sur un kit garde sa piste SMF, sans note.
+  - **Écoute par l'utilisateur** : la guitare, réglée à 45, est plus
+    discrète, et l'orgue s'entend seul.
+  - **Constats de l'écoute, hors du code de ce chantier** :
+    - **Octave de l'orgue.** L'orgue sonnait une octave plus bas dans
+      le fichier que dans l'appli. Le patch
+      `PATCHS/DrawbarOrgan.json` déclarait la racine « C4 », alors que
+      l'échantillon est mesuré à 523,5 Hz, soit C5 (note 72). L'appli
+      jouait donc tout l'orgue une octave trop haut, et le fichier les
+      notes réellement jouées.
+      - Avec l'accord de l'utilisateur, la racine est corrigée en « C5 ».
+      - Les parties d'orgue sont transposées de +12 : 31 notes dans
+        `project_01.gvp` et 124 dans `project_03.gvp`, à l'ancien format,
+        tous deux en pattern 1, piste 3.
+      - Des sauvegardes ont été prises avant ces modifications.
+      - Ces fichiers sont des données utilisateur, hors du dépôt.
+    - **Kit non GM.** Le kit TR-707 n'est pas rangé selon la table GM.
+      Sa note 49 est « Cowbell », mais en GM c'est une crash : ce sont les
+      37 « cymbales très fortes » entendues. Une table de correspondance
+      pad → note GM, déduite du libellé du pad, est proposée comme
+      chantier séparé.
