@@ -3303,3 +3303,94 @@ compris.
     - `makedirs`, confirmation d'écrasement, parent, extension, erreur,
       statut ;
     - les deux raccourcis.
+
+### Clôture (10l1)
+
+**10a1-10k1 FAITS** (commits `7807389`..`7fd29c8`, 23 commits, 1945 tests
+passed) — **chantier Phase 7 étape 10 complet**. Le pattern courant
+s'exporte en fichier MIDI standard par Alt+Shift+E.
+
+**Ce que le chantier a livré**, dans l'ordre des étapes :
+- **Lecteur** (10b1-10c1) : un temps dure 60/BPM quel que soit le nombre
+  de pas par mesure. `_update_step_duration` remplace les quatre formules
+  `60/bpm/4`.
+- **16 pistes par pattern** (10d1, 10e1). Les presets à 8 pistes sont
+  complétés au chargement.
+- **Prise live et Undo** (10d2-10d3), un bug préexistant : une prise
+  marque le projet modifié et s'annule d'un bloc. Un Undo vide est retiré.
+  Effacer à vide compte comme une modification.
+- **Canal MIDI par piste** (10a2, 10f1-10g1) :
+  - piste N → canal N par défaut ;
+  - un kit assigné met la piste sur 10, un autre slot la ramène au
+    défaut ;
+  - liste Canal dans les propriétés de la piste ;
+  - Program Change et chargement de projet sans effet ;
+  - un `.gvp` sans canaux reçoit les canaux par défaut (correctif 10g1).
+- **Module d'export** `src/midi/midi_export.py` (10h1, 10i1) :
+  - SMF de type 1, PPQ 480, conductor ;
+  - une piste SMF par piste non vide, sur le canal de la piste ;
+  - notes, durées, chevauchements, ordre à tick égal, CC, PGM et bend ;
+  - `requirements.txt`, sans pygame.
+- **Program Change par slot** (10h2-10h4) :
+  - instrument GM pour un synthé, kit GM2 pour un kit ;
+  - déduit du nom, avec un nom GM exact prioritaire (correctif 10h4),
+    réglable dans les propriétés de la piste ;
+  - pistes SMF nommées d'après leur slot.
+- **Volume et pan** en CC7 et CC10 (10h5-10h6). Les notes PATCH d'une
+  piste sans synthé, muettes au rejeu, ne sont plus exportées.
+- **Anciens projets** (10h7-10h8) : à l'ouverture d'un projet sans
+  canaux, les pistes kit passent sur le canal 10.
+- **Cache d'Undo à l'ouverture** (10h9-10h10), un bug préexistant : Ctrl+O
+  ne mélange plus les patterns de l'ancien projet dans les instantanés.
+- **Interface** (10j1-10k1) : Alt+Shift+E dans la fenêtre principale et
+  l'éditeur MIDI, `AppConfig.exports_dir` (dossier `EXPORTS`), nom
+  `Pat_NN[_nom].mid`, statut.
+
+**Écarts au plan initial**, tous documentés dans les entrées
+d'avancement ci-dessus :
+- D5 simplifiée en 10a2, puis révisée en 10h7 ;
+- Program Change, noms de slots, volume et pan ajoutés après les écoutes ;
+- PATCH muettes omises ;
+- `Pat_NN` au lieu de `Pattern_NN` ;
+- le pattern live ne porte ni gamme, ni nom, ni BPM : l'export les reçoit
+  en paramètres (10h1).
+
+**Données utilisateur corrigées pendant le chantier**, hors dépôt, avec
+l'accord de l'utilisateur :
+- racine de `PATCHS/DrawbarOrgan.json` passée de C4 à C5 ;
+- parties d'orgue transposées de +12 dans `project_01.gvp` et
+  `project_03.gvp`.
+
+Cause probable de l'erreur d'octave, à vérifier à part :
+`tools/extract_organ_sf2.py` écrit la racine d'après l'`orig_pitch` du SF2
+(60, C4), sans tenir compte d'un accordage de zone, alors que l'échantillon
+sonne à 523 Hz (C5).
+
+**`docs/SPECS.md` mis à jour** :
+- ligne Phase 7 de l'état d'avancement ;
+- arborescence : `requirements.txt` ; `src/midi/` avec ses cinq modules,
+  corrigeant le retard de la Phase 7 étape 3 relevé en 8h1 ;
+  `midi_handler_window.py` ;
+- clé `exports_dir` ;
+- `gm_program` des slots ;
+- `_track_channels` du router et du pattern ;
+- prise et Undo ;
+- canal par piste ;
+- nouvelle section « Export MIDI (Alt+Shift+E) ».
+
+**Laissé hors périmètre, pour la suite** :
+- **Conversion des notes des kits non GM** : une table pad → note GM
+  d'après le libellé, par exemple Cowbell 49 de la TR-707 vers 56, au lieu
+  de la crash 49 en GM. Décidée avec l'utilisateur comme prochaine étape
+  séparée.
+- Export d'un song ou du projet, tempo variable ; import MIDI.
+- Séparation des noms de pistes (F2) et des noms de pads dans
+  `voice_manager`.
+- Historique d'Undo non vidé par Ctrl+O (10h9).
+- Touches 1-9 du Note Repeat ignorées quand le focus est sur la liste des
+  patterns (10c1).
+- Écart du rejeu sur deux bends au même temps : le rejeu applique la
+  valeur la plus haute, l'export et `_bend_state_at` le dernier dans
+  `_tape`.
+- Banque (CC0/CC32), kits GS non GM2, Undo du choix de slot par Ctrl+T.
+- Vérification de `tools/extract_organ_sf2.py`.

@@ -16,6 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid) | en cours |
 
 ---
 
@@ -40,6 +41,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 ```
 groovyboxit/
 ├── main.py               # Point d'entrée
+├── requirements.txt      # Dépendances (pip3 install -r requirements.txt --break-system-packages)
 ├── src/
 │   ├── app_config.py     # Chargement data/config.json, chemins configurables
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
@@ -48,8 +50,6 @@ groovyboxit/
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
 │   ├── metronome.py      # Classe Metronome isolée
-│   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
-│   ├── midi_manager.py   # Connexion ports MIDI in/out
 │   ├── note.py           # Utilitaires note MIDI
 │   ├── pattern.py        # Données pattern : grille, _tape (TapeEvent G/K/P)
 │   ├── project_manager.py # Chargement/sauvegarde .gvp (JSON)
@@ -65,6 +65,12 @@ groovyboxit/
 │   ├── track_router.py   # Routage piste→slot→SynthEngine, dispatch audio
 │   ├── undo_manager.py   # UndoManager : historique annulations/rétablissements
 │   ├── voice_manager.py  # Volume, pan, mute, solo, durée par pad
+│   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10)
+│   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
+│   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
+│   │   ├── midi_export.py    # Export du pattern en fichier .mid (mido, SMF type 1)
+│   │   ├── midi_manager.py   # Connexion ports MIDI in/out
+│   │   └── midi_parser.py    # Décodage des messages MIDI temps réel
 │   ├── player/           # Séquenceur DrumPlayer (Phase 7 étape 8)
 │   │   ├── drum_player.py  # DrumPlayer : état (__init__), propriétés, délégations quantisation
 │   │   ├── dp_transport.py # Mixin : thread, play/stop/pause, song, click, BPM
@@ -87,7 +93,7 @@ groovyboxit/
 │       ├── key_transport.py    # Raccourcis transport partagés (Play, Stop, Goto…)
 │       ├── main_window.py      # Fenêtre principale (mixins)
 │       ├── midi_editor_window.py # Fenêtre Éditeur MIDI (Alt+4)
-│       ├── midi_handler.py     # Logique MIDI (séparée de MainWindow)
+│       ├── midi_handler_window.py # Logique MIDI (séparée de MainWindow)
 │       ├── mw_midi_editor.py   # Mixin MainWindow : ouverture éditeur MIDI
 │       ├── mw_pads.py          # Mixin MainWindow : pads et grille
 │       ├── mw_patterns.py      # Mixin MainWindow : gestion patterns
@@ -163,9 +169,13 @@ groovyboxit/
   "media_lst":    ["/chemin/son1.wav", "/chemin/son2.wav"],
   "click1":       "/chemin/click_downbeat.wav",
   "click2":       "/chemin/click_beat.wav",
-  "sound_cache_dir": "/chemin/cache_npz"
+  "sound_cache_dir": "/chemin/cache_npz",
+  "exports_dir":  "/chemin/vers/EXPORTS"
 }
 ```
+
+`exports_dir` (export MIDI, Alt+Shift+E) vaut par défaut le dossier `EXPORTS`
+voisin du dossier des projets (`/home/com/groovybox/EXPORTS`).
 
 Chaque clé est facultative : si absente ou vide, le chemin correspondant tombe en fallback sur un sous-dossier relatif à la racine du projet (`patches/`, `samples/`, `kits/`, `presets/`).
 
@@ -200,6 +210,9 @@ Slot
   └── config  : dict
         KIT   → { "kit": "/chemin/vers/kit.json" }
         SYNTH → { "patch": "/chemin/vers/dossier_patch" }
+        + "gm_program" (0..127, facultatif) : instrument GM (synthé) ou kit
+          GM2 (kit) écrit en Program Change à l'export ; absent → déduit du
+          nom du slot (guess_gm_program). Réglable dans les propriétés de piste.
 ```
 
 ### Sérialisation Rack
@@ -398,6 +411,7 @@ Deux comportements selon le type du slot courant :
 ```
 TrackRouter
   ├── _track_slots[16]    slot assigné à chaque piste (défaut : slot 0)
+  ├── _track_channels[16] canal MIDI de chaque piste (0..15, export MIDI)
   ├── _slot_synths        {slot_idx: SynthEngine} — un moteur par slot SYNTH commis
   ├── _synth              moteur de preview interactive (slot courant)
   ├── _kit_synth          moteur dédié au mode Keyboard/KIT pitché
@@ -431,6 +445,7 @@ Pattern
   ├── _track_solos   [bool × 16]
   ├── _track_volumes [int × 16]  0..100
   ├── _track_pans    [int × 16]  -100..+100
+  ├── _track_channels [int × 16] canal MIDI 0..15 (piste N → canal N ; kit → 10)
   ├── _voices        [dict × 16] volume, pan, mute, solo, durée par pad
   └── _tape          {(track, bar, step): [TapeEvent]}  capture unifiée
 ```
@@ -566,6 +581,13 @@ LoopWindow
 - Fonctionne en temps réel pendant la lecture
 - Prend en charge la plage de notes MIDI tenues (effacement par plage)
 
+### Prise et Undo (Phase 7 étape 10d2)
+- R, Shift+R, Ctrl+R et l'activation d'Erase ouvrent une prise : un point
+  d'Undo est posé avant, le projet est marqué modifié
+- À l'arrêt, si `_tape` n'a pas changé, ce point est retiré et l'état
+  « modifié » rétabli ; sinon Ctrl+Z annule toute la prise d'un coup
+- Effacer sans rien jouer (Remplacement, Erase) compte comme une modification
+
 ---
 
 ## Transport avancé
@@ -686,6 +708,8 @@ où le format MIDI permet un Program Change à tout moment pendant la lecture.
 - Pan : -100..+100 (Alt+←/→)
 - Mute (X) / Solo (S) par piste
 - Appliqués en facteur multiplicatif lors du dispatch audio
+- Canal MIDI : Alt+Entrée sur la piste (propriétés), liste Canal ; piste N →
+  canal N par défaut, un slot kit assigné met la piste sur le canal 10
 
 ---
 
@@ -727,6 +751,26 @@ où le format MIDI permet un Program Change à tout moment pendant la lecture.
 - Options : `--tail`, `--min-corr`
 
 *Statut : détection implémentée, cross-fade FluidSynth-style appliqué dans AudioSampler. Interface graphique d'édition manuelle non terminée.*
+
+---
+
+## Export MIDI (Alt+Shift+E)
+
+Exporte le pattern courant en fichier MIDI standard (`src/midi/midi_export.py`,
+Phase 7 étape 10), depuis la fenêtre principale ou l'éditeur MIDI. Un
+dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
+
+- SMF de type 1, 480 ticks par noire ; piste conductor : nom, tempo
+  (un temps = 60/BPM, quel que soit le nombre de pas), signature 4/4
+- Une piste SMF par piste non vide, nommée d'après son slot, sur le canal
+  de la piste ; en tête : Program Change du slot, volume (CC7), pan (CC10)
+- Notes : grille (gamme du pattern pour un synthé, `kit_base + pad` pour
+  un kit), KIT, PATCH ; les PATCH d'une piste sans synthé, muettes au
+  rejeu, ne sont pas écrites ; CC, Program Change et Pitch Bend capturés
+- Non exportés : mute/solo, volume et pan des pads, canal d'origine des
+  événements ; les kits non GM gardent leurs notes (conversion prévue)
+- Un ancien projet sans canaux enregistrés s'ouvre avec ses pistes kit sur
+  le canal 10
 
 ---
 
