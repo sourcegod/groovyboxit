@@ -158,6 +158,10 @@ class Pattern:
         self._track_pans    = [0]     * self._num_tracks
         # canal MIDI (0..15) de chaque piste, utilisé par l'export (10f1)
         self._track_channels = [Pattern.default_channel(t) for t in range(self._num_tracks)]
+        # Vrai après from_dict d'un preset sans track_channels : les pistes
+        # sur un kit restent à passer sur le canal 10 (apply_kit_channels,
+        # le Pattern ne connaissant pas le Rack — Phase 7 étape 10h7)
+        self._needs_kit_channels = False
 
         # état des voix par pad : name, volume, pan, mute, solo, duration_ms
         self._voices = [
@@ -600,6 +604,7 @@ class Pattern:
         # que l'objet portait déjà — Ctrl+O recharge dans les Pattern existants.
         self._track_channels = list(d.get("track_channels") or
                                     [Pattern.default_channel(t) for t in range(self._num_tracks)])
+        self._needs_kit_channels = "track_channels" not in d
         if "voices"        in d: self._voices        = d["voices"]
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
@@ -645,6 +650,21 @@ class Pattern:
         self._track_pans    = pad(self._track_pans,    0)
         self._track_channels = list(self._track_channels) + [
             Pattern.default_channel(t) for t in range(len(self._track_channels), nt)]
+
+    def apply_kit_channels(self, is_kit_slot):
+        """Migration des presets d'avant 10f1 (Phase 7 étape 10h7) : les
+        pistes dont le slot est un kit (is_kit_slot(slot_idx)) passent sur le
+        canal 10, comme si le kit leur avait été assigné. Sans effet si le
+        preset avait déjà ses canaux. Retourne les pistes changées."""
+        if not self._needs_kit_channels:
+            return []
+        self._needs_kit_channels = False
+        changed = []
+        for t, slot_idx in enumerate(self._track_slots):
+            if t < len(self._track_channels) and is_kit_slot(slot_idx):
+                self._track_channels[t] = Pattern.KIT_CHANNEL
+                changed.append(t)
+        return changed
 
     def _migrate_patch_note_bends(self):
         """Convertit le champ "bend" des notes PATCH (presets sauvés avant la

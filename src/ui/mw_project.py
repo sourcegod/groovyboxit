@@ -175,10 +175,13 @@ class ProjectMixin:
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._update_slot_list()
+        is_kit_slot = lambda slot_idx: self._rack.get_slot(slot_idx).type == InstrumentType.KIT
         for i, p in enumerate(data.get("patterns", [])):
             if i >= len(self._pattern_list):
                 break
             self._pattern_list[i].from_dict(p)
+            # Projet d'avant les canaux : pistes kit → canal 10 (10h7)
+            self._pattern_list[i].apply_kit_channels(is_kit_slot)
         for i, s in enumerate(data.get("songs", [])):
             if i < len(self._song_list):
                 self._song_list[i].from_dict(s)

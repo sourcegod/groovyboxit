@@ -3107,3 +3107,34 @@ compris.
       programme ;
     - canal 0 pour le volume, pan non écrit ;
     - PATCH toujours exportées.
+- **10h7** — implémentation : à l'ouverture d'un projet sans canaux, les
+  pistes kit passent sur le canal 10. C'est une décision de l'utilisateur
+  du 2026-10-20, qui révise D5 : jusque-là, la règle du kit ne jouait qu'à
+  une assignation explicite.
+  - **Constat qui l'a motivée** : un ancien projet gardait sa piste kit sur
+    le canal N. Le Program Change du kit y choisissait alors un instrument
+    mélodique, par exemple Acoustic Guitar (steel) sur le canal 2.
+  - **Mise en œuvre** :
+    - `Pattern.from_dict` pose `_needs_kit_channels` quand la clé
+      `track_channels` est absente. L'attribut est recalculé à chaque
+      lecture, donc remis à `False` sur un `Pattern` réutilisé ;
+    - `Pattern.apply_kit_channels(is_kit_slot)` met sur le canal 10 les
+      pistes dont le slot est un kit, une seule fois, puis efface le
+      drapeau ;
+    - `mw_project._load_project` l'appelle juste après chaque
+      `from_dict`. Le Rack est déjà lu à ce moment, et `Pattern` ne le
+      connaît pas.
+  - **Portée** :
+    - seul `_load_project`, c'est-à-dire Ctrl+O et le démarrage, lit des
+      fichiers ;
+    - `_restore_state` (Undo) a toujours `track_channels`, il n'est donc
+      pas concerné ;
+    - un projet déjà enregistré avec ses canaux est laissé tel quel :
+      `project_01.gvp` garde ses réglages.
+  - **Effet à connaître** : les pistes vides passent aussi sur 10. Dans les
+    anciens projets, elles pointent par défaut sur le slot 1, qui est un
+    kit. Leur assigner un synthé les ramène à leur canal par défaut (règle
+    de 10f1).
+  - **Vérifié dans l'appli par l'utilisateur, et par script sur `project_02.gvp`** : dans les patterns 1 et 2, la piste 2
+    (kit) passe sur 10 ; dans les patterns 3 à 5, la piste 1 (kit) passe
+    sur 10. La piste synthé reste sur son canal.
