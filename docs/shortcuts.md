@@ -5,6 +5,9 @@ Ctrl+N           Nouveau projet (noname_NNN.gvp, demande si modifié)
 Ctrl+O           Ouvrir un projet (.gvp, .json ou tout fichier)
 Ctrl+S           Enregistrer le projet
 Ctrl+Shift+S     Enregistrer le projet sous...
+Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
+Shift+Z          Refaire
+Ctrl+Shift+Z     Afficher l'historique des annulations
 
 --- Pattern ---
 Ctrl+W           Enregistrer le pattern courant
@@ -80,6 +83,9 @@ Ctrl+R           Count-In : 1 mesure de métronome, puis Rec+Play démarre
 NumPad 1-8       Jouer + enregistrer le pad dans le pattern
 NumPad 9         Rejouer + enregistrer le dernier pad
 Note: en mode Note Repeat actif, les répétitions sont aussi enregistrées
+Note: R, Shift+R, Ctrl+R et E ouvrent une prise : Ctrl+Z l'annule d'un bloc ;
+      une prise où rien n'a changé ne laisse pas d'annulation. Effacer sans
+      rien jouer (Remplacement, Erase) compte comme une modification.
 
 --- Effacement en temps réel (mode E) ---
 E                Activer / désactiver le mode Erase (désactive Rec si actif)
@@ -92,6 +98,9 @@ NumPad 1-8       Jouer le pad + lancer le repeat (re-presser pour stopper)
 1-8 (clavier)   Choisir le taux binaire : 1/1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64, 1/128
 9 (clavier)      Basculer binaire ↔ ternaire
 1-6 (ternaire)   Choisir le taux ternaire : 1/3, 1/6, 1/12, 1/24, 1/48, 1/96
+Note: les taux sont des fractions de mesure (1/16 = double croche, quel que
+      soit le nombre de pas). Les touches 1 à 9 sont sans effet sur le taux
+      quand le focus est sur la liste des patterns ou de quantisation.
 
 --- BPM / Volume Global / Pan Global ---
 H                Tap Tempo : frapper au rythme pour définir le BPM
@@ -149,9 +158,12 @@ Ctrl+P           Lecture / Pause (depuis la boite de dialogue des propriétés)
 Double-clic      Assigner le slot sélectionné à la piste courante (≡ Ctrl+T)
 
 --- Pistes (focus liste des pistes) ---
-Ctrl+T / Entrée  Assigner le slot courant à la piste courante
+Ctrl+T / Entrée  Assigner le slot courant à la piste courante (un kit met la piste
+                 sur le canal MIDI 10 ; un autre slot la ramène à son canal par défaut)
 Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
-Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée
+Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
+                 Mute, Solo, Slot, Canal MIDI (1 à 16), Programme GM du slot
+                 (instruments pour un synthé, kits GM2 pour un kit), Volume, Pan
 Double-clic      Jouer le pad courant
 Double-clic+Alt  Ouvrir les propriétés de la piste
 X / Shift+X      Mute piste / Démuter toutes
