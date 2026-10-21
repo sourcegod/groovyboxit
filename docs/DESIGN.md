@@ -3263,3 +3263,43 @@ compris.
       kit 36 ; 100 BPM.
     - Fichier relu par mido : 5 pistes, 9,95 s.
     - Le dossier `EXPORTS` a été créé par cet essai.
+- **10k1** — tests de l'interface d'export. Nouveau fichier
+  `tests/test_midi_export_ui.py`, 12 tests, 1945 au total.
+  - **`AppConfig.exports_dir`** :
+    - par défaut, `EXPORTS` à côté du dossier des projets, qu'il soit
+      absolu avec un `/` final ou relatif ;
+    - valeur absolue, relative à `base_dir`, ou vide.
+  - **`_midi_export_params`** : testé sur une fenêtre factice qui utilise
+    le vrai `ProjectMixin`, avec de vrais `TrackRouter`, `Rack` et
+    `VoiceManager`. Il prend :
+    - les canaux, volumes et pans du router ;
+    - le type, le nom et le programme des slots, y compris un programme
+      réglé ;
+    - `kit_base + kit_offset` ;
+    - les notes de la gamme et les durées des voix ;
+    - le BPM du player ;
+    - le nom du pattern, ou `Pat_NN` ;
+    - et ce sont des copies des listes.
+  - **`_midi_export_filename`** : `Pat_NN.mid`, et un nom de pattern
+    nettoyé.
+  - **`_export_midi`**, avec un `FileDialog` simulé :
+    - Ok : dossier créé, paramètres du dialogue (dossier, nom, filtre,
+      `FD_SAVE | FD_OVERWRITE_PROMPT`, parent, `Destroy`), fichier relu
+      avec les canaux et la note de kit tenant compte de l'offset, statut ;
+    - extension `.mid` ajoutée si elle manque ;
+    - Annuler : rien d'écrit ;
+    - erreur d'écriture : annoncée, sans exception ;
+    - parent et statut fournis par l'éditeur MIDI.
+  - **Raccourcis** :
+    - fenêtre principale : Alt+Shift+E exporte, Alt+E seul ne fait rien ;
+    - éditeur MIDI : Alt+Shift+E exporte, avec le dialogue et le statut de
+      l'éditeur.
+  - **Contre-épreuve par 20 mutations volontaires de 10j1**, toutes
+    détectées :
+    - `exports_dir` : défaut, `normpath`, valeur relative ;
+    - nom, BPM, canaux, offset du kit, noms, programmes, volumes, listes
+      partagées ;
+    - nettoyage du nom de fichier ;
+    - `makedirs`, confirmation d'écrasement, parent, extension, erreur,
+      statut ;
+    - les deux raccourcis.
