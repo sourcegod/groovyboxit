@@ -3187,3 +3187,43 @@ compris.
     l'ancien projet.
 
   **Contre-épreuve** : avec le code d'avant 10h9, les 3 tests échouent.
+- **10i1** — tests du module d'export, conformes au plan. Nouveau fichier
+  `tests/test_midi_export.py`, 18 tests, 1933 au total. Le fichier est
+  relu par mido, en temps absolus. Le Program Change, le volume et le pan
+  ont déjà leurs tests en 10h4 et 10h6.
+  - **Fichier** :
+    - écrit puis relu, type 1, 480 ticks par noire ;
+    - conductor : nom, tempo, 4/4, fin à la fin du pattern ;
+    - pattern vide : conductor seule ;
+    - une piste SMF par piste non vide, avec son nom ou « Track NN » ;
+    - fin de piste à la fin du pattern, ou au dernier note-off s'il
+      déborde.
+  - **Canaux et notes** :
+    - tout est écrit sur le canal de la piste, `ev.channel` étant ignoré ;
+    - GRID : gamme du router pour un synthé, `kit_note_base + pad` pour
+      un kit ;
+    - KIT et PATCH : note du payload ;
+    - vélocités bornées à 1..127.
+  - **Durées** :
+    - GRID : sa `dur`, sinon la durée de la voix ;
+    - PATCH sans `dur` : 500 ms ;
+    - KIT : un pas ;
+    - durée calculée selon le BPM, au minimum 1 tick.
+  - **Temps** : à 16 et 32 pas, avec un temps flottant arrondi.
+  - **Chevauchements** : la première note est coupée, et un doublon au
+    même tick n'est écrit qu'une fois.
+  - **Ordre à tick égal** : note-off, PGM, CC, bend, note-on. Deux bends
+    au même tick restent dans l'ordre de `_tape`, le dernier l'emportant
+    comme dans `_bend_state_at`.
+  - **CC, PGM, bend** : valeurs, temps et bornes, y compris un numéro de CC
+    négatif.
+  - **Contre-épreuve par 24 mutations volontaires du module**, toutes
+    détectées, dont :
+    - type 0, PPQ 96, tempo et signature ;
+    - pistes vides écrites, nom, canal ;
+    - temps et durées, voix, KIT, PATCH ;
+    - vélocité, chevauchement, doublon, ordre ;
+    - bornes, fin de piste.
+
+    La mutation « CC sans borne basse » n'était d'abord pas détectée. Un
+    numéro de CC négatif a été ajouté au test, et elle l'est désormais.
