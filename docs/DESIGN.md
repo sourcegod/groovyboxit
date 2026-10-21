@@ -3176,3 +3176,14 @@ compris.
     d'un projet. Ctrl+Z juste après Ctrl+O revient à un état de l'ancien
     projet, comme avant ce chantier. C'est un comportement à discuter à
     part.
+- **10h10** — tests de 10h9. Nouveau fichier
+  `tests/test_load_project_cache.py`, 3 tests, 1915 au total. Ils
+  utilisent les vrais `_capture_state`, `_add_undo` et `_load_project`
+  sur un `.gvp` temporaire :
+  - l'instantané pris après Ctrl+O ne contient que les patterns du projet
+    ouvert ;
+  - tous les patterns sont marqués à re-sérialiser ;
+  - une entrée d'Undo prise après l'ouverture ne contient aucun pattern de
+    l'ancien projet.
+
+  **Contre-épreuve** : avec le code d'avant 10h9, les 3 tests échouent.
