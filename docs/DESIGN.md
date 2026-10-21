@@ -3138,3 +3138,20 @@ compris.
   - **Vérifié dans l'appli par l'utilisateur, et par script sur `project_02.gvp`** : dans les patterns 1 et 2, la piste 2
     (kit) passe sur 10 ; dans les patterns 3 à 5, la piste 1 (kit) passe
     sur 10. La piste synthé reste sur son canal.
+- **10h8** — tests de 10h7. Nouveau fichier
+  `tests/test_kit_channel_migration.py`, 7 tests, 1912 au total.
+  - **Drapeau** : `_needs_kit_channels` n'est vrai que si la clé est
+    absente, et il est remis à faux sur un `Pattern` réutilisé.
+  - **Règle** : pistes kit sur 10, piste synthé gardée, pistes vides sur le
+    slot kit.
+  - **Une seule application** : `apply_kit_channels` n'agit qu'une fois.
+  - **Canaux enregistrés** : intacts, y compris un kit laissé sur le canal
+    2. Un projet migré puis réenregistré garde ses canaux.
+  - **`_load_project` sur un vrai `.gvp` temporaire**, avec le vrai
+    `ProjectMixin` et une fenêtre factice :
+    - ancien projet migré, et le router reçoit le pattern migré ;
+    - projet avec canaux laissé tel quel.
+  - **Contre-épreuve par 7 mutations volontaires**, toutes détectées :
+    - drapeau toujours faux, jamais remis, non effacé, ou non testé ;
+    - kit ignoré, toutes les pistes passées sur 10 ;
+    - chargement sans migration.
