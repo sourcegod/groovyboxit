@@ -3081,3 +3081,29 @@ compris.
       37 « cymbales très fortes » entendues. Une table de correspondance
       pad → note GM, déduite du libellé du pad, est proposée comme
       chantier séparé.
+- **10h6** — tests de 10h5. Nouveau fichier `tests/test_midi_export_mix.py`,
+  12 tests, 1905 au total.
+  - **Conversions** :
+    - bornes, et l'exemple 45 → 57 ;
+    - aller-retour du volume exact sur 0..100 ;
+    - aller-retour du pan à ±1 près, exact pour −100, 0 et +100. Pour 50,
+      on obtient le CC 96, qui revient à 51.
+  - **Export** :
+    - Program Change, CC7 et CC10 au tick 0, dans cet ordre, sur le
+      canal de la piste ;
+    - CC7 et CC10 écrits même sans programme ;
+    - `None` : rien d'écrit ;
+    - un CC7 capturé au tick 0 est écrit après, et l'emporte ;
+    - canal partagé : chaque piste écrit sa valeur.
+  - **Notes PATCH** :
+    - omises sur une piste kit, alors que GRID et KIT sont gardés ;
+    - gardées sur une piste synthé ;
+    - une piste kit qui n'a que des PATCH donne une piste SMF sans note.
+  - **Contre-épreuve par 10 mutations volontaires de 10h5**, toutes
+    détectées :
+    - volume sur 100, volume tronqué ;
+    - pan sans décalage, pan borné à partir de 0 ;
+    - CC7 après les CC de `_tape`, CC10 avant CC7, CC7 avant le
+      programme ;
+    - canal 0 pour le volume, pan non écrit ;
+    - PATCH toujours exportées.
