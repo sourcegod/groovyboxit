@@ -3155,3 +3155,24 @@ compris.
     - drapeau toujours faux, jamais remis, non effacé, ou non testé ;
     - kit ignoré, toutes les pistes passées sur 10 ;
     - chargement sans migration.
+- **10h9** — correctif d'un bug antérieur à ce chantier, repéré en écrivant
+  10h7 : après Ctrl+O, l'Undo pouvait réinjecter des patterns de l'ancien
+  projet.
+  - **Cause** :
+    - `_capture_state` ne re-sérialise que les patterns marqués dans
+      `_pattern_cache_dirty`, et le pattern courant ;
+    - `_new_project` remet tout le cache à neuf, mais `_load_project` ne
+      le faisait pas ;
+    - après l'ouverture d'un projet B, le cache gardait donc les dicts du
+      projet A pour tous les patterns sauf le courant ;
+    - la première action annulable prenait alors un instantané mélangé, et
+      un Ctrl+Z jusqu'à ce point remettait dans B des patterns de A.
+  - **Reproduit par un script avant le correctif** : l'instantané pris
+    après l'ouverture de B donnait les noms `['B', 'A', 'A']`, et
+    `['B', 'B', 'B']` après.
+  - **Correctif** : `_load_project` marque tous les patterns comme périmés
+    (`_pattern_cache_dirty = set(range(...))`) juste après leur lecture.
+  - **Hors périmètre** : l'historique d'Undo n'est pas vidé à l'ouverture
+    d'un projet. Ctrl+Z juste après Ctrl+O revient à un état de l'ancien
+    projet, comme avant ce chantier. C'est un comportement à discuter à
+    part.

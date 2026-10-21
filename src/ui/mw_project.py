@@ -182,6 +182,9 @@ class ProjectMixin:
             self._pattern_list[i].from_dict(p)
             # Projet d'avant les canaux : pistes kit → canal 10 (10h7)
             self._pattern_list[i].apply_kit_channels(is_kit_slot)
+        # Tous les patterns ont changé : le cache de _capture_state (Undo)
+        # ne doit plus servir les dicts du projet précédent (Phase 7 étape 10h9)
+        self._pattern_cache_dirty = set(range(len(self._pattern_list)))
         for i, s in enumerate(data.get("songs", [])):
             if i < len(self._song_list):
                 self._song_list[i].from_dict(s)
