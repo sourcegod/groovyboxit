@@ -84,6 +84,21 @@ class AppConfig:
         return os.path.join(self._base_dir, value)
 
     @property
+    def exports_dir(self):
+        """Dossier proposé pour l'export MIDI (Phase 7 étape 10j1).
+
+        Défaut : EXPORTS, à côté du dossier des projets.
+        Configurable via la clé "exports_dir" de config.json (absolu, ou
+        relatif à base_dir).
+        """
+        value = self._data.get("exports_dir", "").strip()
+        if not value:
+            return os.path.join(os.path.dirname(os.path.normpath(self.projects_dir)), "EXPORTS")
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
+    @property
     def sound_cache_dir(self):
         """Répertoire du cache disque des sons pré-calculés.
 

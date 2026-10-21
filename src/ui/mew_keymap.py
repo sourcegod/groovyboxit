@@ -330,6 +330,12 @@ class KeymapMixin:
             self._filter_dialog()
             return
 
+        # Alt+Shift+E : export MIDI du pattern (même raccourci que la fenêtre
+        # principale, Phase 7 étape 10j1) ; dialog et statut dans cette fenêtre
+        if not ctrl and shift and alt and (ukey in (ord('e'), ord('E')) or key == ord('E')):
+            self._parent._export_midi(parent=self, status=self._set_status)
+            return
+
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
         if self._parent._key_manager.handle_transport(evt):
             pat   = self._parent._player._pattern

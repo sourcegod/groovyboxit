@@ -107,6 +107,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._kits_dir     = cfg.kits_dir
         self._presets_dir  = cfg.presets_dir
         self._projects_dir = cfg.projects_dir
+        self._exports_dir  = cfg.exports_dir
         sound_cache.init(cfg.sound_cache_dir)
         self._rack = Rack()
         self._rack.set_slot(0, InstrumentType.KIT, "TR-707",

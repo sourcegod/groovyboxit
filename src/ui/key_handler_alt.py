@@ -80,6 +80,9 @@ class AltHandler:
         if not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             win._open_explorer()
             return True
+        if not ctrl and shift and (ukey in (ord('e'), ord('E')) or key == ord('E')):
+            win._export_midi()          # Alt+Shift+E : export MIDI (Phase 7 étape 10j1)
+            return True
         if not ctrl and not shift and (ukey == ord('4') or key == ord('4')):
             win._open_midi_editor_window()
             return True

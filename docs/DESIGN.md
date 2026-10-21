@@ -3227,3 +3227,39 @@ compris.
 
     La mutation « CC sans borne basse » n'était d'abord pas détectée. Un
     numéro de CC négatif a été ajouté au test, et elle l'est désormais.
+- **10j1** — interface de l'export, conforme à D10. Validée au clavier par l'utilisateur : fenêtre principale, éditeur MIDI, Annuler, annonces Orca.
+  - **`AppConfig.exports_dir`** : clé `exports_dir`, absolue ou relative
+    à `base_dir`. Par défaut, c'est le dossier `EXPORTS` voisin de
+    `projects_dir`, soit `/home/com/groovybox/EXPORTS`.
+    `MainWindow._exports_dir` est lu au démarrage.
+  - **`mw_project`** :
+    - `_midi_export_params()` réunit les arguments de
+      `build_pattern_midi` ; ils sont détaillés ci-dessous ;
+    - `_midi_export_filename()` propose `Pat_NN.mid`, ou
+      `Pat_NN_<nom>.mid` avec un nom nettoyé ;
+    - `_export_midi(parent, status)` crée le dossier au besoin, ouvre un
+      `wx.FileDialog` (`*.mid`, `FD_OVERWRITE_PROMPT`), ajoute `.mid` s'il
+      manque, exporte le pattern live, puis annonce « Pattern NN
+      exporté : <fichier> », « Export MIDI annulé » ou l'erreur.
+  - **Arguments réunis par `_midi_export_params()`** :
+    - nom du pattern, ou `Pat_NN` ;
+    - BPM du player ;
+    - canaux, volumes et pans de `TrackRouter` ;
+    - type, nom et programme du slot de chaque piste ;
+    - `snd.kit_base + kit_offset` ;
+    - `router._kb_notes_play` ;
+    - durées du `VoiceManager`.
+  - **Raccourci Alt+Shift+E**, dans la fenêtre principale
+    (`key_handler_alt.py`) et dans l'éditeur MIDI (`mew_keymap.py`). Dans
+    l'éditeur, le dialogue et le statut sont ceux de sa fenêtre.
+    `docs/shortcuts.md` est mis à jour.
+  - **Écart au plan sur le nom** : la piste conductor et le fichier
+    utilisent `Pat_NN`, la convention de la liste des patterns
+    (`_pattern_label`), et non `Pattern_NN` comme l'écrivait D4.
+  - **Essai réel, sans clavier** : une vraie `MainWindow` chargée sur
+    `project_01.gvp`, avec un `FileDialog` simulé.
+    - Nom proposé `Pat_01.mid`, dans `/home/com/groovybox/EXPORTS`.
+    - Canaux 1, 10, 3, 4 ; programmes 24, 25, 16, 0 ; noms des slots ;
+      kit 36 ; 100 BPM.
+    - Fichier relu par mido : 5 pistes, 9,95 s.
+    - Le dossier `EXPORTS` a été créé par cet essai.

@@ -1,9 +1,11 @@
 import os
+import re
 import wx
 from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
+from midi.midi_export import export_pattern
 
 
 class ProjectMixin:
@@ -67,6 +69,68 @@ class ProjectMixin:
         self._project_modified = False
         self._update_title()
         self._show_status(f"Nouveau projet : {os.path.basename(self._project_path)}")
+
+    #--------------------------------------------------------------------------
+    # Export MIDI du pattern courant (Phase 7 étape 10j1, docs/DESIGN.md
+    # § 10a1 D10) : les états hors Pattern viennent du router, du Rack, du
+    # player et du kit chargé.
+
+    def _midi_export_params(self):
+        """Arguments de build_pattern_midi pour le pattern courant."""
+        r     = self._router
+        slots = [self._rack.get_slot(s) for s in r._track_slots]
+        idx   = self._cur_pattern_idx
+        vm    = self._player.voice_manager
+        return dict(
+            name             = self._pattern_list[idx]._name or f"Pat_{idx + 1:02d}",
+            bpm              = self._player.bpm,
+            track_channels   = list(r._track_channels),
+            track_is_synth   = [s.type == InstrumentType.SYNTH for s in slots],
+            track_names      = [s.name for s in slots],          # nom du slot (10h2 D12)
+            kit_note_base    = self._snd.kit_base + self._snd.kit_offset,
+            synth_grid_notes = list(r._kb_notes_play),
+            voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
+            track_programs   = [s.gm_program() for s in slots],
+            track_volumes    = list(r._track_volumes),
+            track_pans       = list(r._track_pans),
+        )
+
+    def _midi_export_filename(self):
+        """Nom de fichier proposé : Pat_NN[_nom].mid, nom nettoyé."""
+        idx  = self._cur_pattern_idx
+        base = f"Pat_{idx + 1:02d}"
+        name = re.sub(r"[^\w\-]+", "_", self._pattern_list[idx]._name).strip("_")
+        return f"{base}_{name}.mid" if name else f"{base}.mid"
+
+    def _export_midi(self, parent=None, status=None):
+        """Alt+Shift+E : exporte le pattern courant en .mid. parent : fenêtre
+        du dialog (éditeur MIDI) ; status : où annoncer le résultat."""
+        status = status or self._show_status
+        try:
+            os.makedirs(self._exports_dir, exist_ok=True)
+        except OSError:
+            pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
+        dlg = wx.FileDialog(
+            parent or self, "Exporter le pattern en MIDI…",
+            defaultDir=self._exports_dir,
+            defaultFile=self._midi_export_filename(),
+            wildcard="Fichiers MIDI (*.mid)|*.mid",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        result = dlg.ShowModal()
+        path   = dlg.GetPath() if result == wx.ID_OK else ""
+        dlg.Destroy()
+        if not path:
+            status("Export MIDI annulé")
+            return
+        if not path.lower().endswith(".mid"):
+            path += ".mid"
+        try:
+            export_pattern(path, self._player._pattern, **self._midi_export_params())
+        except Exception as e:
+            status(f"ERREUR export MIDI : {e}")
+            return
+        status(f"Pattern {self._cur_pattern_idx + 1:02d} exporté : {os.path.basename(path)}")
 
     def _update_title(self):
         name = os.path.basename(self._project_path)
