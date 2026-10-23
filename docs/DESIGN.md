@@ -3934,3 +3934,13 @@ ou garder la vélocité brute.
 - 12d1 change les messages du tick 0 et les vélocités de grille : si
   `pytest` est rouge à ce commit, le titre le dira, et 12e1 réparera les
   tests.
+
+### Avancement et écarts constatés
+
+- **12b1** — conforme à D1. `gm_gain(factor)` (borné à [0, 1], au carré)
+  dans `midi_constants.py`. Il est appliqué au facteur transmis au driver
+  dans `SoundManager.play_sound`, `SoundManager.play_note` et
+  `SynthEngine.play` ; `midi_constants` y est importé en tête.
+  - 2025 tests verts : aucun test existant ne vérifiait le facteur transmis
+    au driver.
+  - Écoute validée par l'utilisateur dans l'appli.

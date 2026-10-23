@@ -6,7 +6,7 @@
     noms des kits de batterie General MIDI 2, déduction d'un programme
     d'après un nom d'instrument (Phase 7 étape 10h3), noms des percussions
     General MIDI 1 et déduction d'une note GM d'après le libellé d'un son
-    de kit (Phase 7 étape 11b1).
+    de kit (Phase 7 étape 11b1), courbe de volume GM (Phase 7 étape 12b1).
     Date: Mon, 21/09/2026
     Author: Coolbrother
 """
@@ -151,6 +151,15 @@ def guess_gm_program(name, drums=False):
         if shared and score > best_score:
             best, best_score = program, score
     return best
+
+
+def gm_gain(factor):
+    """Gain d'amplitude selon la courbe de volume GM : facteur linéaire
+    (vélocité × volumes, 0..1) borné puis élevé au carré, soit
+    40·log10(facteur) dB, comme la vélocité et le CC7 d'un lecteur GM.
+    Phase 7 étape 12b1, docs/DESIGN.md § 12a1 D1."""
+    factor = max(0.0, min(1.0, float(factor)))
+    return factor * factor
 
 
 # Noms des percussions General MIDI 1 sur le canal 10, notes 35 à 81

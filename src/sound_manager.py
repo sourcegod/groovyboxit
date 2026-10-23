@@ -11,6 +11,8 @@ import os
 import json
 import numpy as np
 
+from midi.midi_constants import gm_gain
+
 
 class SoundManager(object):
     """Gestionnaire de sons — indépendant du backend audio."""
@@ -259,19 +261,23 @@ class SoundManager(object):
 
     def play_note(self, midi_note, volume_factor=1.0, pan=0):
         """Joue un son par note MIDI (utilise note_map).
-        Applique automatiquement le mute exclusif de groupe."""
+        Applique automatiquement le mute exclusif de groupe. volume_factor
+        linéaire, passé au driver selon la courbe GM (gm_gain, Phase 7
+        étape 12b1)."""
         sound = self.note_map.get(midi_note)
         if sound is None:
             return
         self._apply_mute_group(sound)
-        self._driver.play(sound, volume_factor, pan)
+        self._driver.play(sound, gm_gain(volume_factor), pan)
 
     def play_sound(self, index, volume_factor=1.0, pan=0):
         """Joue drum_sounds[index].
-        Applique automatiquement le mute exclusif de groupe."""
+        Applique automatiquement le mute exclusif de groupe. volume_factor
+        linéaire, passé au driver selon la courbe GM (gm_gain, Phase 7
+        étape 12b1)."""
         sound = self.drum_sounds[index]
         self._apply_mute_group(sound)
-        self._driver.play(sound, volume_factor, pan)
+        self._driver.play(sound, gm_gain(volume_factor), pan)
 
     def preview_sound(self, sound_name):
         if sound_name in self.drum_sounds:

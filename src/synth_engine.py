@@ -13,6 +13,7 @@ import numpy as np
 from audio_sampler import AudioSampler, PlayMode
 import sound_cache
 from bend_log import bend_log
+from midi.midi_constants import gm_gain
 
 
 # ======================================================================
@@ -299,6 +300,8 @@ class SynthEngine:
         - Transposition semitone (midi_note − root_midi) : rubberband pré-calculé.
         - Pitch bend courant (±pitch_bend_range st) : phase_incr en temps réel.
         - Sans bend : phase_incr = 1.0 → lecture à vitesse normale, qualité max.
+        - volume_factor linéaire, passé au driver selon la courbe GM
+          (gm_gain, Phase 7 étape 12b1).
         """
         sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
@@ -306,7 +309,7 @@ class SynthEngine:
             return
         phase_incr = 2.0 ** (self.pitch_bend_semitones / 12.0)
         lfo_depth  = self.mod_wheel / 127.0 * self._driver.LFO_DEPTH_MAX
-        voice = self._driver.play(sound, volume_factor, pan, phase_incr, lfo_depth)
+        voice = self._driver.play(sound, gm_gain(volume_factor), pan, phase_incr, lfo_depth)
         loop = sound.loop_start is not None
         bend_log(f"ENGINE_PLAY note={midi_note} bend={self.pitch_bend} "
                   f"phase_incr={phase_incr:.5f} voice={'LoopVoice' if loop else 'Voice'} "
