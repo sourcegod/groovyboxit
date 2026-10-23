@@ -3,6 +3,7 @@
     File: test_synth_engine.py
     Test du SynthEngine avec un vrai fichier WAV :
     chargement de patch, pitch shifting, cache, lecture via SoundDeviceDriver.
+    Courbe de volume GM du facteur transmis au driver (Phase 7 étape 12c1).
     WAV source : /home/com/audiotest/a440.wav  (La4, MIDI 69, 440 Hz)
     Date: Fri, 16/05/2026
     Author: Coolbrother
@@ -450,6 +451,57 @@ def test_reset_all_controls_clears_sustain():
     assert eng.sustain is False
     assert eng._sustained_notes == set()
     print("  reset_all_controls → sustain=False et notes en attente vidées : OK")
+
+
+# ---------------------------------------------------------------------------
+# Courbe de volume GM (Phase 7 étape 12c1, docs/DESIGN.md § 12a1 D1)
+# ---------------------------------------------------------------------------
+
+class _PlayRecordingDriver(_MockDriver):
+    """_MockDriver qui enregistre les arguments de play()."""
+    def __init__(self):
+        self.plays = []
+    def play(self, sound, *args):
+        self.plays.append((sound, args))
+        return object()
+
+
+def _engine_playing(sound):
+    eng = _make_engine_mock()
+    eng._driver   = _PlayRecordingDriver()
+    eng.get_sound = lambda midi_note, maxtime_ms=500: sound
+    return eng
+
+
+class _FakeSound:
+    loop_start = None
+
+
+@pytest.mark.parametrize("factor, gain", [(1.0, 1.0), (0.5, 0.25), (77 / 127, (77 / 127) ** 2)])
+def test_play_sends_squared_factor(factor, gain):
+    snd = _FakeSound()
+    eng = _engine_playing(snd)
+    eng.play(60, factor, pan=40)
+    sound, (vol, pan, phase_incr, lfo_depth) = eng._driver.plays[-1]
+    assert sound is snd
+    assert vol == pytest.approx(gain) and pan == 40
+    assert phase_incr == 1.0 and lfo_depth == 0.0
+    print(f"  SynthEngine.play({factor:.3f}) → driver {gain:.4f} : OK")
+
+
+def test_play_default_and_clamped_factor():
+    eng = _engine_playing(_FakeSound())
+    eng.play(60)
+    eng.play(62, 1.5)
+    assert [args[0] for _, args in eng._driver.plays] == [1.0, 1.0]
+    print("  SynthEngine.play sans facteur ou > 1 → 1.0 : OK")
+
+
+def test_play_without_sound_calls_no_driver():
+    eng = _engine_playing(None)
+    eng.play(60, 0.5)
+    assert eng._driver.plays == []
+    print("  SynthEngine.play sans son → driver non appelé : OK")
 
 
 if __name__ == "__main__":

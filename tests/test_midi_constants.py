@@ -5,7 +5,7 @@
     tailles des tables (CC_NAMES, GM_PATCH_NAMES, GM2_DRUMKIT_NAMES) et
     quelques valeurs connues ; noms des percussions GM et note GM devinée
     d'après le libellé d'un son de kit (Phase 7 étape 11c1, docs/DESIGN.md
-    § 11a1 D3).
+    § 11a1 D3) ; courbe de volume GM gm_gain (Phase 7 étape 12c1).
     Date: Mon, 21/09/2026
     Author: Coolbrother
 """
@@ -225,3 +225,31 @@ def test_guess_unknown_label_is_none(label):
 def test_guess_result_in_gm_range():
     for label in ("Kick", "Clap", "Conga", "Whistle", "Triangle", "Agogo"):
         assert mc.GM_DRUM_FIRST <= mc.guess_gm_drum_note(label) <= mc.GM_DRUM_LAST
+
+
+# ---------------------------------------------------------------------------
+# gm_gain — courbe de volume GM (Phase 7 étape 12c1, docs/DESIGN.md § 12a1 D1)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("factor, gain", [
+    (0.0, 0.0), (0.5, 0.25), (0.8, 0.64), (1.0, 1.0), (100 / 127, (100 / 127) ** 2),
+])
+def test_gm_gain_is_square(factor, gain):
+    assert mc.gm_gain(factor) == pytest.approx(gain)
+
+
+@pytest.mark.parametrize("factor, gain", [(-0.3, 0.0), (1.27, 1.0), (5, 1.0)])
+def test_gm_gain_clamped_to_0_1(factor, gain):
+    assert mc.gm_gain(factor) == gain
+
+
+def test_gm_gain_doubles_db_like_a_gm_player():
+    # 40·log10(f) dB au lieu de 20·log10(f) : vel 64 ≈ -12 dB (TiMidity : -11,4)
+    import math
+    f = 64 / 127
+    assert 20 * math.log10(mc.gm_gain(f)) == pytest.approx(40 * math.log10(f))
+    assert 20 * math.log10(mc.gm_gain(f)) == pytest.approx(-12.0, abs=0.1)
+
+
+def test_gm_gain_accepts_int():
+    assert mc.gm_gain(1) == 1.0 and isinstance(mc.gm_gain(0), float)

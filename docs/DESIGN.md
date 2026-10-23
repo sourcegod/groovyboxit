@@ -3944,3 +3944,19 @@ ou garder la vélocité brute.
   - 2025 tests verts : aucun test existant ne vérifiait le facteur transmis
     au driver.
   - Écoute validée par l'utilisateur dans l'appli.
+- **12c1** — 22 tests, 2047 verts :
+  - `gm_gain` (`test_midi_constants.py`) : carré, bornes, double des dB
+    (vel 64 ≈ −12 dB), entier accepté ;
+  - `SoundManager` (`test_sound_manager.py`, driver qui enregistre les
+    appels) : `play_sound` et `play_note` transmettent le facteur au carré
+    avec le pan inchangé ; 1.0 par défaut ; un facteur au-delà de 1 est
+    borné ; le métronome est appelé sans facteur ;
+  - `SynthEngine.play` (`test_synth_engine.py`, moteur factice) : facteur
+    au carré, pan, `phase_incr` et `lfo_depth` inchangés ; défaut et borne ;
+    pas d'appel au driver sans son.
+  
+  **Constaté en passant, déjà présent et hors périmètre** :
+  `SoundManager.preview_sound` n'a aucun appelant dans `src/`, et il est
+  cassé. Il indexe la liste `drum_sounds` par un objet son, un reste de
+  l'époque où c'était un dict, et lève donc `TypeError`. Il n'est pas testé
+  ici. C'est du code mort, à supprimer ou à réparer à part.

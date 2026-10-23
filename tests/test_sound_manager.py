@@ -4,7 +4,8 @@
     Tests unitaires de SoundManager avec SoundDeviceDriver (défaut) et
     PygameDriver (optionnel). Vérifie que les deux backends donnent le même
     comportement observable : chargement, note_map, play, stop, volume.
-    Notes des pads et correspondance GM du kit (Phase 7 étape 11e1).
+    Notes des pads et correspondance GM du kit (Phase 7 étape 11e1) ;
+    courbe de volume GM aux points d'entrée du son (Phase 7 étape 12c1).
     Date: Thu, 28/05/2026
     Author: Coolbrother
 """
@@ -13,6 +14,8 @@ import os
 import glob
 import json
 import tempfile
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -406,6 +409,72 @@ def test_gm_map_reset_between_kits(tmp_path):
     pads = [{"pad": 1, "note": 60, "filename": WAVS[0], "label": "Hi Bongo"}]
     sm.load_kit(_write_kit(tmp_path, pads))
     assert sm.gm_note_map == {60: 60}
+
+
+# ---------------------------------------------------------------------------
+# Courbe de volume GM (Phase 7 étape 12c1, docs/DESIGN.md § 12a1 D1)
+# ---------------------------------------------------------------------------
+
+class _RecordingDriver:
+    """Driver factice : enregistre les arguments de chaque play()."""
+    def __init__(self):
+        self.plays = []
+    def load(self, path):        return object()
+    def make_silent(self):       return object()
+    def stop_sound(self, sound): pass
+    def play(self, sound, *args):
+        self.plays.append((sound, args))
+
+
+def _recording_sm():
+    drv = _RecordingDriver()
+    sm  = SoundManager(list(MEDIA16), CLICK1, CLICK2, driver=drv)
+    sm.load_sounds()
+    return sm, drv
+
+
+@pytest.mark.parametrize("factor, gain", [(1.0, 1.0), (0.5, 0.25), (64 / 127, (64 / 127) ** 2)])
+def test_play_sound_sends_squared_factor(factor, gain):
+    sm, drv = _recording_sm()
+    sm.play_sound(3, factor, pan=-20)
+    sound, (vol, pan) = drv.plays[-1]
+    assert sound is sm.drum_sounds[3]
+    assert vol == pytest.approx(gain) and pan == -20
+    print(f"  play_sound({factor:.3f}) → driver {gain:.4f}, pan inchangé : OK")
+
+
+def test_play_note_sends_squared_factor():
+    sm, drv = _recording_sm()
+    sm.note_map[49] = sm.drum_sounds[0]
+    sm.play_note(49, 0.5, pan=30)
+    sound, (vol, pan) = drv.plays[-1]
+    assert sound is sm.drum_sounds[0]
+    assert vol == pytest.approx(0.25) and pan == 30
+    print("  play_note(0.5) → driver 0.25 : OK")
+
+
+def test_play_default_factor_stays_full():
+    sm, drv = _recording_sm()
+    sm.play_sound(0)
+    assert drv.plays[-1][1][0] == 1.0
+    print("  play_sound sans facteur → 1.0 : OK")
+
+
+def test_play_factor_above_one_is_clamped():
+    # min(1, …) déjà fait par les appelants ; gm_gain borne aussi
+    sm, drv = _recording_sm()
+    sm.play_sound(0, 1.27)
+    assert drv.plays[-1][1][0] == 1.0
+    print("  facteur > 1 → 1.0 : OK")
+
+
+def test_metronome_has_no_factor():
+    # Le métronome garde le volume du driver : pas de courbe GM
+    sm, drv = _recording_sm()
+    sm.play_metronome(0)
+    sm.play_metronome(1)
+    assert drv.plays == [(sm.sound_click1, ()), (sm.sound_click2, ())]
+    print("  métronome : driver appelé sans facteur : OK")
 
 
 def test_repo_gm_kit_is_gm_identity():
