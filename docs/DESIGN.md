@@ -3659,3 +3659,30 @@ séparé.
   `LibsndfileError`. L'appli n'appelle `load_sounds` qu'en repli, quand le
   kit n'a pas pu être chargé : le cas ne se produit donc pas. Le test
   remet `media_lst` avant d'appeler `load_sounds`.
+- **11f1** — conforme à D1, D4 et D5.
+  - Dans `build_pattern_midi`, `kit_pad_notes` remplace `kit_note_base`.
+    S'y ajoutent `kit_gm_map=None` et `unmapped=None`, et une fonction
+    locale `kit_note` qui convertit les `GRID` des pistes kit et les `KIT`.
+  - `mw_project` passe `snd.pad_notes` et `snd.gm_note_map`, puis ajoute
+    au statut `— non converti en GM : <libellé> (<note>)`. Le libellé vient
+    de `note_labels`, ou vaut `Note N` à défaut.
+  - **`pytest` rouge à ce commit** : 34 tests passent encore
+    `kit_note_base` (`test_midi_export*.py`, `test_gm_program.py`) ; ils
+    sont réparés en 11g1.
+  - **Écoute** (utilisateur, TiMidity et mpv) : la TR-707 exportée depuis
+    l'appli est bien convertie.
+    - Les 37 coups « crash » relevés en 10l1 n'étaient pas des cowbells,
+      mais le pad 14, Tambourine. L'ancien export les écrivait
+      `36 + 13 = 49` : c'était le bug D1. Ils sortent maintenant en 54.
+    - Le sentiment que « tous les instruments sont des pianos » ne venait
+      pas du fichier. `timidity -idvvv` confirme les Program Change 24
+      (Nylon String Guitar) et 16 (DrawbarOrgan). L'écart venait des
+      volumes relatifs et de la reverb et du chorus de TiMidity : un rendu
+      sans effets (`-EFreverb=d -EFchorus=d`) a été jugé plus fidèle à
+      l'appli.
+  - **Pour un chantier séparé**, décidé avec l'utilisateur :
+    - trouver une proportion acceptable entre les volumes de l'appli et
+      ceux d'un lecteur GM, puisque l'équilibre entre instruments diffère
+      nettement ;
+    - jouer sec à l'export, par CC91 et CC93 à 0 au tick 0, ou par un
+      réglage de TiMidity.

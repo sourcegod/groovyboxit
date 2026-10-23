@@ -6,7 +6,9 @@
     PPQ 480 : une piste conductor (nom, tempo, signature) puis une piste
     SMF par piste Groovebox non vide, chaque événement sur le canal de sa
     piste (D5). Aucune dépendance à wx ni au player : les états qui ne
-    vivent pas dans Pattern sont passés en paramètres.
+    vivent pas dans Pattern sont passés en paramètres. Les notes de kit
+    sont converties en notes GM (Phase 7 étape 11f1, docs/DESIGN.md
+    § 11a1).
     Date: Tue, 20/10/2026
     Author: Coolbrother
 """
@@ -44,9 +46,10 @@ def pan_to_cc10(pan):
 
 
 def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
-                       track_names, kit_note_base, synth_grid_notes,
+                       track_names, kit_pad_notes, synth_grid_notes,
                        voice_durations, track_programs=None,
-                       track_volumes=None, track_pans=None):
+                       track_volumes=None, track_pans=None,
+                       kit_gm_map=None, unmapped=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -55,7 +58,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     track_is_synth   : bool par piste — slot SYNTH (note GRID = gamme ; sans
                        SYNTH, les notes PATCH, muettes au rejeu, sont omises)
     track_names      : nom de chaque piste ("" = "Track NN")
-    kit_note_base    : snd.kit_base + snd.kit_offset (note GRID d'une piste kit)
+    kit_pad_notes    : note de kit du son de chaque pad (snd.pad_notes), note
+                       GRID d'une piste kit avant conversion GM (11a1 D1)
     synth_grid_notes : notes de lecture du pad sur une piste SYNTH
                        (TrackRouter._kb_notes_play)
     voice_durations  : durée en ms de chaque pad (GRID sans dur propre)
@@ -64,6 +68,11 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     track_volumes    : volume 0..100 de chaque piste → CC#7 au tick 0
     track_pans       : pan -100..+100 de chaque piste → CC#10 au tick 0
                        (Phase 7 étape 10h5 ; None = rien d'écrit)
+    kit_gm_map       : {note de kit: note GM} (snd.gm_note_map), appliqué aux
+                       GRID d'une piste kit et aux KIT ; None = notes de kit
+                       écrites telles quelles (11a1 D2, D5)
+    unmapped         : set rempli des notes de kit écrites sans conversion,
+                       faute de correspondance GM (11a1 D4) ; None = ignoré
     """
     num_steps = pattern._num_steps
     num_beats = pattern._num_beats
@@ -75,6 +84,17 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
 
     def ms_ticks(ms):
         return max(1, round(ms / 1000.0 * bpm / 60.0 * PPQ))
+
+    def kit_note(note):
+        # Note de kit → note GM ; sans correspondance, gardée et signalée (D4)
+        if kit_gm_map is None:
+            return note
+        gm = kit_gm_map.get(note)
+        if gm is None:
+            if unmapped is not None:
+                unmapped.add(note)
+            return note
+        return gm
 
     end_tick = tick(pattern._num_bars * num_steps)
 
@@ -116,13 +136,13 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 if track_is_synth[t]:
                     note = synth_grid_notes[pad]
                 else:
-                    note = kit_note_base + pad
+                    note = kit_note(kit_pad_notes[pad])
                 ms = ev.dur if ev.dur > 0 else voice_durations[pad]
                 notes.append((start, start + ms_ticks(ms), note, p.get("vel", 100), seq))
             elif ev.etype == ETYPE_KIT:
                 # one-shot (dur toujours 0) : un pas
-                notes.append((start, start + max(1, tick(1)), p.get("note", 0),
-                              p.get("vel", 100), seq))
+                notes.append((start, start + max(1, tick(1)),
+                              kit_note(p.get("note", 0)), p.get("vel", 100), seq))
             elif ev.etype == ETYPE_PATCH:
                 # Muette au rejeu sur une piste sans slot SYNTH
                 # (TrackRouter.on_patch_tape) : non exportée (Phase 7 étape 10h5)

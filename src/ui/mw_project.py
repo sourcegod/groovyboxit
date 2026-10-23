@@ -87,7 +87,8 @@ class ProjectMixin:
             track_channels   = list(r._track_channels),
             track_is_synth   = [s.type == InstrumentType.SYNTH for s in slots],
             track_names      = [s.name for s in slots],          # nom du slot (10h2 D12)
-            kit_note_base    = self._snd.kit_base + self._snd.kit_offset,
+            kit_pad_notes    = list(self._snd.pad_notes),        # 11a1 D1
+            kit_gm_map       = dict(self._snd.gm_note_map),      # 11a1 D2
             synth_grid_notes = list(r._kb_notes_play),
             voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
             track_programs   = [s.gm_program() for s in slots],
@@ -125,12 +126,21 @@ class ProjectMixin:
             return
         if not path.lower().endswith(".mid"):
             path += ".mid"
+        unmapped = set()
         try:
-            export_pattern(path, self._player._pattern, **self._midi_export_params())
+            export_pattern(path, self._player._pattern, unmapped=unmapped,
+                           **self._midi_export_params())
         except Exception as e:
             status(f"ERREUR export MIDI : {e}")
             return
-        status(f"Pattern {self._cur_pattern_idx + 1:02d} exporté : {os.path.basename(path)}")
+        msg = f"Pattern {self._cur_pattern_idx + 1:02d} exporté : {os.path.basename(path)}"
+        if unmapped:
+            # Sons de kit sans équivalent GM, écrits tels quels (11a1 D4)
+            labels = self._snd.note_labels
+            names  = ", ".join(f"{labels.get(n, f'Note {n}')} ({n})"
+                               for n in sorted(unmapped))
+            msg += f" — non converti en GM : {names}"
+        status(msg)
 
     def _update_title(self):
         name = os.path.basename(self._project_path)
