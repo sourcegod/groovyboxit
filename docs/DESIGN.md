@@ -3394,3 +3394,213 @@ sonne à 523 Hz (C5).
   `_tape`.
 - Banque (CC0/CC32), kits GS non GM2, Undo du choix de slot par Ctrl+T.
 - Vérification de `tools/extract_organ_sf2.py`.
+
+---
+
+## Phase 7 étape 11a1 — Conversion des notes des kits non GM à l'export MIDI
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 10 : `11a1`, `11b1`, `11c1`… ; un
+commit imprévu inséré après `11b1` s'appelle `11b2`, `11b3`, etc.
+
+### Origine du besoin
+
+Relevé à l'écoute de l'export MIDI (Phase 7 étape 10, § Clôture 10l1). Le
+kit TR-707 (`KITS/tr_707.json`) n'est pas rangé selon la table de batterie
+GM :
+- sa note 49 est « Cowbell », mais en GM c'est Crash Cymbal 1. Dans
+  TiMidity, 37 coups de cowbell devenaient une crash très forte ;
+- autres écarts : 44 HH Open (GM : Pedal Hi-Hat), 46 Crash (GM : Open
+  Hi-Hat), 47 Ride (GM : Low-Mid Tom), 48 Tambourine (GM : Hi-Mid Tom).
+
+L'utilisateur a décidé le 2026-10-21 d'en faire une étape séparée, et a
+validé les décisions ci-dessous le 2026-10-23.
+
+### État des lieux constaté en code (2026-10-23, 1945 tests verts)
+
+**Le kit.** Un kit est un JSON de `KITS/` : `name`, `base_note` facultatif,
+et `pads[]`, dont chaque entrée porte `pad` (1-16, facultatif), `note`
+(facultatif), `filename`, `label` et `mute_group`.
+- `gm.json` (GM FluidR3) est déjà rangé selon GM : `base_note` 36, pad N
+  → note 35 + N, et 30 entrées sans `pad` pour les notes 35 et 52 à 81.
+- `tr_707.json` n'a pas de `base_note`, et retombe donc sur 36. Ses pads
+  1 à 15 portent les notes 35 à 49. Le pad 16 (`---`) n'a ni note ni son.
+
+**Le chargement** (`SoundManager.load_kit`, `sound_manager.py:54`) :
+- `drum_sounds[i]` est le son de l'entrée `"pad": i + 1` ;
+- `note_map` et `note_labels` indexent tous les sons par leur `note` ;
+- `kit_base = base_note` (36 par défaut) et `kit_offset = 0`.
+- `shift_kit` reconstruit au contraire `drum_sounds[i]` à partir de
+  `note_map[kit_base + kit_offset + i]` (`_rebuild_drum_sounds`).
+- Il n'y a qu'un `SoundManager`, et donc un seul kit chargé à la fois :
+  celui du slot courant (`mw_pads._load_kit_slot`).
+
+**Ce que joue le rejeu.**
+- `GRID` sur une piste kit : `play_sound(pad)`, c'est-à-dire
+  `drum_sounds[pad]`.
+- `KIT` : `play_note(note)`, c'est-à-dire `note_map[note]`. La note est
+  celle reçue en MIDI à la capture (`record_kit_note`).
+
+**Ce qu'écrit l'export** (`midi_export.build_pattern_midi`) :
+- `GRID` sur une piste kit : `kit_note_base + pad`, avec
+  `kit_note_base = kit_base + kit_offset` (`mw_project.py:90`) ;
+- `KIT` : la note du payload, telle quelle.
+
+**Bug constaté : la note GRID d'une piste kit ne suit pas le son joué.**
+Juste après le chargement, le pad joue le son de son entrée `"pad"`, mais
+l'export écrit `kit_base + pad`. Les deux ne coïncident que si les pads
+sont rangés en notes consécutives à partir de `base_note`. C'est le cas de
+`gm.json`, pas celui de la TR-707 :
+- le pad 1, « Kick 2 » (note 35), est écrit 36 ;
+- le pad 15, « Cowbell » (note 49), est écrit 50 (High Tom en GM).
+
+Après un `shift_kit`, les deux concordent de nouveau.
+
+**Les noms de batterie GM** (notes 35 à 81) ne sont pas dans
+`midi_constants.py`. Le fichier contient `GM_PATCH_NAMES`,
+`GM2_DRUMKIT_NAMES` et `guess_gm_program`, dont l'outil `_name_words`
+(mots en minuscules, camelCase coupé, chiffres ignorés) peut servir ici.
+
+### Décisions validées (utilisateur, 2026-10-23)
+
+**D1 — la note exportée d'un `GRID` de piste kit est la note du son joué.**
+C'est un correctif préalable, sans lequel la conversion partirait d'une
+mauvaise note.
+- `SoundManager` gagne `pad_notes`, une liste de 16 notes de kit, une par
+  pad :
+  - à `load_kit`, la `note` de l'entrée du pad, ou `kit_base + i` si
+    l'entrée n'en a pas (pad 16 de la TR-707, ancien comportement) ;
+  - à `_rebuild_drum_sounds` (`shift_kit`), `kit_base + kit_offset + i` ;
+  - à `load_sounds` (pas de kit), `kit_base + i`.
+- L'export reçoit `kit_pad_notes` à la place de `kit_note_base`.
+- Le rejeu, l'affichage des pads et la correspondance d'une note MIDI
+  entrante vers un pad (`midi_handler_window.py:415`) ne changent pas.
+
+**D2 — la note GM d'un son se déduit de son libellé, avec deux
+surcharges dans le JSON du kit.** Par ordre de priorité :
+1. une clé `"gm_note"` (35-81) dans l'entrée du son ;
+2. une clé `"gm": true` au niveau du kit : chaque note est déjà GM et
+   reste telle quelle. On l'ajoute à `gm.json` ;
+3. sinon, une devinette d'après le `label` (D3) ;
+4. sinon, aucune correspondance (D4).
+
+`SoundManager.load_kit` construit `gm_note_map`, un dict
+`{note du kit: note GM}`, pour chaque entrée qui porte une `note`. Un pad
+sans `note` reçoit son entrée sous la clé `pad_notes[i]`, si elle n'y est
+pas déjà.
+
+**D3 — devinette d'après le libellé : `guess_gm_drum_note(label,
+kit_note)` dans `midi_constants.py`.**
+- Une table `GM_DRUM_NAMES`, de 35 (Acoustic Bass Drum) à 81 (Open
+  Triangle), avec les noms de la norme GM 1.
+- Les mots du libellé et des noms GM sont normalisés avant comparaison :
+  - `hi-hat`, `hi hat`, `hihat` et `hh` deviennent un seul mot `hihat`.
+    Sinon, le « hi » de « Hi-Hat » se confondrait avec le « Hi » de
+    « Hi Mid Tom » ;
+  - puis quelques synonymes : `hi` → `high`, `kick` et `bd` → `bass drum`,
+    `rimshot` et `rim` → `side stick`, `clap` → `hand clap`, `tamb` →
+    `tambourine`, `med` → `mid`, `sd` → `snare`, `cym` → `cymbal`,
+    `cb` → `cowbell`.
+  - Les chiffres sont ignorés, comme dans `_name_words`.
+- Chaque note GM reçoit un score, comparé dans cet ordre :
+  1. le nombre de mots communs avec le libellé ;
+  2. un bonus si c'est la note actuelle du son (`kit_note`). Un kit
+     partiellement GM garde ainsi ses notes justes, et deux sons proches
+     ne se replient pas sur une même note ;
+  3. le moins de mots en trop dans le nom GM.
+  
+  À égalité, la plus petite note l'emporte. Aucun mot commun : `None`.
+- Résultat attendu pour la TR-707 (il servira de test) :
+
+  | Note | Libellé | GM | Nom GM |
+  |---|---|---|---|
+  | 35 | Kick 2 | 35 | Acoustic Bass Drum |
+  | 36 | Kick 1 | 36 | Bass Drum 1 |
+  | 37 | Rimshot | 37 | Side Stick |
+  | 38 | Snare 1 | 38 | Acoustic Snare |
+  | 39 | Hand Clap | 39 | Hand Clap |
+  | 40 | Snare 2 | 40 | Electric Snare |
+  | 41 | Tom Low | 41 | Low Floor Tom |
+  | 42 | HH Closed | 42 | Closed Hi-Hat |
+  | 43 | Tom Mid | 47 | Low-Mid Tom |
+  | 44 | HH Open | 46 | Open Hi-Hat |
+  | 45 | Tom Hi | 50 | High Tom |
+  | 46 | Crash | 49 | Crash Cymbal 1 |
+  | 47 | Ride | 51 | Ride Cymbal 1 |
+  | 48 | Tambourine | 54 | Tambourine |
+  | 49 | Cowbell | 56 | Cowbell |
+
+  Les toms passent de 41/43/45 à 41/47/50. On garde ainsi l'ordre grave →
+  aigu et des notes distinctes.
+
+Alternatives écartées :
+- **`gm_note` seule** : pas de devinette, mais un kit sans clé reste non
+  converti, et il faudrait annoter chaque kit à la main.
+- **Libellé seul** : un libellé ambigu ne pourrait pas être corrigé.
+
+**D4 — un son sans équivalent GM garde sa note, et il est signalé.**
+- L'export écrit la note du kit telle quelle.
+- `build_pattern_midi` reçoit un paramètre facultatif `unmapped`, un
+  `set` qu'il remplit avec les notes de kit écrites sans conversion.
+  `export_pattern` le transmet.
+- La barre de statut l'annonce après l'export, avec les libellés de
+  `note_labels` :
+  `Pattern 01 exporté : Pat_01.mid — non converti en GM : Zap (52)`.
+  Orca l'annonce comme le reste du statut.
+
+Alternatives écartées : omettre la note (le son disparaît du fichier) ;
+une note de repli fixe (un son faux, sans le signaler).
+
+**D5 — conversion à l'export seulement.**
+- Sont convertis : les `GRID` d'une piste kit (via `pad_notes`, D1) et
+  les `KIT`, sur toute piste, puisque leur note est toujours une note du
+  kit.
+- Les `PATCH` et les `GRID` d'une piste SYNTH ne sont pas touchés.
+- `_tape`, le rejeu, la capture et le `.gvp` ne changent pas : aucune
+  migration.
+- Le paramètre `kit_gm_map` de `build_pattern_midi` reçoit
+  `snd.gm_note_map`. S'il vaut `None`, les notes de kit sont écrites
+  telles quelles : c'est utile aux tests existants.
+
+Alternative écartée : stocker les `KIT` en GM dans `_tape`. Le rejeu
+changerait et il faudrait migrer les `.gvp`, pour un besoin qui ne
+concerne que le fichier exporté.
+
+**D6 — pas d'interface.** On corrige une correspondance en ajoutant
+`"gm_note"` dans le JSON du kit. Le format est documenté dans
+`docs/SPECS.md`. Un dialogue d'édition pourra faire l'objet d'un chantier
+séparé.
+
+### Portée explicitement exclue de ce chantier
+
+- **Plusieurs kits dans un même export** : il n'y a qu'un kit chargé à la
+  fois. Toutes les pistes kit sont converties avec la table du kit du slot
+  courant, comme `kit_note_base` aujourd'hui. Il faudra y revenir quand
+  chaque slot gardera son kit chargé (mode Rack GM).
+- La conversion pour un futur MIDI out, ou au rejeu.
+- Un dialogue d'édition de la correspondance (D6).
+- La correspondance d'une note MIDI entrante vers un pad
+  (`kit_base + kit_offset`), qui ignore elle aussi les entrées `"pad"` :
+  à vérifier à part.
+- Le programme GM2 du kit (`guess_gm_program`), qui ne change pas.
+- Le passage de 16 à 128 pads (chantier futur séparé).
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **11a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **11b1** | Implémentation — `GM_DRUM_NAMES`, normalisation et `guess_gm_drum_note` (D3). | `midi/midi_constants.py` |
+| **11c1** | Tests — table GM 35-81 ; normalisation (hi-hat, hh, synonymes) ; tableau TR-707 de D3 ; bonus de la note actuelle ; égalités ; libellé inconnu → `None`. | `tests/test_midi_constants.py` |
+| **11d1** | Implémentation — `pad_notes` (D1) et `gm_note_map` (D2) dans `SoundManager` ; `"gm": true` ajouté à `KITS/gm.json`, hors dépôt, avec l'accord de l'utilisateur. | `sound_manager.py` |
+| **11e1** | Tests — `pad_notes` après `load_kit` (entrée `pad` avec ou sans `note`), après `shift_kit` et après `load_sounds` ; `gm_note_map` : `gm_note` prioritaire, `"gm": true` = identité, devinette, absence. JSON de test dans `tmp_path`. | `tests/test_sound_manager.py` |
+| **11f1** | Implémentation — export : `kit_pad_notes` remplace `kit_note_base`, `kit_gm_map`, `unmapped` (D1, D4, D5) ; paramètres et statut dans `mw_project`. | `midi/midi_export.py`, `ui/mw_project.py` |
+| **11g1** | Tests — GRID kit avec pads non consécutifs (bug de D1) ; KIT et GRID convertis ; PATCH et GRID synth intacts ; `kit_gm_map=None` ; `unmapped` rempli ; message de statut. Mise à jour des tests qui passent `kit_note_base`. | `tests/test_midi_export.py`, `tests/test_midi_export_ui.py`, `tests/test_midi_export_mix.py` |
+| **11h1** | Doc — clôture (DESIGN.md ; `docs/SPECS.md` : clés `gm` et `gm_note` du JSON de kit, conversion à l'export), `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- 11f1 change la signature de `build_pattern_midi` : si `pytest` est rouge
+  à ce commit, le titre le dira, et 11g1 réparera les tests.
+- Avant de committer 11f1 : on exporte un pattern TR-707 et on l'écoute
+  dans TiMidity. Le cowbell doit sonner cowbell, et le HH Open doit être
+  une charleston ouverte.
