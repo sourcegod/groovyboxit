@@ -3621,3 +3621,18 @@ séparé.
   - les 47 noms GM, qui retombent chacun sur leur propre note ;
   - le bonus de la note actuelle, les égalités, les mots en trop ;
   - les libellés inconnus, qui donnent `None`.
+- **11d1** — conforme à D1 et D2. `SoundManager.pad_notes` (16 notes) et
+  `gm_note_map`, construits par `load_kit` et réinitialisés par
+  `load_sounds`. `_rebuild_drum_sounds` (`shift_kit`) met `pad_notes` à
+  jour. La règle de D2 est dans `_entry_gm_note` : un `gm_note` hors 35-81
+  ou non entier est ignoré, et la règle suivante s'applique.
+  - Contrôle sur les vrais kits :
+    - TR-707 : `pad_notes` = 35…49, puis 51 pour le pad 16 sans note
+      (`kit_base + 15`, sans correspondance). La table GM est celle de D3.
+    - `gm.json` : identité sur les 47 notes, et ce **même sans**
+      `"gm": true`, puisque ses libellés reprennent les noms GM.
+  - **Écart sur l'emplacement de `"gm": true`**, choisi par l'utilisateur.
+    La clé est ajoutée à `data/kits/gm.json`, la copie déjà versionnée,
+    synchronisée en Phase 5 étape 4d (`dbda7d5`). Le fichier est ensuite
+    recopié dans `/home/com/groovybox/KITS/gm.json`, hors dépôt, le kit
+    réellement chargé.

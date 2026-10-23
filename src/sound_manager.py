@@ -29,6 +29,10 @@ class SoundManager(object):
         self._group_sounds = {}  # {group_id: set(sounds)} — pairs à stopper
         self.kit_base    = 36  # première note du kit (note MIDI)
         self.kit_offset  = 0   # décalage courant en demi-tons (multiples de 8)
+        # Note de kit du son de chaque pad (Phase 7 étape 11d1, D1) et
+        # {note de kit: note GM} pour l'export MIDI (D2)
+        self.pad_notes   = [self.kit_base + i for i in range(16)]
+        self.gm_note_map = {}
 
         self.sound_click1 = self._driver.load(click_name1)
         self.sound_click2 = self._driver.load(click_name2)
@@ -39,6 +43,8 @@ class SoundManager(object):
 
     def load_sounds(self):
         self.drum_sounds = [self._driver.load(item) for item in self.media_lst]
+        self.pad_notes   = [self.kit_base + i for i in range(16)]
+        self.gm_note_map = {}
 
     def load_pad_sound(self, pad_idx, wav_path):
         """Remplace le son du pad pad_idx par le WAV donné."""
@@ -58,11 +64,15 @@ class SoundManager(object):
           "pad"        (1-16)  → son assigné au Numpad
           "note"       (MIDI)  → son déclenché par note MIDI (note_map)
           "mute_group" (int)   → groupe mute exclusif (0 = aucun)
+          "gm_note"    (35-81) → note GM à l'export, prioritaire
           "filename" et "label"
+        Au niveau du kit, "gm": true garde chaque note telle quelle à
+        l'export (kit déjà rangé selon GM).
 
         Retourne (labels, wav_paths) — deux listes de 16 éléments (pads Numpad).
-        Construit aussi self.note_map {midi_note: sound} pour le routage MIDI
-        et self._sound_group / self._group_sounds pour le mute exclusif.
+        Construit aussi self.note_map {midi_note: sound} pour le routage MIDI,
+        self._sound_group / self._group_sounds pour le mute exclusif, et
+        self.pad_notes / self.gm_note_map pour l'export MIDI.
         """
         json_path = os.path.abspath(json_path)
         json_dir  = os.path.dirname(json_path)
@@ -136,7 +146,46 @@ class SoundManager(object):
         self._kit_name  = meta.get("name", "")
         self.kit_base   = meta.get("base_note", 36)
         self.kit_offset = 0
+
+        # ── Notes des pads et correspondance GM (Phase 7 étape 11d1) ────
+        # docs/DESIGN.md § 11a1 D1 : note du son réellement joué par le pad ;
+        # D2 : gm_note, puis "gm": true, puis devinette d'après le libellé.
+        kit_is_gm = meta.get("gm") is True
+        self.pad_notes   = []
+        self.gm_note_map = {}
+        for entry in meta.get("pads", []):
+            note = entry.get("note")
+            if note is None:
+                continue
+            gm = self._entry_gm_note(entry, note, kit_is_gm)
+            if gm is not None:
+                self.gm_note_map[note] = gm
+        for i in range(1, 17):
+            entry = pad_map.get(i, {})
+            note  = entry.get("note")
+            if note is None:
+                note = self.kit_base + i - 1
+                if note not in self.gm_note_map:
+                    gm = self._entry_gm_note(entry, note, kit_is_gm)
+                    if gm is not None:
+                        self.gm_note_map[note] = gm
+            self.pad_notes.append(note)
         return labels, wav_paths
+
+    @staticmethod
+    def _entry_gm_note(entry, note, kit_is_gm):
+        """Note GM d'une entrée de kit (docs/DESIGN.md § 11a1 D2) : sa clé
+        "gm_note" (35-81) ; sinon `note` elle-même si le kit est GM ; sinon
+        la note devinée d'après le libellé ; None si rien ne correspond."""
+        from midi.midi_constants import (GM_DRUM_FIRST, GM_DRUM_LAST,
+                                         guess_gm_drum_note)
+        gm = entry.get("gm_note")
+        if (isinstance(gm, int) and not isinstance(gm, bool)
+                and GM_DRUM_FIRST <= gm <= GM_DRUM_LAST):
+            return gm
+        if kit_is_gm:
+            return note
+        return guess_gm_drum_note(entry.get("label", ""), note)
 
     # ------------------------------------------------------------------
     # Décalage du kit
@@ -163,6 +212,7 @@ class SoundManager(object):
         for i in range(16):
             note  = self.kit_base + self.kit_offset + i
             sound = self.note_map.get(note)
+            self.pad_notes[i] = note
             self.drum_sounds[i] = sound if sound else self._silent_sound()
             labels.append(self.note_labels.get(note, f"Note {note}"))
         return labels
