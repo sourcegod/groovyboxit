@@ -4,7 +4,9 @@
     Tables de description MIDI pures (aucune dépendance rtmidi/wx) :
     noms des Control Change, noms des patchs General MIDI 1,
     noms des kits de batterie General MIDI 2, déduction d'un programme
-    d'après un nom d'instrument (Phase 7 étape 10h3).
+    d'après un nom d'instrument (Phase 7 étape 10h3), noms des percussions
+    General MIDI 1 et déduction d'une note GM d'après le libellé d'un son
+    de kit (Phase 7 étape 11b1).
     Date: Mon, 21/09/2026
     Author: Coolbrother
 """
@@ -148,4 +150,67 @@ def guess_gm_program(name, drums=False):
         score = (bool(words) and words == gm_words, shared)
         if shared and score > best_score:
             best, best_score = program, score
+    return best
+
+
+# Noms des percussions General MIDI 1 sur le canal 10, notes 35 à 81
+# (index = note - GM_DRUM_FIRST). Phase 7 étape 11b1.
+GM_DRUM_FIRST = 35
+GM_DRUM_NAMES = [
+    "Acoustic Bass Drum", "Bass Drum 1", "Side Stick", "Acoustic Snare",   # 35-38
+    "Hand Clap", "Electric Snare", "Low Floor Tom", "Closed Hi-Hat",       # 39-42
+    "High Floor Tom", "Pedal Hi-Hat", "Low Tom", "Open Hi-Hat",            # 43-46
+    "Low-Mid Tom", "Hi-Mid Tom", "Crash Cymbal 1", "High Tom",             # 47-50
+    "Ride Cymbal 1", "Chinese Cymbal", "Ride Bell", "Tambourine",          # 51-54
+    "Splash Cymbal", "Cowbell", "Crash Cymbal 2", "Vibraslap",             # 55-58
+    "Ride Cymbal 2", "Hi Bongo", "Low Bongo", "Mute Hi Conga",             # 59-62
+    "Open Hi Conga", "Low Conga", "High Timbale", "Low Timbale",           # 63-66
+    "High Agogo", "Low Agogo", "Cabasa", "Maracas",                        # 67-70
+    "Short Whistle", "Long Whistle", "Short Guiro", "Long Guiro",          # 71-74
+    "Claves", "Hi Wood Block", "Low Wood Block", "Mute Cuica",             # 75-78
+    "Open Cuica", "Mute Triangle", "Open Triangle",                        # 79-81
+]
+GM_DRUM_LAST = GM_DRUM_FIRST + len(GM_DRUM_NAMES) - 1
+
+# Synonymes appliqués mot à mot aux libellés et aux noms GM (docs/DESIGN.md
+# § 11a1 D3). « hi » ne vise que « high » : le « hi » de « Hi-Hat » est
+# d'abord fondu en un seul mot « hihat ».
+_DRUM_SYNONYMS = {
+    "hi": "high", "kick": "bass drum", "bd": "bass drum",
+    "rimshot": "side stick", "rim": "side stick", "clap": "hand clap",
+    "tamb": "tambourine", "med": "mid", "sd": "snare", "cym": "cymbal",
+    "cb": "cowbell",
+}
+
+
+def _drum_words(name):
+    """Mots normalisés d'un nom de percussion : comme _name_words, avec
+    hi-hat / hi hat / hihat / hh fondus en « hihat », puis les synonymes."""
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name).lower()
+    name = re.sub(r"\bhi[- ]?hat\b|\bhh\b", "hihat", name)
+    words = set()
+    for w in re.split(r"[^a-z]+", name):
+        if w:
+            words.update(_DRUM_SYNONYMS.get(w, w).split())
+    return words
+
+
+def guess_gm_drum_note(label, kit_note=None):
+    """Note GM (35-81) dont le nom correspond le mieux au libellé `label`
+    d'un son de kit, ou None si aucun mot n'est commun. Score comparé dans
+    l'ordre : mots communs, note égale à `kit_note` (la note actuelle du
+    son, gardée quand elle convient), moins de mots en trop dans le nom
+    GM ; à égalité, la plus petite note.
+    Phase 7 étape 11b1, docs/DESIGN.md § 11a1 D3."""
+    words = _drum_words(label or "")
+    best, best_score = None, None
+    for i, gm_name in enumerate(GM_DRUM_NAMES):
+        note = GM_DRUM_FIRST + i
+        gm_words = _drum_words(gm_name)
+        shared = len(words & gm_words)
+        if not shared:
+            continue
+        score = (shared, note == kit_note, -len(gm_words - words))
+        if best_score is None or score > best_score:
+            best, best_score = note, score
     return best

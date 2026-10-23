@@ -3604,3 +3604,11 @@ séparé.
 - Avant de committer 11f1 : on exporte un pattern TR-707 et on l'écoute
   dans TiMidity. Le cowbell doit sonner cowbell, et le HH Open doit être
   une charleston ouverte.
+
+### Avancement et écarts constatés
+
+- **11b1** — conforme à D3. `GM_DRUM_NAMES` (47 noms, notes 35 à 81),
+  `GM_DRUM_FIRST` et `GM_DRUM_LAST`, `_drum_words` (fusion hi-hat → `hihat`,
+  puis synonymes) et `guess_gm_drum_note(label, kit_note=None)` dans
+  `midi_constants.py`. Contrôle à la main : le tableau TR-707 de D3 est
+  retrouvé note pour note. `---` et un libellé inconnu donnent `None`.
