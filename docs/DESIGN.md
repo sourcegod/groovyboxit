@@ -3612,3 +3612,12 @@ séparé.
   puis synonymes) et `guess_gm_drum_note(label, kit_note=None)` dans
   `midi_constants.py`. Contrôle à la main : le tableau TR-707 de D3 est
   retrouvé note pour note. `---` et un libellé inconnu donnent `None`.
+- **11c1** — tests dans `tests/test_midi_constants.py` (49 nouveaux,
+  1994 tests verts) :
+  - la table GM 35-81 ;
+  - la normalisation (variantes de hi-hat, « Hi » → high, synonymes,
+    chiffres, camelCase) ;
+  - le tableau TR-707 de D3, avec des notes toutes distinctes ;
+  - les 47 noms GM, qui retombent chacun sur leur propre note ;
+  - le bonus de la note actuelle, les égalités, les mots en trop ;
+  - les libellés inconnus, qui donnent `None`.
