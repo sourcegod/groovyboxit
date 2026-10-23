@@ -62,7 +62,7 @@ def _export(p, programs=None, volumes=None, pans=None, channels=None):
     return build_pattern_midi(
         p, name="P", bpm=120,
         track_channels=channels or [Pattern.default_channel(t) for t in range(n)],
-        track_is_synth=[True] * n, track_names=[""] * n, kit_note_base=36,
+        track_is_synth=[True] * n, track_names=[""] * n, kit_pad_notes=list(range(36, 52)),
         synth_grid_notes=list(range(60, 76)), voice_durations=[500] * 16,
         track_programs=programs, track_volumes=volumes, track_pans=pans)
 
@@ -132,7 +132,7 @@ def test_patch_notes_skipped_on_non_synth_track():
     is_synth[1] = False
     mid = build_pattern_midi(
         p, name="P", bpm=120, track_channels=[9] * n, track_is_synth=is_synth,
-        track_names=[""] * n, kit_note_base=36, synth_grid_notes=list(range(60, 76)),
+        track_names=[""] * n, kit_pad_notes=list(range(36, 52)), synth_grid_notes=list(range(60, 76)),
         voice_durations=[500] * 16)
     assert _notes(mid.tracks[1]) == [36, 49]      # GRID du kit et KIT gardés
     print("  piste kit : notes PATCH omises, GRID et KIT gardés : OK")
@@ -143,7 +143,7 @@ def test_patch_notes_kept_on_synth_track():
     n = p._num_tracks
     mid = build_pattern_midi(
         p, name="P", bpm=120, track_channels=[0] * n, track_is_synth=[True] * n,
-        track_names=[""] * n, kit_note_base=36, synth_grid_notes=list(range(60, 76)),
+        track_names=[""] * n, kit_pad_notes=list(range(36, 52)), synth_grid_notes=list(range(60, 76)),
         voice_durations=[500] * 16)
     assert _notes(mid.tracks[1]) == [55]
     print("  piste synthé : notes PATCH exportées : OK")
@@ -155,7 +155,7 @@ def test_track_with_only_patch_on_kit_still_gets_its_smf_track():
     n = p._num_tracks
     mid = build_pattern_midi(
         p, name="P", bpm=120, track_channels=[9] * n, track_is_synth=[False] * n,
-        track_names=[""] * n, kit_note_base=36, synth_grid_notes=list(range(60, 76)),
+        track_names=[""] * n, kit_pad_notes=list(range(36, 52)), synth_grid_notes=list(range(60, 76)),
         voice_durations=[500] * 16)
     assert len(mid.tracks) == 2 and _notes(mid.tracks[1]) == []
     print("  piste avec seulement des PATCH sur un kit : piste SMF sans note : OK")

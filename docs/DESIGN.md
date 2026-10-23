@@ -3686,3 +3686,24 @@ séparé.
       nettement ;
     - jouer sec à l'export, par CC91 et CC93 à 0 au tick 0, ou par un
       réglage de TiMidity.
+- **11g1** — `pytest` de nouveau vert, 2025 tests.
+  - Adaptation : `kit_note_base=36` devient
+    `kit_pad_notes=list(range(36, 52))`, de même sens, dans
+    `test_midi_export.py`, `test_midi_export_mix.py` et
+    `test_gm_program.py`. `_build` gagne `pad_notes`, `gm_map` et
+    `unmapped`.
+  - 10 nouveaux tests d'export :
+    - le bug D1 : le pad 14 est écrit 48, et non plus 49 ;
+    - GRID kit et KIT convertis, le KIT aussi sur une piste synthé ;
+    - PATCH et GRID synthé intacts ;
+    - `kit_gm_map=None` ;
+    - `unmapped` rempli sans doublon, ou `None` ;
+    - PATCH omis sur une piste kit, et non signalé ;
+    - le chevauchement s'applique après la conversion ;
+    - `export_pattern` transmet `unmapped`.
+  - Interface : les paramètres `kit_pad_notes` et `kit_gm_map` sont des
+    copies. La note du kit est convertie dans le fichier. Le statut liste
+    les sons non convertis, y compris dans le statut de l'éditeur MIDI.
+  - Constaté : un son sans libellé s'affiche `Note 90 (90)`, avec la note
+    en double. Le test fige le comportement de 11f1. Un correctif pour
+    afficher `Note 90` reste possible, avec l'accord de l'utilisateur.

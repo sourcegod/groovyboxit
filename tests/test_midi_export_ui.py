@@ -5,7 +5,9 @@
     § 10a1 D10) : AppConfig.exports_dir, ProjectMixin._midi_export_params /
     _midi_export_filename / _export_midi (FileDialog simulé : Ok, Annuler,
     extension, erreur), raccourci Alt+Shift+E dans la fenêtre principale
-    et dans l'éditeur MIDI.
+    et dans l'éditeur MIDI. Notes des pads, correspondance GM du kit et
+    sons non convertis au statut (Phase 7 étape 11g1, docs/DESIGN.md
+    § 11a1 D1, D4).
     Date: Wed, 21/10/2026
     Author: Coolbrother
 """
@@ -22,7 +24,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app_config import AppConfig
-from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from rack import Rack, InstrumentType
 from track_router import TrackRouter
 from voice_manager import VoiceManager
@@ -65,6 +67,9 @@ KIT, PIANO, ORGAN = 0, 1, 3
 class _FakeSoundManager:
     def __init__(self):
         self.kit_base, self.kit_offset = 36, 8
+        self.pad_notes   = [44 + i for i in range(16)]   # kit décalé de 8
+        self.gm_note_map = {46: 56}                       # pad 2 → Cowbell GM
+        self.note_labels = {46: "Cowbell"}
     def play_sound(self, *a): pass
     def stop_all(self):       pass
 
@@ -123,7 +128,10 @@ def test_params_come_from_router_rack_player_and_kit(tmp_path):
     assert p["track_programs"][:3] == [0, 25, 18]
     assert p["track_volumes"][:3] == [45, 100, 100]
     assert p["track_pans"][:3] == [0, 0, -100]
-    assert p["kit_note_base"] == 44
+    assert p["kit_pad_notes"] == list(range(44, 60))
+    assert p["kit_gm_map"] == {46: 56}
+    assert p["kit_pad_notes"] is not win._snd.pad_notes       # copies
+    assert p["kit_gm_map"] is not win._snd.gm_note_map
     assert p["synth_grid_notes"] == win._router._kb_notes_play
     assert p["voice_durations"][:3] == [200, 210, 220]
     assert p["track_channels"] is not win._router._track_channels   # copies
@@ -167,8 +175,35 @@ def test_export_ok_writes_file_and_announces(tmp_path):
     chans = [{m.channel for m in tr if hasattr(m, "channel")} for tr in mid.tracks[1:]]
     assert chans == [{0}, {9}, {2}]
     kit_note = [m.note for m in mid.tracks[2] if m.type == "note_on"]
-    assert kit_note == [46]                                   # 36 + 8 + pad 2
+    assert kit_note == [56]                    # pad 2 → note 46 → GM 56 (11a1)
     print("  Ok : dossier créé, dialog, fichier écrit avec les réglages de l'appli, statut : OK")
+
+def test_export_announces_unmapped_kit_notes(tmp_path):
+    """D4 : sons sans correspondance GM listés au statut, triés par note,
+    avec leur libellé, ou « Note N », suivi de la note."""
+    win = _ExportWindow(str(tmp_path))
+    win._snd.gm_note_map = {}
+    win._player._pattern._tape[1].append(
+        TapeEvent(ETYPE_KIT, payload={"note": 90, "vel": 100}, time=8.0))
+    path = str(tmp_path / "Pat_01.mid")
+    with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(wx.ID_OK, path, {})):
+        win._export_midi()
+    assert win.statuses == ["Pattern 01 exporté : Pat_01.mid"
+                            " — non converti en GM : Cowbell (46), Note 90 (90)"]
+    kit_notes = [m.note for m in mido.MidiFile(path).tracks[2] if m.type == "note_on"]
+    assert kit_notes == [46, 90]
+    print("  sons non convertis : notes gardées, listés au statut : OK")
+
+def test_export_unmapped_status_goes_to_given_status(tmp_path):
+    win = _ExportWindow(str(tmp_path))
+    win._snd.gm_note_map = {}
+    msgs = []
+    path = str(tmp_path / "x.mid")
+    with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(wx.ID_OK, path, {})):
+        win._export_midi(status=msgs.append)
+    assert msgs == ["Pattern 01 exporté : x.mid — non converti en GM : Cowbell (46)"]
+    assert win.statuses == []
+    print("  sons non convertis : annoncés dans le statut fourni (éditeur MIDI) : OK")
 
 def test_export_adds_mid_extension(tmp_path):
     win = _ExportWindow(str(tmp_path))

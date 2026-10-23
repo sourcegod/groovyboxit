@@ -123,7 +123,7 @@ def _export(pattern, programs, channels=None):
     return build_pattern_midi(
         pattern, name="P", bpm=120,
         track_channels=channels or [Pattern.default_channel(t) for t in range(n)],
-        track_is_synth=[True] * n, track_names=[""] * n, kit_note_base=36,
+        track_is_synth=[True] * n, track_names=[""] * n, kit_pad_notes=list(range(36, 52)),
         synth_grid_notes=list(range(60, 76)), voice_durations=[500] * 16,
         track_programs=programs)
 

@@ -5,7 +5,9 @@
     D4, D6, D7, D9) : fichier relu par mido — en-tête type 1 / PPQ 480,
     piste conductor, une piste SMF par piste non vide, canaux, notes GRID
     (synthé, kit), KIT, PATCH, vélocités, durées par défaut, conversions de
-    temps, chevauchements, ordre à tick égal, CC/PGM/BEND, fin de piste.
+    temps, chevauchements, ordre à tick égal, CC/PGM/BEND, fin de piste ;
+    notes des pads et conversion GM des notes de kit (Phase 7 étape 11g1,
+    docs/DESIGN.md § 11a1 D1, D4, D5).
     Le Program Change, le volume et le pan ont leurs propres tests
     (test_gm_program.py, test_midi_export_mix.py).
     Date: Wed, 21/10/2026
@@ -39,15 +41,17 @@ def _add(p, track, etype, time_val, payload, dur=0, channel=0):
     p._tape[track].append(TapeEvent(etype, dur=dur, channel=channel, payload=payload, time=time_val))
 
 def _build(p, *, bpm=120, channels=None, is_synth=None, names=None,
-           kit_base=36, voice_ms=None, name="Pattern_01"):
+           kit_base=36, voice_ms=None, name="Pattern_01", pad_notes=None,
+           gm_map=None, unmapped=None):
     n = p._num_tracks
     return build_pattern_midi(
         p, name=name, bpm=bpm,
         track_channels=channels or [Pattern.default_channel(t) for t in range(n)],
         track_is_synth=is_synth if is_synth is not None else [True] * n,
         track_names=names or [""] * n,
-        kit_note_base=kit_base, synth_grid_notes=SYNTH_NOTES,
-        voice_durations=voice_ms or [500] * 16)
+        kit_pad_notes=pad_notes or [kit_base + i for i in range(16)],
+        synth_grid_notes=SYNTH_NOTES, voice_durations=voice_ms or [500] * 16,
+        kit_gm_map=gm_map, unmapped=unmapped)
 
 def _abs(track):
     """[(tick absolu, message)] d'une piste mido."""
@@ -83,7 +87,7 @@ def test_file_type_1_ppq_480_written_and_reread(tmp_path):
     path = str(tmp_path / "p.mid")
     export_pattern(path, p, name="P", bpm=120,
                    track_channels=list(range(16)), track_is_synth=[True] * 16,
-                   track_names=[""] * 16, kit_note_base=36,
+                   track_names=[""] * 16, kit_pad_notes=list(range(36, 52)),
                    synth_grid_notes=SYNTH_NOTES, voice_durations=[500] * 16)
     mid = mido.MidiFile(path)
     assert mid.type == 1 and mid.ticks_per_beat == PPQ == 480
@@ -146,7 +150,7 @@ def test_every_event_on_track_channel_not_ev_channel():
     assert chans == {6}
     print("  tous les événements sur le canal de la piste (ev.channel ignoré) : OK")
 
-def test_grid_note_synth_uses_scale_notes_kit_uses_base():
+def test_grid_note_synth_uses_scale_notes_kit_uses_pad_notes():
     p = _pattern()
     _add(p, 0, ETYPE_GRID, 0.0, {"pad": 3, "vel": 100})
     _add(p, 1, ETYPE_GRID, 0.0, {"pad": 3, "vel": 100})
@@ -155,7 +159,7 @@ def test_grid_note_synth_uses_scale_notes_kit_uses_base():
     mid = _build(p, is_synth=is_synth, kit_base=40)
     assert _notes(mid.tracks[1])[0][2] == SYNTH_NOTES[3]
     assert _notes(mid.tracks[2])[0][2] == 43
-    print("  GRID : gamme du router (synthé), kit_note_base + pad (kit) : OK")
+    print("  GRID : gamme du router (synthé), note du pad (kit) : OK")
 
 def test_kit_and_patch_use_payload_note():
     p = _pattern()
@@ -291,3 +295,125 @@ def test_cc_pgm_bend_values_and_clamps():
     assert (m[3].control, m[3].value) == (0, 127)
     assert (m[4].pitch, m[5].pitch) == (8191, -8192)
     print("  CC, PGM et bend : valeurs, temps et bornes : OK")
+
+
+# ---------------------------------------------------------------------------
+# Notes des pads et conversion GM des notes de kit (Phase 7 étape 11g1,
+# docs/DESIGN.md § 11a1 D1, D4, D5)
+# ---------------------------------------------------------------------------
+
+# Pads de la TR-707 : notes 35 à 49, puis le pad 16 sur 51 (kit_base + 15)
+TR_707_PAD_NOTES = list(range(35, 50)) + [51]
+TR_707_GM = {35: 35, 36: 36, 37: 37, 38: 38, 39: 39, 40: 40, 41: 41, 42: 42,
+             43: 47, 44: 46, 45: 50, 46: 49, 47: 51, 48: 54, 49: 56}
+KIT_TRACKS = [False] * 16
+
+def _note_list(track):
+    return [n[2] for n in _notes(track)]
+
+def test_grid_kit_note_is_pad_note_not_base_plus_pad():
+    """Bug D1 : le pad 14 (Tambourine, note 48) n'est plus écrit 36 + 13."""
+    p = _pattern()
+    _add(p, 0, ETYPE_GRID, 0.0, {"pad": 0, "vel": 100})
+    _add(p, 0, ETYPE_GRID, 4.0, {"pad": 13, "vel": 100})
+    _add(p, 0, ETYPE_GRID, 8.0, {"pad": 15, "vel": 100})
+    mid = _build(p, is_synth=KIT_TRACKS, pad_notes=TR_707_PAD_NOTES)
+    assert _note_list(mid.tracks[1]) == [35, 48, 51]
+    print("  GRID kit : note du son du pad, pas kit_base + pad : OK")
+
+def test_grid_kit_converted_to_gm():
+    p = _pattern()
+    for i, pad in enumerate((7, 9, 11, 13, 14)):
+        _add(p, 0, ETYPE_GRID, float(i * 2), {"pad": pad, "vel": 100})
+    mid = _build(p, is_synth=KIT_TRACKS, pad_notes=TR_707_PAD_NOTES, gm_map=TR_707_GM)
+    # HH Closed, HH Open, Crash, Tambourine, Cowbell
+    assert _note_list(mid.tracks[1]) == [42, 46, 49, 54, 56]
+    print("  GRID kit : notes converties en GM : OK")
+
+def test_kit_events_converted_on_any_track():
+    """D5 : la note d'un KIT est une note du kit, même sur une piste synthé."""
+    p = _pattern()
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 49, "vel": 100})
+    _add(p, 1, ETYPE_KIT, 0.0, {"note": 44, "vel": 100})
+    is_synth = [False, True] + [False] * 14
+    mid = _build(p, is_synth=is_synth, gm_map=TR_707_GM)
+    assert _note_list(mid.tracks[1]) == [56]
+    assert _note_list(mid.tracks[2]) == [46]
+    print("  KIT : converti en GM sur piste kit comme sur piste synthé : OK")
+
+def test_patch_and_synth_grid_not_converted():
+    p = _pattern()
+    _add(p, 0, ETYPE_PATCH, 0.0, {"note": 49, "vel": 100}, dur=100)
+    _add(p, 0, ETYPE_GRID, 4.0, {"pad": 3, "vel": 100})
+    gm_map = {49: 56, SYNTH_NOTES[3]: 35}
+    unmapped = set()
+    mid = _build(p, gm_map=gm_map, unmapped=unmapped)
+    assert _note_list(mid.tracks[1]) == [49, SYNTH_NOTES[3]]
+    assert unmapped == set()
+    print("  PATCH et GRID synthé : jamais convertis ni signalés : OK")
+
+def test_no_gm_map_writes_kit_notes_as_is():
+    p = _pattern()
+    _add(p, 0, ETYPE_GRID, 0.0, {"pad": 14, "vel": 100})
+    _add(p, 0, ETYPE_KIT, 4.0, {"note": 49, "vel": 100})
+    unmapped = set()
+    mid = _build(p, is_synth=KIT_TRACKS, pad_notes=TR_707_PAD_NOTES, unmapped=unmapped)
+    assert _note_list(mid.tracks[1]) == [49, 49]
+    assert unmapped == set()
+    print("  kit_gm_map=None : notes de kit telles quelles, rien de signalé : OK")
+
+def test_unmapped_kit_notes_kept_and_collected():
+    """D4 : sans correspondance, la note du kit est gardée et signalée."""
+    p = _pattern()
+    _add(p, 0, ETYPE_GRID, 0.0, {"pad": 15, "vel": 100})     # note 51, absente
+    _add(p, 0, ETYPE_GRID, 4.0, {"pad": 15, "vel": 100})     # même note : un seul
+    _add(p, 0, ETYPE_KIT, 8.0, {"note": 90, "vel": 100})     # absente
+    _add(p, 0, ETYPE_KIT, 12.0, {"note": 49, "vel": 100})    # convertie
+    unmapped = set()
+    mid = _build(p, is_synth=KIT_TRACKS, pad_notes=TR_707_PAD_NOTES,
+                 gm_map=TR_707_GM, unmapped=unmapped)
+    assert _note_list(mid.tracks[1]) == [51, 51, 90, 56]
+    assert unmapped == {51, 90}
+    print("  sans correspondance GM : note gardée, ajoutée à unmapped : OK")
+
+def test_unmapped_none_is_accepted():
+    p = _pattern()
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 90, "vel": 100})
+    mid = _build(p, is_synth=KIT_TRACKS, gm_map=TR_707_GM, unmapped=None)
+    assert _note_list(mid.tracks[1]) == [90]
+    print("  unmapped=None : rien à remplir, pas d'erreur : OK")
+
+def test_patch_skipped_on_kit_track_not_collected():
+    """Les PATCH d'une piste sans synthé ne sont pas exportés (10h5) : ni
+    convertis ni signalés."""
+    p = _pattern()
+    _add(p, 0, ETYPE_PATCH, 0.0, {"note": 90, "vel": 100}, dur=100)
+    unmapped = set()
+    mid = _build(p, is_synth=KIT_TRACKS, gm_map=TR_707_GM, unmapped=unmapped)
+    assert _note_list(mid.tracks[1]) == [] and unmapped == set()
+    print("  PATCH omis sur piste kit : pas signalé : OK")
+
+def test_overlap_rule_applies_after_conversion():
+    """Deux notes de kit différentes converties vers la même note GM au même
+    tick : un seul note-on (doublon ignoré, D6)."""
+    p = _pattern()
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 46, "vel": 100})
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 60, "vel": 100})
+    mid = _build(p, is_synth=KIT_TRACKS, gm_map={46: 49, 60: 49})
+    assert _note_list(mid.tracks[1]) == [49]
+    print("  chevauchements : appliqués aux notes déjà converties : OK")
+
+def test_export_pattern_passes_unmapped(tmp_path):
+    p = _pattern()
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 90, "vel": 100})
+    _add(p, 0, ETYPE_KIT, 4.0, {"note": 49, "vel": 100})
+    unmapped = set()
+    path = str(tmp_path / "k.mid")
+    export_pattern(path, p, name="P", bpm=120, track_channels=[9] * 16,
+                   track_is_synth=KIT_TRACKS, track_names=[""] * 16,
+                   kit_pad_notes=TR_707_PAD_NOTES, synth_grid_notes=SYNTH_NOTES,
+                   voice_durations=[500] * 16, kit_gm_map=TR_707_GM,
+                   unmapped=unmapped)
+    assert unmapped == {90}
+    assert _note_list(mido.MidiFile(path).tracks[1]) == [90, 56]
+    print("  export_pattern : unmapped transmis, fichier converti : OK")
