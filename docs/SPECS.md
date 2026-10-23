@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid) | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit | en cours |
 
 ---
 
@@ -234,12 +234,21 @@ Slot
     { "pad": 5, "note": 46, "filename": "/chemin/46_HiHatOpen.wav", "label": "HH Open", "mute_group": 1 },
     { "pad": 6, "note": 42, "filename": "/chemin/42_HiHatClosed.wav", "label": "HH Closed", "mute_group": 1 },
     ...
+    { "pad": 15, "note": 49, "filename": "/chemin/49_CowBell.wav", "label": "Cowbell", "gm_note": 56 },
     { "pad": 16, "filename": "", "label": "---" }
   ]
 }
 ```
 
-- `note` : note MIDI GM (35–81), utilisée pour le mapping MIDI et le pitch
+- `base_note` (facultatif, défaut 36) : note du pad 1 pour `shift_kit` et
+  pour un pad sans `note`
+- `gm` (facultatif, au niveau du kit) : `true` si le kit est déjà rangé
+  selon la table de batterie GM ; ses notes sont alors exportées telles
+  quelles (`data/kits/gm.json`)
+- `note` : note MIDI du son dans le kit (pas forcément la note GM),
+  utilisée pour le mapping MIDI et le pitch
+- `gm_note` (facultatif, 35–81) : note GM écrite à l'export MIDI ;
+  prioritaire sur `gm` et sur la note devinée d'après `label`
 - `filename` : chemin absolu ou relatif au JSON
 - `label` : nom affiché dans la liste des pads
 - `mute_group` : groupe de mute exclusif (0 = aucun, ≥1 = groupe partagé). Au sein d'un même groupe, jouer un son coupe les voix actives du même groupe (comportement hihat open/closed TR-style)
@@ -248,7 +257,7 @@ Slot
 
 | Méthode | Description |
 |---|---|
-| `load_kit(json_path)` | Charge le kit, construit `drum_sounds[16]` et `note_map` |
+| `load_kit(json_path)` | Charge le kit, construit `drum_sounds[16]`, `note_map`, `pad_notes` et `gm_note_map` |
 | `load_pad_sound(pad_idx, wav_path)` | Remplace un son individuel dans `drum_sounds` |
 | `load_sounds()` | Charge les sons par défaut depuis `media/` |
 | `play_sound(index, vol, pan)` | Joue `drum_sounds[index]` |
@@ -259,6 +268,12 @@ Slot
 - `drum_sounds` : liste de 16 `pygame.Sound`, reconstruite à partir de `note_map` + `kit_base` + `kit_offset`
 - `note_map` : `{midi_note: pygame.Sound}` — tous les sons du kit avec champ `"note"`
 - `mute_groups` : liste de 16 entiers (0 = aucun groupe)
+- `pad_notes` : note de kit du son de chaque pad (`note` de l'entrée du
+  pad, ou `kit_base + kit_offset + i` après `shift_kit`) — Phase 7 étape 11
+- `gm_note_map` : `{note du kit: note GM}` pour l'export MIDI, par ordre de
+  priorité : `gm_note`, `"gm": true` (identité), note devinée d'après
+  `label` (`midi_constants.guess_gm_drum_note`) ; une note sans
+  correspondance est absente
 
 ---
 
@@ -764,11 +779,17 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   (un temps = 60/BPM, quel que soit le nombre de pas), signature 4/4
 - Une piste SMF par piste non vide, nommée d'après son slot, sur le canal
   de la piste ; en tête : Program Change du slot, volume (CC7), pan (CC10)
-- Notes : grille (gamme du pattern pour un synthé, `kit_base + pad` pour
-  un kit), KIT, PATCH ; les PATCH d'une piste sans synthé, muettes au
+- Notes : grille (gamme du pattern pour un synthé, note du son du pad
+  pour un kit), KIT, PATCH ; les PATCH d'une piste sans synthé, muettes au
   rejeu, ne sont pas écrites ; CC, Program Change et Pitch Bend capturés
+- Notes de kit converties en GM (Phase 7 étape 11) : grille d'une piste
+  kit et KIT, via `gm_note_map` du kit chargé ; un son sans
+  correspondance garde sa note et est signalé au statut
+  (`— non converti en GM : Libellé (note)`)
 - Non exportés : mute/solo, volume et pan des pads, canal d'origine des
-  événements ; les kits non GM gardent leurs notes (conversion prévue)
+  événements
+- Un seul kit chargé à la fois : toutes les pistes kit sont converties
+  avec la table du kit du slot courant
 - Un ancien projet sans canaux enregistrés s'ouvre avec ses pistes kit sur
   le canal 10
 

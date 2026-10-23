@@ -3707,3 +3707,53 @@ séparé.
   - Constaté : un son sans libellé s'affiche `Note 90 (90)`, avec la note
     en double. Le test fige le comportement de 11f1. Un correctif pour
     afficher `Note 90` reste possible, avec l'accord de l'utilisateur.
+
+### Clôture (11h1)
+
+**11a1-11g1 FAITS** (commits `d3c8db5`..`8290b76`, 7 commits, plus ce
+commit de clôture ; 2025 tests verts) : **chantier Phase 7 étape 11
+complet**. À l'export MIDI, les notes d'un kit non GM sont écrites avec
+leur équivalent GM.
+
+**Ce que le chantier a livré** :
+- **Correctif préalable** (D1, 11d1, 11f1) : la note GRID d'une piste kit
+  est la note du son réellement joué par le pad (`SoundManager.pad_notes`),
+  et non plus `kit_base + pad`. Sur la TR-707, tout était décalé d'une
+  note : les 37 coups « crash » de 10l1 étaient des coups de Tambourine
+  (pad 14).
+- **Noms GM et devinette** (11b1, 11c1) : `GM_DRUM_NAMES` (35-81) et
+  `guess_gm_drum_note` dans `midi_constants.py`. Les mots sont normalisés
+  (hi-hat, synonymes), puis comparés par un score : mots communs, note
+  actuelle, mots en trop. La TR-707 est convertie note pour note selon le
+  tableau D3, et les 47 noms GM sont des points fixes.
+- **Correspondance du kit** (11d1, 11e1) : `SoundManager.gm_note_map`.
+  Ordre de priorité : `gm_note`, puis `"gm": true`, puis la devinette.
+  `"gm": true` est ajouté à `data/kits/gm.json` et recopié dans
+  `KITS/gm.json`, hors dépôt.
+- **Export** (11f1, 11g1) : `kit_pad_notes`, `kit_gm_map` et `unmapped`
+  dans `build_pattern_midi`. Les GRID kit et les KIT sont convertis, les
+  PATCH et les GRID synthé ne le sont pas. Un son sans correspondance garde
+  sa note et est listé au statut.
+
+**Écarts au plan** :
+- `"gm": true` est mis dans la copie versionnée `data/kits/gm.json`, à la
+  demande de l'utilisateur, puis recopié dans `KITS/` ;
+- les 34 tests de 11f1 ont été adaptés en 11g1, comme prévu par le plan.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, clés `base_note`, `gm` et
+`gm_note` du JSON de kit, sens de `note` (note du kit, pas forcément GM),
+`pad_notes` et `gm_note_map` de `SoundManager`, section Export MIDI.
+
+**Laissé hors périmètre, pour la suite** :
+- **Volumes et effets à l'export** (écoute 11f1) : trouver un équilibre
+  des volumes entre l'appli et un lecteur GM, et jouer sec (CC91 et CC93
+  à 0, ou réglage de TiMidity). C'est un chantier séparé.
+- Statut `Note 90 (90)` pour un son sans libellé, avec la note en double
+  (11g1). Un affichage `Note 90` serait plus court pour Orca.
+- Plusieurs kits dans un même export : un seul kit est chargé à la fois.
+- La correspondance d'une note MIDI entrante vers un pad
+  (`kit_base + kit_offset`), qui ignore elle aussi les entrées `"pad"`.
+- `load_sounds` après `load_kit` plante si un pad n'a pas de fichier
+  (11e1). Le cas ne se produit pas dans l'appli.
+- Un dialogue d'édition de la correspondance GM (D6).
+- La conversion pour un futur MIDI out.
