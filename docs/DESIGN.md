@@ -3757,3 +3757,180 @@ leur équivalent GM.
   (11e1). Le cas ne se produit pas dans l'appli.
 - Un dialogue d'édition de la correspondance GM (D6).
 - La conversion pour un futur MIDI out.
+
+---
+
+## Phase 7 étape 12a1 — Courbe de volume GM dans l'appli, vélocité des cases de grille et effets à l'export
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 11 : `12a1`, `12b1`, `12c1`… ; un
+commit imprévu inséré après `12b1` s'appelle `12b2`, `12b3`, etc.
+
+### Origine du besoin
+
+Relevé à l'écoute de la Phase 7 étape 11f1. L'utilisateur a exporté
+`Pat_01` (guitare, TR-707, orgue, piano) et l'a écouté dans TiMidity
+(banque FluidR3 GM) avec mpv :
+- l'équilibre entre les instruments diffère nettement de celui de l'appli,
+  l'orgue joué en live surtout ;
+- un rendu sans reverb ni chorus est plus fidèle à l'appli, qui n'a pas
+  d'effets.
+
+Il a demandé un chantier séparé pour « trouver une proportion
+acceptable ». Les décisions ci-dessous ont été validées le 2026-10-23.
+
+### État des lieux constaté (2026-10-23, 2025 tests verts)
+
+**Mesure de TiMidity** (rendu sec, note 60, RMS sur 0,4 s ; script jetable
+du scratchpad, non versionné) :
+
+| Valeur | 127 | 100 | 77 | 64 | 48 | 32 |
+|---|---|---|---|---|---|---|
+| Appli, linéaire : `20·log10(v/127)` | 0 dB | −2,1 | −4,3 | −6,0 | −8,5 | −12,0 |
+| TiMidity, vélocité (orgue 16) | 0 dB | −4,1 | −8,4 | −11,4 | −15,5 | −21,4 |
+| TiMidity, vélocité (piano 0, guitare 24) | 0 dB | −3,4 | −7,2 | −9,9 | −14,0 | −19,9 |
+| TiMidity, CC7 (orgue) | 0 dB | −3,4 | — | −9,9 | — | −19,9 |
+
+TiMidity suit la courbe GM habituelle, en carré, soit `40·log10(v/127)` :
+deux fois plus de dB que l'appli, qui est linéaire. L'orgue de `Pat_01`,
+joué en live avec des vélocités de 29 à 77, perd de 8 à 23 dB dans
+TiMidity, contre 4 à 13 dB dans l'appli. C'est pourquoi l'utilisateur
+voulait baisser tous les instruments sauf l'orgue.
+
+**Calcul du gain dans l'appli** : un facteur linéaire dans [0, 1], produit
+de facteurs bornés :
+- **case de grille** (rejeu `dp_playback._dispatch_event`, jeu live
+  `dp_live.play_sound`, pads MIDI `midi_handler_window.py:365` et `:403`) :
+  `min(1, volume du pad/100 · vel/100)`, puis `× volume de piste/100`
+  (`TrackRouter.on_play`).
+  - L'échelle est **/100** : la vélocité 100 par défaut du Numpad et de la
+    grille joue au maximum, et une vélocité au-delà de 100 est écrêtée.
+- **KIT et PATCH** (`TrackRouter.on_kit_tape`, `on_patch_tape`) :
+  `min(1, volume de piste/100 · vel/127)`.
+- **jeu live d'un synthé** (`midi_handler_window.py:310`, `:335`) et
+  pré-écoute de l'éditeur MIDI (`mew_playback.py:80`) : `vel/127`.
+- **Note Repeat et Numpad en mode Keyboard** : volume du pad / 100.
+- Ce facteur arrive au driver par trois points d'entrée seulement :
+  `SoundManager.play_sound`, `SoundManager.play_note` et
+  `SynthEngine.play`.
+- Le métronome et la pré-écoute d'un son (`preview_sound`) appellent le
+  driver sans facteur. Le volume général (`set_master_volume`) s'applique
+  au mixage, à part.
+
+**Ce qu'écrit l'export** :
+- la vélocité du payload, pour tous les etypes ;
+- CC7 = `volume de piste · 127/100` ;
+- le volume des pads n'est pas exporté.
+
+Une case de grille par défaut (vel 100, pad à 100) joue donc au maximum
+dans l'appli, mais sort à −4 dB dans TiMidity.
+
+**Effets dans TiMidity** (écart RMS avec le rendu sec de `Pat_01`) :
+- rendu par défaut : −6,7 dB ;
+- CC91 = 0 et CC93 = 0 écrits au tick 0 de chaque piste : −7,0 dB, donc
+  **aucun effet**. La reverb et le chorus viennent des réglages
+  d'instrument de la banque FluidR3 ;
+- seules les options `-EFreverb=d -EFchorus=d` rendent sec, et un fichier
+  `~/.timidity.cfg` contenant `opt EFreverb=d` et `opt EFchorus=d` donne
+  le même résultat (écart nul), **sans sudo**.
+
+### Décisions validées (utilisateur, 2026-10-23)
+
+**D1 — l'appli passe à la courbe GM : gain = facteur².**
+- Le facteur linéaire calculé partout aujourd'hui (vélocité × volume du
+  pad × volume de piste, borné à [0, 1]) est élevé au carré en un seul
+  endroit, juste avant le driver, aux trois points d'entrée :
+  `SoundManager.play_sound`, `SoundManager.play_note` et
+  `SynthEngine.play`.
+- Comme `(a·b·c)² = a²·b²·c²`, c'est exactement la courbe GM appliquée à
+  chaque facteur : la vélocité comme `40·log10(v/127)`, et le volume de
+  piste comme un CC7.
+- Une fonction `gm_gain(factor)` dans `midi_constants.py` borne le facteur
+  à [0, 1] et le met au carré. On n'a pas à toucher la dizaine d'endroits
+  qui calculent le facteur.
+- Ne changent pas :
+  - le métronome et `preview_sound`, qui n'ont pas de facteur ;
+  - le volume général, qui reste linéaire : c'est un réglage d'écoute, non
+    exporté ;
+  - l'échelle /100 des cases de grille (vel 100 = maximum) ;
+  - le pan.
+- **Effet accepté** : les projets existants sonnent autrement. Une note
+  douce ou une piste baissée l'est deux fois plus en dB qu'avant. Par
+  exemple, vel 64 passe de −6 à −12 dB, et une piste à 45 de −7 à −14 dB.
+  Les notes à 127 et les cases de grille par défaut ne bougent pas.
+
+Alternatives écartées :
+- **Compenser à l'export** (vélocité = 127·√gain) : l'appli resterait
+  non standard, et l'import devrait appliquer l'inverse.
+- **Ne rien changer.**
+
+**D2 — la vélocité exportée d'une case de grille reflète le gain joué.**
+- `vel_out = round(127 · min(1, vel/100 · volume du pad/100))`, borné à
+  1..127.
+  - C'est le facteur du rejeu (`dp_playback`), ramené à l'échelle MIDI.
+  - Avec D1, un lecteur GM rend alors `(vel_out/127)²`, le gain de
+    l'appli, au volume de piste près, déjà porté par CC7.
+  - Une case par défaut (vel 100, pad à 100) sort à 127. Une case à vel
+    100 sur un pad à 50 sort à 64.
+- `build_pattern_midi` reçoit `pad_volumes`, les 16 volumes du
+  `VoiceManager`. S'il vaut `None`, le volume du pad compte pour 100.
+  `mw_project` le passe.
+- KIT et PATCH : la vélocité du payload est inchangée. Elle est déjà sur
+  l'échelle /127, et D1 rend le gain de l'appli identique à celui d'un
+  lecteur GM.
+- CC7 est inchangé : `volume · 127/100`, que D1 rend fidèle.
+
+Alternatives écartées : prendre la vélocité seule sans le volume du pad,
+ou garder la vélocité brute.
+
+**D3 — les effets.**
+- **À l'export** : CC91 (reverb) et CC93 (chorus) à 0 au tick 0 de chaque
+  piste, après le volume et le pan. Ce sont les rangs négatifs du tick 0,
+  comme CC7 et CC10 : un CC91 ou un CC93 capturé dans `_tape` au tick 0
+  passe après et l'emporte.
+  - Sans effet mesurable dans TiMidity, mais c'est la valeur juste pour
+    un lecteur GM ou un DAW qui respecte ces CC (GM2 suppose 40 par
+    défaut pour CC91).
+- **Pour l'écoute dans TiMidity** : un fichier `/home/sam/.timidity.cfg`,
+  hors dépôt, avec `opt EFreverb=d` et `opt EFchorus=d`.
+  - Il remplace l'option `/etc/timidity/timidity.cfg` proposée lors des
+    questions, qui demandait sudo.
+  - Il est écrit avec l'accord de l'utilisateur, à l'étape de clôture.
+  - Il agit sur toute écoute TiMidity de l'utilisateur, mpv compris s'il
+    passe par TiMidity.
+
+### Portée explicitement exclue de ce chantier
+
+- **Écarts de niveau propres à chaque instrument**, entre un échantillon
+  de l'appli et un preset FluidR3 : un réglage de gain GM par slot ne sera
+  envisagé qu'après l'écoute de ce chantier, si l'équilibre reste
+  insatisfaisant.
+- Le volume général : il reste linéaire et n'est pas exporté.
+- Le volume des pads pour les KIT et les PATCH : il ne s'applique pas au
+  rejeu, donc rien à exporter.
+- Le pan, ainsi que le volume (CC7) et le pan (CC10) capturés dans
+  `_tape`, qui gardent leur conversion.
+- Un réglage de la courbe (linéaire ou GM) dans l'interface.
+- Le statut `Note 90 (90)` et les autres restes de la Phase 7 étape 11.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **12a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **12b1** | Implémentation — `gm_gain` ; courbe GM aux trois points d'entrée (D1). | `midi/midi_constants.py`, `sound_manager.py`, `synth_engine.py` |
+| **12c1** | Tests — `gm_gain` (bornes, carré) ; `play_sound`, `play_note` et `SynthEngine.play` transmettent le facteur au carré au driver (driver factice) ; métronome et `preview_sound` inchangés. Mise à jour des tests qui vérifient le facteur transmis au driver, s'il y en a. | `tests/test_midi_constants.py`, `tests/test_sound_manager.py`, `tests/test_synth_engine*.py` |
+| **12d1** | Implémentation — export : vélocité des cases de grille avec le volume du pad (D2, `pad_volumes`), CC91 et CC93 à 0 au tick 0 (D3) ; `mw_project` passe les volumes des pads. | `midi/midi_export.py`, `ui/mw_project.py` |
+| **12e1** | Tests — vélocité de grille (défaut 127, pad à 50, écrêtage, `pad_volumes=None`, synthé et kit) ; KIT et PATCH inchangés ; CC91 et CC93 à 0 dans l'ordre du tick 0, battus par un CC capturé au tick 0 ; paramètres de l'interface. Mise à jour des tests qui figent les messages du tick 0 ou une vélocité de grille. | `tests/test_midi_export.py`, `tests/test_midi_export_mix.py`, `tests/test_midi_export_ui.py` |
+| **12f1** | Doc — clôture (DESIGN.md ; `docs/SPECS.md` : courbe de volume, export), `~/.timidity.cfg` avec l'accord de l'utilisateur, `pytest tests/` complet vert, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- Avant de committer 12b1 : l'utilisateur écoute un projet dans l'appli.
+  Les notes douces et les pistes baissées doivent sonner plus bas, et les
+  notes fortes ne pas changer.
+- Avant de committer 12d1 : on exporte `Pat_01`, et l'utilisateur compare
+  l'appli et TiMidity sec. Si l'équilibre reste insatisfaisant, on
+  mesurera les écarts propres à chaque instrument (portée exclue).
+- 12d1 change les messages du tick 0 et les vélocités de grille : si
+  `pytest` est rouge à ce commit, le titre le dira, et 12e1 réparera les
+  tests.
