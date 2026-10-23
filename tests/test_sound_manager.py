@@ -4,6 +4,7 @@
     Tests unitaires de SoundManager avec SoundDeviceDriver (défaut) et
     PygameDriver (optionnel). Vérifie que les deux backends donnent le même
     comportement observable : chargement, note_map, play, stop, volume.
+    Notes des pads et correspondance GM du kit (Phase 7 étape 11e1).
     Date: Thu, 28/05/2026
     Author: Coolbrother
 """
@@ -214,6 +215,209 @@ def _test_shift_kit_returns_labels(driver, tag):
     finally:
         os.unlink(kit_path)
     print(f"  [{tag}] shift_kit → 16 labels retournés : OK")
+
+
+# ---------------------------------------------------------------------------
+# pad_notes et gm_note_map (Phase 7 étape 11e1, docs/DESIGN.md § 11a1 D1/D2)
+# ---------------------------------------------------------------------------
+
+# Extrait de la TR-707 : pads rangés à partir de la note 35, sans base_note
+# (kit_base retombe sur 36) ; pad 16 sans note ni son.
+TR_707_PADS = [
+    (1, 35, "Kick 2"), (2, 36, "Kick 1"), (3, 37, "Rimshot"),
+    (4, 38, "Snare 1"), (5, 39, "Hand Clap"), (6, 40, "Snare 2"),
+    (7, 41, "Tom Low"), (8, 42, "HH Closed"), (9, 43, "Tom Mid"),
+    (10, 44, "HH Open"), (11, 45, "Tom Hi"), (12, 46, "Crash"),
+    (13, 47, "Ride"), (14, 48, "Tambourine"), (15, 49, "Cowbell"),
+]
+
+
+def _write_kit(tmp_path, pads, **meta):
+    path = tmp_path / "kit.json"
+    path.write_text(json.dumps({"name": "Kit", **meta, "pads": pads}),
+                    encoding="utf-8")
+    return str(path)
+
+
+def _tr_707_kit(tmp_path):
+    pads = [{"pad": p, "note": n, "filename": WAVS[p % len(WAVS)], "label": l}
+            for p, n, l in TR_707_PADS]
+    pads.append({"pad": 16, "filename": "", "label": "---"})
+    return _write_kit(tmp_path, pads)
+
+
+def test_pad_notes_default_before_any_kit():
+    sm = make_sm(_sd_drv)
+    assert sm.pad_notes == list(range(36, 52))
+    assert sm.gm_note_map == {}
+
+
+def test_pad_notes_follow_pad_entries(tmp_path):
+    # D1 : la note du son du pad, pas kit_base + pad
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_tr_707_kit(tmp_path))
+    assert sm.kit_base == 36
+    assert sm.pad_notes[:15] == list(range(35, 50))
+
+
+def test_pad_notes_pad_without_note_falls_back_on_kit_base(tmp_path):
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_tr_707_kit(tmp_path))
+    assert sm.pad_notes[15] == 36 + 15
+
+
+def test_pad_notes_missing_pad_entry_uses_base_note(tmp_path):
+    pads = [{"pad": 1, "note": 60, "filename": WAVS[0], "label": "Cowbell"}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads, base_note=40))
+    assert len(sm.pad_notes) == 16
+    assert sm.pad_notes[0] == 60
+    assert sm.pad_notes[1:] == list(range(41, 56))
+
+
+def test_pad_notes_after_shift_kit(tmp_path):
+    pads = [{"note": n, "filename": WAVS[n % len(WAVS)], "label": f"S{n}"}
+            for n in range(36, 70)]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads, base_note=36))
+    sm.shift_kit(8)
+    assert sm.pad_notes == list(range(44, 60))
+    sm.shift_kit(-8)
+    assert sm.pad_notes == list(range(36, 52))
+
+
+def test_pad_notes_and_gm_map_reset_by_load_sounds(tmp_path):
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_tr_707_kit(tmp_path))
+    # load_kit remplace media_lst par les chemins du kit ('' pour le pad 16) :
+    # on remet les WAV de media/ avant de recharger les sons par défaut
+    sm.media_lst = list(MEDIA16)
+    sm.load_sounds()
+    assert sm.pad_notes == list(range(36, 52))
+    assert sm.gm_note_map == {}
+
+
+def test_gm_map_guessed_from_labels(tmp_path):
+    # Tableau de docs/DESIGN.md § 11a1 D3
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_tr_707_kit(tmp_path))
+    assert sm.gm_note_map == {
+        35: 35, 36: 36, 37: 37, 38: 38, 39: 39, 40: 40, 41: 41, 42: 42,
+        43: 47, 44: 46, 45: 50, 46: 49, 47: 51, 48: 54, 49: 56,
+    }
+
+
+def test_gm_map_unknown_label_absent(tmp_path):
+    # Pad 16 « --- » (note 51 par défaut) : aucune correspondance
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_tr_707_kit(tmp_path))
+    assert 51 not in sm.gm_note_map
+
+
+def test_gm_map_gm_note_overrides_guess(tmp_path):
+    pads = [{"pad": 1, "note": 49, "filename": WAVS[0], "label": "Cowbell",
+             "gm_note": 67}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads))
+    assert sm.gm_note_map[49] == 67
+
+
+def test_gm_map_gm_note_overrides_gm_kit(tmp_path):
+    pads = [{"pad": 1, "note": 49, "filename": WAVS[0], "label": "Crash 1",
+             "gm_note": 57}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads, gm=True))
+    assert sm.gm_note_map[49] == 57
+
+
+def test_gm_map_gm_note_on_unknown_label(tmp_path):
+    pads = [{"pad": 1, "note": 90, "filename": WAVS[0], "label": "Zap",
+             "gm_note": 81}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads))
+    assert sm.gm_note_map[90] == 81
+
+
+def test_gm_map_invalid_gm_note_ignored(tmp_path):
+    # Hors 35-81, pas entier ou booléen : on passe à la règle suivante
+    pads = [
+        {"note": 49, "filename": WAVS[0], "label": "Cowbell", "gm_note": 20},
+        {"note": 46, "filename": WAVS[0], "label": "HH Open", "gm_note": "50"},
+        {"note": 48, "filename": WAVS[0], "label": "Tambourine", "gm_note": True},
+        {"note": 90, "filename": WAVS[0], "label": "Zap", "gm_note": 82},
+    ]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads))
+    assert sm.gm_note_map[49] == 56
+    assert sm.gm_note_map[46] == 46
+    assert sm.gm_note_map[48] == 54
+    assert 90 not in sm.gm_note_map
+
+
+def test_gm_map_gm_kit_is_identity(tmp_path):
+    # "gm": true : chaque note reste telle quelle, même un libellé trompeur
+    pads = [{"pad": 1, "note": 49, "filename": WAVS[0], "label": "Cowbell"},
+            {"note": 90, "filename": WAVS[0], "label": "Zap"}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads, gm=True))
+    assert sm.gm_note_map[49] == 49
+    assert sm.gm_note_map[90] == 90
+
+
+def test_gm_map_gm_key_must_be_true(tmp_path):
+    # "gm": "yes" ou 1 ne vaut pas "gm": true : devinette
+    for value in ("yes", 1):
+        pads = [{"pad": 1, "note": 49, "filename": WAVS[0], "label": "Cowbell"}]
+        sm = make_sm(_sd_drv)
+        sm.load_kit(_write_kit(tmp_path, pads, gm=value))
+        assert sm.gm_note_map[49] == 56, value
+
+
+def test_gm_map_covers_notes_without_sound(tmp_path):
+    # La correspondance ne dépend pas du fichier son
+    pads = [{"pad": 1, "note": 49, "filename": "absent.wav", "label": "Cowbell"}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads))
+    assert 49 not in sm.note_map
+    assert sm.gm_note_map[49] == 56
+
+
+def test_gm_map_pad_without_note_mapped_on_its_pad_note(tmp_path):
+    pads = [{"pad": 3, "filename": WAVS[0], "label": "Cowbell"}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads, base_note=60))
+    assert sm.pad_notes[2] == 62
+    assert sm.gm_note_map[62] == 56
+
+
+def test_gm_map_pad_without_note_does_not_override_note_entry(tmp_path):
+    # Le pad 1 sans note retombe sur 36, déjà portée par une entrée : elle gagne
+    pads = [{"pad": 1, "filename": WAVS[0], "label": "Cowbell"},
+            {"note": 36, "filename": WAVS[1], "label": "Kick"}]
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_write_kit(tmp_path, pads))
+    assert sm.pad_notes[0] == 36
+    assert sm.gm_note_map[36] == 36
+
+
+def test_gm_map_reset_between_kits(tmp_path):
+    sm = make_sm(_sd_drv)
+    sm.load_kit(_tr_707_kit(tmp_path))
+    pads = [{"pad": 1, "note": 60, "filename": WAVS[0], "label": "Hi Bongo"}]
+    sm.load_kit(_write_kit(tmp_path, pads))
+    assert sm.gm_note_map == {60: 60}
+
+
+def test_repo_gm_kit_is_gm_identity():
+    # data/kits/gm.json porte "gm": true (Phase 7 étape 11d1)
+    path = os.path.join(os.path.dirname(__file__), "..", "data", "kits", "gm.json")
+    with open(path, encoding="utf-8") as f:
+        meta = json.load(f)
+    assert meta.get("gm") is True
+    sm = make_sm(_sd_drv)
+    sm.load_kit(path)
+    assert sm.gm_note_map == {n: n for n in range(35, 82)}
+    assert sm.pad_notes == list(range(36, 52))
 
 
 # ---------------------------------------------------------------------------

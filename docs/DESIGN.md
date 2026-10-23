@@ -3636,3 +3636,26 @@ séparé.
     synchronisée en Phase 5 étape 4d (`dbda7d5`). Le fichier est ensuite
     recopié dans `/home/com/groovybox/KITS/gm.json`, hors dépôt, le kit
     réellement chargé.
+- **11e1** — 19 tests dans `tests/test_sound_manager.py` (2013 tests
+  verts), sur des kits JSON écrits dans `tmp_path` :
+  - `pad_notes` avant tout kit, d'après les entrées `pad` (TR-707), pour
+    un pad sans note ou sans entrée, après `shift_kit` et après
+    `load_sounds` ;
+  - `gm_note_map` :
+    - devinée d'après les libellés (tableau D3) ;
+    - libellé inconnu absent ;
+    - `gm_note` prioritaire, y compris sur `"gm": true` ;
+    - `gm_note` invalide ignoré ;
+    - `"gm": true` donne l'identité, mais `"yes"` ou `1` ne valent pas
+      `true` ;
+    - note sans fichier son ;
+    - pad sans note ;
+    - remise à zéro entre deux kits ;
+  - `data/kits/gm.json` donne l'identité sur 35-81.
+  
+  **Constaté en passant, déjà présent et hors périmètre** : `load_kit`
+  remplace `media_lst` par les chemins du kit, `''` compris pour un pad
+  sans fichier. Un `load_sounds` appelé ensuite lève donc
+  `LibsndfileError`. L'appli n'appelle `load_sounds` qu'en repli, quand le
+  kit n'a pas pu être chargé : le cas ne se produit donc pas. Le test
+  remet `media_lst` avant d'appeler `load_sounds`.
