@@ -4375,3 +4375,38 @@ est committé, viendra après la clôture du 12.
     - changé puis rétabli, l'action compte comme inchangée ;
     - un kit ne reçoit que le gain ;
     - le réglage est partagé par les pistes du même slot.
+
+### Phase 7 étape 12a4 — Avenant : fin du fichier pile à la fin du pattern
+
+**Origine.** Le 2026-10-24, l'utilisateur a remarqué que TiMidity reboucle
+`Pat_01` environ une mesure et demie après sa fin. Diagnostic (4 mesures
+à 100 BPM, soit 9,60 s) :
+- le fichier dure 9,95 s. La règle D4 de 10a1 fait finir chaque piste au
+  plus tard de deux instants, la fin du pattern ou le dernier note-off, et
+  trois pistes ont une note qui déborde de 0,15 mesure ;
+- TiMidity rend 12,45 s : il ajoute environ 2,5 s pour laisser s'éteindre
+  le relâchement des instruments, puis du silence. Le son passe sous
+  −60 dBFS à 10,55 s. Cette part ne dépend pas du fichier.
+
+L'utilisateur a choisi de supprimer la part qui vient de l'export dès
+maintenant, sans attendre l'export du song.
+
+**D8 — chaque piste finit exactement à la fin du pattern**, soit
+`num_bars · num_steps` pas. Cela remplace la règle « au plus tard des deux
+instants » de 10a1 D4.
+- Un note-off qui dépasse la fin est ramené à la fin du pattern : la note
+  est coupée à la limite de la boucle. Au tick de fin, l'ordre de D7 met
+  les note-off d'abord, puis `end_of_track`.
+- Les autres messages ne peuvent pas dépasser la fin, puisque leur `time`
+  est dans le pattern.
+- **Perte acceptée** : la résonance des dernières notes, qui dans l'appli
+  sonne par-dessus le retour de boucle, est coupée dans le fichier. On y
+  reviendra avec l'export du song, où les patterns s'enchaînent.
+- Le délai propre à TiMidity reste : un DAW, ou une boucle calée sur les
+  mesures, n'en a pas.
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **12a4** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **12i2** | Implémentation — `end_of_track` à la fin du pattern, note-off ramenés à la fin (D8). | `midi/midi_export.py` |
+| **12i3** | Tests — note qui déborde coupée à la fin ; `end_of_track` de chaque piste à la fin du pattern ; durée `mido` égale à la durée des mesures ; note qui finit avant la fin intacte ; adaptation du test de 10i1 sur le dernier note-off. | `tests/test_midi_export.py` |
