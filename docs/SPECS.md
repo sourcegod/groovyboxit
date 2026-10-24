@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot | en cours |
 
 ---
 
@@ -213,6 +213,14 @@ Slot
         + "gm_program" (0..127, facultatif) : instrument GM (synthé) ou kit
           GM2 (kit) écrit en Program Change à l'export ; absent → déduit du
           nom du slot (guess_gm_program). Réglable dans les propriétés de piste.
+        + "gm_transpose" (-24..+24, facultatif, synthé seulement) : demi-tons
+          ajoutés aux notes du synthé à l'export (ex. DrawbarOrgan +24, le
+          preset FluidR3 sonnant deux octaves sous la note écrite)
+        + "gm_gain_db" (-40..0, facultatif, tout slot non vide) : atténuation
+          des CC7 de la piste à l'export, pour compenser la normalisation
+          des échantillons de l'appli
+        Les trois réglages GM ne touchent que l'export ; ils sont réglables
+        dans les propriétés de piste et partagés par les pistes du slot.
 ```
 
 ### Sérialisation Rack
@@ -564,6 +572,16 @@ LoopWindow
 | 16 Levels | Paliers de 8 (16 valeurs) |
 | No Level | Vélocité brute (pas de quantification) |
 
+### Courbe de volume (Phase 7 étape 12b1)
+
+Le facteur de volume d'une note (vélocité × volume du pad × volume de
+piste, borné à 0..1) est élevé au carré juste avant le driver
+(`midi_constants.gm_gain`, dans `SoundManager.play_sound`, `play_note` et
+`SynthEngine.play`) : c'est la courbe d'un lecteur GM (`40·log10`), de
+sorte qu'un fichier exporté sonne avec le même équilibre. Une case de
+grille garde son échelle /100 (vélocité 100 = maximum). Le métronome et le
+volume général ne sont pas concernés.
+
 ---
 
 ## Note Repeat
@@ -777,8 +795,19 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
 
 - SMF de type 1, 480 ticks par noire ; piste conductor : nom, tempo
   (un temps = 60/BPM, quel que soit le nombre de pas), signature 4/4
-- Une piste SMF par piste non vide, nommée d'après son slot, sur le canal
-  de la piste ; en tête : Program Change du slot, volume (CC7), pan (CC10)
+- Une piste SMF par piste non vide et audible, nommée d'après son slot, sur
+  le canal de la piste ; en tête : Program Change du slot, volume (CC7,
+  atténué du gain GM du slot), pan (CC10), reverb et chorus à 0 (CC91,
+  CC93)
+- Mute et solo suivis comme au rejeu (Phase 7 étape 12f2) : une piste
+  muette ou hors solo n'est pas exportée ; les cases de grille d'un pad
+  muet ou hors solo non plus
+- Vélocité d'une case de grille = gain joué :
+  `round(127 · min(1, vel/100 · volume du pad/100))` (une case par défaut
+  sort à 127) ; KIT et PATCH gardent leur vélocité
+- Notes d'un synthé transposées de la transposition GM du slot
+- Le fichier finit pile à la fin du pattern (Phase 7 étape 12i2) : une
+  note qui déborde est coupée, un événement hors du pattern est omis
 - Notes : grille (gamme du pattern pour un synthé, note du son du pad
   pour un kit), KIT, PATCH ; les PATCH d'une piste sans synthé, muettes au
   rejeu, ne sont pas écrites ; CC, Program Change et Pitch Bend capturés
@@ -786,8 +815,8 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   kit et KIT, via `gm_note_map` du kit chargé ; un son sans
   correspondance garde sa note et est signalé au statut
   (`— non converti en GM : Libellé (note)`)
-- Non exportés : mute/solo, volume et pan des pads, canal d'origine des
-  événements
+- Non exportés : pan des pads, canal d'origine des événements, résonance
+  des notes au-delà de la fin du pattern
 - Un seul kit chargé à la fois : toutes les pistes kit sont converties
   avec la table du kit du slot courant
 - Un ancien projet sans canaux enregistrés s'ouvre avec ses pistes kit sur
@@ -898,7 +927,7 @@ UndoManager
 | Shift+Z | Refaire (Redo) |
 | Ctrl+Shift+Z | Afficher l'historique des annulations (dialog) |
 
-`_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, mute/solo, renommer, quantiser, dupliquer, coller, etc.).
+`_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, renommer, quantiser, dupliquer, coller, etc.). Le mute, le solo et le volume des pistes et des pads n'y passent pas encore, sauf par le dialogue de propriétés de piste : prévu en Phase 7 étape 13.
 
 `pop_last_undo()` : retire la dernière entrée — utilisé après annulation d'un dialog (Cancel ou valeur inchangée).
 
@@ -1324,7 +1353,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `EventFilterDialog` | dialogs_temporal | Ctrl+Shift+F | Filtre/sélection d'événements MIDI par type, note, vélocité, pitch bend, position |
 | `SavePatternDialog` | dialogs_simple | (interne) | Sauvegarder le pattern sous un nouveau nom |
 | `RenameDialog` | dialogs_simple | F2 | Renommer piste, pattern ou song |
-| `TrackPropertiesDialog` | dialogs_properties | Ctrl+T / Entrée sur piste | Propriétés de la piste (slot, volume, pan, mute, solo) |
+| `TrackPropertiesDialog` | dialogs_properties | Ctrl+T / Entrée sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo) |
 | `TrackSelectDialog` | dialogs_properties | Ctrl+Entrée (liste pistes) | Sélection de pistes + plage BBT |
 | `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, BPM, mesures, pas) |
 | `PadPropertiesDialog` | dialogs_properties | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée, mute_group) |

@@ -4447,3 +4447,74 @@ instants » de 10a1 D4.
   - **Écoute** (utilisateur, 2026-10-24) : le rendu WAV de `Pat_01`,
     ramené à 9,600 s avec la résonance repliée sur le début, « boucle très
     précisément ».
+
+### Clôture (12j1)
+
+**12a1-12i3 FAITS** (commits `1625c17`..`bce9722`, 16 commits du chantier
+12 et ce commit de clôture, 2147 tests verts) : **chantier Phase 7 étape 12
+complet**. Un pattern exporté sonne dans un lecteur GM avec l'équilibre et
+la hauteur de l'appli. Il suit le mute et le solo, et boucle pile sur ses
+mesures.
+
+**Ce que le chantier a livré** :
+- **Courbe de volume GM dans l'appli** (12b1-12c1) : le gain d'une note
+  est le carré de son facteur (`gm_gain`), comme dans un lecteur GM, où la
+  vélocité et le CC7 suivent `40·log10`. Les projets existants sonnent
+  plus bas sur les notes douces et les pistes baissées. L'utilisateur l'a
+  validé à l'écoute.
+- **Vélocité des cases de grille** (12d1, 12e1) : c'est le gain joué,
+  volume du pad compris (`grid_velocity`). Une case par défaut sort à 127.
+- **CC91 et CC93 à 0** au tick 0 de chaque piste (12d1). TiMidity les
+  ignore, mais c'est la valeur juste pour un lecteur GM ou un DAW.
+- **Réglages GM par slot** (12a2, 12f1, 12g1, 12h1, 12i1) :
+  - transposition, de −24 à +24, pour un synthé ;
+  - gain, de −40 à 0 dB, appliqué aux CC7 de la piste ;
+  - deux SpinCtrl dans les propriétés de piste, avec aperçu, Annuler et
+    Undo.
+
+  L'orgue demande +24 avec FluidR3 : son preset a une composante deux
+  octaves sous la note écrite.
+- **Mute et solo à l'export** (12a3, 12f2, 12f3) : les pistes et les pads
+  muets ou hors solo sont omis, comme au rejeu. C'est une demande de
+  l'utilisateur, qui revient sur 10a1.
+- **Fin du fichier pile à la fin du pattern** (12a4, 12i2, 12i3) : les
+  notes qui débordent sont coupées, et les événements hors du pattern sont
+  omis. Un rendu WAV de 9,600 s, résonance repliée sur le début,
+  « boucle très précisément ».
+
+**Écarts au plan** :
+- trois avenants, 12a2 à 12a4, tous issus des écoutes ;
+- la transposition de l'orgue est de +24, et non de +12 comme dans
+  l'exemple de D4 ;
+- les tests sont dans `test_gm_slot_export.py` (nouveau) et dans
+  `test_gm_program.py`, faute de fichier `test_rack*.py` ;
+- l'export omet tout événement hors du pattern, au-delà des seuls note-off
+  prévus par D8 ;
+- **pas de `~/.timidity.cfg`** : l'utilisateur le juge inutile maintenant
+  que l'écart avec l'appli est expliqué, et préfère des options de
+  lancement si besoin (`-EFreverb=d -EFchorus=d`).
+
+**`docs/SPECS.md` mis à jour** :
+- ligne Phase 7 ;
+- slot : `gm_transpose` et `gm_gain_db` ;
+- section « Courbe de volume » ;
+- section Export MIDI : pistes audibles, CC91 et CC93, vélocité de grille,
+  transposition, fin pile, éléments non exportés ;
+- `TrackPropertiesDialog` ;
+- Undo : le mute, le solo et le volume n'y passent pas encore. La liste
+  annonçait le mute et le solo à tort, ce qui est corrigé.
+
+**Laissé hors périmètre, pour la suite** :
+- **Phase 7 étape 13**, l'Undo et le marquage modifié du mute, du solo et
+  du volume des pistes et des pads : plan 13a1 committé (`22b3699`),
+  prochain chantier. Le pan viendra ensuite.
+- **Export audio en WAV**, chantier futur demandé par l'utilisateur. Il
+  s'agit d'un rendu de la longueur exacte du pattern, avec la résonance
+  repliée sur le début, comme la boucle validée en 12i3.
+- La résonance des dernières notes, coupée à la fin du fichier, est à
+  revoir avec l'export du song, où les patterns s'enchaînent.
+- Le délai de bouclage propre à TiMidity (environ 2,5 s de relâchement
+  et de silence).
+- `SoundManager.preview_sound`, code mort et cassé (12c1).
+- Un échec intermittent non identifié, vu une fois en 12e1.
+- Les restes des Phase 7 étapes 10 et 11 listés dans leurs clôtures.
