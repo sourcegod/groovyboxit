@@ -4157,3 +4157,127 @@ projet ne porte `gm_transpose`, qui vaut donc 0.
   - Essai : une piste mutée disparaît ; un solo ne garde que sa piste ; un
     pad muet perd sa case de grille, mais la note KIT de même hauteur
     reste.
+
+**Chantier 12 en pause après 12f2** (2026-10-24) : l'utilisateur fait
+passer d'abord la Phase 7 étape 13, l'Undo des réglages de mixage. Le
+chantier 12 reprendra à 12f3.
+
+---
+
+## Phase 7 étape 13a1 — Undo et projet modifié pour le mute, le solo et le volume des pistes et des pads
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 12 : `13a1`, `13b1`, `13c1`… ; un
+commit imprévu inséré après `13b1` s'appelle `13b2`, `13b3`, etc.
+
+### Origine du besoin
+
+Relevé à l'écoute de la Phase 7 étape 12d1 : les volumes changés dans
+l'appli n'entrent pas dans l'Undo et ne marquent pas le projet modifié.
+À la fermeture, rien n'est donc proposé à la sauvegarde. Par exemple,
+`project_03.gvp` avait encore tous ses volumes à 100 après une séance de
+réglage.
+
+Le 2026-10-24, l'utilisateur a demandé de le traiter avant les tests du
+chantier 12, en se limitant pour l'instant au **mute, au solo et au volume
+des pistes et des pads**. Le pan et le reste viendront dans un chantier
+suivant.
+
+### État des lieux constaté en code (2026-10-24, 2065 tests verts)
+
+**L'instantané d'Undo contient déjà ces réglages.** `_capture_state`
+range l'état du router dans le pattern courant (`_flush_pattern_to_store` :
+`_track_volumes`, `_track_mutes`, `_track_solos`…) et les voix des pads
+(`voice_manager.to_list()` : volume, pan, mute, solo, durée).
+`_restore_state` les rétablit par `_apply_pattern_from_store`, puis
+rafraîchit la grille, les pads et la liste des pistes. Il manque
+seulement l'appel à `_add_undo`, qui marque aussi le projet modifié.
+
+**Chemins sans Undo ni marquage**, dans le périmètre :
+
+| Réglage | Chemin | Code |
+|---|---|---|
+| Mute / solo de piste | X, S, Shift+X, Shift+S sur la liste des pistes | `key_handler_chars.py:123-165` |
+| Mute / solo de piste | X, S dans l'éditeur MIDI, sur les pistes sélectionnées | `mew_playback._toggle_track_mute/_solo` |
+| Mute / solo de pad | X, S, Shift+X, Shift+S hors liste des pistes | `key_handler_chars.py` |
+| Mute / solo de pad | Boutons Mute et Solo | `mw_pads._on_mute_btn`, `_on_solo_btn` |
+| Volume de piste | Alt+↑/↓ sur la liste des pistes | `key_handler_alt.py:16-40` |
+| Volume de piste | CC7 du contrôleur, liste des pistes focalisée | `midi_handler_window.on_cc` |
+| Volume de pad | Alt+↑/↓ hors liste des pistes | `key_handler_alt.py` |
+| Volume de pad | SpinCtrl Volume du pad | `mw_pads._on_vol_spin` |
+| Volume de pad | CC7 du contrôleur, ailleurs que la liste des pistes | `midi_handler_window.on_cc` |
+| Tout le pad | Dialogue de propriétés du pad : il a un Annuler, mais pas d'Undo | `mw_pads._pad_properties_dialog` |
+
+Seul `TrackPropertiesDialog` fait déjà les choses correctement : un Undo
+avant le dialogue, retiré si Annuler ou si rien n'a changé, et l'état
+« modifié » rétabli (Phase 7 étape 10f1).
+
+**Avec une prise ouverte** (`_take_begin`), `_take_end_if_idle` ne retire
+l'Undo de la prise que s'il est toujours le dernier. Un réglage fait
+pendant la prise, avec sa propre entrée, est donc conservé : il n'y a pas
+de cas particulier à traiter.
+
+### Décisions validées (utilisateur, 2026-10-24)
+
+**D1 — un Undo avant chaque changement de mute, de solo ou de volume.**
+- Il est pris **avant** le changement : l'instantané garde l'état
+  d'avant, comme pour les autres actions.
+- `_add_undo` marque le projet modifié : c'est ce qui fera proposer la
+  sauvegarde à la fermeture.
+- **Rien n'est fait si la valeur ne change pas**, par exemple Alt+↑ sur
+  un volume à 100, ou Shift+X quand rien n'est muet. On ne crée alors
+  aucune entrée vide, et le projet n'est pas marqué.
+- Titres : `Mute piste 3`, `Solo pad 5`, `Démuter toutes les pistes`,
+  `Désolo tous les pads`, `Volume piste 3`, `Volume pad 5`,
+  `Mute pistes 2, 4` dans l'éditeur, `Propriétés pad 5`.
+
+**D2 — regroupement des changements de volume successifs.**
+- Une méthode `_add_mix_undo(title, key)` dans `mw_project.py` : `key`
+  identifie le réglage, par exemple `("track_volume", 2)` ou
+  `("pad_volume", 4)`.
+- Un nouveau changement **n'ajoute pas d'entrée** si :
+  - il porte la même `key` que le précédent ;
+  - l'entrée créée par ce précédent est toujours la dernière de
+    l'historique, donc sans autre action entre les deux ;
+  - et il arrive **moins de 1 seconde** après le précédent. La fenêtre
+    glisse : chaque changement la relance.
+
+  Le projet est quand même marqué modifié.
+- Un tour de bouton rotatif (des dizaines de CC7) ou une rafale d'Alt+↑
+  ne donne ainsi qu'une entrée, et un seul Ctrl+Z revient au volume de
+  départ.
+- Les bascules (X, S, Shift+X, Shift+S, boutons Mute et Solo) passent
+  `key=None` : **une entrée par bascule**. Une bascule de plusieurs
+  pistes dans l'éditeur ne fait qu'une entrée.
+- L'horloge est `time.monotonic()`, injectable pour les tests.
+
+**D3 — dialogue de propriétés du pad** : on reprend le schéma de
+`TrackPropertiesDialog`. Un Undo `Propriétés pad N` est pris avant le
+dialogue. Il est retiré si on annule ou si rien n'a changé, et l'état
+« modifié » d'avant est alors rétabli. Le pan et la durée y passent avec
+le reste, puisque le dialogue les règle ensemble.
+
+### Portée explicitement exclue de ce chantier
+
+- **Le pan**, des pistes comme des pads : Alt+←/→, Alt+0, CC10 et
+  SpinCtrl Pan. C'est le chantier suivant, à la demande de l'utilisateur,
+  avec le reste des réglages sans Undo qu'on trouvera.
+- Les CC7 et CC10 enregistrés dans `_tape` pendant une prise : ils sont
+  déjà couverts par l'Undo de la prise.
+- Le chargement des réglages d'un pattern lors de l'enchaînement du song
+  (`mw_songs`) : ce n'est pas une action de l'utilisateur.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **13a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **13b1** | Implémentation — `_add_mix_undo` (D2) ; Undo avant chaque changement du tableau (D1) ; dialogue de propriétés du pad (D3). | `ui/mw_project.py`, `ui/key_handler_chars.py`, `ui/key_handler_alt.py`, `ui/midi_handler_window.py`, `ui/mw_pads.py`, `ui/mew_playback.py` |
+| **13c1** | Tests — `_add_mix_undo` : regroupement par clé, fenêtre de 1 s glissante (horloge injectée), autre action entre deux, `key=None`. Chaque chemin du tableau : entrée créée, projet modifié, Ctrl+Z rend la valeur ; valeur inchangée sans entrée ni marquage ; dialogue du pad : Ok, Annuler, inchangé. | `tests/test_mix_undo.py` (nouveau) |
+| **13d1** | Doc — clôture (DESIGN.md, `docs/SPECS.md` § Undo), `pytest` complet, mémoire ; reprise du chantier 12 à 12f3. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- Avant de committer 13b1 : l'utilisateur essaie dans l'appli. Muter une
+  piste, tourner un bouton, puis Ctrl+Z, qui doit rétablir chaque
+  réglage, le bouton d'un seul coup. Fermer l'appli doit proposer la
+  sauvegarde.
