@@ -3960,3 +3960,31 @@ ou garder la vélocité brute.
   cassé. Il indexe la liste `drum_sounds` par un objet son, un reste de
   l'époque où c'était un dict, et lève donc `TypeError`. Il n'est pas testé
   ici. C'est du code mort, à supprimer ou à réparer à part.
+- **12d1** — conforme à D2 et D3.
+  - `grid_velocity(vel, pad_volume)` dans `midi_export.py`, et paramètre
+    `pad_volumes` (les volumes de `VoiceManager`, passés par
+    `mw_project`).
+  - CC91 et CC93 à 0 au tick 0, de rangs −2 et −1. Le volume et le pan
+    passent aux rangs −4 et −3.
+  - **`pytest` rouge à ce commit** : 6 tests figent les messages du tick 0
+    (`test_midi_export.py`, `test_midi_export_mix.py`) ; ils sont adaptés
+    en 12e1.
+  - **Écoute** (utilisateur, 2026-10-23, `Pat_01`, volumes de toutes les
+    pistes baissés sauf l'orgue) :
+    - **l'orgue sonne une octave plus bas dans TiMidity.** Ce n'est pas
+      l'export : le fichier porte les notes 67 à 81. C'est le preset
+      FluidR3 « Drawbar Organ ». Spectre de la note 72, identique dans
+      FluidSynth et dans TiMidity : 262 Hz à 0 dB, 130 Hz à −2 dB et
+      524 Hz à −7 dB. L'échantillon de l'appli, lui, sonne à 524 Hz.
+    - **Les échantillons de l'appli sont normalisés** : écart RMS (appli
+      moins TiMidity, vélocité 127, sans effets) de +5,7 dB pour la
+      guitare (programme 24), **+17,0 dB pour le piano** (programme 0) et
+      +3,1 dB pour l'orgue (programme 16). Aucune courbe globale ne peut
+      corriger un écart propre à chaque instrument : voir l'avenant 12a2.
+    - **Bug trouvé, déjà présent et hors export** : les changements de
+      volume et de pan faits par Alt+flèches, Alt+0, les CC7 et CC10 du
+      contrôleur et les SpinCtrl des pads n'entrent pas dans l'Undo et ne
+      marquent pas le projet modifié. À la fermeture, rien n'est proposé à
+      la sauvegarde (`project_03.gvp` a encore tous ses volumes à 100).
+      L'utilisateur a décidé d'en faire un chantier séparé, après
+      celui-ci.

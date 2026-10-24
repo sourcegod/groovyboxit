@@ -8,7 +8,8 @@
     piste (D5). Aucune dépendance à wx ni au player : les états qui ne
     vivent pas dans Pattern sont passés en paramètres. Les notes de kit
     sont converties en notes GM (Phase 7 étape 11f1, docs/DESIGN.md
-    § 11a1).
+    § 11a1). Vélocité des cases de grille d'après le gain joué, CC91 et
+    CC93 à 0 (Phase 7 étape 12d1, docs/DESIGN.md § 12a1).
     Date: Tue, 20/10/2026
     Author: Coolbrother
 """
@@ -19,6 +20,8 @@ from pattern import (ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
 
 PPQ                = 480
 PATCH_DEFAULT_MS   = 500   # comme au rejeu (TrackRouter.on_patch_tape)
+CC_REVERB          = 91
+CC_CHORUS          = 93
 
 # Ordre d'écriture à tick égal (D7) : note-off, PGM, CC, bend, note-on
 _ORDER_NOTE_OFF = 0
@@ -45,11 +48,20 @@ def pan_to_cc10(pan):
     return _clamp(64 + round(pan * 63 / 100), 1, 127)
 
 
+def grid_velocity(vel, pad_volume=100):
+    """Vélocité MIDI d'une case de grille : le facteur du rejeu
+    min(1, vel/100 · volume du pad/100) (DrumPlayer._dispatch_event),
+    ramené à 1..127. Avec la courbe GM de l'appli, un lecteur GM rend alors
+    le même gain. Phase 7 étape 12d1, docs/DESIGN.md § 12a1 D2."""
+    factor = min(1.0, vel / 100.0 * pad_volume / 100.0)
+    return _clamp(round(127 * factor), 1, 127)
+
+
 def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_names, kit_pad_notes, synth_grid_notes,
                        voice_durations, track_programs=None,
                        track_volumes=None, track_pans=None,
-                       kit_gm_map=None, unmapped=None):
+                       kit_gm_map=None, unmapped=None, pad_volumes=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -73,6 +85,11 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        écrites telles quelles (11a1 D2, D5)
     unmapped         : set rempli des notes de kit écrites sans conversion,
                        faute de correspondance GM (11a1 D4) ; None = ignoré
+    pad_volumes      : volume 0..100 de chaque pad (VoiceManager), compté
+                       dans la vélocité des cases de grille (12a1 D2) ;
+                       None = 100
+    Chaque piste reçoit CC91 et CC93 à 0 au tick 0 : pas de reverb ni de
+    chorus, comme dans l'appli (12a1 D3).
     """
     num_steps = pattern._num_steps
     num_beats = pattern._num_beats
@@ -117,16 +134,21 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             # rang -1 : avant un ETYPE_PGM capturé au tick 0, qui l'emporte
             timed.append((0, _ORDER_PGM, -1, mido.Message(
                 "program_change", channel=ch, program=_clamp(program, 0, 127))))
-        # Volume puis pan au tick 0, après le programme et avant les CC de
-        # _tape au même tick (rangs négatifs), qui l'emportent donc.
+        # Volume, pan, puis reverb et chorus à 0 (12a1 D3) au tick 0, après
+        # le programme et avant les CC de _tape au même tick (rangs
+        # négatifs), qui l'emportent donc.
         if track_volumes:
-            timed.append((0, _ORDER_CC, -2, mido.Message(
+            timed.append((0, _ORDER_CC, -4, mido.Message(
                 "control_change", channel=ch, control=7,
                 value=volume_to_cc7(track_volumes[t]))))
         if track_pans:
-            timed.append((0, _ORDER_CC, -1, mido.Message(
+            timed.append((0, _ORDER_CC, -3, mido.Message(
                 "control_change", channel=ch, control=10,
                 value=pan_to_cc10(track_pans[t]))))
+        timed.append((0, _ORDER_CC, -2, mido.Message(
+            "control_change", channel=ch, control=CC_REVERB, value=0)))
+        timed.append((0, _ORDER_CC, -1, mido.Message(
+            "control_change", channel=ch, control=CC_CHORUS, value=0)))
         notes = []     # (début, fin, note, vélocité, rang) avant chevauchements
         for seq, ev in enumerate(events):
             start = tick(ev.time)
@@ -138,7 +160,9 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 else:
                     note = kit_note(kit_pad_notes[pad])
                 ms = ev.dur if ev.dur > 0 else voice_durations[pad]
-                notes.append((start, start + ms_ticks(ms), note, p.get("vel", 100), seq))
+                vel = grid_velocity(p.get("vel", 100),
+                                    pad_volumes[pad] if pad_volumes else 100)
+                notes.append((start, start + ms_ticks(ms), note, vel, seq))
             elif ev.etype == ETYPE_KIT:
                 # one-shot (dur toujours 0) : un pas
                 notes.append((start, start + max(1, tick(1)),

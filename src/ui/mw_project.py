@@ -91,6 +91,7 @@ class ProjectMixin:
             kit_gm_map       = dict(self._snd.gm_note_map),      # 11a1 D2
             synth_grid_notes = list(r._kb_notes_play),
             voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
+            pad_volumes      = [vm.get_voice(i).volume for i in range(Pattern.NUM_PADS)],  # 12a1 D2
             track_programs   = [s.gm_program() for s in slots],
             track_volumes    = list(r._track_volumes),
             track_pans       = list(r._track_pans),
