@@ -9,7 +9,8 @@
     notes des pads et conversion GM des notes de kit (Phase 7 étape 11g1,
     docs/DESIGN.md § 11a1 D1, D4, D5) ; vélocité des cases de grille
     d'après le gain joué (Phase 7 étape 12e1, § 12a1 D2) ; pistes et pads
-    muets ou hors solo omis (Phase 7 étape 12f3, § 12a3 D7).
+    muets ou hors solo omis (Phase 7 étape 12f3, § 12a3 D7) ; fin du
+    fichier pile à la fin du pattern (Phase 7 étape 12i3, § 12a4 D8).
     Le Program Change, le volume et le pan ont leurs propres tests
     (test_gm_program.py, test_midi_export_mix.py).
     Date: Wed, 21/10/2026
@@ -131,16 +132,17 @@ def test_one_smf_track_per_non_empty_track_with_names():
     assert [tr.name for tr in mid.tracks[1:]] == ["Piano 1", "Track 12"]
     print("  une piste SMF par piste non vide, nom ou « Track NN » : OK")
 
-def test_track_end_at_pattern_end_or_last_note_off():
+def test_track_end_at_pattern_end_even_if_note_overflows():
+    """Phase 7 étape 12a4 D8 (remplace la règle « dernier note-off » de
+    10a1 D4) : chaque piste finit pile à la fin du pattern."""
     p = _pattern()
     _add(p, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)
     _add(p, 1, ETYPE_PATCH, 15.0, {"note": 60, "vel": 100}, dur=2000)   # déborde
     mid = _build(p)
-    assert _abs(mid.tracks[1])[-1] == (4 * PPQ, mid.tracks[1][-1])
-    end2 = _abs(mid.tracks[2])[-1][0]
-    assert end2 == 15 * PPQ // 4 + _ms_ticks(2000)
-    assert mid.tracks[2][-1].type == "end_of_track"
-    print("  fin de piste : fin du pattern, ou dernier note-off s'il déborde : OK")
+    for tr in mid.tracks:
+        assert _abs(tr)[-1] == (4 * PPQ, tr[-1]) and tr[-1].type == "end_of_track"
+    assert _notes(mid.tracks[2]) == [(15 * PPQ // 4, 4 * PPQ, 60, 100, 1)]
+    print("  fin de piste : pile à la fin du pattern, note qui déborde coupée : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +228,7 @@ def test_duration_depends_on_bpm_and_is_at_least_one_tick():
 
 def test_time_conversion_16_and_32_steps():
     for steps, step_ticks in ((16, PPQ // 4), (32, PPQ // 8)):
-        p = _pattern(num_steps=steps)
+        p = _pattern(num_bars=2, num_steps=steps)
         _add(p, 0, ETYPE_KIT, 3.0, {"note": 38, "vel": 100})
         _add(p, 0, ETYPE_KIT, steps + 0.5, {"note": 40, "vel": 100})     # mesure 2
         starts = [n[0] for n in _notes(_build(p).tracks[1])]
@@ -550,3 +552,58 @@ def test_track_with_only_inaudible_pads_keeps_empty_smf_track():
     mid = _build(p, pad_audible=[False] * 16)
     assert len(mid.tracks) == 2 and _note_list(mid.tracks[1]) == []
     print("  piste aux seuls pads muets : piste SMF sans note : OK")
+
+
+# ---------------------------------------------------------------------------
+# Fin du fichier pile à la fin du pattern (Phase 7 étape 12i3, § 12a4 D8)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bars, steps, bpm", [(1, 16, 120), (4, 16, 100), (2, 32, 90)])
+def test_file_length_is_pattern_length(bars, steps, bpm):
+    p = _pattern(num_bars=bars, num_steps=steps)
+    last = bars * steps - 1
+    _add(p, 0, ETYPE_PATCH, float(last), {"note": 60, "vel": 100}, dur=5000)   # déborde
+    _add(p, 1, ETYPE_KIT, float(last), {"note": 38, "vel": 100})
+    mid = _build(p, bpm=bpm)
+    assert mid.length == pytest.approx(bars * 4 * 60.0 / bpm)
+    print(f"  durée du fichier = durée des mesures ({bars} × {steps} pas, {bpm} BPM) : OK")
+
+def test_note_ending_before_end_untouched():
+    p = _pattern()
+    _add(p, 0, ETYPE_PATCH, 4.0, {"note": 62, "vel": 100}, dur=250)
+    assert _notes(_build(p).tracks[1]) == [(PPQ, PPQ + _ms_ticks(250), 62, 100, 0)]
+    print("  note qui finit avant la fin : intacte : OK")
+
+def test_note_off_at_end_comes_before_end_of_track():
+    p = _pattern()
+    _add(p, 0, ETYPE_PATCH, 14.0, {"note": 64, "vel": 100}, dur=4000)
+    msgs = _abs(_build(p).tracks[1])
+    assert [(at, m.type) for at, m in msgs[-2:]] == [(4 * PPQ, "note_off"), (4 * PPQ, "end_of_track")]
+    print("  note coupée : note-off au tick de fin, puis end_of_track : OK")
+
+@pytest.mark.parametrize("etype, payload", [
+    (ETYPE_PATCH, {"note": 60, "vel": 100}),
+    (ETYPE_KIT,   {"note": 38, "vel": 100}),
+    (ETYPE_GRID,  {"pad": 1, "vel": 100}),
+    (ETYPE_CC,    {"cc_num": 1, "value": 64}),
+    (ETYPE_PGM,   {"program": 5}),
+    (ETYPE_BEND,  {"value": 1000}),
+])
+def test_events_at_or_after_end_omitted(etype, payload):
+    """Hors du pattern : jamais rejoué (lp_start..lp_end), donc pas exporté."""
+    p = _pattern()                                   # 1 mesure de 16 pas
+    _add(p, 0, ETYPE_PATCH, 0.0, {"note": 70, "vel": 100}, dur=100)
+    _add(p, 0, etype, 16.0, dict(payload), dur=100)  # pile à la fin
+    _add(p, 0, etype, 20.5, dict(payload), dur=100)  # au-delà
+    msgs = [(at, m) for at, m in _abs(_build(p).tracks[1])
+            if m.type not in ("track_name", "end_of_track") and not _is_dry_cc(at, m)]
+    assert [(at, m.type) for at, m in msgs] == [(0, "note_on"), (_ms_ticks(100), "note_off")]
+    print("  événement à la fin ou au-delà du pattern : omis : OK")
+
+def test_note_rounded_onto_end_omitted():
+    """Un temps flottant arrondi sur le tick de fin donnerait une note de
+    durée nulle (note-on sans note-off) : omise."""
+    p = _pattern()
+    _add(p, 0, ETYPE_PATCH, 15.9999, {"note": 60, "vel": 100}, dur=100)
+    assert _notes(_build(p).tracks[1]) == []
+    print("  note arrondie sur le tick de fin : omise : OK")

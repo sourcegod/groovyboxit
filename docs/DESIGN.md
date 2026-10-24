@@ -4429,3 +4429,21 @@ instants » de 10a1 D4.
     12i3.
   - Essai : 4 mesures à 100 BPM donnent une durée `mido` de 9,600 s. Une
     note de 3 s au pas 62 est coupée au tick 7680.
+- **12i3** — `pytest` de nouveau vert, 2147 tests (deux passages).
+  - **Adaptation** :
+    - `test_track_end_at_pattern_end_or_last_note_off` devient
+      `test_track_end_at_pattern_end_even_if_note_overflows` : toutes les
+      pistes finissent au tick de fin, et la note qui déborde y est
+      coupée ;
+    - le test de conversion des temps passe à 2 mesures, pour que sa note
+      de la mesure 2 reste dans le pattern.
+  - **12 nouveaux tests** :
+    - durée `mido` égale à la durée des mesures, sur 3 cas (1 × 16 à
+      120 BPM, 4 × 16 à 100, 2 × 32 à 90) ;
+    - une note qui finit avant la fin reste intacte ;
+    - une note coupée a son note-off au tick de fin, avant `end_of_track` ;
+    - un événement pile à la fin ou au-delà est omis, pour les 6 etypes ;
+    - une note arrondie sur le tick de fin est omise.
+  - **Écoute** (utilisateur, 2026-10-24) : le rendu WAV de `Pat_01`,
+    ramené à 9,600 s avec la résonance repliée sur le début, « boucle très
+    précisément ».
