@@ -4110,3 +4110,42 @@ Rack.
   - 2065 tests verts : avec des réglages à 0, l'export est inchangé.
   - Essai : un orgue à +12 et −14 dB écrit la note 67 en 79 ; le CC7 passe
     de 127 à 57 au tick 0, et un CC7 capturé de 100 à 45.
+
+### Phase 7 étape 12a3 — Avenant : l'export suit le mute et le solo du rejeu
+
+**Origine.** Le 2026-10-24, l'utilisateur a exporté en ne gardant que la
+TR-707 et l'orgue, les autres pistes étant mutées. Les pistes mutées ont
+quand même été exportées. Le plan 10a1 les ignorait volontairement (§
+Portée exclue : « Mute et solo sont ignorés »). L'utilisateur revient sur
+ce choix : ce qui ne s'entend pas au rejeu ne doit pas être exporté.
+
+Lors du même essai, l'orgue ne semblait pas transposé. C'est attendu : la
+transposition GM n'a pas encore d'interface, qui arrive en 12h1. Aucun
+projet ne porte `gm_transpose`, qui vaut donc 0.
+
+**D7 — mêmes règles qu'au rejeu (validé par l'utilisateur).**
+- **Pistes** : la règle est celle de `TrackRouter._track_is_audible`. Une
+  piste mutée est omise. S'il y a au moins un solo, seules les pistes en
+  solo sont gardées, et le mute l'emporte sur le solo.
+  - Une piste omise n'a **aucune piste SMF**, comme une piste vide : ni
+    notes, ni CC, ni Program Change. Au rejeu, `TrackRouter` coupe aussi
+    ses CC et son bend.
+- **Pads** : la règle est celle de `VoiceManager.is_audible`. Les cases de
+  grille d'un pad muet, ou hors du solo des pads, sont omises sur toutes
+  les pistes, comme dans `DrumPlayer._dispatch_event`.
+  - Les `KIT` et les `PATCH` ne dépendent pas des pads, comme au rejeu.
+  - Une piste dont il ne reste que des cases de pads muets garde sa piste
+    SMF, sans note, comme une piste kit qui n'a que des `PATCH` (10h5).
+- **Paramètres** : `build_pattern_midi` reçoit `track_audible` et
+  `pad_audible`, des listes de booléens. `None` signifie que tout est
+  audible. `mw_project` les remplit depuis le router et le
+  `VoiceManager`.
+
+**Découpage** : deux commits sont insérés après 12f1, et la suite (12g1 à
+12j1) ne change pas.
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **12a3** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **12f2** | Implémentation — `track_audible` et `pad_audible` (D7), paramètres de `mw_project`. | `midi/midi_export.py`, `ui/mw_project.py` |
+| **12f3** | Tests — piste mutée omise, solo, mute qui l'emporte sur le solo ; pad muet ou hors solo omis sur une piste synthé et une piste kit ; KIT et PATCH intacts ; `None` ; paramètres de l'interface. | `tests/test_midi_export.py`, `tests/test_midi_export_ui.py` |
