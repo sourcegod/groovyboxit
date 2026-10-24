@@ -8,7 +8,8 @@
     temps, chevauchements, ordre à tick égal, CC/PGM/BEND, fin de piste ;
     notes des pads et conversion GM des notes de kit (Phase 7 étape 11g1,
     docs/DESIGN.md § 11a1 D1, D4, D5) ; vélocité des cases de grille
-    d'après le gain joué (Phase 7 étape 12e1, § 12a1 D2).
+    d'après le gain joué (Phase 7 étape 12e1, § 12a1 D2) ; pistes et pads
+    muets ou hors solo omis (Phase 7 étape 12f3, § 12a3 D7).
     Le Program Change, le volume et le pan ont leurs propres tests
     (test_gm_program.py, test_midi_export_mix.py).
     Date: Wed, 21/10/2026
@@ -45,7 +46,8 @@ def _add(p, track, etype, time_val, payload, dur=0, channel=0):
 
 def _build(p, *, bpm=120, channels=None, is_synth=None, names=None,
            kit_base=36, voice_ms=None, name="Pattern_01", pad_notes=None,
-           gm_map=None, unmapped=None, pad_volumes=None):
+           gm_map=None, unmapped=None, pad_volumes=None, track_audible=None,
+           pad_audible=None):
     n = p._num_tracks
     return build_pattern_midi(
         p, name=name, bpm=bpm,
@@ -54,7 +56,8 @@ def _build(p, *, bpm=120, channels=None, is_synth=None, names=None,
         track_names=names or [""] * n,
         kit_pad_notes=pad_notes or [kit_base + i for i in range(16)],
         synth_grid_notes=SYNTH_NOTES, voice_durations=voice_ms or [500] * 16,
-        kit_gm_map=gm_map, unmapped=unmapped, pad_volumes=pad_volumes)
+        kit_gm_map=gm_map, unmapped=unmapped, pad_volumes=pad_volumes,
+        track_audible=track_audible, pad_audible=pad_audible)
 
 def _is_dry_cc(at, m):
     """CC91/CC93 à 0 du tick 0, écrits sur chaque piste (Phase 7 étape 12d1)."""
@@ -478,3 +481,72 @@ def test_kit_and_patch_velocity_unchanged_by_pad_volumes():
     mid = _build(p, pad_volumes=[10] * 16)
     assert [n[3] for n in _notes(mid.tracks[1])] == [90, 70]
     print("  KIT et PATCH : vélocité du payload, volume des pads ignoré : OK")
+
+
+# ---------------------------------------------------------------------------
+# Pistes et pads muets ou hors solo (Phase 7 étape 12f3, § 12a3 D7)
+# ---------------------------------------------------------------------------
+
+def _three_tracks():
+    p = _pattern()
+    for t in range(3):
+        _add(p, t, ETYPE_PATCH, 0.0, {"note": 60 + t, "vel": 100}, dur=100)
+        _add(p, t, ETYPE_CC, 0.0, {"cc_num": 1, "value": 64})
+        _add(p, t, ETYPE_PGM, 0.0, {"program": 5})
+    return p
+
+def _names(mid):
+    return [tr.name for tr in mid.tracks[1:]]
+
+def test_inaudible_track_has_no_smf_track():
+    audible = [True, False, True] + [True] * 13
+    mid = _build(_three_tracks(), names=[f"T{i + 1}" for i in range(16)],
+                 track_audible=audible)
+    assert _names(mid) == ["T1", "T3"]
+    # ni note, ni CC, ni Program Change du canal de la piste 2
+    assert all(getattr(m, "channel", None) != 1 for tr in mid.tracks for m in tr)
+    print("  piste muette : aucune piste SMF, aucun message : OK")
+
+def test_only_audible_tracks_kept_like_a_solo():
+    audible = [False, True] + [False] * 14
+    mid = _build(_three_tracks(), names=[f"T{i + 1}" for i in range(16)],
+                 track_audible=audible)
+    assert _names(mid) == ["T2"]
+    print("  solo (une seule piste audible) : seule sa piste SMF : OK")
+
+def test_all_tracks_inaudible_leaves_conductor():
+    mid = _build(_three_tracks(), track_audible=[False] * 16)
+    assert len(mid.tracks) == 1
+    print("  aucune piste audible : piste conductor seule : OK")
+
+def test_track_audible_none_keeps_all():
+    assert len(_build(_three_tracks(), track_audible=None).tracks) == 4
+    print("  track_audible=None : toutes les pistes : OK")
+
+def test_inaudible_pad_grid_omitted_on_synth_and_kit_tracks():
+    p = _pattern()
+    for t in (0, 1):
+        _add(p, t, ETYPE_GRID, 0.0, {"pad": 2, "vel": 100})
+        _add(p, t, ETYPE_GRID, 4.0, {"pad": 3, "vel": 100})
+    pads = [True] * 16
+    pads[2] = False
+    mid = _build(p, is_synth=[True, False] + [True] * 14, pad_audible=pads)
+    assert _note_list(mid.tracks[1]) == [SYNTH_NOTES[3]]
+    assert _note_list(mid.tracks[2]) == [36 + 3]
+    print("  pad muet : ses cases de grille omises, piste synthé et piste kit : OK")
+
+def test_inaudible_pad_does_not_touch_kit_and_patch():
+    p = _pattern()
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 38, "vel": 100})
+    _add(p, 0, ETYPE_PATCH, 4.0, {"note": 62, "vel": 100}, dur=100)
+    _add(p, 0, ETYPE_GRID, 8.0, {"pad": 2, "vel": 100})
+    mid = _build(p, pad_audible=[False] * 16)
+    assert _note_list(mid.tracks[1]) == [38, 62]
+    print("  pads muets : KIT et PATCH gardés : OK")
+
+def test_track_with_only_inaudible_pads_keeps_empty_smf_track():
+    p = _pattern()
+    _add(p, 0, ETYPE_GRID, 0.0, {"pad": 2, "vel": 100})
+    mid = _build(p, pad_audible=[False] * 16)
+    assert len(mid.tracks) == 2 and _note_list(mid.tracks[1]) == []
+    print("  piste aux seuls pads muets : piste SMF sans note : OK")

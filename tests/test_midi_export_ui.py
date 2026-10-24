@@ -151,6 +151,33 @@ def test_params_pad_volumes_follow_voice_manager(tmp_path):
     assert vels == [[64], [64]]          # pad 2 à 50 : piste synthé et piste kit
     print("  paramètres : volumes des pads, vélocité des cases de grille : OK")
 
+def test_params_audible_follow_router_and_voice_manager(tmp_path):
+    """Phase 7 étape 12f3 : mute et solo des pistes et des pads, règles du
+    rejeu (le mute l'emporte sur le solo)."""
+    win = _ExportWindow(str(tmp_path))
+    p = win._midi_export_params()
+    assert p["track_audible"] == [True] * 16 and p["pad_audible"] == [True] * 16
+    r, vm = win._router, win._player.voice_manager
+    r.toggle_track_mute(0)
+    assert win._midi_export_params()["track_audible"][:3] == [False, True, True]
+    r.toggle_track_solo(0)
+    r.toggle_track_solo(2)
+    assert win._midi_export_params()["track_audible"][:3] == [False, False, True]
+    vm.toggle_solo(2)
+    vm.set_mute(5, True)
+    pads = win._midi_export_params()["pad_audible"]
+    assert pads[2] is True and pads.count(True) == 1
+    print("  paramètres : mute et solo du router et des pads, mute prioritaire : OK")
+
+def test_export_file_omits_muted_track(tmp_path):
+    win = _ExportWindow(str(tmp_path))
+    win._router.toggle_track_mute(1)                          # TR-707
+    path = str(tmp_path / "m.mid")
+    with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(wx.ID_OK, path, {})):
+        win._export_midi()
+    assert [tr.name for tr in mido.MidiFile(path).tracks] == ["Pat_01", "Piano 1", "DrawbarOrgan"]
+    print("  fichier : la piste mutée n'est pas exportée : OK")
+
 def test_params_name_is_pattern_name_when_set(tmp_path):
     win = _ExportWindow(str(tmp_path), cur_pattern_idx=4)
     assert win._midi_export_params()["name"] == "Pat_05"

@@ -4281,3 +4281,23 @@ le reste, puisque le dialogue les règle ensemble.
   piste, tourner un bouton, puis Ctrl+Z, qui doit rétablir chaque
   réglage, le bouton d'un seul coup. Fermer l'appli doit proposer la
   sauvegarde.
+
+**Reprise du chantier 12** (2026-10-24) : l'utilisateur revient sur la
+pause. Le chantier 12 continue dès 12f3. Le chantier 13, dont le plan 13a1
+est committé, viendra après la clôture du 12.
+
+- **12f3** (chantier 12) — 9 tests, 2074 verts (deux passages) :
+  - `test_midi_export.py` :
+    - une piste inaudible n'a pas de piste SMF, ni aucun message sur son
+      canal (notes, CC, PGM) ;
+    - une seule piste audible, comme un solo ;
+    - aucune piste audible : il ne reste que la conductor ;
+    - `None` ;
+    - un pad muet perd ses cases de grille, sur une piste synthé comme sur
+      une piste kit ;
+    - KIT et PATCH sont gardés ;
+    - une piste aux seuls pads muets garde sa piste SMF, sans note.
+  - `test_midi_export_ui.py` :
+    - les paramètres suivent le router et le `VoiceManager`, le mute
+      l'emportant sur le solo ;
+    - la piste mutée est absente du fichier.
