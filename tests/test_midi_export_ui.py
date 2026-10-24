@@ -178,6 +178,27 @@ def test_export_file_omits_muted_track(tmp_path):
     assert [tr.name for tr in mido.MidiFile(path).tracks] == ["Pat_01", "Piano 1", "DrawbarOrgan"]
     print("  fichier : la piste mutée n'est pas exportée : OK")
 
+def test_params_transpose_and_gain_from_slots(tmp_path):
+    """Phase 7 étape 12g1 : transposition et gain GM lus sur le slot de chaque
+    piste, appliqués dans le fichier."""
+    win = _ExportWindow(str(tmp_path))
+    p = win._midi_export_params()
+    assert p["track_transposes"] == [0] * 16 and p["track_gain_db"] == [0] * 16
+    win._rack.get_slot(ORGAN).set_gm_transpose(12)
+    win._rack.get_slot(ORGAN).set_gm_gain_db(-14)
+    win._rack.get_slot(KIT).set_gm_transpose(12)              # sans effet : kit
+    win._rack.get_slot(KIT).set_gm_gain_db(-6)
+    p = win._midi_export_params()
+    assert p["track_transposes"][:3] == [0, 0, 12]
+    assert p["track_gain_db"][:3] == [0, -6, -14]
+    path = str(tmp_path / "g.mid")
+    with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(wx.ID_OK, path, {})):
+        win._export_midi()
+    organ = mido.MidiFile(path).tracks[3]
+    assert [m.note for m in organ if m.type == "note_on"] == [79]        # 67 + 12
+    assert [m.value for m in organ if m.type == "control_change" and m.control == 7] == [57]
+    print("  paramètres : transposition et gain du slot, appliqués au fichier : OK")
+
 def test_params_name_is_pattern_name_when_set(tmp_path):
     win = _ExportWindow(str(tmp_path), cur_pattern_idx=4)
     assert win._midi_export_params()["name"] == "Pat_05"

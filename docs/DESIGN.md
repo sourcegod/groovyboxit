@@ -4301,3 +4301,29 @@ est committé, viendra après la clôture du 12.
     - les paramètres suivent le router et le `VoiceManager`, le mute
       l'emportant sur le solo ;
     - la piste mutée est absente du fichier.
+- **12g1** — 48 tests, 2122 verts (deux passages).
+  - **Écart au plan** : les tests sont dans un nouveau fichier,
+    `tests/test_gm_slot_export.py`, faute de fichier `test_rack*.py`. Le
+    test des paramètres est dans `test_midi_export_ui.py`.
+  - **Accesseurs** :
+    - défauts à 0 ;
+    - lecture dans `config` ;
+    - bornes ±24 et −40..0 ;
+    - une valeur non entière ou booléenne compte pour 0 ;
+    - la transposition n'existe que pour un synthé ; le gain vaut pour
+      tout slot non vide ;
+    - les setters bornent et remplacent `config` ;
+    - les réglages survivent à `to_dict` et `from_dict` du Rack.
+  - **`apply_gain_db`** : 7 cas, et −N dB à ±0,3 près sur la courbe GM
+    `40·log10`.
+  - **Export** :
+    - PATCH et GRID d'un synthé transposés, y compris négativement ;
+    - piste kit et notes KIT jamais transposées ;
+    - note bornée à 0..127 ;
+    - réglage propre à chaque piste ;
+    - gain sur le CC7 du tick 0 et sur un CC7 capturé, les autres CC
+      intacts ;
+    - `None` ou 0.
+  - **Interface** : les réglages sont lus sur le slot, la transposition
+    d'un kit est ignorée, et le fichier porte l'orgue en 79 avec un CC7 à
+    57.
