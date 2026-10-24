@@ -4073,3 +4073,22 @@ Rack.
 - **Chantier suivant**, décidé avec l'utilisateur : l'Undo et le marquage
   « projet modifié » des changements de volume et de pan (Alt+flèches,
   Alt+0, CC7 et CC10 du contrôleur, SpinCtrl des pads), vus en 12d1.
+- **12e1** — `pytest` de nouveau vert, 2065 tests (3 passages de suite).
+  - **Adaptation des 6 tests** : CC91 et CC93 attendus après CC7 et CC10
+    dans les messages du tick 0. « `None` = rien d'écrit » ne vaut plus que
+    pour CC7 et CC10. Le test CC/PGM/bend écarte les CC91 et CC93 du
+    tick 0.
+  - **Nouveaux tests** :
+    - `grid_velocity` sur 9 cas, dont défaut 127, pad à 50 → 64, écrêtage
+      au-delà de 100 et jamais 0 ;
+    - cases de grille synthé et kit avec le volume du pad ;
+    - `pad_volumes=None` ;
+    - KIT et PATCH inchangés ;
+    - CC91 et CC93 à 0 sur chaque piste et son canal, après le volume et
+      le pan, seulement au tick 0 ;
+    - un CC91 capturé au tick 0 passe après et l'emporte ;
+    - les paramètres et le fichier de l'interface (pad à 50 → 64).
+  - **Échec intermittent**, vu une seule fois sur 11 passages complets, et
+    non reproduit : le test n'a pas pu être identifié (sortie non
+    capturée). À surveiller ; voir la fragilité connue des tests
+    `wx.CallAfter` sur la suite complète.

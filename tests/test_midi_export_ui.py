@@ -134,8 +134,22 @@ def test_params_come_from_router_rack_player_and_kit(tmp_path):
     assert p["kit_gm_map"] is not win._snd.gm_note_map
     assert p["synth_grid_notes"] == win._router._kb_notes_play
     assert p["voice_durations"][:3] == [200, 210, 220]
+    assert p["pad_volumes"] == [100] * 16                     # 12a1 D2
     assert p["track_channels"] is not win._router._track_channels   # copies
     print("  paramètres : router, slots du Rack, player, kit chargé, voix : OK")
+
+def test_params_pad_volumes_follow_voice_manager(tmp_path):
+    """Phase 7 étape 12e1 : volumes des pads → vélocité des cases de grille."""
+    win = _ExportWindow(str(tmp_path))
+    win._player.voice_manager.set_volume(2, 50)
+    p = win._midi_export_params()
+    assert p["pad_volumes"][:3] == [100, 100, 50]
+    path, seen = str(tmp_path / "v.mid"), {}
+    with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(wx.ID_OK, path, seen)):
+        win._export_midi()
+    vels = [[m.velocity for m in tr if m.type == "note_on"] for tr in mido.MidiFile(path).tracks[1:3]]
+    assert vels == [[64], [64]]          # pad 2 à 50 : piste synthé et piste kit
+    print("  paramètres : volumes des pads, vélocité des cases de grille : OK")
 
 def test_params_name_is_pattern_name_when_set(tmp_path):
     win = _ExportWindow(str(tmp_path), cur_pattern_idx=4)

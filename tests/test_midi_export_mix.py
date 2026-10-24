@@ -4,7 +4,9 @@
     Tests de la Phase 7 étape 10h5 : volume et pan de piste exportés (CC#7
     et CC#10 au tick 0 de chaque piste, après le programme, sur le canal de
     la piste ; conversions inverses de TrackRouter.on_cc_tape) et notes
-    PATCH omises sur une piste sans slot SYNTH (muettes au rejeu).
+    PATCH omises sur une piste sans slot SYNTH (muettes au rejeu) ;
+    reverb (CC#91) et chorus (CC#93) à 0 au tick 0 (Phase 7 étape 12e1,
+    docs/DESIGN.md § 12a1 D3).
     Date: Wed, 21/10/2026
     Author: Coolbrother
 """
@@ -80,28 +82,32 @@ def test_volume_and_pan_at_tick_0_after_program():
     volumes[0], pans[0] = 45, -100
     head = _head(_export(_pattern(), [24] + [None] * 15, volumes, pans).tracks[1])
     assert [(m.type, getattr(m, "control", None)) for m in head] == \
-        [("program_change", None), ("control_change", 7), ("control_change", 10)]
+        [("program_change", None), ("control_change", 7), ("control_change", 10),
+         ("control_change", 91), ("control_change", 93)]
     assert (head[1].value, head[2].value) == (57, 1)
     assert all(m.channel == 0 for m in head)
-    print("  piste : programme, CC7, CC10 au tick 0, sur son canal : OK")
+    print("  piste : programme, CC7, CC10, CC91/93 au tick 0, sur son canal : OK")
 
 def test_volume_and_pan_written_even_without_program():
     head = _head(_export(_pattern(), None, [80] * 16, [30] * 16).tracks[2])
-    assert [(m.control, m.value, m.channel) for m in head] == [(7, 102, 9), (10, 83, 9)]
+    assert [(m.control, m.value, m.channel) for m in head] == \
+        [(7, 102, 9), (10, 83, 9), (91, 0, 9), (93, 0, 9)]
     print("  piste sans programme (canal 10) : CC7 et CC10 quand même : OK")
 
 def test_none_writes_no_mix_cc():
+    # Seuls CC91 et CC93 à 0 (Phase 7 étape 12d1) restent écrits
     mid = _export(_pattern())
-    assert not any(m.type == "control_change" for tr in mid.tracks for m in tr)
+    for tr in mid.tracks[1:]:
+        assert [(m.control, m.value) for m in tr if m.type == "control_change"] == [(91, 0), (93, 0)]
     head = _head(_export(_pattern(), volumes=[90] * 16).tracks[1])
-    assert [m.control for m in head] == [7]
+    assert [m.control for m in head] == [7, 91, 93]
     print("  track_volumes / track_pans None : rien d'écrit pour eux : OK")
 
 def test_captured_cc7_at_tick_0_comes_after_and_wins():
     p = _pattern()
     p._tape[0].insert(0, TapeEvent(ETYPE_CC, payload={"cc_num": 7, "value": 20}, time=0.0))
     head = _head(_export(p, volumes=[100] * 16, pans=[0] * 16).tracks[1])
-    assert [(m.control, m.value) for m in head] == [(7, 127), (10, 64), (7, 20)]
+    assert [(m.control, m.value) for m in head] == [(7, 127), (10, 64), (91, 0), (93, 0), (7, 20)]
     print("  CC7 capturé au tick 0 : écrit après le volume de piste, l'emporte : OK")
 
 def test_shared_channel_each_track_writes_its_own():
@@ -110,9 +116,49 @@ def test_shared_channel_each_track_writes_its_own():
     volumes = [100] * 16
     volumes[0], volumes[1] = 30, 70
     mid = _export(p, volumes=volumes, channels=[0] * 16)
-    vals = [[(m.channel, m.value) for m in _head(tr)] for tr in mid.tracks[1:3]]
+    vals = [[(m.channel, m.value) for m in _head(tr) if m.control == 7] for tr in mid.tracks[1:3]]
     assert vals == [[(0, 38)], [(0, 89)]]
     print("  canal partagé : chaque piste écrit son volume (le lecteur garde le dernier) : OK")
+
+
+# ---------------------------------------------------------------------------
+# Reverb et chorus à 0 (Phase 7 étape 12e1, docs/DESIGN.md § 12a1 D3)
+# ---------------------------------------------------------------------------
+
+def test_reverb_and_chorus_zero_on_every_track_and_its_channel():
+    p = _pattern()
+    p._tape[5].append(TapeEvent(ETYPE_PATCH, dur=200, payload={"note": 50, "vel": 90}, time=0.0))
+    channels = [Pattern.default_channel(t) for t in range(p._num_tracks)]
+    mid = _export(p, channels=channels)
+    assert len(mid.tracks) == 4
+    for tr, t in zip(mid.tracks[1:], (0, 5, 9)):
+        head = _head(tr)
+        dry = [(m.control, m.value, m.channel) for m in head if m.control in (91, 93)]
+        assert dry == [(91, 0, channels[t]), (93, 0, channels[t])]
+    print("  CC91 et CC93 à 0 au tick 0 de chaque piste, sur son canal : OK")
+
+def test_reverb_and_chorus_come_after_volume_and_pan():
+    head = _head(_export(_pattern(), [0] * 16, [100] * 16, [0] * 16).tracks[1])
+    assert [m.type == "program_change" or m.control for m in head] == [True, 7, 10, 91, 93]
+    print("  ordre du tick 0 : programme, CC7, CC10, CC91, CC93 : OK")
+
+def test_captured_reverb_at_tick_0_comes_after_and_wins():
+    p = _pattern()
+    p._tape[0].insert(0, TapeEvent(ETYPE_CC, payload={"cc_num": 91, "value": 40}, time=0.0))
+    head = _head(_export(p).tracks[1])
+    assert [(m.control, m.value) for m in head] == [(91, 0), (93, 0), (91, 40)]
+    print("  CC91 capturé au tick 0 : écrit après le 0, l'emporte : OK")
+
+def test_reverb_and_chorus_only_at_tick_0():
+    p = _pattern()
+    p._tape[0].append(TapeEvent(ETYPE_PATCH, dur=200, payload={"note": 62, "vel": 90}, time=8.0))
+    later, now = [], 0
+    for m in _export(p).tracks[1]:
+        now += m.time
+        if now and m.type == "control_change":
+            later.append(m)
+    assert later == []
+    print("  CC91 et CC93 : seulement au tick 0 : OK")
 
 
 # ---------------------------------------------------------------------------

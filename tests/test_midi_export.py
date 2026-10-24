@@ -7,7 +7,8 @@
     (synthé, kit), KIT, PATCH, vélocités, durées par défaut, conversions de
     temps, chevauchements, ordre à tick égal, CC/PGM/BEND, fin de piste ;
     notes des pads et conversion GM des notes de kit (Phase 7 étape 11g1,
-    docs/DESIGN.md § 11a1 D1, D4, D5).
+    docs/DESIGN.md § 11a1 D1, D4, D5) ; vélocité des cases de grille
+    d'après le gain joué (Phase 7 étape 12e1, § 12a1 D2).
     Le Program Change, le volume et le pan ont leurs propres tests
     (test_gm_program.py, test_midi_export_mix.py).
     Date: Wed, 21/10/2026
@@ -19,10 +20,12 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import mido
+import pytest
 
 from pattern import (Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
                      ETYPE_CC, ETYPE_PGM, ETYPE_BEND)
-from midi.midi_export import build_pattern_midi, export_pattern, PPQ, PATCH_DEFAULT_MS
+from midi.midi_export import (build_pattern_midi, export_pattern, grid_velocity,
+                              PPQ, PATCH_DEFAULT_MS)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +45,7 @@ def _add(p, track, etype, time_val, payload, dur=0, channel=0):
 
 def _build(p, *, bpm=120, channels=None, is_synth=None, names=None,
            kit_base=36, voice_ms=None, name="Pattern_01", pad_notes=None,
-           gm_map=None, unmapped=None):
+           gm_map=None, unmapped=None, pad_volumes=None):
     n = p._num_tracks
     return build_pattern_midi(
         p, name=name, bpm=bpm,
@@ -51,7 +54,11 @@ def _build(p, *, bpm=120, channels=None, is_synth=None, names=None,
         track_names=names or [""] * n,
         kit_pad_notes=pad_notes or [kit_base + i for i in range(16)],
         synth_grid_notes=SYNTH_NOTES, voice_durations=voice_ms or [500] * 16,
-        kit_gm_map=gm_map, unmapped=unmapped)
+        kit_gm_map=gm_map, unmapped=unmapped, pad_volumes=pad_volumes)
+
+def _is_dry_cc(at, m):
+    """CC91/CC93 à 0 du tick 0, écrits sur chaque piste (Phase 7 étape 12d1)."""
+    return at == 0 and m.type == "control_change" and m.control in (91, 93) and m.value == 0
 
 def _abs(track):
     """[(tick absolu, message)] d'une piste mido."""
@@ -283,7 +290,7 @@ def test_cc_pgm_bend_values_and_clamps():
     _add(p, 0, ETYPE_BEND, 5.0, {"value": 9000})
     _add(p, 0, ETYPE_BEND, 6.0, {"value": -9000})
     msgs = [(at, m) for at, m in _abs(_build(p).tracks[1]) if m.type != "track_name"
-            and m.type != "end_of_track"]
+            and m.type != "end_of_track" and not _is_dry_cc(at, m)]
     step = PPQ // 4
     assert [(at, m.type) for at, m in msgs] == [
         (step, "control_change"), (2 * step, "control_change"), (3 * step, "program_change"),
@@ -417,3 +424,57 @@ def test_export_pattern_passes_unmapped(tmp_path):
     assert unmapped == {90}
     assert _note_list(mido.MidiFile(path).tracks[1]) == [90, 56]
     print("  export_pattern : unmapped transmis, fichier converti : OK")
+
+
+# ---------------------------------------------------------------------------
+# Vélocité des cases de grille (Phase 7 étape 12e1, docs/DESIGN.md § 12a1 D2)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("vel, pad, out", [
+    (100, 100, 127),     # case par défaut : maximum, comme au rejeu
+    (100, 50, 64),
+    (50, 100, 64),
+    (80, 80, 81),        # 0,64 → 81
+    (127, 100, 127),     # au-delà de 100 : écrêté, comme au rejeu
+    (127, 50, 81),       # min(1, 1,27·0,5) = 0,635 → 81
+    (200, 100, 127),
+    (0, 100, 1),         # jamais 0 (note-off)
+    (100, 0, 1),
+])
+def test_grid_velocity_is_playback_factor(vel, pad, out):
+    assert grid_velocity(vel, pad) == out
+
+
+def test_grid_velocity_default_pad_volume():
+    assert grid_velocity(100) == 127 and grid_velocity(50) == 64
+
+
+def test_grid_kit_and_synth_velocity_uses_pad_volume():
+    p = _pattern()
+    _add(p, 0, ETYPE_GRID, 0.0, {"pad": 2, "vel": 100})      # synthé
+    _add(p, 1, ETYPE_GRID, 0.0, {"pad": 5, "vel": 100})      # kit
+    _add(p, 1, ETYPE_GRID, 4.0, {"pad": 0, "vel": 50})
+    is_synth = [True, False] + [True] * 14
+    vols = [100] * 16
+    vols[2], vols[5] = 50, 25
+    mid = _build(p, is_synth=is_synth, pad_volumes=vols)
+    assert [n[3] for n in _notes(mid.tracks[1])] == [64]
+    assert [n[3] for n in _notes(mid.tracks[2])] == [32, 64]
+    print("  GRID synthé et kit : vélocité = gain joué, volume du pad compris : OK")
+
+
+def test_grid_velocity_without_pad_volumes_counts_100():
+    p = _pattern()
+    _add(p, 0, ETYPE_GRID, 0.0, {"pad": 3, "vel": 100})
+    _add(p, 0, ETYPE_GRID, 4.0, {"pad": 3})                  # vel absente : 100
+    assert [n[3] for n in _notes(_build(p).tracks[1])] == [127, 127]
+    print("  pad_volumes=None, vel absente : 127 : OK")
+
+
+def test_kit_and_patch_velocity_unchanged_by_pad_volumes():
+    p = _pattern()
+    _add(p, 0, ETYPE_KIT, 0.0, {"note": 38, "vel": 90})
+    _add(p, 0, ETYPE_PATCH, 4.0, {"note": 60, "vel": 70}, dur=100)
+    mid = _build(p, pad_volumes=[10] * 16)
+    assert [n[3] for n in _notes(mid.tracks[1])] == [90, 70]
+    print("  KIT et PATCH : vélocité du payload, volume des pads ignoré : OK")
