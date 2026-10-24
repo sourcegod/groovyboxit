@@ -3988,3 +3988,88 @@ ou garder la vélocité brute.
       la sauvegarde (`project_03.gvp` a encore tous ses volumes à 100).
       L'utilisateur a décidé d'en faire un chantier séparé, après
       celui-ci.
+
+### Phase 7 étape 12a2 — Avenant : transposition et gain GM par slot
+
+**Origine.** L'écoute de 12d1 a montré deux écarts propres à chaque
+instrument, qu'aucune courbe globale ne corrige :
+- le preset FluidR3 « Drawbar Organ » sonne une octave sous la note
+  écrite (spectre en 12d1) ;
+- les échantillons de l'appli sont normalisés, « fortement » pour l'orgue
+  selon l'utilisateur. L'écart RMS entre l'appli et TiMidity va de
+  +3,1 dB (orgue) à +17,0 dB (piano).
+
+Le 2026-10-24, l'utilisateur a choisi des réglages GM par slot, qui ne
+touchent que l'export, comme le programme GM (Phase 7 étape 10h3).
+
+**D4 — transposition GM d'un slot synthé.**
+- `slot.config["gm_transpose"]`, un entier de −24 à +24 demi-tons,
+  0 par défaut. Accesseurs `Slot.gm_transpose()` et
+  `set_gm_transpose(n)`, sur le modèle de `gm_program()` et
+  `set_gm_program()`. `config` est remplacé, jamais modifié en place, à
+  cause des instantanés d'Undo.
+- Appliquée à l'export aux notes `PATCH` et aux `GRID` d'une piste dont le
+  slot est un synthé, après le calcul de la note et avant la borne
+  0..127.
+- Sans effet sur un slot kit, dont les notes passent par la table GM de la
+  Phase 7 étape 11, ni sur les `KIT`.
+- Exemple : l'orgue à +12. Ses notes 67 à 81 sont écrites 79 à 93, et le
+  preset sonne alors à la hauteur de l'appli.
+
+**D5 — gain GM d'un slot, en dB, appliqué au CC7 du fichier.**
+- `slot.config["gm_gain_db"]`, un entier de −40 à 0 dB, 0 par défaut.
+  Accesseurs `Slot.gm_gain_db()` et `set_gm_gain_db(db)`.
+- Il vaut pour tout slot non vide, kit compris.
+- À l'export, tout CC7 de la piste est multiplié par `10^(dB/40)`, puis
+  arrondi et borné à 0..127. Cela vaut pour le CC7 du tick 0 (volume de
+  piste) comme pour un CC7 capturé dans `_tape`. Avec la courbe GM d'un
+  lecteur (`40·log10`), c'est exactement le gain voulu en dB.
+- Le gain est négatif ou nul, car CC7 plafonne à 127 : pour équilibrer, on
+  baisse les instruments trop forts plutôt que de monter les autres.
+- Ordre de grandeur, d'après les mesures de 12d1 : pour retrouver dans
+  TiMidity l'équilibre de l'appli, il faudrait l'orgue vers −14 dB et la
+  guitare vers −11 dB, le piano restant à 0. Ce n'est qu'un point de
+  départ : l'utilisateur règle à l'oreille.
+
+**D6 — réglage dans `TrackPropertiesDialog`.**
+- Deux `SpinCtrl` après « Programme GM du slot » : « Transposition GM du
+  slot (demi-tons) » et « Gain GM du slot (dB) ». Un `SpinCtrl` est
+  annoncé en temps réel par Orca.
+  - Ordre Tab : Mute → Solo → Slots → Canal → Programme → Transposition →
+    Gain → Volume → Pan.
+  - La transposition est grisée si le slot n'est pas un synthé, le gain si
+    le slot est vide. Changer de slot dans le dialogue recharge les deux
+    valeurs, comme le programme.
+- Même aperçu, même Annuler et même Undo que le programme :
+  `saved_configs` garde la `config` d'origine de chaque slot touché.
+- Le réglage appartient au slot : toutes les pistes qui jouent ce slot le
+  partagent, comme le programme GM.
+
+**Paramètres d'export.** `build_pattern_midi` reçoit `track_transposes` et
+`track_gain_db`, une valeur par piste, lue sur le slot de la piste.
+`None` signifie 0. `mw_project._midi_export_params` les remplit depuis le
+Rack.
+
+**Exclu de l'avenant** :
+- une mesure automatique des écarts : elle dépend de la banque du lecteur ;
+- une transposition des kits ;
+- un gain positif.
+
+**Découpage révisé** (12a1 à 12d1 inchangés) :
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **12a2** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **12e1** | Tests — comme prévu en 12a1 (vélocité de grille, CC91 et CC93, adaptation des 6 tests). | `tests/test_midi_export*.py` |
+| **12f1** | Implémentation — `gm_transpose` et `gm_gain_db` du slot (D4, D5) ; export : `track_transposes`, `track_gain_db` ; `mw_project`. | `rack.py`, `midi/midi_export.py`, `ui/mw_project.py` |
+| **12g1** | Tests — accesseurs, bornes, `config` remplacé ; transposition des PATCH et des GRID synthé, kit et KIT intacts, borne 0..127 ; gain sur le CC7 du tick 0 et sur un CC7 capturé, arrondi, borne, `None` ; paramètres de l'interface. | `tests/test_rack*.py`, `tests/test_midi_export_mix.py`, `tests/test_midi_export_ui.py` |
+| **12h1** | Implémentation — deux `SpinCtrl` dans `TrackPropertiesDialog` (D6), aperçu, Annuler, Undo. | `ui/dialogs_properties.py`, `ui/mw_tracks.py` |
+| **12i1** | Tests — valeurs initiales, grisage selon le slot, rechargement au changement de slot, aperçu, Annuler qui rend la `config`, Undo, ordre Tab. | `tests/test_track_properties_dialog.py` |
+| **12j1** | Doc — clôture (ex-12f1) : DESIGN.md, `docs/SPECS.md`, `~/.timidity.cfg` avec l'accord de l'utilisateur, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- Avant de committer 12h1 : l'utilisateur règle l'orgue à +12 et les
+  gains à l'oreille, exporte `Pat_01`, puis compare l'appli et TiMidity
+  sec.
+- **Chantier suivant**, décidé avec l'utilisateur : l'Undo et le marquage
+  « projet modifié » des changements de volume et de pan (Alt+flèches,
+  Alt+0, CC7 et CC10 du contrôleur, SpinCtrl des pads), vus en 12d1.
