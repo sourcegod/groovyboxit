@@ -64,6 +64,42 @@ class InstrumentSlot:
         place : to_dict le partage avec les instantanés d'Undo."""
         self.config = {**self.config, "gm_program": max(0, min(127, int(program)))}
 
+    # Réglages d'export GM du slot (Phase 7 étape 12f1, docs/DESIGN.md
+    # § 12a2 D4, D5) : sans effet sur l'appli.
+    GM_TRANSPOSE_MIN, GM_TRANSPOSE_MAX = -24, 24
+    GM_GAIN_DB_MIN,   GM_GAIN_DB_MAX   = -40, 0
+
+    def _config_int(self, key, lo, hi):
+        value = self.config.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return max(lo, min(hi, value))
+        return 0
+
+    def gm_transpose(self):
+        """Transposition GM en demi-tons (config["gm_transpose"], borné à
+        ±24), appliquée à l'export aux notes d'un synthé. 0 pour un slot qui
+        n'est pas un synthé ou sans réglage."""
+        if self.type != InstrumentType.SYNTH:
+            return 0
+        return self._config_int("gm_transpose", self.GM_TRANSPOSE_MIN, self.GM_TRANSPOSE_MAX)
+
+    def set_gm_transpose(self, semitones):
+        """Règle config["gm_transpose"] ; config est remplacé (voir set_gm_program)."""
+        value = max(self.GM_TRANSPOSE_MIN, min(self.GM_TRANSPOSE_MAX, int(semitones)))
+        self.config = {**self.config, "gm_transpose": value}
+
+    def gm_gain_db(self):
+        """Gain GM en dB (config["gm_gain_db"], borné à -40..0), appliqué
+        à l'export aux CC7 de la piste. 0 pour un slot vide ou sans réglage."""
+        if self.is_empty:
+            return 0
+        return self._config_int("gm_gain_db", self.GM_GAIN_DB_MIN, self.GM_GAIN_DB_MAX)
+
+    def set_gm_gain_db(self, db):
+        """Règle config["gm_gain_db"] ; config est remplacé (voir set_gm_program)."""
+        value = max(self.GM_GAIN_DB_MIN, min(self.GM_GAIN_DB_MAX, int(db)))
+        self.config = {**self.config, "gm_gain_db": value}
+
     # ------------------------------------------------------------------
 
     def clear(self):

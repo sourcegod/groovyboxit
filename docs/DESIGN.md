@@ -4092,3 +4092,21 @@ Rack.
     non reproduit : le test n'a pas pu être identifié (sortie non
     capturée). À surveiller ; voir la fragilité connue des tests
     `wx.CallAfter` sur la suite complète.
+- **12f1** — conforme à D4 et D5, avec des bornes plus strictes que
+  prévu.
+  - `InstrumentSlot.gm_transpose()` et `set_gm_transpose()`,
+    `gm_gain_db()` et `set_gm_gain_db()`, ainsi que les constantes
+    `GM_TRANSPOSE_MIN/MAX` (±24) et `GM_GAIN_DB_MIN/MAX` (−40..0).
+  - Un helper `_config_int` lit la valeur de `config`. Une valeur hors
+    bornes y est **ramenée dans les bornes**, alors qu'une valeur non
+    entière ou booléenne compte pour 0.
+  - Les setters bornent la valeur et remplacent `config`.
+  - Export :
+    - `apply_gain_db(cc7, db)` vaut `CC7 · 10^(dB/40)`, borné ;
+    - `track_transposes` s'ajoute à la note PATCH et à la note GRID d'une
+      piste synthé ;
+    - `track_gain_db` atténue le CC7 du tick 0 et tout CC7 de `_tape` ;
+    - `mw_project` les remplit depuis le Rack.
+  - 2065 tests verts : avec des réglages à 0, l'export est inchangé.
+  - Essai : un orgue à +12 et −14 dB écrit la note 67 en 79 ; le CC7 passe
+    de 127 à 57 au tick 0, et un CC7 capturé de 100 à 45.

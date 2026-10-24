@@ -9,7 +9,8 @@
     vivent pas dans Pattern sont passés en paramètres. Les notes de kit
     sont converties en notes GM (Phase 7 étape 11f1, docs/DESIGN.md
     § 11a1). Vélocité des cases de grille d'après le gain joué, CC91 et
-    CC93 à 0 (Phase 7 étape 12d1, docs/DESIGN.md § 12a1).
+    CC93 à 0 (Phase 7 étape 12d1, docs/DESIGN.md § 12a1). Transposition et
+    gain GM du slot de chaque piste (Phase 7 étape 12f1, § 12a2).
     Date: Tue, 20/10/2026
     Author: Coolbrother
 """
@@ -48,6 +49,13 @@ def pan_to_cc10(pan):
     return _clamp(64 + round(pan * 63 / 100), 1, 127)
 
 
+def apply_gain_db(cc7, db):
+    """CC7 atténué de `db` dB (≤ 0) pour un lecteur GM, dont le volume
+    suit 40·log10(CC7/127) : CC7 · 10^(db/40), borné à 0..127.
+    Phase 7 étape 12f1, docs/DESIGN.md § 12a2 D5."""
+    return _clamp(round(cc7 * 10 ** (db / 40.0)), 0, 127)
+
+
 def grid_velocity(vel, pad_volume=100):
     """Vélocité MIDI d'une case de grille : le facteur du rejeu
     min(1, vel/100 · volume du pad/100) (DrumPlayer._dispatch_event),
@@ -61,7 +69,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_names, kit_pad_notes, synth_grid_notes,
                        voice_durations, track_programs=None,
                        track_volumes=None, track_pans=None,
-                       kit_gm_map=None, unmapped=None, pad_volumes=None):
+                       kit_gm_map=None, unmapped=None, pad_volumes=None,
+                       track_transposes=None, track_gain_db=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -88,6 +97,10 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     pad_volumes      : volume 0..100 de chaque pad (VoiceManager), compté
                        dans la vélocité des cases de grille (12a1 D2) ;
                        None = 100
+    track_transposes : demi-tons ajoutés aux notes PATCH et GRID d'une piste
+                       synthé (slot.gm_transpose(), 12a2 D4) ; None = 0
+    track_gain_db    : gain en dB (≤ 0) appliqué à tout CC7 de la piste
+                       (slot.gm_gain_db(), 12a2 D5) ; None = 0
     Chaque piste reçoit CC91 et CC93 à 0 au tick 0 : pas de reverb ni de
     chorus, comme dans l'appli (12a1 D3).
     """
@@ -128,6 +141,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         if not events:
             continue
         ch = track_channels[t]
+        transpose = track_transposes[t] if track_transposes else 0
+        gain_db   = track_gain_db[t] if track_gain_db else 0
         timed = []     # (tick, ordre, rang dans _tape, message)
         program = track_programs[t] if track_programs else None
         if program is not None:
@@ -140,7 +155,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         if track_volumes:
             timed.append((0, _ORDER_CC, -4, mido.Message(
                 "control_change", channel=ch, control=7,
-                value=volume_to_cc7(track_volumes[t]))))
+                value=apply_gain_db(volume_to_cc7(track_volumes[t]), gain_db))))
         if track_pans:
             timed.append((0, _ORDER_CC, -3, mido.Message(
                 "control_change", channel=ch, control=10,
@@ -156,7 +171,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             if ev.etype == ETYPE_GRID:
                 pad = p.get("pad", 0)
                 if track_is_synth[t]:
-                    note = synth_grid_notes[pad]
+                    note = synth_grid_notes[pad] + transpose
                 else:
                     note = kit_note(kit_pad_notes[pad])
                 ms = ev.dur if ev.dur > 0 else voice_durations[pad]
@@ -173,17 +188,19 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 if not track_is_synth[t]:
                     continue
                 ms = ev.dur if ev.dur > 0 else PATCH_DEFAULT_MS
-                notes.append((start, start + ms_ticks(ms), p.get("note", 0),
+                notes.append((start, start + ms_ticks(ms), p.get("note", 0) + transpose,
                               p.get("vel", 100), seq))
             elif ev.etype == ETYPE_PGM:
                 timed.append((start, _ORDER_PGM, seq, mido.Message(
                     "program_change", channel=ch,
                     program=_clamp(p.get("program", 0), 0, 127))))
             elif ev.etype == ETYPE_CC:
+                control = _clamp(p.get("cc_num", 0), 0, 127)
+                value   = _clamp(p.get("value", 0), 0, 127)
+                if control == 7:
+                    value = apply_gain_db(value, gain_db)
                 timed.append((start, _ORDER_CC, seq, mido.Message(
-                    "control_change", channel=ch,
-                    control=_clamp(p.get("cc_num", 0), 0, 127),
-                    value=_clamp(p.get("value", 0), 0, 127))))
+                    "control_change", channel=ch, control=control, value=value)))
             elif ev.etype == ETYPE_BEND:
                 timed.append((start, _ORDER_BEND, seq, mido.Message(
                     "pitchwheel", channel=ch,

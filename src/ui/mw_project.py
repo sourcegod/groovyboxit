@@ -93,6 +93,8 @@ class ProjectMixin:
             voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
             pad_volumes      = [vm.get_voice(i).volume for i in range(Pattern.NUM_PADS)],  # 12a1 D2
             track_programs   = [s.gm_program() for s in slots],
+            track_transposes = [s.gm_transpose() for s in slots],      # 12a2 D4
+            track_gain_db    = [s.gm_gain_db() for s in slots],        # 12a2 D5
             track_volumes    = list(r._track_volumes),
             track_pans       = list(r._track_pans),
         )
