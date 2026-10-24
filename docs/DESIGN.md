@@ -4353,3 +4353,25 @@ est committé, viendra après la clôture du 12.
       l'échantillon mesure 524 Hz, soit la note 72. Le mode Keyboard
       sauvegarde `kb_root_midi` dans le pattern, et une note PATCH garde
       la hauteur jouée. L'appli joue donc l'orgue à la hauteur écrite.
+- **12i1** — `pytest` de nouveau vert, 2135 tests (deux passages).
+  - **Adaptation des 12 tests** : les faux dialogues de
+    `test_gm_program.py` et `test_track_channels.py` lisent
+    `slot_gm_tuning` et rendent 9 valeurs, avec `get_transpose()` et
+    `get_gain_db()`. Les appels scriptés transmettent les deux réglages.
+    Le tuple initial d'`on_change` compte 9 valeurs. L'ordre Tab attendu
+    est Canal → Programme → Transposition → Gain → Volume.
+  - **7 tests du dialogue** (`test_track_properties_dialog.py`) :
+    - synthé : actif, valeurs et bornes ;
+    - kit : gain seul ;
+    - slot vide, ou sans callback : tout grisé ;
+    - un changement de slot recharge et transmet les réglages ;
+    - `on_change` transmet les valeurs choisies ;
+    - les vrais `EVT_SPINCTRL` donnent l'aperçu.
+  - **6 tests de `mw_tracks`** (dans `test_gm_program.py` et non dans le
+    fichier du dialogue, pour réutiliser le faux dialogue scripté) :
+    - `_slot_gm_tuning` selon le genre du slot, et sa transmission ;
+    - Ok enregistre `config` et garde l'Undo ;
+    - Annuler rend la `config` d'origine de chaque slot touché ;
+    - changé puis rétabli, l'action compte comme inchangée ;
+    - un kit ne reçoit que le gain ;
+    - le réglage est partagé par les pistes du même slot.

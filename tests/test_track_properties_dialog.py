@@ -2,7 +2,8 @@
 """
     File: tests/test_track_properties_dialog.py
     Tests unitaires de TrackPropertiesDialog : valeurs initiales, callbacks
-    on_change / on_play_toggle, gestion des touches.
+    on_change / on_play_toggle, gestion des touches. Transposition et gain
+    GM du slot (Phase 7 étape 12i1, docs/DESIGN.md § 12a2 D6).
     Date: Tue, 19/05/2026
     Author: Coolbrother
 """
@@ -43,7 +44,7 @@ DEFAULT = dict(cur_slot_idx=2, volume=75, pan=-20, mute=True, solo=False, channe
 
 
 def make_dlg(on_change=None, on_play_toggle=None, channel_after_slot=None,
-             slot_program=None, **kwargs):
+             slot_program=None, slot_gm_tuning=None, **kwargs):
     """Crée un wx.App + frame parent + TrackPropertiesDialog."""
     params = {**DEFAULT, **kwargs}
     app   = wx.App(False)
@@ -60,6 +61,7 @@ def make_dlg(on_change=None, on_play_toggle=None, channel_after_slot=None,
         channel=params['channel'],
         channel_after_slot=channel_after_slot,
         slot_program=slot_program,
+        slot_gm_tuning=slot_gm_tuning,
     )
     return app, frame, dlg
 
@@ -113,8 +115,9 @@ def test_on_change_receives_initial_values_on_first_call():
     received = []
     app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a))
     dlg._on_widget_change(FakeEvent())
-    # canal en 6e (10f1), programme en 7e (10h3) : None sans slot_program
-    assert received == [(2, 75, -20, True, False, 3, None)]
+    # canal en 6e (10f1), programme en 7e (10h3), transposition et gain en
+    # 8e et 9e (12h1) : None sans slot_program ni slot_gm_tuning
+    assert received == [(2, 75, -20, True, False, 3, None, None, None)]
     teardown(app, frame, dlg)
     print("  on_change reçoit les valeurs initiales : OK")
 
@@ -369,12 +372,13 @@ def test_program_without_valid_value_has_no_selection():
     print("  programme inconnu : liste remplie, aucune sélection : OK")
 
 def test_program_list_follows_channel_in_tab_order():
-    app, frame, dlg = make_dlg(slot_program=_fake_slot_program)
+    app, frame, dlg = make_dlg(slot_program=_fake_slot_program,
+                               slot_gm_tuning=_fake_slot_gm_tuning)
     focusable = [w for w in dlg.GetChildren() if w.AcceptsFocus()]
-    assert focusable.index(dlg._programs) == focusable.index(dlg._channels) + 1
-    assert focusable.index(dlg._vol) == focusable.index(dlg._programs) + 1
+    i = focusable.index(dlg._channels)
+    assert focusable[i + 1:i + 5] == [dlg._programs, dlg._transpose, dlg._gain, dlg._vol]
     teardown(app, frame, dlg)
-    print("  ordre Tab avec programme actif : Canal → Programme → Volume : OK")
+    print("  ordre Tab : Canal → Programme → Transposition → Gain → Volume : OK")
 
 def test_slot_change_reloads_programs_synth_to_kit_and_back():
     received = []
@@ -406,6 +410,87 @@ def test_on_change_reflects_chosen_program():
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Transposition et gain GM du slot (Phase 7 étape 12i1, § 12a2 D6)
+# ---------------------------------------------------------------------------
+
+def _fake_slot_gm_tuning(slot_idx):
+    """Slot 0 = kit (gain seul), slot 2 = synthé (transposition 24, gain -14),
+    slot 5 = synthé sans réglage, autres = vides (tout grisé)."""
+    return {0: (None, -6), 2: (24, -14), 5: (0, 0)}.get(slot_idx, (None, None))
+
+def test_gm_tuning_initial_values_for_synth_slot():
+    app, frame, dlg = make_dlg(slot_gm_tuning=_fake_slot_gm_tuning)   # slot initial 2
+    assert dlg._transpose.IsEnabled() and dlg._gain.IsEnabled()
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (24, -14)
+    assert (dlg._transpose.GetMin(), dlg._transpose.GetMax()) == (-24, 24)
+    assert (dlg._gain.GetMin(), dlg._gain.GetMax()) == (-40, 0)
+    teardown(app, frame, dlg)
+    print("  slot synthé : transposition et gain actifs, valeurs du slot, bornes : OK")
+
+def test_gm_tuning_kit_slot_has_gain_only():
+    app, frame, dlg = make_dlg(cur_slot_idx=0, slot_gm_tuning=_fake_slot_gm_tuning)
+    assert not dlg._transpose.IsEnabled() and dlg._gain.IsEnabled()
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (None, -6)
+    assert dlg._transpose.GetValue() == 0
+    teardown(app, frame, dlg)
+    print("  slot kit : transposition grisée (None), gain actif : OK")
+
+def test_gm_tuning_empty_slot_all_disabled():
+    app, frame, dlg = make_dlg(cur_slot_idx=7, slot_gm_tuning=_fake_slot_gm_tuning)
+    assert not dlg._transpose.IsEnabled() and not dlg._gain.IsEnabled()
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (None, None)
+    teardown(app, frame, dlg)
+    print("  slot vide : transposition et gain grisés : OK")
+
+def test_gm_tuning_disabled_without_callback():
+    app, frame, dlg = make_dlg()
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (None, None)
+    teardown(app, frame, dlg)
+    print("  sans slot_gm_tuning : tout grisé : OK")
+
+def test_slot_change_reloads_gm_tuning():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a),
+                               slot_gm_tuning=_fake_slot_gm_tuning)
+    dlg._slots.SetSelection(0)
+    dlg._on_slot_change(FakeEvent())
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (None, -6)
+    dlg._slots.SetSelection(5)
+    dlg._on_slot_change(FakeEvent())
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (0, 0)
+    dlg._slots.SetSelection(2)
+    dlg._on_slot_change(FakeEvent())
+    assert (dlg.get_transpose(), dlg.get_gain_db()) == (24, -14)
+    assert [r[7:] for r in received] == [(None, -6), (0, 0), (24, -14)]
+    teardown(app, frame, dlg)
+    print("  changement de slot : réglages GM rechargés et transmis : OK")
+
+def test_on_change_reflects_chosen_transpose_and_gain():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a),
+                               slot_gm_tuning=_fake_slot_gm_tuning)
+    dlg._transpose.SetValue(12)
+    dlg._gain.SetValue(-20)
+    dlg._on_widget_change(FakeEvent())
+    assert received[-1][7:] == (12, -20)
+    teardown(app, frame, dlg)
+    print("  on_change : transposition et gain choisis : OK")
+
+def test_gm_tuning_spinctrls_bound_to_preview():
+    received = []
+    app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a),
+                               slot_gm_tuning=_fake_slot_gm_tuning)
+    for ctrl, value in ((dlg._transpose, 7), (dlg._gain, -3)):
+        ctrl.SetValue(value)
+        evt = wx.SpinEvent(wx.wxEVT_SPINCTRL, ctrl.GetId())
+        evt.SetEventObject(ctrl)
+        ctrl.GetEventHandler().ProcessEvent(evt)
+    assert [r[7:] for r in received] == [(7, -14), (7, -3)]
+    teardown(app, frame, dlg)
+    print("  SpinCtrl Transposition et Gain : aperçu en temps réel : OK")
 
 if __name__ == "__main__":
     print("=== test_track_properties_dialog ===")

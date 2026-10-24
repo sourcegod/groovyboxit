@@ -5,7 +5,9 @@
     § 10h2 D11-D13) : guess_gm_program (instruments GM, kits GM2),
     InstrumentSlot.gm_program / set_gm_program (config jamais modifiée en
     place : partagée avec les instantanés d'Undo), program_change au tick 0
-    de l'export, et propriétés de piste (aperçu, Annuler, Undo).
+    de l'export, et propriétés de piste (aperçu, Annuler, Undo) ;
+    transposition et gain GM du slot dans les propriétés de piste (Phase 7
+    étape 12i1, § 12a2 D6).
     Date: Wed, 21/10/2026
     Author: Coolbrother
 """
@@ -207,7 +209,8 @@ def _scripted_dialog(result, script, seen):
     class FakeDlg:
         def __init__(self, parent, tidx, rack, slot, vol, pan, mute, solo, **kw):
             seen.update(kw)
-            init = (slot, vol, pan, mute, solo, kw["channel"], kw["slot_program"](slot)[1])
+            init = (slot, vol, pan, mute, solo, kw["channel"], kw["slot_program"](slot)[1],
+                    *kw["slot_gm_tuning"](slot))
             self._v = init
             def on_change(*values):
                 self._v = values
@@ -221,6 +224,8 @@ def _scripted_dialog(result, script, seen):
         def get_solo(self):     return self._v[4]
         def get_channel(self):  return self._v[5]
         def get_program(self):  return self._v[6]
+        def get_transpose(self): return self._v[7]
+        def get_gain_db(self):  return self._v[8]
         def Destroy(self):      pass
     return FakeDlg
 
@@ -243,7 +248,7 @@ def test_slot_program_callback_kinds():
 def test_ok_with_new_program_sets_slot_config_and_keeps_undo():
     win = _FakeTrackWindow()
     def script(on_change, kw, init):
-        on_change(*init[:6], 4)                     # Electric Piano 1
+        on_change(*init[:6], 4, *init[7:])          # Electric Piano 1
     _run(win, wx.ID_OK, script)
     assert win._rack.get_slot(PIANO).config == {"patch": "p.json", "gm_program": 4}
     assert '_pop_last_undo' not in win.calls
@@ -253,8 +258,8 @@ def test_cancel_restores_original_config_objects():
     win = _FakeTrackWindow()
     piano_cfg, organ_cfg = win._rack.get_slot(PIANO).config, win._rack.get_slot(ORGAN).config
     def script(on_change, kw, init):
-        on_change(*init[:6], 4)                     # programme du piano changé
-        on_change(ORGAN, *init[1:6], 19)            # puis orgue choisi, programme changé
+        on_change(*init[:6], 4, *init[7:])          # programme du piano changé
+        on_change(ORGAN, *init[1:6], 19, *init[7:]) # puis orgue choisi, programme changé
     _run(win, wx.ID_CANCEL, script)
     assert win._rack.get_slot(PIANO).config is piano_cfg
     assert win._rack.get_slot(ORGAN).config is organ_cfg
@@ -274,7 +279,7 @@ def test_reverting_program_counts_as_unchanged_and_restores():
     win = _FakeTrackWindow()
     cfg = win._rack.get_slot(PIANO).config
     def script(on_change, kw, init):
-        on_change(*init[:6], 4)
+        on_change(*init[:6], 4, *init[7:])
         on_change(*init)                            # retour au programme d'origine
     _run(win, wx.ID_OK, script)
     assert '_pop_last_undo' in win.calls
@@ -284,8 +289,80 @@ def test_reverting_program_counts_as_unchanged_and_restores():
 def test_kit_program_change_on_kit_slot():
     win = _FakeTrackWindow()
     def script(on_change, kw, init):
-        on_change(KIT, *init[1:5], 9, 32)           # kit choisi, Jazz Kit
+        on_change(KIT, *init[1:5], 9, 32, None, 0)  # kit choisi, Jazz Kit
     _run(win, wx.ID_OK, script)
     assert win._rack.get_slot(KIT).gm_program() == 32
     assert win._router.slot_for_track(2) == KIT
     print("  slot kit : kit GM2 choisi enregistré sur le slot : OK")
+
+
+# ---------------------------------------------------------------------------
+# Propriétés de piste (mw_tracks) : transposition et gain GM du slot
+# (Phase 7 étape 12i1, docs/DESIGN.md § 12a2 D6)
+# ---------------------------------------------------------------------------
+
+def test_slot_gm_tuning_kinds():
+    win = _FakeTrackWindow()
+    win._rack.get_slot(ORGAN).set_gm_transpose(24)
+    win._rack.get_slot(ORGAN).set_gm_gain_db(-14)
+    win._rack.get_slot(KIT).set_gm_gain_db(-6)
+    assert win._slot_gm_tuning(PIANO) == (0, 0)
+    assert win._slot_gm_tuning(ORGAN) == (24, -14)
+    assert win._slot_gm_tuning(KIT) == (None, -6)
+    assert win._slot_gm_tuning(EMPTY) == (None, None)
+    seen = _run(win, wx.ID_CANCEL, lambda on_change, kw, init: None)
+    assert seen["slot_gm_tuning"] == win._slot_gm_tuning
+    print("  _slot_gm_tuning : synthé / kit / vide, transmis au dialog : OK")
+
+def test_ok_with_transpose_and_gain_sets_slot_config_and_keeps_undo():
+    win = _FakeTrackWindow()
+    def script(on_change, kw, init):
+        on_change(*init[:7], 24, -14)
+    _run(win, wx.ID_OK, script)
+    s = win._rack.get_slot(PIANO)
+    assert s.config == {"patch": "p.json", "gm_transpose": 24, "gm_gain_db": -14}
+    assert ('_add_undo', "Propriétés piste 3") in win.calls
+    assert '_pop_last_undo' not in win.calls
+    print("  Ok : transposition et gain enregistrés sur le slot, Undo gardé : OK")
+
+def test_cancel_restores_config_after_transpose_and_gain():
+    win = _FakeTrackWindow()
+    piano_cfg, organ_cfg = win._rack.get_slot(PIANO).config, win._rack.get_slot(ORGAN).config
+    def script(on_change, kw, init):
+        on_change(*init[:7], 12, -3)                       # aperçu sur le piano
+        on_change(ORGAN, *init[1:6], 16, 24, -14)          # puis l'orgue
+    _run(win, wx.ID_CANCEL, script)
+    assert win._rack.get_slot(PIANO).config is piano_cfg
+    assert win._rack.get_slot(ORGAN).config is organ_cfg
+    assert '_pop_last_undo' in win.calls
+    print("  Annuler : config d'origine de chaque slot rétablie : OK")
+
+def test_ok_unchanged_tuning_pops_undo():
+    win = _FakeTrackWindow()
+    win._rack.get_slot(PIANO).set_gm_transpose(5)
+    cfg = win._rack.get_slot(PIANO).config
+    def script(on_change, kw, init):
+        on_change(*init[:7], 7, -2)
+        on_change(*init)                                   # retour aux valeurs
+    _run(win, wx.ID_OK, script)
+    assert '_pop_last_undo' in win.calls
+    assert win._rack.get_slot(PIANO).config is cfg
+    print("  réglages changés puis rétablis, Ok : traité comme inchangé : OK")
+
+def test_kit_slot_gain_only():
+    win = _FakeTrackWindow()
+    def script(on_change, kw, init):
+        on_change(KIT, *init[1:5], 9, 25, None, -6)
+    _run(win, wx.ID_OK, script)
+    k = win._rack.get_slot(KIT)
+    assert k.gm_gain_db() == -6 and "gm_transpose" not in k.config
+    print("  slot kit : gain enregistré, pas de transposition : OK")
+
+def test_tuning_shared_by_tracks_on_same_slot():
+    win = _FakeTrackWindow(cur_track=2)
+    win._router.assign_slot(5, PIANO)
+    def script(on_change, kw, init):
+        on_change(*init[:7], 24, 0)
+    _run(win, wx.ID_OK, script)
+    assert win._slot_gm_tuning(win._router.slot_for_track(5)) == (24, 0)
+    print("  réglage du slot : partagé par toutes les pistes qui le jouent : OK")

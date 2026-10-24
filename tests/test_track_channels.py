@@ -213,16 +213,17 @@ class _FakeTrackWindow(TrackMixin):
 
 
 def _fake_dialog(result, values=None, seen=None):
-    """values : (slot, vol, pan, mute, solo, channel[, program]) rendus par le
-    dialog — program absent : None (aucun programme choisi, Phase 7 étape
-    10h3) ; values None = valeurs initiales inchangées, programme compris."""
+    """values : (slot, vol, pan, mute, solo, channel[, program, transpose,
+    gain_db]) rendus par le dialog — valeurs absentes : None (aucun
+    programme choisi, Phase 7 étape 10h3 ; réglages GM grisés, 12h1) ;
+    values None = valeurs initiales inchangées, réglages GM compris."""
     class FakeDlg:
         def __init__(self, parent, tidx, rack, slot, vol, pan, mute, solo, **kw):
             if values:
-                self._v = tuple(values) + (None,) * (7 - len(values))
+                self._v = tuple(values) + (None,) * (9 - len(values))
             else:
                 self._v = (slot, vol, pan, mute, solo, kw["channel"],
-                           kw["slot_program"](slot)[1])
+                           kw["slot_program"](slot)[1], *kw["slot_gm_tuning"](slot))
             if seen is not None:
                 seen.update(kw, initial=(slot, vol, pan, mute, solo))
         def ShowModal(self):    return result
@@ -233,6 +234,8 @@ def _fake_dialog(result, values=None, seen=None):
         def get_solo(self):     return self._v[4]
         def get_channel(self):  return self._v[5]
         def get_program(self):  return self._v[6]
+        def get_transpose(self): return self._v[7]
+        def get_gain_db(self):  return self._v[8]
         def Destroy(self):      pass
     return FakeDlg
 
