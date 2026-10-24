@@ -12,7 +12,8 @@
     CC93 à 0 (Phase 7 étape 12d1, docs/DESIGN.md § 12a1). Transposition et
     gain GM du slot de chaque piste (Phase 7 étape 12f1, § 12a2). Pistes et
     pads muets ou hors solo omis, comme au rejeu (Phase 7 étape 12f2,
-    § 12a3).
+    § 12a3). Chaque piste finit pile à la fin du pattern (Phase 7 étape
+    12i2, § 12a4).
     Date: Tue, 20/10/2026
     Author: Coolbrother
 """
@@ -178,6 +179,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         notes = []     # (début, fin, note, vélocité, rang) avant chevauchements
         for seq, ev in enumerate(events):
             start = tick(ev.time)
+            if start >= end_tick:
+                continue   # hors du pattern : jamais rejoué (12a4 D8)
             p = ev.payload
             if ev.etype == ETYPE_GRID:
                 pad = p.get("pad", 0)
@@ -234,6 +237,9 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                     kept[-1] = (kept[-1][0], n[0]) + kept[-1][2:]
                 kept.append(n)
             for start, stop, note, vel, seq in kept:
+                # Fin du fichier pile à la fin du pattern (12a4 D8) : note-off
+                # ramené à la fin.
+                stop = min(stop, end_tick)
                 note = _clamp(note, 0, 127)
                 timed.append((start, _ORDER_NOTE_ON, seq, mido.Message(
                     "note_on", channel=ch, note=note, velocity=_clamp(vel, 1, 127))))

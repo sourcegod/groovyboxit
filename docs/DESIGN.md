@@ -4410,3 +4410,22 @@ instants » de 10a1 D4.
 | **12a4** | Doc — cet avenant. | `docs/DESIGN.md` |
 | **12i2** | Implémentation — `end_of_track` à la fin du pattern, note-off ramenés à la fin (D8). | `midi/midi_export.py` |
 | **12i3** | Tests — note qui déborde coupée à la fin ; `end_of_track` de chaque piste à la fin du pattern ; durée `mido` égale à la durée des mesures ; note qui finit avant la fin intacte ; adaptation du test de 10i1 sur le dernier note-off. | `tests/test_midi_export.py` |
+- **12i2** — conforme à D8, avec une règle élargie.
+  - Le note-off d'une note qui déborde est ramené à `end_tick`.
+    `end_of_track` tombe donc à la fin du pattern sur chaque piste.
+  - **Écart à l'avenant** : D8 supposait que seuls les note-off pouvaient
+    dépasser la fin. En fait, un événement de `_tape` peut se trouver
+    au-delà de la longueur du pattern, par exemple dans une mesure 2 d'un
+    pattern d'une seule mesure. Le rejeu (`_build_measure_events`) ne joue
+    que les événements compris entre `lp_start` et `lp_end`.
+  - L'export omet donc **tout événement**, quel que soit son etype, dont le
+    tick tombe à la fin du pattern ou au-delà. Cela couvre aussi la note
+    qui commencerait sur la fin par arrondi du tick : elle aurait une
+    durée nulle et un note-on sans note-off.
+  - **`pytest` rouge à ce commit** : 2 tests de `test_midi_export.py`.
+    `test_track_end_at_pattern_end_or_last_note_off` suit l'ancienne règle
+    du dernier note-off, et `test_time_conversion_16_and_32_steps` place
+    une note en mesure 2 d'un pattern d'une mesure. Ils sont adaptés en
+    12i3.
+  - Essai : 4 mesures à 100 BPM donnent une durée `mido` de 9,600 s. Une
+    note de 3 s au pas 62 est coupée au tick 7680.
