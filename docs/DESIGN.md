@@ -4327,3 +4327,29 @@ est committé, viendra après la clôture du 12.
   - **Interface** : les réglages sont lus sur le slot, la transposition
     d'un kit est ignorée, et le fichier porte l'orgue en 79 avec un CC7 à
     57.
+- **12h1** — conforme à D6.
+  - `TrackPropertiesDialog` gagne `slot_gm_tuning(slot) -> (transposition,
+    gain_db)`, où `None` grise le réglage, et deux `SpinCtrl` créés après
+    la liste des programmes (ordre Tab). S'y ajoutent `_load_gm_tuning`,
+    rappelée au changement de slot, ainsi que `get_transpose()` et
+    `get_gain_db()`, qui renvoient `None` si le réglage est grisé.
+  - `on_change` passe 9 valeurs au lieu de 7.
+  - `mw_tracks` gagne `_slot_gm_tuning` : la transposition pour un synthé
+    seulement, le gain pour tout slot non vide. `orig` compte 9 valeurs, et
+    `apply` applique les deux réglages via `saved_configs`, comme le
+    programme.
+  - **`pytest` rouge à ce commit** : 12 tests figent l'ancien contrat
+    (`test_gm_program.py`, `test_track_channels.py`,
+    `test_track_properties_dialog.py`) ; ils sont adaptés en 12i1.
+  - **Écoute validée** (utilisateur, 2026-10-24) : il faut transposer
+    l'orgue de **+24**, et non de +12, et baisser les autres instruments.
+    - +24 correspond à la mesure de 12d1. Le preset FluidR3 contient
+      130 Hz à −2 dB sur la note 72, deux octaves sous la note écrite, et
+      l'oreille suit cette composante grave. L'exemple « +12 » de D4
+      sous-estimait l'écart, faute d'avoir tenu compte de la composante la
+      plus grave.
+    - Deux hypothèses de l'utilisateur ont été vérifiées et écartées. La
+      racine `C5` de `DrawbarOrgan.json` vaut 72 (convention C4 = 60), et
+      l'échantillon mesure 524 Hz, soit la note 72. Le mode Keyboard
+      sauvegarde `kb_root_midi` dans le pattern, et une note PATCH garde
+      la hauteur jouée. L'appli joue donc l'orgue à la hauteur écrite.

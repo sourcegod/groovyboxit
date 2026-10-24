@@ -8,13 +8,17 @@ class TrackPropertiesDialog(wx.Dialog):
 
     def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
                  on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None,
-                 slot_program=None):
+                 slot_program=None, slot_gm_tuning=None):
         """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
         channel) -> canal : règle appliquée quand l'utilisateur change de slot
         (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé.
         slot_program(slot_idx) -> (genre, programme) : genre "synth"
         (instruments GM), "kit" (kits GM2) ou None (liste désactivée) —
-        Phase 7 étape 10h3 ; None = liste toujours désactivée."""
+        Phase 7 étape 10h3 ; None = liste toujours désactivée.
+        slot_gm_tuning(slot_idx) -> (transposition, gain_db) du slot pour
+        l'export GM, chacun None si le réglage ne s'applique pas (SpinCtrl
+        grisé) — Phase 7 étape 12h1, docs/DESIGN.md § 12a2 D6 ; None = les
+        deux grisés."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
         self._on_change          = on_change
@@ -22,8 +26,10 @@ class TrackPropertiesDialog(wx.Dialog):
         self._channel_after_slot = channel_after_slot
         self._slot_program       = slot_program
         self._program_values     = []   # programme de chaque entrée de la liste
+        self._slot_gm_tuning     = slot_gm_tuning
 
-        # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Volume → Pan
+        # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Transposition
+        # → Gain → Volume → Pan
         self._mute = wx.CheckBox(self, label="Mute")
         self._mute.SetValue(mute)
         self._solo = wx.CheckBox(self, label="Solo")
@@ -45,6 +51,12 @@ class TrackPropertiesDialog(wx.Dialog):
         program_label  = wx.StaticText(self, label="Programme GM du slot :")
         self._programs = wx.ListBox(self, style=wx.LB_SINGLE, size=(-1, self._LIST_H))
         self._load_programs(cur_slot_idx)
+
+        transpose_label  = wx.StaticText(self, label="Transposition GM du slot (demi-tons) :")
+        self._transpose  = wx.SpinCtrl(self, min=-24, max=24, initial=0)
+        gain_label       = wx.StaticText(self, label="Gain GM du slot (dB) :")
+        self._gain       = wx.SpinCtrl(self, min=-40, max=0, initial=0)
+        self._load_gm_tuning(cur_slot_idx)
 
         vol_label  = wx.StaticText(self, label="Volume :")
         self._vol  = wx.SpinCtrl(self, min=0, max=100, initial=volume)
@@ -76,6 +88,12 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox.Add(self._channels, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(program_label,  0, wx.LEFT | wx.RIGHT, 8)
         vbox.Add(self._programs, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        tuning = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
+        tuning.Add(transpose_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        tuning.Add(self._transpose, 0, wx.EXPAND)
+        tuning.Add(gain_label,      0, wx.ALIGN_CENTER_VERTICAL)
+        tuning.Add(self._gain,      0, wx.EXPAND)
+        vbox.Add(tuning, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(check_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(grid,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
@@ -88,6 +106,8 @@ class TrackPropertiesDialog(wx.Dialog):
         self._slots.Bind(wx.EVT_LISTBOX, self._on_slot_change)
         self._channels.Bind(wx.EVT_LISTBOX, self._on_widget_change)
         self._programs.Bind(wx.EVT_LISTBOX, self._on_widget_change)
+        self._transpose.Bind(wx.EVT_SPINCTRL, self._on_widget_change)
+        self._gain.Bind(wx.EVT_SPINCTRL,      self._on_widget_change)
         self._vol.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self._pan.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
@@ -110,6 +130,14 @@ class TrackPropertiesDialog(wx.Dialog):
             self._programs.SetSelection(self._program_values.index(program))
         self._programs.Enable(bool(entries))
 
+    def _load_gm_tuning(self, slot_idx):
+        """Valeurs et grisage des SpinCtrl Transposition et Gain selon le
+        slot (Phase 7 étape 12h1) : un réglage None est grisé, à 0."""
+        transpose, gain = self._slot_gm_tuning(slot_idx) if self._slot_gm_tuning else (None, None)
+        for ctrl, value in ((self._transpose, transpose), (self._gain, gain)):
+            ctrl.SetValue(value if value is not None else 0)
+            ctrl.Enable(value is not None)
+
     def _on_slot_change(self, event):
         """Changement de slot : règle du canal (kit → 10), liste des
         programmes du nouveau slot, puis aperçu."""
@@ -118,6 +146,7 @@ class TrackPropertiesDialog(wx.Dialog):
             self._channels.SetSelection(self._channel_after_slot(
                 slot_idx, self._channels.GetSelection()))
         self._load_programs(slot_idx)
+        self._load_gm_tuning(slot_idx)
         self._on_widget_change(event)
 
     def _on_widget_change(self, event):
@@ -130,6 +159,8 @@ class TrackPropertiesDialog(wx.Dialog):
                 self._solo.GetValue(),
                 self._channels.GetSelection(),
                 self.get_program(),
+                self.get_transpose(),
+                self.get_gain_db(),
             )
         event.Skip()
 
@@ -151,6 +182,14 @@ class TrackPropertiesDialog(wx.Dialog):
         """Programme sélectionné (0-127), None si la liste est vide ou sans sélection."""
         sel = self._programs.GetSelection()
         return self._program_values[sel] if 0 <= sel < len(self._program_values) else None
+
+    def get_transpose(self):
+        """Transposition GM en demi-tons, None si grisée (slot non synthé)."""
+        return self._transpose.GetValue() if self._transpose.IsEnabled() else None
+
+    def get_gain_db(self):
+        """Gain GM en dB, None si grisé (slot vide)."""
+        return self._gain.GetValue() if self._gain.IsEnabled() else None
 
 
 class PatternPropertiesDialog(wx.Dialog):

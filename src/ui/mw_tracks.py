@@ -18,6 +18,15 @@ class TrackMixin:
             f"canal {self._router.get_track_channel(track_idx) + 1}"
         )
 
+    def _slot_gm_tuning(self, slot_idx):
+        """(transposition, gain_db) GM du slot pour TrackPropertiesDialog
+        (Phase 7 étape 12h1, docs/DESIGN.md § 12a2 D6) : transposition pour
+        un synthé seulement, gain pour tout slot non vide ; None sinon."""
+        slot = self._rack.get_slot(slot_idx)
+        transpose = slot.gm_transpose() if slot.type == InstrumentType.SYNTH else None
+        gain_db   = None if slot.is_empty else slot.gm_gain_db()
+        return transpose, gain_db
+
     def _track_properties_dialog(self):
         tidx = self._player._cur_track
         orig = dict(
@@ -29,6 +38,7 @@ class TrackMixin:
             channel = self._router.get_track_channel(tidx),
         )
         orig['program'] = self._rack.get_slot(orig['slot']).gm_program()
+        orig['transpose'], orig['gain_db'] = self._slot_gm_tuning(orig['slot'])   # 12a2 D6
         # config d'origine de chaque slot dont le programme a été changé,
         # pour Annuler (Phase 7 étape 10h3) ; set_gm_program remplace config
         saved_configs = {}
@@ -37,7 +47,7 @@ class TrackMixin:
         was_modified = self._project_modified
         self._add_undo(f"Propriétés piste {tidx + 1}")
 
-        def apply(slot, vol, pan, mute, solo, channel, program):
+        def apply(slot, vol, pan, mute, solo, channel, program, transpose, gain_db):
             if slot != self._router.slot_for_track(tidx):
                 self._router.assign_slot(tidx, slot)
                 self._cur_slot = slot
@@ -51,6 +61,12 @@ class TrackMixin:
             if program is not None and slot_obj.gm_program() != program:
                 saved_configs.setdefault(slot, slot_obj.config)
                 slot_obj.set_gm_program(program)
+            if transpose is not None and slot_obj.gm_transpose() != transpose:
+                saved_configs.setdefault(slot, slot_obj.config)
+                slot_obj.set_gm_transpose(transpose)
+            if gain_db is not None and slot_obj.gm_gain_db() != gain_db:
+                saved_configs.setdefault(slot, slot_obj.config)
+                slot_obj.set_gm_gain_db(gain_db)
             self._refresh_track_list()
 
         def slot_program(slot):
@@ -65,10 +81,12 @@ class TrackMixin:
             channel=orig['channel'],
             channel_after_slot=lambda slot, ch: self._router.channel_after_slot(tidx, slot, ch),
             slot_program=slot_program,
+            slot_gm_tuning=self._slot_gm_tuning,
         )
         result = dlg.ShowModal()
         values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
-                  dlg.get_mute(), dlg.get_solo(), dlg.get_channel(), dlg.get_program())
+                  dlg.get_mute(), dlg.get_solo(), dlg.get_channel(), dlg.get_program(),
+                  dlg.get_transpose(), dlg.get_gain_db())
         if result == wx.ID_OK and values != tuple(orig.values()):
             apply(*values)
             self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
