@@ -95,6 +95,8 @@ class ProjectMixin:
             track_programs   = [s.gm_program() for s in slots],
             track_transposes = [s.gm_transpose() for s in slots],      # 12a2 D4
             track_gain_db    = [s.gm_gain_db() for s in slots],        # 12a2 D5
+            track_audible    = [r._track_is_audible(t) for t in range(len(r._track_slots))],  # 12a3 D7
+            pad_audible      = [vm.is_audible(i) for i in range(Pattern.NUM_PADS)],
             track_volumes    = list(r._track_volumes),
             track_pans       = list(r._track_pans),
         )

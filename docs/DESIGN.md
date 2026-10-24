@@ -4149,3 +4149,11 @@ projet ne porte `gm_transpose`, qui vaut donc 0.
 | **12a3** | Doc — cet avenant. | `docs/DESIGN.md` |
 | **12f2** | Implémentation — `track_audible` et `pad_audible` (D7), paramètres de `mw_project`. | `midi/midi_export.py`, `ui/mw_project.py` |
 | **12f3** | Tests — piste mutée omise, solo, mute qui l'emporte sur le solo ; pad muet ou hors solo omis sur une piste synthé et une piste kit ; KIT et PATCH intacts ; `None` ; paramètres de l'interface. | `tests/test_midi_export.py`, `tests/test_midi_export_ui.py` |
+- **12f2** — conforme à D7.
+  - `track_audible` saute la piste entière avant de construire sa piste
+    SMF. `pad_audible` saute les cases de grille du pad.
+  - `mw_project` passe `r._track_is_audible(t)` et `vm.is_audible(i)`.
+  - 2065 tests verts : aucun test ne mutait de piste ou de pad à l'export.
+  - Essai : une piste mutée disparaît ; un solo ne garde que sa piste ; un
+    pad muet perd sa case de grille, mais la note KIT de même hauteur
+    reste.

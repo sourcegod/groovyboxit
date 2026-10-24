@@ -10,7 +10,9 @@
     sont converties en notes GM (Phase 7 étape 11f1, docs/DESIGN.md
     § 11a1). Vélocité des cases de grille d'après le gain joué, CC91 et
     CC93 à 0 (Phase 7 étape 12d1, docs/DESIGN.md § 12a1). Transposition et
-    gain GM du slot de chaque piste (Phase 7 étape 12f1, § 12a2).
+    gain GM du slot de chaque piste (Phase 7 étape 12f1, § 12a2). Pistes et
+    pads muets ou hors solo omis, comme au rejeu (Phase 7 étape 12f2,
+    § 12a3).
     Date: Tue, 20/10/2026
     Author: Coolbrother
 """
@@ -70,7 +72,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        voice_durations, track_programs=None,
                        track_volumes=None, track_pans=None,
                        kit_gm_map=None, unmapped=None, pad_volumes=None,
-                       track_transposes=None, track_gain_db=None):
+                       track_transposes=None, track_gain_db=None,
+                       track_audible=None, pad_audible=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -101,6 +104,12 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        synthé (slot.gm_transpose(), 12a2 D4) ; None = 0
     track_gain_db    : gain en dB (≤ 0) appliqué à tout CC7 de la piste
                        (slot.gm_gain_db(), 12a2 D5) ; None = 0
+    track_audible    : bool par piste (TrackRouter._track_is_audible) ; une
+                       piste muette ou hors solo est omise (12a3 D7) ;
+                       None = toutes
+    pad_audible      : bool par pad (VoiceManager.is_audible) ; les cases
+                       de grille d'un pad muet ou hors solo sont omises ;
+                       None = tous
     Chaque piste reçoit CC91 et CC93 à 0 au tick 0 : pas de reverb ni de
     chorus, comme dans l'appli (12a1 D3).
     """
@@ -140,6 +149,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     for t, events in enumerate(tape):
         if not events:
             continue
+        if track_audible and not track_audible[t]:
+            continue      # muette ou hors solo au rejeu (12a3 D7)
         ch = track_channels[t]
         transpose = track_transposes[t] if track_transposes else 0
         gain_db   = track_gain_db[t] if track_gain_db else 0
@@ -170,6 +181,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             p = ev.payload
             if ev.etype == ETYPE_GRID:
                 pad = p.get("pad", 0)
+                if pad_audible and not pad_audible[pad]:
+                    continue  # pad muet ou hors solo au rejeu (12a3 D7)
                 if track_is_synth[t]:
                     note = synth_grid_notes[pad] + transpose
                 else:
