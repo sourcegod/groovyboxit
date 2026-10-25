@@ -50,6 +50,10 @@ class PadMixin:
             solo        = v.solo,
             duration_ms = v.duration_ms,
         )
+        # Undo avant le dialog, retiré si Annuler ou rien de changé (Phase 7
+        # étape 13b1, D3, même schéma que TrackPropertiesDialog).
+        was_modified = self._project_modified
+        self._add_undo(f"Propriétés pad {pad_idx + 1}")
 
         def apply(vol, pan, mute, solo, dur):
             vm.set_volume(pad_idx, vol)
@@ -69,14 +73,20 @@ class PadMixin:
             on_change=apply, on_play=play_pad, on_play_toggle=self._play_toggle,
         )
         result = dlg.ShowModal()
-        if result == wx.ID_OK:
-            apply(dlg.get_volume(), dlg.get_pan(),
+        values = (dlg.get_volume(), dlg.get_pan(),
                   dlg.get_mute(), dlg.get_solo(), dlg.get_duration_ms())
+        if result == wx.ID_OK and values != tuple(orig.values()):
+            apply(*values)
             self._show_status(f"Pad {pad_idx + 1}: propriétés mises à jour")
         else:
-            apply(orig['volume'], orig['pan'],
-                  orig['mute'], orig['solo'], orig['duration_ms'])
-            self._show_status(f"Pad {pad_idx + 1}: modifications annulées")
+            apply(*orig.values())
+            self._pop_last_undo()
+            self._project_modified = was_modified
+            self._update_title()
+            if result == wx.ID_OK:
+                self._show_status(f"Pad {pad_idx + 1}: propriétés inchangées")
+            else:
+                self._show_status(f"Pad {pad_idx + 1}: modifications annulées")
         dlg.Destroy()
 
     def _debug_pad_status(self, pad_idx, midi_note_in=None):
@@ -229,9 +239,18 @@ class PadMixin:
         self._vol_ctrls[pad_idx].SetValue(v.volume)
         self._pan_ctrls[pad_idx].SetValue(v.pan)
 
+    def _set_pad_volume_undo(self, pad_idx, vol):
+        """Volume de pad avec Undo regroupé (Phase 7 étape 13b1, D1/D2) :
+        rien n'est fait si la valeur ne change pas. Retourne le volume."""
+        vm  = self._player.voice_manager
+        vol = max(0, min(100, int(vol)))
+        if vol != vm.get_voice(pad_idx).volume:
+            self._add_mix_undo(f"Volume pad {pad_idx + 1}: {vol}", ("pad_volume", pad_idx))
+            vm.set_volume(pad_idx, vol)
+        return vol
+
     def _on_vol_spin(self, pad_idx):
-        val = self._vol_ctrls[pad_idx].GetValue()
-        self._player.voice_manager.set_volume(pad_idx, val)
+        val = self._set_pad_volume_undo(pad_idx, self._vol_ctrls[pad_idx].GetValue())
         self._show_status(f"Pad {pad_idx + 1}: Volume {val}")
 
     def _on_pan_spin(self, pad_idx):
@@ -244,11 +263,13 @@ class PadMixin:
             self._refresh_voice_display(r)
 
     def _on_mute_btn(self, pad_idx):
+        self._add_mix_undo(f"Mute pad {pad_idx + 1}")
         muted = self._player.voice_manager.toggle_mute(pad_idx)
         self._mute_btns[pad_idx].SetValue(muted)
         self._show_status(f"Pad {pad_idx + 1}: Mute {'On' if muted else 'Off'}")
 
     def _on_solo_btn(self, pad_idx):
+        self._add_mix_undo(f"Solo pad {pad_idx + 1}")
         soloed = self._player.voice_manager.toggle_solo(pad_idx)
         self._solo_btns[pad_idx].SetValue(soloed)
         self._show_status(f"Pad {pad_idx + 1}: Solo {'On' if soloed else 'Off'}")

@@ -16,11 +16,11 @@ class AltHandler:
         if not ctrl and not shift and key == wx.WXK_UP:
             tidx = win._player._cur_track
             if on_track_list:
-                win._router.set_track_volume(tidx, win._router.get_track_volume(tidx) + 5)
-                win._show_status(f"Piste {tidx + 1}: Volume {win._router.get_track_volume(tidx)}")
+                vol = win._set_track_volume_undo(tidx, win._router.get_track_volume(tidx) + 5)
+                win._show_status(f"Piste {tidx + 1}: Volume {vol}")
             else:
                 vm = win._player.voice_manager
-                vm.set_volume(win._cur_row, vm.get_voice(win._cur_row).volume + 5)
+                win._set_pad_volume_undo(win._cur_row, vm.get_voice(win._cur_row).volume + 5)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Volume {vm.get_voice(win._cur_row).volume}")
                 if on_pad_list:
@@ -29,11 +29,11 @@ class AltHandler:
         if not ctrl and not shift and key == wx.WXK_DOWN:
             tidx = win._player._cur_track
             if on_track_list:
-                win._router.set_track_volume(tidx, win._router.get_track_volume(tidx) - 5)
-                win._show_status(f"Piste {tidx + 1}: Volume {win._router.get_track_volume(tidx)}")
+                vol = win._set_track_volume_undo(tidx, win._router.get_track_volume(tidx) - 5)
+                win._show_status(f"Piste {tidx + 1}: Volume {vol}")
             else:
                 vm = win._player.voice_manager
-                vm.set_volume(win._cur_row, vm.get_voice(win._cur_row).volume - 5)
+                win._set_pad_volume_undo(win._cur_row, vm.get_voice(win._cur_row).volume - 5)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Volume {vm.get_voice(win._cur_row).volume}")
                 if on_pad_list:

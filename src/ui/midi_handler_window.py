@@ -232,11 +232,11 @@ class MidiHandler:
             vol = round(value * 100 / 127)
             if win._track_list.HasFocus():
                 track = win._player._cur_track
-                win._router.set_track_volume(track, vol)
+                win._set_track_volume_undo(track, vol)
                 win._show_status(f"Piste {track + 1}: Volume {vol}")
             else:
                 pad = win._cur_row
-                win._player.voice_manager.set_volume(pad, vol)
+                win._set_pad_volume_undo(pad, vol)
                 win._vol_ctrls[pad].SetValue(vol)
                 win._show_status(f"Pad {pad + 1}: Volume {vol}")
         elif cc_num == 10:                         # CC#10 : Pan standard (0=gauche, 64=centre, 127=droite)

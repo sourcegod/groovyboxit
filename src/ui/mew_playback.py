@@ -4,6 +4,14 @@ from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_PATCH
 
 
+def _tracks_title(kind, tracks):
+    """Titre d'Undo d'une bascule (Phase 7 étape 13b1) : « Mute piste 3 »,
+    « Mute pistes 2, 4 » ; une seule entrée pour toute la sélection."""
+    if len(tracks) == 1:
+        return f"{kind} piste {tracks[0] + 1}"
+    return f"{kind} pistes " + ", ".join(str(t + 1) for t in tracks)
+
+
 class PlaybackMixin:
     """MidiEditorWindow — solo/mute piste, lecture preview et annonces de statut."""
 
@@ -17,6 +25,7 @@ class PlaybackMixin:
         track  = self._parent._player._cur_track
         tracks = te.get_effective_tracks(track)
         router = self._parent._router
+        self._parent._add_mix_undo(_tracks_title("Solo", tracks))
         states = [router.toggle_track_solo(t) for t in tracks]
         self._parent._refresh_track_list()
         if len(tracks) == 1:
@@ -31,6 +40,7 @@ class PlaybackMixin:
         track  = self._parent._player._cur_track
         tracks = te.get_effective_tracks(track)
         router = self._parent._router
+        self._parent._add_mix_undo(_tracks_title("Mute", tracks))
         states = [router.toggle_track_mute(t) for t in tracks]
         self._parent._refresh_track_list()
         if len(tracks) == 1:

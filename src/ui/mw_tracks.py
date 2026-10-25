@@ -18,6 +18,15 @@ class TrackMixin:
             f"canal {self._router.get_track_channel(track_idx) + 1}"
         )
 
+    def _set_track_volume_undo(self, tidx, vol):
+        """Volume de piste avec Undo regroupé (Phase 7 étape 13b1, D1/D2) :
+        rien n'est fait si la valeur ne change pas. Retourne le volume."""
+        vol = max(0, min(100, vol))
+        if vol != self._router.get_track_volume(tidx):
+            self._add_mix_undo(f"Volume piste {tidx + 1}: {vol}", ("track_volume", tidx))
+            self._router.set_track_volume(tidx, vol)
+        return vol
+
     def _slot_gm_tuning(self, slot_idx):
         """(transposition, gain_db) GM du slot pour TrackPropertiesDialog
         (Phase 7 étape 12h1, docs/DESIGN.md § 12a2 D6) : transposition pour

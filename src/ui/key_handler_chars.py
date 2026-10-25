@@ -124,10 +124,12 @@ class CharHandler:
         if not ctrl and not shift and not alt and (ukey == ord('x') or key == ord('X')):
             if on_track_list:
                 tidx  = win._player._cur_track
+                win._add_mix_undo(f"Mute piste {tidx + 1}")
                 muted = win._router.toggle_track_mute(tidx)
                 win._refresh_track_list()
                 win._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}")
             else:
+                win._add_mix_undo(f"Mute pad {win._cur_row + 1}")
                 muted = win._player.voice_manager.toggle_mute(win._cur_row)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Mute {'On' if muted else 'Off'}")
@@ -136,10 +138,14 @@ class CharHandler:
         # Shift+X : démuter tous
         if not ctrl and shift and not alt and (ukey == ord('x') or key == ord('X')):
             if on_track_list:
+                if any(win._router._track_mutes):
+                    win._add_mix_undo("Démuter toutes les pistes")
                 win._router.unmute_all_tracks()
                 win._refresh_track_list()
                 win._show_status("Toutes les Pistes: Démutées")
             else:
+                if win._player.voice_manager.any_mute():
+                    win._add_mix_undo("Démuter tous les pads")
                 win._player.voice_manager.set_mute_all(False)
                 win._refresh_all_voice_display()
                 win._show_status("Tous les Pads: Démutés")
@@ -149,10 +155,12 @@ class CharHandler:
         if not ctrl and not shift and not alt and (ukey == ord('s') or key == ord('S')):
             if on_track_list:
                 tidx   = win._player._cur_track
+                win._add_mix_undo(f"Solo piste {tidx + 1}")
                 soloed = win._router.toggle_track_solo(tidx)
                 win._refresh_track_list()
                 win._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}")
             else:
+                win._add_mix_undo(f"Solo pad {win._cur_row + 1}")
                 soloed = win._player.voice_manager.toggle_solo(win._cur_row)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Solo {'On' if soloed else 'Off'}")
@@ -161,10 +169,14 @@ class CharHandler:
         # Shift+S : désolo tous
         if not ctrl and shift and not alt and (ukey == ord('s') or key == ord('S')):
             if on_track_list:
+                if any(win._router._track_solos):
+                    win._add_mix_undo("Désolo toutes les pistes")
                 win._router.unsolo_all_tracks()
                 win._refresh_track_list()
                 win._show_status("Toutes les Pistes: Désolées")
             else:
+                if win._player.voice_manager.any_solo():
+                    win._add_mix_undo("Désolo tous les pads")
                 win._player.voice_manager.set_solo_all(False)
                 win._refresh_all_voice_display()
                 win._show_status("Tous les Pads: Désolés")

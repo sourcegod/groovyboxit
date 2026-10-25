@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import wx
 from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from song import Song
@@ -10,6 +11,12 @@ from midi.midi_export import export_pattern
 
 class ProjectMixin:
     """Méthodes MainWindow relatives à la gestion de projet (.gvp)."""
+
+    # Regroupement des Undo de mixage (Phase 7 étape 13b1, docs/DESIGN.md
+    # § 13a1 D2) : fenêtre glissante, horloge remplaçable dans les tests.
+    MIX_UNDO_WINDOW = 1.0
+    _mix_clock      = staticmethod(time.monotonic)
+    _mix_undo_last  = None       # (key, entrée Undo, instant) du dernier réglage
 
     def _resolve_project_path(self):
         default = os.path.join(self._projects_dir, ProjectManager.DEFAULT_NAME)
@@ -517,10 +524,28 @@ class ProjectMixin:
 
     def _add_undo(self, title):
         """Capture l'état courant et l'enregistre dans l'historique undo."""
-        import time
         t = time.time()              # horodatage avant la sérialisation (lente)
         self._undo.add(title, self._capture_state(), timestamp=t)
         self._mark_modified()
+
+    def _add_mix_undo(self, title, key=None):
+        """Undo avant un changement de mute, de solo ou de volume (Phase 7
+        étape 13b1, D1/D2). Un changement de la même `key` moins de
+        MIX_UNDO_WINDOW s après le précédent, dont l'entrée est toujours la
+        dernière, ne fait que relancer la fenêtre et prendre le nouveau titre
+        (« Volume piste 2: 80 », valeur atteinte) : un tour de bouton ne
+        donne qu'une entrée. key=None (bascules) : une entrée à chaque fois."""
+        now  = self._mix_clock()
+        last = self._mix_undo_last
+        if key is not None and last is not None and last[0] == key \
+                and self._undo.last_entry() is last[1] \
+                and now - last[2] < self.MIX_UNDO_WINDOW:
+            last[1].title = title
+            self._mix_undo_last = (key, last[1], now)
+            self._mark_modified()
+            return
+        self._add_undo(title)
+        self._mix_undo_last = (key, self._undo.last_entry(), now) if key is not None else None
 
     def _pop_last_undo(self):
         """Retire la dernière entrée undo (dialog annulé ou aucun changement)."""
