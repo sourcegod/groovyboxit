@@ -109,6 +109,7 @@ groovyboxit/
 ├── media/                # Sons drum par défaut (1.wav … 16.wav) + métronome
 ├── tools/
 │   ├── bench_latency.py      # Comparaison latence PygameDriver vs SoundDeviceDriver
+│   ├── check_specs_tests.py  # Vérifie que SPECS.md liste tous les tests/test_*.py
 │   ├── diag_loop.py          # Diagnostic points de bouclage
 │   ├── extract_gm_drums.py   # Script extraction drums GM depuis FluidSynth
 │   ├── extract_instruments_sf2.py # Exporteur général d'instruments SF2
@@ -1497,6 +1498,8 @@ Catégories principales :
 
 Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 
+Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` : à vérifier avec `python3 tools/check_specs_tests.py` avant de committer un nouveau fichier de tests, et à chaque clôture de chantier.
+
 | Fichier | Couvre |
 |---|---|
 | `test_app_launch.py` | Démarrage de l'application |
@@ -1563,6 +1566,20 @@ Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 ---
 
 ## Outils
+
+### `tools/check_specs_tests.py`
+
+Vérifie que `docs/SPECS.md` liste tous les fichiers `tests/test_*.py`, dans l'arborescence du projet et dans la table « Tests unitaires » (Phase 7 étape 14c1).
+
+```
+Usage:
+  python3 tools/check_specs_tests.py
+  python3 tools/check_specs_tests.py --root /autre/dépôt
+```
+
+- Signale les fichiers absents de l'arborescence, ceux absents de la table, et ceux cités mais qui n'existent plus
+- Pour un fichier absent de la table, propose une ligne prête à coller, tirée de la première phrase de son docstring
+- Code de sortie : 0 si tout est à jour, 1 sinon
 
 ### `tools/extract_gm_drums.py`
 
