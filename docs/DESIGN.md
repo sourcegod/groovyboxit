@@ -4691,3 +4691,48 @@ docstring d'en-tête de chaque fichier, résumée sur une ligne.
 | **14c1** | Implémentation — le script (D2), décrit dans la section « Outils ». | `tools/check_specs_tests.py`, `docs/SPECS.md` |
 | **14d1** | Tests — le script sur un faux dossier (`--root`) : tout à jour, absent de l'arborescence, absent de la table, cité mais disparu, ligne proposée, code de sortie ; et sur le vrai dépôt. Le nouveau fichier de tests est ajouté à `SPECS.md` dans ce commit. | `tests/test_check_specs_tests.py`, `docs/SPECS.md` |
 | **14e1** | Doc — clôture, `pytest` complet, mémoire. | `docs/DESIGN.md` |
+
+### Phase 7 étape 14 — Avancement et écarts constatés
+
+- **14b1** (`a8332f5`) — les 21 fichiers dans les deux listes, à leur
+  place alphabétique, avec une description tirée de leur docstring.
+  - **Écart au plan** : 3 fichiers déjà dans la table manquaient à
+    l'arborescence (`test_cc_event_edit_dialog.py`,
+    `test_event_filter_dialog.py`, `test_midi_editor_filter.py`). Le
+    relevé de 14a1 fusionnait les deux listes et ne les voyait pas ; ils
+    sont ajoutés. C'est pourquoi le script vérifie chaque liste à part.
+- **14c1** (`2fbf823`) — conforme à D2. Le script est décrit dans la
+  section « Outils » et l'arborescence de `tools/`, et une consigne en
+  tête de la table des tests rappelle de le lancer.
+- **14c2** (`b1bff8c`), commit imprévu relevé en écrivant 14d1 : une ligne
+  d'arborescence suivie d'un commentaire (`├── test_x.py   # …`) n'était
+  pas reconnue, et le fichier aurait été signalé à tort comme absent.
+- **14d1** (`ea365c6`) — 15 tests sur un faux dépôt (`--root`), 2202 verts
+  (deux passages).
+  - **Écart au plan** : pas de test sur le vrai dépôt. Il ferait échouer
+    `pytest` dès qu'un fichier de tests manque à la doc, ce qui revient à
+    brancher le script dans `pytest`, exclu par 14a1.
+  - Le script a signalé `test_check_specs_tests.py` lui-même avant son
+    ajout à `SPECS.md`, dans ce même commit.
+
+### Clôture (14e1)
+
+**14a1-14d1 FAITS** (commits `bb14990`, `a8332f5`, `2fbf823`, `b1bff8c`,
+`ea365c6`, et ce commit de clôture, 2202 tests verts) : **chantier Phase 7
+étape 14 complet**. `docs/SPECS.md` liste les 61 fichiers `tests/test_*.py`
+dans l'arborescence et dans la table, et `python3 tools/check_specs_tests.py`
+le vérifie.
+
+**Usage retenu** : lancer le script avant de committer un nouveau fichier
+de tests, et à chaque clôture de chantier.
+
+**Laissé hors périmètre, pour la suite** :
+- brancher le script dans `pytest` ou dans `tests/test_all.sh` ;
+- une seule liste au lieu de deux, et le retrait des nombres de tests
+  (« (21 tests) ») qui vieillissent ;
+- la mise à jour des descriptions des fichiers déjà listés : celle de
+  `test_midi_editor_window.py`, par exemple, ne dit pas que les bascules
+  vérifient aussi l'Undo depuis 13c1 ;
+- **Phase 7 étape 15**, le chantier suivant : le pan des pistes et des
+  pads, puis le volume et le pan globaux, à sauvegarder d'abord dans le
+  `.gvp`.
