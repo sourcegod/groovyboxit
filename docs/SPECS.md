@@ -124,6 +124,7 @@ groovyboxit/
     ├── test_audio_sampler.py
     ├── test_bend_log.py
     ├── test_cc_event_edit_dialog.py
+    ├── test_check_specs_tests.py
     ├── test_event_filter_dialog.py
     ├── test_explorer_actions.py
     ├── test_explorer_dialog.py
@@ -1506,6 +1507,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
 | `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
 | `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change + dispatch d'édition (14 tests) |
+| `test_check_specs_tests.py` | tools/check_specs_tests.py sur un faux dépôt : absents, disparus, ligne proposée, code de sortie |
 | `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
 | `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
