@@ -121,33 +121,57 @@ groovyboxit/
     ├── conftest.py
     ├── test_app_launch.py
     ├── test_audio_sampler.py
+    ├── test_bend_log.py
+    ├── test_cc_event_edit_dialog.py
+    ├── test_event_filter_dialog.py
     ├── test_explorer_actions.py
     ├── test_explorer_dialog.py
+    ├── test_gm_program.py
+    ├── test_gm_slot_export.py
     ├── test_key_manager.py
+    ├── test_kit_channel_migration.py
+    ├── test_live_take.py
+    ├── test_load_project_cache.py
     ├── test_loop_points_pattern.py
     ├── test_loop_points_player.py
     ├── test_loop_select_dialog.py
+    ├── test_midi_constants.py
     ├── test_midi_editor.py
+    ├── test_midi_editor_filter.py
+    ├── test_midi_editor_window.py
+    ├── test_midi_export.py
+    ├── test_midi_export_mix.py
+    ├── test_midi_export_ui.py
+    ├── test_midi_handler_window.py
     ├── test_midi_manager.py
+    ├── test_midi_parser.py
+    ├── test_midi_virtual_keyboard.py
     ├── test_mix_undo.py
     ├── test_multitrack.py
     ├── test_mute_groups.py
     ├── test_pad_properties_dialog.py
     ├── test_pattern.py
+    ├── test_pattern_grid_api.py
+    ├── test_pattern_properties_bug.py
     ├── test_pattern_properties_dialog.py
     ├── test_pattern_serialization.py
+    ├── test_playback_loop.py
     ├── test_pygame_driver.py
     ├── test_quantize.py
     ├── test_rename.py
+    ├── test_save_confirm_dialog.py
+    ├── test_sixteen_tracks.py
     ├── test_song.py
     ├── test_song_serialization.py
     ├── test_sound_cache.py
     ├── test_sound_device_driver.py
     ├── test_sound_manager.py
+    ├── test_step_duration.py
     ├── test_synth_engine.py
     ├── test_synth_utils.py
     ├── test_tap_tempo.py
     ├── test_tape.py
+    ├── test_track_channels.py
     ├── test_track_editor.py
     ├── test_track_properties_dialog.py
     ├── test_track_router.py
@@ -1477,36 +1501,57 @@ Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 |---|---|
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
+| `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
 | `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change + dispatch d'édition (14 tests) |
 | `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
 | `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
+| `test_gm_program.py` | Program Change par slot : guess_gm_program, gm_program, export au tick 0, propriétés de piste (aperçu, Annuler, Undo, transposition et gain GM) |
+| `test_gm_slot_export.py` | Transposition et gain GM d'un slot : accesseurs, sérialisation du Rack, effet à l'export |
 | `test_key_manager.py` | Raccourcis clavier, transport, ProjectManager |
+| `test_kit_channel_migration.py` | Migration des canaux : pistes kit sur le canal 10 à l'ouverture d'un ancien projet |
+| `test_live_take.py` | Prise d'enregistrement live : Undo avant la prise, retiré si _tape n'a pas changé |
+| `test_load_project_cache.py` | Non-régression : Ctrl+O invalide le cache des patterns sérialisés de l'Undo |
 | `test_loop_points_pattern.py` | Loop points : données Pattern (29 tests) |
 | `test_loop_points_player.py` | Loop points : DrumPlayer (21 tests) |
 | `test_loop_select_dialog.py` | LoopSelectDialog (42 tests) |
+| `test_midi_constants.py` | midi_constants : tables CC/GM/GM2, noms des percussions GM, note GM devinée, courbe gm_gain |
 | `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
 | `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/CC/program/position (30 tests) |
+| `test_midi_editor_window.py` | MidiEditorWindow : solo/mute des pistes (avec Undo), statut MIDI live |
+| `test_midi_export.py` | Export MIDI : fichier relu par mido, pistes, canaux, notes GRID/KIT/PATCH, CC/PGM/BEND, conversion GM, mute/solo, fin pile |
+| `test_midi_export_mix.py` | Export MIDI : volume et pan de piste (CC7/CC10), notes PATCH sans synthé omises, CC91/CC93 à 0 |
+| `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E |
+| `test_midi_handler_window.py` | Statut MIDI live de l'éditeur : format_midi_status, _notify_editor_midi |
 | `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
+| `test_midi_parser.py` | midi_parser en isolation : decode_message, describe_note/cc/program |
+| `test_midi_virtual_keyboard.py` | VirtualKeyboardMixin : clavier virtuel de l'éditeur MIDI |
 | `test_mix_undo.py` | Undo du mute, du solo et du volume : regroupement < 1 s, chaque chemin, dialogue du pad (40 tests) |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
 | `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |
 | `test_pattern.py` | Pattern : création, reset, resize, double/halve, random |
+| `test_pattern_grid_api.py` | API grille de Pattern (get_cell, set_cell, iter_grid, copy_from…) au-dessus de _tape |
+| `test_pattern_properties_bug.py` | Non-régression : Doubler/Diviser/Redimensionner gardent grille et _tape synchronisées |
 | `test_pattern_properties_dialog.py` | PatternPropertiesDialog : BPM, mesures, pas |
 | `test_pattern_serialization.py` | to_dict / from_dict (round-trip) |
+| `test_playback_loop.py` | Boucle de lecture : _build_measure_events, _dispatch_event, _on_measure_end |
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
 | `test_rename.py` | Renommage F2 : piste, pattern, song (18 tests) |
+| `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
+| `test_sixteen_tracks.py` | 16 pistes par pattern : défauts, migration des presets à 8 pistes, sérialisation |
 | `test_song.py` | Song : création, séquence, label |
 | `test_song_serialization.py` | to_dict / from_dict Song (16 tests) |
 | `test_sound_cache.py` | sound_cache : init, load, save_async, hash (21 tests) |
 | `test_sound_device_driver.py` | SoundDeviceDriver : play, mix, polyphonie |
 | `test_sound_manager.py` | SoundManager : load_kit, mute_groups, play_note |
+| `test_step_duration.py` | Durée du pas indépendante de la résolution : set_bpm, load_pattern, song, métronome, Note Repeat |
 | `test_synth_engine.py` | SynthEngine : chargement patch, pré-calcul, lecture |
 | `test_synth_utils.py` | Utilitaires : scale_midi_notes, midi_to_note_name |
 | `test_tap_tempo.py` | Tap Tempo : BPM, TAP_MIN_TAPS, timeout (20 tests) |
 | `test_tape.py` | _tape (TapeEvent G/K/P) : enregistrement, sérialisation |
+| `test_track_channels.py` | Canal MIDI par piste : défauts, migration, règle du kit, Ctrl+T et propriétés de piste (Undo) |
 | `test_track_editor.py` | TrackEditor : sélection multi-pistes, limiteurs, clipboard |
 | `test_track_properties_dialog.py` | TrackPropertiesDialog : slot, volume, pan |
 | `test_track_router.py` | TrackRouter : routing, mute/solo, SynthEngine cache |
