@@ -51,9 +51,13 @@ class _FakeParent:
         self._player       = _FakePlayer()
         self._router       = _FakeRouter()
         self.refresh_calls = 0
+        self.mix_undos     = []          # (titre, key) — Phase 7 étape 13b1
 
     def _refresh_track_list(self):
         self.refresh_calls += 1
+
+    def _add_mix_undo(self, title, key=None):
+        self.mix_undos.append((title, key))
 
 
 class _FakeMidiEditorWindow:
@@ -79,6 +83,7 @@ def test_toggle_solo_current_track_on():
     win._toggle_track_solo()
     assert win._parent._router._solos == [False, False, True, False, False, False, False, False]
     assert win._status_ctrl.last == "Piste 3: Solo On"
+    assert win._parent.mix_undos == [("Solo piste 3", None)]
     assert win._parent.refresh_calls == 1
 
 
@@ -104,6 +109,7 @@ def test_toggle_solo_multi_selection():
     assert win._parent._router._solos[2] is True
     assert win._parent._router._solos[1] is False
     assert win._status_ctrl.last == "Pistes 1, 3: Solo basculé"
+    assert win._parent.mix_undos == [("Solo pistes 1, 3", None)]
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +122,7 @@ def test_toggle_mute_current_track_on():
     win._toggle_track_mute()
     assert win._parent._router._mutes[1] is True
     assert win._status_ctrl.last == "Piste 2: Mute On"
+    assert win._parent.mix_undos == [("Mute piste 2", None)]
     assert win._parent.refresh_calls == 1
 
 
@@ -128,6 +135,7 @@ def test_toggle_mute_multi_selection():
     assert win._parent._router._mutes[1] is True
     assert win._parent._router._mutes[3] is True
     assert win._status_ctrl.last == "Pistes 2, 4: Mute basculé"
+    assert win._parent.mix_undos == [("Mute pistes 2, 4", None)]
 
 
 def test_toggle_mute_and_solo_are_independent():
@@ -136,6 +144,8 @@ def test_toggle_mute_and_solo_are_independent():
     win._toggle_track_solo()
     assert win._parent._router._mutes[0] is True
     assert win._parent._router._solos[0] is True
+    # une entrée d'Undo par bascule, avant le changement (Phase 7 étape 13b1)
+    assert win._parent.mix_undos == [("Mute piste 1", None), ("Solo piste 1", None)]
 
 
 # ---------------------------------------------------------------------------

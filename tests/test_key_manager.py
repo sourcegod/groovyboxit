@@ -15,6 +15,8 @@ import wx
 from unittest.mock import patch
 from ui.key_manager import KeyManager
 from track_editor import TrackEditor
+from ui.mw_tracks import TrackMixin
+from ui.mw_pads import PadMixin
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,8 @@ class FakeVoiceManager:
 
     def set_mute_all(self, v): self.calls.append(('set_mute_all', v))
     def set_solo_all(self, v): self.calls.append(('set_solo_all', v))
+    def any_mute(self):        return True
+    def any_solo(self):        return True
 
 
 class FakePattern:
@@ -168,6 +172,8 @@ class FakeRouter:
     def __init__(self):
         self._track_volumes = [100] * 8
         self._track_pans    = [0]   * 8
+        self._track_mutes   = [True] * 8   # Shift+X / Shift+S ont à faire
+        self._track_solos   = [True] * 8
         self.calls          = []
 
     def get_track_volume(self, i): return self._track_volumes[i]
@@ -290,6 +296,12 @@ class FakeWindow:
     def _nr_cancel_release(self):         self.calls.append('_nr_cancel_release')
     def _update_bpm_display(self):        self.calls.append('_update_bpm_display')
     def _add_undo(self, title):           self.calls.append(('_add_undo', title))
+    def _add_mix_undo(self, title, key=None):
+        self.calls.append(('_add_mix_undo', title, key))
+
+    # Vraies méthodes de volume (Phase 7 étape 13b1) : bornes et « rien si inchangé »
+    _set_track_volume_undo = TrackMixin._set_track_volume_undo
+    _set_pad_volume_undo   = PadMixin._set_pad_volume_undo
     def _take_begin(self, title):
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
         self.calls.append(('_take_begin', title,
@@ -373,8 +385,10 @@ def test_alt_x_opens_explorer():
 def test_alt_up_increments_pad_volume():
     app, win, km = make_km()
     win._cur_row = 3
+    win._player.voice_manager.get_voice(3).volume = 50
     km.handle(FakeEvent(key=wx.WXK_UP, alt=True))
-    assert ('set_volume', 3, 105) in win._player.voice_manager.calls
+    assert ('set_volume', 3, 55) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Volume pad 4: 55", ("pad_volume", 3)) in win.calls
     teardown(app)
     print("  Alt+↑ → voice_manager.set_volume(row, vol+5) : OK")
 
@@ -383,6 +397,7 @@ def test_alt_down_decrements_pad_volume():
     win._cur_row = 0
     km.handle(FakeEvent(key=wx.WXK_DOWN, alt=True))
     assert ('set_volume', 0, 95) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Volume pad 1: 95", ("pad_volume", 0)) in win.calls
     teardown(app)
     print("  Alt+↓ → voice_manager.set_volume(row, vol-5) : OK")
 
@@ -753,6 +768,7 @@ def test_x_toggles_pad_mute():
     win._cur_row = 3
     km.handle(FakeEvent(key=ord('X')))
     assert ('toggle_mute', 3) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Mute pad 4", None) in win.calls
     teardown(app)
     print("  X → toggle_mute(cur_row) : OK")
 
@@ -761,6 +777,7 @@ def test_s_toggles_pad_solo():
     win._cur_row = 2
     km.handle(FakeEvent(key=ord('S')))
     assert ('toggle_solo', 2) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Solo pad 3", None) in win.calls
     teardown(app)
     print("  S → toggle_solo(cur_row) : OK")
 
@@ -768,6 +785,7 @@ def test_shift_x_unmutes_all_pads():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('X'), shift=True))
     assert ('set_mute_all', False) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Démuter tous les pads", None) in win.calls
     teardown(app)
     print("  Shift+X → voice_manager.set_mute_all(False) : OK")
 
@@ -775,6 +793,7 @@ def test_shift_s_unsolos_all_pads():
     app, win, km = make_km()
     km.handle(FakeEvent(key=ord('S'), shift=True))
     assert ('set_solo_all', False) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Désolo tous les pads", None) in win.calls
     teardown(app)
     print("  Shift+S → voice_manager.set_solo_all(False) : OK")
 
