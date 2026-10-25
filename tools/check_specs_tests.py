@@ -29,7 +29,7 @@ import sys
 TEST_RE      = re.compile(r"^test_\w+\.py$")
 TREE_HEAD_RE = re.compile(r"^\s*[├└]── tests/\s*$")
 TREE_LINE_RE = re.compile(r"^\s+[├└│]")
-TREE_FILE_RE = re.compile(r"── (test_\w+\.py)\s*$")
+TREE_FILE_RE = re.compile(r"── (test_\w+\.py)(\s|$)")     # commentaire « # … » permis
 TABLE_RE     = re.compile(r"^\| `(test_\w+\.py)` \|")
 DOC_SKIP_RE  = re.compile(r"^(File|Date|Author)\s*:")
 
