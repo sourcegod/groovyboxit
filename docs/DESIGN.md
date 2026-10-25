@@ -4617,3 +4617,77 @@ table des tests.
   ajouter au projet, avec une valeur par défaut pour les anciens
   fichiers, puis leur donner l'Undo et le marquage.
 - **Export audio en WAV**, et les autres points listés à la clôture 12j1.
+
+---
+
+## Phase 7 étape 14a1 — Liste des tests de `docs/SPECS.md` à jour, et script de vérification
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 13 : `14a1`, `14b1`, `14c1`… ; un
+commit imprévu inséré après `14b1` s'appelle `14b2`, `14b3`, etc.
+
+### Origine du besoin
+
+Relevé à la clôture 13d1 (2026-10-25) : `docs/SPECS.md` liste les fichiers
+de tests deux fois, dans l'arborescence du projet et dans la table
+« Tests unitaires ». **21 fichiers sur 60 n'y figurent pas.** Aucun
+fichier listé n'a disparu.
+
+Cause : rien ne demande de tenir ces listes à jour. Les clôtures de
+chantier mettent à jour le fonctionnel (sections, raccourcis, dialogues),
+pas la liste des tests. La table n'a été modifiée que 5 fois en 5 mois
+(Phase 3, Phase 6 étapes 5b et 8a, Phase 7 étapes 4q et 13d1), à chaque
+fois pour le seul fichier du chantier en cours. Les premiers fichiers
+manquants datent du 2026-07-16 (Phase 6 étape 6b).
+
+### Fichiers manquants (2026-10-25, 2187 tests verts)
+
+`test_bend_log.py`, `test_gm_program.py`, `test_gm_slot_export.py`,
+`test_kit_channel_migration.py`, `test_live_take.py`,
+`test_load_project_cache.py`, `test_midi_constants.py`,
+`test_midi_editor_window.py`, `test_midi_export.py`,
+`test_midi_export_mix.py`, `test_midi_export_ui.py`,
+`test_midi_handler_window.py`, `test_midi_parser.py`,
+`test_midi_virtual_keyboard.py`, `test_pattern_grid_api.py`,
+`test_pattern_properties_bug.py`, `test_playback_loop.py`,
+`test_save_confirm_dialog.py`, `test_sixteen_tracks.py`,
+`test_step_duration.py`, `test_track_channels.py`.
+
+### Décisions (demande de l'utilisateur, 2026-10-25)
+
+**D1 — rattraper les 21 fichiers** dans l'arborescence et dans la table,
+à leur place alphabétique. La description de la table est tirée du
+docstring d'en-tête de chaque fichier, résumée sur une ligne.
+
+**D2 — un petit script de vérification**, `tools/check_specs_tests.py` :
+- il compare les `tests/test_*.py` présents sur le disque avec les
+  fichiers cités dans l'arborescence et dans la table de
+  `docs/SPECS.md` ;
+- il signale les fichiers absents de l'arborescence, ceux absents de la
+  table, et ceux cités mais qui n'existent plus ;
+- pour un fichier absent de la table, il propose une ligne prête à
+  coller, avec la première phrase de son docstring ;
+- code de sortie 0 si tout est à jour, 1 sinon ; `--root` pour viser un
+  autre dossier (les tests du script s'en servent).
+- Il est à lancer avant de committer un nouveau fichier de tests, et à
+  chaque clôture de chantier.
+
+### Portée explicitement exclue de ce chantier
+
+- **Brancher le script dans `pytest`** (un test qui échoue si la doc
+  décroche) ou dans `tests/test_all.sh` : proposé, mais l'utilisateur a
+  demandé un script. On pourra le brancher plus tard.
+- **Une seule liste** au lieu de deux, et **retrait des nombres de tests**
+  (« (21 tests) ») qui vieillissent : proposé, non retenu pour l'instant.
+- La mise à jour des descriptions des fichiers déjà listés.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **14a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **14b1** | Doc — les 21 fichiers dans l'arborescence et la table (D1). | `docs/SPECS.md` |
+| **14c1** | Implémentation — le script (D2), décrit dans la section « Outils ». | `tools/check_specs_tests.py`, `docs/SPECS.md` |
+| **14d1** | Tests — le script sur un faux dossier (`--root`) : tout à jour, absent de l'arborescence, absent de la table, cité mais disparu, ligne proposée, code de sortie ; et sur le vrai dépôt. Le nouveau fichier de tests est ajouté à `SPECS.md` dans ce commit. | `tests/test_check_specs_tests.py`, `docs/SPECS.md` |
+| **14e1** | Doc — clôture, `pytest` complet, mémoire. | `docs/DESIGN.md` |
