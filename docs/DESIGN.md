@@ -4518,3 +4518,102 @@ mesures.
 - `SoundManager.preview_sound`, code mort et cassé (12c1).
 - Un échec intermittent non identifié, vu une fois en 12e1.
 - Les restes des Phase 7 étapes 10 et 11 listés dans leurs clôtures.
+
+---
+
+### Phase 7 étape 13 — Avancement et écarts constatés
+
+- **13b1** (`f88f17b`) — conforme à D1, D2 et D3, avec ces précisions :
+  - **Méthodes communes au volume** : `_set_track_volume_undo`
+    (`mw_tracks.py`, absent de la liste de fichiers du plan) et
+    `_set_pad_volume_undo` (`mw_pads.py`). Elles bornent la valeur, ne
+    font rien si elle ne change pas, et servent à Alt+↑/↓, au CC7 et au
+    SpinCtrl du pad.
+  - **Shift+X, Shift+S** : l'Undo n'est pris que s'il y a quelque chose à
+    rétablir (`any(_track_mutes)`, `voice_manager.any_mute()`, et de même
+    pour le solo).
+  - **Éditeur MIDI** : `_tracks_title` donne `Mute piste 3` ou
+    `Mute pistes 2, 4`, une seule entrée pour toute la sélection.
+  - **Avenant demandé par l'utilisateur à l'essai** (2026-10-25) : le
+    titre d'un Undo de volume porte la **valeur atteinte**,
+    `Volume piste 2: 80` ou `Volume pad 5: 80`. Dans un regroupement, le
+    titre de l'entrée suit la dernière valeur (`UndoEntry.title` réécrit
+    par `_add_mix_undo`). Cela remplace les titres `Volume piste 3` et
+    `Volume pad 5` de D1.
+  - **Essai dans l'appli** (utilisateur, 2026-10-25) : le mute et le
+    volume de piste marchent. Le volume global, le champ « Vol: » après
+    le BPM, n'a ni Undo ni marquage : il est hors périmètre, et surtout
+    **il n'est pas sauvegardé** dans le `.gvp`, pas plus que le pan
+    global (voir la clôture).
+  - **`pytest` rouge à ce commit** : 13 échecs. 12 fausses fenêtres de
+    `test_key_manager.py` et `test_midi_editor_window.py` n'ont pas les
+    nouvelles méthodes ; `test_left_arrow_moves_grid` échoue en cascade
+    et passe seul.
+- **13c1** (`a2e7a58`) — 40 tests, 2187 verts (deux passages).
+  - **Écart au plan** : pas de vraie `MainWindow`, qui chargerait le
+    projet par défaut de l'utilisateur, ses sons et son cache. Les vraies
+    méthodes (`ProjectMixin`, `TrackMixin`, `PadMixin`, `KeyManager`,
+    `MidiHandler`, `PlaybackMixin`) tournent sur une fenêtre factice, avec
+    un vrai `VoiceManager`, un `TrackRouter` sans son `__init__`, et un
+    `_capture_state` réduit au mixage. Ctrl+Z passe par le vrai
+    `_undo_action`.
+  - **`_add_mix_undo`** :
+    - même clé dans la fenêtre : une entrée, titre de la dernière valeur ;
+    - la fenêtre glisse, et 1 s pile ouvre une nouvelle entrée ;
+    - une autre clé, une autre action ou une bascule entre deux coupe le
+      regroupement ;
+    - après Ctrl+Z, un changement ne rejoint pas l'entrée annulée ;
+    - un changement regroupé marque quand même le projet modifié.
+  - **Chemins** : X, S, Shift+X, Shift+S (pistes et pads), Alt+↑/↓
+    (rafale, bornes 0 et 100), CC7 (tour de bouton, pad avec son
+    SpinCtrl, valeur inchangée), SpinCtrl et boutons M/S, éditeur MIDI
+    sur plusieurs pistes. Chaque fois : entrée créée, projet modifié,
+    Ctrl+Z rend la valeur ; une valeur inchangée ne crée rien.
+  - **Dialogue du pad** : Ok avec changement (entrée gardée, Ctrl+Z
+    restaure tout), Ok inchangé et Annuler (entrée retirée, état
+    « modifié » d'avant rétabli, valeurs d'origine après un aperçu), et
+    les entrées précédentes restent.
+  - **Contrôle** : sur le code d'avant 13b1, 29 des 40 tests échouent ;
+    les 11 autres sont les cas « rien ne change, aucune entrée ».
+  - **Fakes adaptés** : `_add_mix_undo` enregistré, vraies
+    `_set_*_volume_undo`, et les titres d'Undo vérifiés dans
+    `test_key_manager.py` et `test_midi_editor_window.py`.
+
+### Clôture (13d1)
+
+**13a1-13c1 FAITS** (commits `22b3699`, `f88f17b`, `a2e7a58`, et ce
+commit de clôture, 2187 tests verts) : **chantier Phase 7 étape 13
+complet**. Le mute, le solo et le volume des pistes et des pads entrent
+dans l'Undo et marquent le projet modifié : la fermeture propose la
+sauvegarde après une séance de mixage.
+
+**Ce que le chantier a livré** :
+- **Un Undo avant chaque changement** de mute, de solo ou de volume, par
+  tous les chemins : clavier (liste des pistes, pads, éditeur MIDI),
+  boutons Mute et Solo, Alt+↑/↓, CC7, SpinCtrl Volume du pad. Rien n'est
+  fait si la valeur ne change pas.
+- **Regroupement des volumes** (`_add_mix_undo`) : un tour de bouton ou
+  une rafale d'Alt+↑ ne donne qu'une entrée, `Volume piste 2: 80`, qu'un
+  seul Ctrl+Z annule.
+- **Dialogue de propriétés du pad** avec Undo, sur le schéma de celui
+  des pistes.
+
+**Écarts au plan** :
+- le titre du volume porte la valeur atteinte (avenant de l'utilisateur) ;
+- `mw_tracks.py` est touché en plus des fichiers prévus ;
+- les tests n'utilisent pas de vraie `MainWindow`.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, section Undo (chemins
+couverts, `_add_mix_undo`, ce qui n'y passe pas encore), arborescence et
+table des tests.
+
+**Laissé hors périmètre, pour la suite** :
+- **Le pan** des pistes et des pads (Alt+←/→, Alt+0, CC10, SpinCtrl Pan),
+  chantier suivant voulu par l'utilisateur, avec les autres réglages sans
+  Undo qu'on trouvera.
+- **Le volume et le pan globaux** (`_player.volume`, 80 par défaut, et
+  `_player.pan`) : **ni sauvegardés dans le `.gvp`, ni dans l'instantané
+  d'Undo**. L'appli repart à 80 à chaque lancement. Il faut d'abord les
+  ajouter au projet, avec une valeur par défaut pour les anciens
+  fichiers, puis leur donner l'Undo et le marquage.
+- **Export audio en WAV**, et les autres points listés à la clôture 12j1.

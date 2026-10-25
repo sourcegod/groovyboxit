@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mute, du solo et du volume | en cours |
 
 ---
 
@@ -129,6 +129,7 @@ groovyboxit/
     ├── test_loop_select_dialog.py
     ├── test_midi_editor.py
     ├── test_midi_manager.py
+    ├── test_mix_undo.py
     ├── test_multitrack.py
     ├── test_mute_groups.py
     ├── test_pad_properties_dialog.py
@@ -927,7 +928,17 @@ UndoManager
 | Shift+Z | Refaire (Redo) |
 | Ctrl+Shift+Z | Afficher l'historique des annulations (dialog) |
 
-`_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, renommer, quantiser, dupliquer, coller, etc.). Le mute, le solo et le volume des pistes et des pads n'y passent pas encore, sauf par le dialogue de propriétés de piste : prévu en Phase 7 étape 13.
+`_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, renommer, quantiser, dupliquer, coller, etc.). Depuis la Phase 7 étape 13, le mute, le solo et le volume des pistes et des pads y passent aussi, et marquent le projet modifié :
+- X, S, Shift+X et Shift+S, sur la liste des pistes, sur les pads et dans l'éditeur MIDI (une seule entrée pour toutes les pistes sélectionnées) ;
+- les boutons Mute et Solo des pads ;
+- Alt+↑/↓, le CC7 du contrôleur et le SpinCtrl Volume du pad ;
+- les dialogues de propriétés de piste et de pad (entrée retirée si Annuler ou si rien n'a changé).
+
+Rien n'est enregistré si la valeur ne change pas (volume déjà à 100, Shift+X sans rien de muet).
+
+`_add_mix_undo(title, key)` : les changements successifs d'un même volume (même `key`, moins de 1 s entre deux, sans autre action entre eux) ne forment qu'une entrée, dont le titre suit la valeur atteinte (`Volume piste 2: 80`). Un tour de bouton rotatif s'annule ainsi d'un seul Ctrl+Z. Les bascules font une entrée chacune.
+
+Le pan, ainsi que le volume et le pan globaux (champs « Vol: » et « Pan: », qui ne sont pas encore sauvegardés dans le projet), n'y passent pas encore.
 
 `pop_last_undo()` : retire la dernière entrée — utilisé après annulation d'un dialog (Cancel ou valeur inchangée).
 
@@ -1477,6 +1488,7 @@ Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
 | `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
 | `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/CC/program/position (30 tests) |
 | `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
+| `test_mix_undo.py` | Undo du mute, du solo et du volume : regroupement < 1 s, chaque chemin, dialogue du pad (40 tests) |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
 | `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |
