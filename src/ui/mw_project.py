@@ -504,6 +504,14 @@ class ProjectMixin:
         live._loop_start = new._loop_start
         live._loop_end   = new._loop_end
         live._loop_count = new._loop_count
+        # Boucles rétablies (Phase 7 étape 15f1, D5) : compteur de répétitions,
+        # boucle du song en lecture, réveil du thread comme Ctrl+L / Alt+L.
+        p = self._player
+        p._loop_remaining = live._loop_count
+        if p._song_mode:
+            p._song_looping = self._song_list[self._cur_song_idx]._looping
+        if p.playing or p.clicking or p._note_repeat_active:
+            p._wakeup.set()
         self._player._compute_offsets()
         qp = state.get("quant_params", {})
         if qp:

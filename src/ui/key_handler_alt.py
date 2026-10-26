@@ -99,6 +99,8 @@ class AltHandler:
         if not ctrl and not shift and key == ord('L'):   # Alt+L : réinitialiser loop points
             p   = win._player
             pat = p._pattern
+            if pat._loop_start is not None or pat._loop_end is not None:
+                win._add_undo("Réinitialiser la boucle")  # Phase 7 étape 15f1 (D5)
             pat._loop_start = None
             pat._loop_end   = None
             saved = win._pattern_list[win._cur_pattern_idx]

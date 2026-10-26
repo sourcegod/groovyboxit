@@ -229,7 +229,10 @@ class CtrlHandler:
             p   = win._player
             pat = p._pattern
             step = int(p._current_offset())
-            pat._loop_start = None if step == 0 else step
+            new_start = None if step == 0 else step
+            if new_start != pat._loop_start:             # Undo, Phase 7 étape 15f1 (D5)
+                win._add_undo(f"Début de boucle: {p.position_str()}")
+            pat._loop_start = new_start
             win._pattern_list[win._cur_pattern_idx]._loop_start = pat._loop_start
             if p.playing or p.clicking or p._note_repeat_active:
                 p._wakeup.set()

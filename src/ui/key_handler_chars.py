@@ -313,7 +313,10 @@ class CharHandler:
             pat  = p._pattern
             step = int(p._current_offset())
             total = pat._num_bars * pat._num_steps
-            pat._loop_end = None if step == total - 1 else step
+            new_end = None if step == total - 1 else step
+            if new_end != pat._loop_end:                 # Undo, Phase 7 étape 15f1 (D5)
+                win._add_undo(f"Fin de boucle: {p.position_str()}")
+            pat._loop_end = new_end
             win._pattern_list[win._cur_pattern_idx]._loop_end = pat._loop_end
             if p.playing or p.clicking or p._note_repeat_active:
                 p._wakeup.set()

@@ -200,7 +200,11 @@ class SongWindow(wx.Frame):
 
     def _on_loop_toggle(self, evt):
         song = self._parent._song_list[self._cur_song_idx]
-        song._looping = self._chk_loop.GetValue()
+        looping = self._chk_loop.GetValue()
+        if looping != song._looping:                     # Undo, Phase 7 étape 15f1 (D5)
+            self._parent._add_undo(
+                f"Song {self._cur_song_idx+1:02d}: boucle {'On' if looping else 'Off'}")
+        song._looping = looping
         # Propagation live si le song est en cours de lecture
         self._parent._player._song_looping = song._looping
 

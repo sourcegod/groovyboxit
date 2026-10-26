@@ -257,6 +257,11 @@ class PatternMixin:
             le      = dlg.get_loop_end()
             lc      = dlg.get_loop_count()
             looping = dlg.get_looping()
+            # Undo seulement si une valeur change (Phase 7 étape 15f1, D5) :
+            # le dialogue n'applique rien avant Ok, rien à retirer si Annuler.
+            if (ls, le, lc, looping) != (pat._loop_start, pat._loop_end,
+                                         pat._loop_count, pat._looping):
+                self._add_undo("Boucle du pattern")
             pat._loop_start = ls
             pat._loop_end   = le
             pat._loop_count = lc
