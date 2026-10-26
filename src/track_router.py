@@ -540,10 +540,12 @@ class TrackRouter:
     def assign_slot_by_user(self, track_idx, slot_idx):
         """assign_slot + règle du canal (kit → 10). Réservé aux choix de
         l'utilisateur : le pont Program Change et le chargement d'un projet
-        appellent assign_slot seul, sans toucher au canal."""
-        self.assign_slot(track_idx, slot_idx)
+        appellent assign_slot seul, sans toucher au canal. Le canal est
+        posé d'abord : une banque est synchronisée sur son canal final
+        (batterie au canal 10, 17d2)."""
         self._track_channels[track_idx] = self.channel_after_slot(
             track_idx, slot_idx, self._track_channels[track_idx])
+        self.assign_slot(track_idx, slot_idx)
 
     # ------------------------------------------------------------------
     # Lecture
