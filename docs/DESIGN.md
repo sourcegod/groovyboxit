@@ -4881,3 +4881,25 @@ chemins du tableau.
 
 - Avant de committer chaque implémentation, l'utilisateur l'essaie dans
   l'appli.
+
+### Phase 7 étape 15a2 — Avenant : volume global par défaut à 100
+
+Constaté en préparant 15d1 (2026-10-26) : le champ « Vol: » affiche 80
+(`DrumPlayer.volume = 80`), mais **ce 80 n'est jamais transmis au pilote
+audio**. `SoundDeviceDriver` démarre avec son volume maître à 1.0, soit
+100 %. Le volume réel n'est appliqué qu'au premier réglage (Ctrl+↑/↓,
+`+`/`-` ou le champ), et tout le mixage baisse alors d'environ 20 % d'un
+coup.
+
+Avec 15d1, la valeur du projet ou de la config est réellement appliquée à
+l'ouverture. Avec un défaut à 80, tous les projets sonneraient environ
+20 % plus bas qu'aujourd'hui.
+
+**Décision (utilisateur, 2026-10-26)** : D3 est révisée. **Le volume global
+par défaut est 100**, et non 80 : les projets sonnent comme aujourd'hui à
+l'ouverture, et le champ affiche enfin la vraie valeur. On peut toujours
+écrire `"master_volume": 80` dans `data/config.json`.
+- `DrumPlayer.volume` démarre à 100.
+- La valeur est appliquée au pilote dès le lancement.
+- Avant de committer 15d1, l'utilisateur vérifie à l'écoute, en temps
+  réel, qu'un projet sonne comme avant à l'ouverture.
