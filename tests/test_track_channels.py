@@ -201,14 +201,18 @@ class _FakeTrackWindow(TrackMixin):
         self._cur_slot         = KIT
         self._slot_choice      = MagicMock()
         self._project_modified = modified
+        self._modified_before  = []          # rétabli par _pop_last_undo, comme le vrai (16d1)
         self.calls             = []
     def _refresh_track_list(self):  pass
     def _show_status(self, msg):    self.calls.append(('status', msg))
     def _play_toggle(self):         pass
     def _add_undo(self, title):
         self.calls.append(('_add_undo', title))
+        self._modified_before.append(self._project_modified)
         self._project_modified = True
-    def _pop_last_undo(self):       self.calls.append('_pop_last_undo')
+    def _pop_last_undo(self):
+        self.calls.append('_pop_last_undo')
+        self._project_modified = self._modified_before.pop()
     def _update_title(self):        self.calls.append('_update_title')
 
 
@@ -276,7 +280,7 @@ def test_dialog_ok_unchanged_pops_undo_and_restores_state():
     win = _FakeTrackWindow(cur_track=3, modified=False)
     with patch("ui.mw_tracks.TrackPropertiesDialog", _fake_dialog(wx.ID_OK)):
         win._track_properties_dialog()
-    assert '_pop_last_undo' in win.calls and '_update_title' in win.calls
+    assert '_pop_last_undo' in win.calls
     assert win._project_modified is False
     assert win.calls[-1] == ('status', "Piste 4: propriétés inchangées")
     print("  dialog Ok sans changement : Undo retiré, projet non modifié : OK")

@@ -19,6 +19,7 @@ from pattern import Pattern
 from rack import Rack, InstrumentType
 from song import Song
 from project_manager import ProjectManager
+from undo_manager import UndoManager
 from ui.mw_project import ProjectMixin
 
 
@@ -116,6 +117,7 @@ class _FakeProjectWindow(ProjectMixin):
         self._volume_ctrl      = MagicMock()   # volume et pan globaux (Phase 7 étape 15d1)
         self._pan_ctrl         = MagicMock()
         self._master_defaults  = (100, 0)
+        self._undo             = UndoManager()   # _project_modified en dépend (Phase 7 étape 16d1)
         self._project_modified = True
         self.applied           = []
     def _apply_pattern_from_store(self, new): self.applied.append(new)

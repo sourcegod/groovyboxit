@@ -181,6 +181,7 @@ groovyboxit/
     ├── test_track_router.py
     ├── test_track_select_dialog.py
     ├── test_transport.py
+    ├── test_undo_clean_point.py
     ├── test_undo_manager.py
     └── test_voice_manager.py
 ```
@@ -1573,6 +1574,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_track_router.py` | TrackRouter : routing, mute/solo, SynthEngine cache |
 | `test_track_select_dialog.py` | TrackSelectDialog : checkboxes, plage BBT (33 tests) |
 | `test_transport.py` | Transport : navigate_bar, move_by_*, GotoDialog |
+| `test_undo_clean_point.py` | Point propre de l'Undo : Ctrl+Z jusqu'à l'état sauvegardé, annulations, prise live, historique vidé par Ctrl+O/Ctrl+N |
 | `test_undo_manager.py` | UndoManager : add, undo, redo, pop_last |
 | `test_voice_manager.py` | VoiceManager : volume, pan, mute, solo, durée, mute_group |
 

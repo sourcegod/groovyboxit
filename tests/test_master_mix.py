@@ -62,10 +62,9 @@ class _Win(ProjectMixin):
         self._volume_ctrl     = _Spin(self._player.volume)
         self._pan_ctrl        = _Spin(self._player.pan)
         self._master_defaults = defaults
-        self._project_modified = False
+        self._undo            = UndoManager()  # neuf = non modifié (Phase 7 étape 16d1)
         self._take            = None
         self._note_repeat     = False          # lu par _handle_chars avant +/-
-        self._undo            = UndoManager()
         self._pattern_cache       = [None] * len(self._pattern_list)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
         self.status = []

@@ -91,7 +91,7 @@ def test_take_begin_records_state_before_take():
     win._take_begin("Enregistrement piste 1")
     entry = win._undo.last_entry()
     assert entry.title == "Enregistrement piste 1"
-    assert win._take[2] is entry
+    assert win._take[1] is entry           # (signature, entrée) depuis 16d1
     assert win._project_modified is True   # marqué dès l'ouverture
     print("  _take_begin : Undo posé, projet marqué modifié pendant la prise : OK")
 
