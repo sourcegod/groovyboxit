@@ -113,6 +113,9 @@ class _FakeProjectWindow(ProjectMixin):
         self._player._cur_track = 0
         self._router           = MagicMock()
         self._slot_choice      = MagicMock()
+        self._volume_ctrl      = MagicMock()   # volume et pan globaux (Phase 7 étape 15d1)
+        self._pan_ctrl         = MagicMock()
+        self._master_defaults  = (100, 0)
         self._project_modified = True
         self.applied           = []
     def _apply_pattern_from_store(self, new): self.applied.append(new)

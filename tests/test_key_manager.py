@@ -17,6 +17,7 @@ from ui.key_manager import KeyManager
 from track_editor import TrackEditor
 from ui.mw_tracks import TrackMixin
 from ui.mw_pads import PadMixin
+from ui.mw_project import ProjectMixin
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +113,7 @@ class FakePlayer:
         self.count_in_bars       = 0
         self.bpm                 = 120
         self.volume              = 75
+        self.pan                 = 0
         self.calls               = []
 
     def play_pattern(self):
@@ -146,6 +148,8 @@ class FakePlayer:
         self.calls.append(('set_bpm', v));    self.bpm = v
     def set_volume(self, v):
         self.calls.append(('set_volume', v)); self.volume = v
+    def set_pan(self, v):
+        self.calls.append(('set_pan', v));    self.pan = v
     def _compute_offsets(self):
         self.calls.append('_compute_offsets')
     def position_str(self):
@@ -304,6 +308,8 @@ class FakeWindow:
     _set_pad_volume_undo   = PadMixin._set_pad_volume_undo
     _set_track_pan_undo    = TrackMixin._set_track_pan_undo      # Phase 7 étape 15b1
     _set_pad_pan_undo      = PadMixin._set_pad_pan_undo
+    _set_master_volume_undo = ProjectMixin._set_master_volume_undo   # Phase 7 étape 15d1
+    _set_master_pan_undo    = ProjectMixin._set_master_pan_undo
     def _take_begin(self, title):
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
         self.calls.append(('_take_begin', title,
@@ -845,6 +851,7 @@ def test_volume_decrease_via_key6():
     win._player.volume = 75
     km.handle(FakeEvent(key=ord('6')))   # '6' AZERTY = '-' position US
     assert ('set_volume', 74) in win._player.calls
+    assert ('_add_mix_undo', "Volume global: 74", ("master_volume",)) in win.calls
     teardown(app)
     print("  Touche '6' → set_volume(vol-1) : OK")
 
