@@ -42,11 +42,11 @@ class AltHandler:
         if not ctrl and not shift and key == wx.WXK_LEFT:
             tidx = win._player._cur_track
             if on_track_list:
-                win._router.set_track_pan(tidx, win._router.get_track_pan(tidx) - 10)
-                win._show_status(f"Piste {tidx + 1}: Pan {win._router.get_track_pan(tidx)}")
+                pan = win._set_track_pan_undo(tidx, win._router.get_track_pan(tidx) - 10)
+                win._show_status(f"Piste {tidx + 1}: Pan {pan}")
             else:
                 vm = win._player.voice_manager
-                vm.set_pan(win._cur_row, vm.get_pan(win._cur_row) - 10)
+                win._set_pad_pan_undo(win._cur_row, vm.get_pan(win._cur_row) - 10)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Pan {vm.get_pan(win._cur_row)}")
                 if on_pad_list:
@@ -55,11 +55,11 @@ class AltHandler:
         if not ctrl and not shift and key == wx.WXK_RIGHT:
             tidx = win._player._cur_track
             if on_track_list:
-                win._router.set_track_pan(tidx, win._router.get_track_pan(tidx) + 10)
-                win._show_status(f"Piste {tidx + 1}: Pan {win._router.get_track_pan(tidx)}")
+                pan = win._set_track_pan_undo(tidx, win._router.get_track_pan(tidx) + 10)
+                win._show_status(f"Piste {tidx + 1}: Pan {pan}")
             else:
                 vm = win._player.voice_manager
-                vm.set_pan(win._cur_row, vm.get_pan(win._cur_row) + 10)
+                win._set_pad_pan_undo(win._cur_row, vm.get_pan(win._cur_row) + 10)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Pan {vm.get_pan(win._cur_row)}")
                 if on_pad_list:
@@ -68,10 +68,10 @@ class AltHandler:
         if not ctrl and not shift and (ukey == ord('0') or key == ord('0')):
             tidx = win._player._cur_track
             if on_track_list:
-                win._router.set_track_pan(tidx, 0)
+                win._set_track_pan_undo(tidx, 0)
                 win._show_status(f"Piste {tidx + 1}: Pan 0 (centre)")
             else:
-                win._player.voice_manager.set_pan(win._cur_row, 0)
+                win._set_pad_pan_undo(win._cur_row, 0)
                 win._refresh_voice_display(win._cur_row)
                 win._show_status(f"Pad {win._cur_row + 1}: Pan 0 (centre)")
                 if on_pad_list:

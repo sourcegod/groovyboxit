@@ -249,13 +249,22 @@ class PadMixin:
             vm.set_volume(pad_idx, vol)
         return vol
 
+    def _set_pad_pan_undo(self, pad_idx, pan):
+        """Pan de pad avec Undo regroupé (Phase 7 étape 15b1, D1) :
+        rien n'est fait si la valeur ne change pas. Retourne le pan."""
+        vm  = self._player.voice_manager
+        pan = max(-100, min(100, int(pan)))
+        if pan != vm.get_pan(pad_idx):
+            self._add_mix_undo(f"Pan pad {pad_idx + 1}: {pan}", ("pad_pan", pad_idx))
+            vm.set_pan(pad_idx, pan)
+        return pan
+
     def _on_vol_spin(self, pad_idx):
         val = self._set_pad_volume_undo(pad_idx, self._vol_ctrls[pad_idx].GetValue())
         self._show_status(f"Pad {pad_idx + 1}: Volume {val}")
 
     def _on_pan_spin(self, pad_idx):
-        val = self._pan_ctrls[pad_idx].GetValue()
-        self._player.voice_manager.set_pan(pad_idx, val)
+        val = self._set_pad_pan_undo(pad_idx, self._pan_ctrls[pad_idx].GetValue())
         self._show_status(f"Pad {pad_idx + 1}: Pan {val}")
 
     def _refresh_all_voice_display(self):

@@ -243,11 +243,11 @@ class MidiHandler:
             pan = round((value - 64) * 100 / 63)
             if win._track_list.HasFocus():
                 track = win._player._cur_track
-                win._router.set_track_pan(track, pan)
+                win._set_track_pan_undo(track, pan)
                 win._show_status(f"Piste {track + 1}: Pan {pan}")
             else:
                 pad = win._cur_row
-                win._player.voice_manager.set_pan(pad, pan)
+                win._set_pad_pan_undo(pad, pan)
                 win._pan_ctrls[pad].SetValue(pan)
                 win._show_status(f"Pad {pad + 1}: Pan {pan}")
 

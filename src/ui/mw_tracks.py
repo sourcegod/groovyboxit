@@ -27,6 +27,15 @@ class TrackMixin:
             self._router.set_track_volume(tidx, vol)
         return vol
 
+    def _set_track_pan_undo(self, tidx, pan):
+        """Pan de piste avec Undo regroupé (Phase 7 étape 15b1, D1) :
+        rien n'est fait si la valeur ne change pas. Retourne le pan."""
+        pan = max(-100, min(100, pan))
+        if pan != self._router.get_track_pan(tidx):
+            self._add_mix_undo(f"Pan piste {tidx + 1}: {pan}", ("track_pan", tidx))
+            self._router.set_track_pan(tidx, pan)
+        return pan
+
     def _slot_gm_tuning(self, slot_idx):
         """(transposition, gain_db) GM du slot pour TrackPropertiesDialog
         (Phase 7 étape 12h1, docs/DESIGN.md § 12a2 D6) : transposition pour
