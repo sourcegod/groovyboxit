@@ -141,3 +141,47 @@ class AppConfig:
     @property
     def master_pan(self):
         return self._get_int("master_pan", self.MASTER_PAN_DEFAULT, -100, 100)
+
+    # Slot Banque (Phase 7 étape 17b1, docs/DESIGN.md § 17a1 D7, D17).
+
+    SOUNDFONTS_DIR_DEFAULT   = "/usr/share/sounds/sf2"
+    GM_SOUNDFONT_DEFAULT     = "FluidR3_GM.sf2"
+    MIDI_BANK_SELECT_DEFAULT = "gs"
+    FLUIDSYNTH_GAIN_DEFAULT  = 1.0
+
+    def _get_str(self, key):
+        value = self._data.get(key, "")
+        return value.strip() if isinstance(value, str) else ""
+
+    @property
+    def soundfonts_dir(self):
+        """Dossier des soundfonts (absolu, ou relatif à base_dir)."""
+        value = self._get_str("soundfonts_dir")
+        if not value:
+            return self.SOUNDFONTS_DIR_DEFAULT
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
+    @property
+    def gm_soundfont(self):
+        """Soundfont proposée par défaut au slot Banque (absolue, ou
+        relative à soundfonts_dir)."""
+        value = self._get_str("gm_soundfont") or self.GM_SOUNDFONT_DEFAULT
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self.soundfonts_dir, value)
+
+    @property
+    def midi_bank_select(self):
+        """"gs" (le MSB seul choisit la banque) ou "mma" (MSB × 128 + LSB)."""
+        value = self._get_str("midi_bank_select").lower()
+        return value if value in ("gs", "mma") else self.MIDI_BANK_SELECT_DEFAULT
+
+    @property
+    def fluidsynth_gain(self):
+        """Gain de FluidSynth (synth.gain, 0.0..10.0) ; défaut 1.0."""
+        value = self._data.get("fluidsynth_gain", self.FLUIDSYNTH_GAIN_DEFAULT)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return self.FLUIDSYNTH_GAIN_DEFAULT
+        return max(0.0, min(10.0, float(value)))

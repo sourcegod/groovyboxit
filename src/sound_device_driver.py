@@ -146,6 +146,7 @@ class SoundDeviceDriver:
     stop_all()
     stop_sound(sound)
     set_master_volume(vol)
+    add_render_source(fn) / remove_render_source(fn)
     voice_count()
     close()
     """
@@ -165,6 +166,10 @@ class SoundDeviceDriver:
         self._loop_voices: list[_LoopVoice] = []
         self._lock        = threading.Lock()
         self._master_vol  = 1.0
+        # Sources de rendu externes (moteur de banque FluidSynth, Phase 7
+        # étape 17b1) : fn(mix) ajoute ses échantillons au mixage. Liste
+        # remplacée en bloc (copie), lue sans verrou par le callback.
+        self._render_sources = ()
 
         self._stream = sd.OutputStream(
             samplerate = self._sr,
@@ -199,6 +204,10 @@ class SoundDeviceDriver:
                 if not v.releasing or v.rel_pos < v.rel_len:
                     alive_lv.append(v)
             self._loop_voices = alive_lv
+
+        # ── Sources de rendu externes, hors du verrou des voix ─────────
+        for fn in self._render_sources:
+            fn(mix)
 
         np.clip(mix * self._master_vol, -1.0, 1.0, out=outdata)
 
@@ -462,6 +471,19 @@ class SoundDeviceDriver:
         """Volume global : 0..100 (entier) ou 0.0..1.0 (float)."""
         v = vol / 100.0 if vol > 1.0 else float(vol)
         self._master_vol = max(0.0, min(1.0, v))
+
+    @property
+    def samplerate(self) -> int:
+        return self._sr
+
+    def add_render_source(self, fn):
+        """Branche fn(mix) dans le callback : fn ajoute ses échantillons au
+        mixage (float32, (frames, 2)) avant le volume global."""
+        if fn not in self._render_sources:
+            self._render_sources = self._render_sources + (fn,)
+
+    def remove_render_source(self, fn):
+        self._render_sources = tuple(f for f in self._render_sources if f != fn)
 
     def voice_count(self) -> int:
         """Nombre total de voix actives (one-shot + bouclantes)."""

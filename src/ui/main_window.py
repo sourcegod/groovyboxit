@@ -10,6 +10,7 @@ from song import Song
 from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
 from app_config import AppConfig
+from engines.fluidsynth_engine import FluidSynthEngine, FluidSynthUnavailable
 import sound_cache
 from ui.dialogs import (
     KeyboardHelpDialog,
@@ -188,6 +189,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         media_dir = cfg.media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
         self._audio_driver = SoundDeviceDriver()
+        self._init_bank_engine(cfg)
         self._snd = SoundManager(media_lst, cfg.click1_file, cfg.click2_file,
                                  driver=self._audio_driver)
         self._player = DrumPlayer(self._snd)
@@ -198,6 +200,20 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             self._on_note_replaced, pad, bar, step
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
+
+    def _init_bank_engine(self, cfg):
+        """Moteur de banque FluidSynth branché au pilote audio (Phase 7
+        étape 17b1) ; None si libfluidsynth est absente — les slots Banque
+        restent alors muets."""
+        try:
+            self._bank_engine = FluidSynthEngine(
+                samplerate=self._audio_driver.samplerate,
+                bank_select=cfg.midi_bank_select,
+                gain=cfg.fluidsynth_gain)
+        except FluidSynthUnavailable:
+            self._bank_engine = None
+            return
+        self._audio_driver.add_render_source(self._bank_engine.render)
 
     def _build_ui(self):
         panel = wx.Panel(self)
@@ -448,6 +464,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
                 self._save_project()
         self._midi.close()
         self._audio_driver.close()
+        if self._bank_engine is not None:
+            self._bank_engine.close()
         event.Skip()
 
     def _update_bpm_display(self):

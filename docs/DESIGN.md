@@ -5434,3 +5434,21 @@ réel.
 
 - Avant de committer 17b1, 17d1 et 17f1, l'utilisateur les essaie à
   l'écoute dans l'appli.
+
+### Phase 7 étape 17 — Avancement et écarts constatés
+
+- **17b1** — conforme à D1, D2, D7, D14 et D17 : `src/engines/`
+  (`BankEngine`, `FluidSynthEngine` par ctypes, essai à l'écoute par
+  `python3 -m engines.fluidsynth_engine` depuis `src/`),
+  `SoundDeviceDriver.add_render_source` / `remove_render_source` et
+  propriété `samplerate`, clés `soundfonts_dir`, `gm_soundfont`,
+  `midi_bank_select` ; moteur créé par `MainWindow._init_bank_engine`
+  (None sans libfluidsynth), fermé en quittant.
+  - **Écart : gain.** À l'écoute, le gain par défaut de FluidSynth (0.2)
+    était bien trop faible à côté de nos pads WAV normalisés (crête 1.0 ;
+    FluidSynth montait à 0.05-0.09 à vélocité 100). Défaut porté à
+    **1.0**, validé par l'utilisateur, et nouvelle clé
+    **`"fluidsynth_gain"`** de `config.json` (0.0..10.0).
+  - Essayé à l'écoute par l'utilisateur. `pytest` rouge : 1 échec, la
+    fausse fenêtre de `test_live_take.py` n'a pas `_bank_engine`
+    (adaptée en 17c1).
