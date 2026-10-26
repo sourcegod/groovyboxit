@@ -89,12 +89,8 @@ class NavigationHandler:
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()
             elif on_pan and key in (wx.WXK_LEFT, wx.WXK_RIGHT, wx.WXK_UP, wx.WXK_DOWN):
-                if key in (wx.WXK_UP, wx.WXK_RIGHT):
-                    pan = min(100, win._player.pan + 1)
-                else:
-                    pan = max(-100, win._player.pan - 1)
-                win._player.set_pan(pan)
-                win._pan_ctrl.SetValue(pan)
+                step = 1 if key in (wx.WXK_UP, wx.WXK_RIGHT) else -1
+                pan  = win._set_master_pan_undo(win._player.pan + step)
                 win._show_status(f"Pan Global: {pan}")
             elif on_bpm and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()

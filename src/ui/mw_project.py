@@ -63,6 +63,7 @@ class ProjectMixin:
         self._player._pattern_list_ref = self._pattern_list
         new = self._pattern_list[0]
         self._apply_pattern_from_store(new)
+        self._apply_master(*self._master_defaults)     # 15d1 D3
         self._player._compute_offsets()
         self._refresh_pattern_listbox()
         self._refresh_grid()
@@ -175,6 +176,7 @@ class ProjectMixin:
                 "patterns": [pat.to_dict() for pat in self._pattern_list],
                 "songs":    [s.to_dict() for s in self._song_list],
                 "cur_song": self._cur_song_idx,
+                "master":   self._master_dict(),        # 15d1 D2
             }
             ProjectManager.save(self._project_path, data)
             self._project_modified = False
@@ -281,6 +283,7 @@ class ProjectMixin:
         self._cur_pattern_idx = 0
         new = self._pattern_list[0]
         self._apply_pattern_from_store(new)
+        self._apply_master(*self._master_from_dict(data.get("master")))   # 15d1 D2, D3
         self._router.clear_slot_synths()
         for track_idx, slot_idx in enumerate(new._track_slots):
             slot = self._rack.get_slot(slot_idx)
@@ -357,6 +360,7 @@ class ProjectMixin:
                 "grid_idx":       p._grid_idx,
             },
             "event_filter_params": p._event_filter_state,
+            "master":              self._master_dict(),      # 15d1 D2
         }
 
     def _clipboard_to_dict(self):
@@ -492,6 +496,8 @@ class ProjectMixin:
         self._cur_pattern_idx = state["cur_pattern_idx"]
         self._cur_song_idx    = state["cur_song_idx"]
         self._clipboard_from_dict(state.get("clipboard"))
+        if "master" in state:
+            self._apply_master(*self._master_from_dict(state["master"]))
         new = self._pattern_list[self._cur_pattern_idx]
         self._apply_pattern_from_store(new)
         live = self._player._pattern
@@ -527,6 +533,54 @@ class ProjectMixin:
         t = time.time()              # horodatage avant la sérialisation (lente)
         self._undo.add(title, self._capture_state(), timestamp=t)
         self._mark_modified()
+
+    #--------------------------------------------------------------------------
+    # Volume et pan globaux (Phase 7 étape 15d1, docs/DESIGN.md § 15a1 D2-D4,
+    # avenant 15a2) : une valeur par projet, clé "master" du .gvp ; défauts
+    # de data/config.json (_master_defaults) pour un nouveau projet ou un
+    # projet qui n'a pas la clé.
+
+    def _master_dict(self):
+        return {"volume": self._player.volume, "pan": self._player.pan}
+
+    def _master_from_dict(self, d):
+        """(volume, pan) d'une clé "master" ; défauts de la config pour ce
+        qui manque ou est invalide."""
+        vol, pan = self._master_defaults
+        if isinstance(d, dict):
+            v, p = d.get("volume"), d.get("pan")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                vol = max(0, min(100, int(v)))
+            if isinstance(p, (int, float)) and not isinstance(p, bool):
+                pan = max(-100, min(100, int(p)))
+        return vol, pan
+
+    def _apply_master(self, volume, pan):
+        """Applique au player (et au pilote audio) et aux deux SpinCtrl."""
+        self._player.set_volume(volume)
+        self._player.set_pan(pan)
+        self._volume_ctrl.SetValue(self._player.volume)
+        self._pan_ctrl.SetValue(self._player.pan)
+
+    def _set_master_volume_undo(self, vol):
+        """Volume global avec Undo regroupé (D4) : rien si la valeur ne
+        change pas. Retourne le volume."""
+        vol = max(0, min(100, int(vol)))
+        if vol != self._player.volume:
+            self._add_mix_undo(f"Volume global: {vol}", ("master_volume",))
+            self._player.set_volume(vol)
+        self._volume_ctrl.SetValue(vol)
+        return vol
+
+    def _set_master_pan_undo(self, pan):
+        """Pan global avec Undo regroupé (D4) : rien si la valeur ne change
+        pas. Retourne le pan."""
+        pan = max(-100, min(100, int(pan)))
+        if pan != self._player.pan:
+            self._add_mix_undo(f"Pan global: {pan}", ("master_pan",))
+            self._player.set_pan(pan)
+        self._pan_ctrl.SetValue(pan)
+        return pan
 
     def _add_mix_undo(self, title, key=None):
         """Undo avant un changement de mute, de solo ou de volume (Phase 7

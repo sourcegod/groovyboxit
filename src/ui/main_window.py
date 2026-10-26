@@ -109,6 +109,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._projects_dir = cfg.projects_dir
         self._exports_dir  = cfg.exports_dir
         sound_cache.init(cfg.sound_cache_dir)
+        self._master_defaults = (cfg.master_volume, cfg.master_pan)   # 15d1 D3
         self._rack = Rack()
         self._rack.set_slot(0, InstrumentType.KIT, "TR-707",
                             {"kit": os.path.join(self._kits_dir, "tr_707.json")})
@@ -162,6 +163,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
         self._skip_next_track_select = False
         self._build_ui()
+        self._apply_master(*self._master_defaults)   # appliqué au pilote dès le lancement (15a2)
         self._update_title()
         self._load_kit_slot(0)
         self._load_project()
@@ -423,13 +425,11 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._show_status(f"BPM: {bpm}")
 
     def _on_volume_spin(self, event):
-        vol = self._volume_ctrl.GetValue()
-        self._player.set_volume(vol)
+        vol = self._set_master_volume_undo(self._volume_ctrl.GetValue())
         self._show_status(f"Volume: {vol}")
 
     def _on_pan_spin(self, event):
-        pan = self._pan_ctrl.GetValue()
-        self._player.set_pan(pan)
+        pan = self._set_master_pan_undo(self._pan_ctrl.GetValue())
         self._show_status(f"Pan Global: {pan}")
 
     def _on_close(self, event):

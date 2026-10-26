@@ -168,32 +168,23 @@ class CtrlHandler:
             )
             return True
         if not shift and not alt and key == wx.WXK_UP:
-            vol = min(100, win._player.volume + 1)
-            win._player.set_volume(vol)
-            win._volume_ctrl.SetValue(vol)
+            vol = win._set_master_volume_undo(win._player.volume + 1)
             win._show_status(f"Volume Global: {vol}")
             return True
         if not shift and not alt and key == wx.WXK_DOWN:
-            vol = max(0, win._player.volume - 1)
-            win._player.set_volume(vol)
-            win._volume_ctrl.SetValue(vol)
+            vol = win._set_master_volume_undo(win._player.volume - 1)
             win._show_status(f"Volume Global: {vol}")
             return True
         if not shift and not alt and key == wx.WXK_RIGHT:
-            pan = min(100, win._player.pan + 1)
-            win._player.set_pan(pan)
-            win._pan_ctrl.SetValue(pan)
+            pan = win._set_master_pan_undo(win._player.pan + 1)
             win._show_status(f"Pan Global: {pan}")
             return True
         if not shift and not alt and key == wx.WXK_LEFT:
-            pan = max(-100, win._player.pan - 1)
-            win._player.set_pan(pan)
-            win._pan_ctrl.SetValue(pan)
+            pan = win._set_master_pan_undo(win._player.pan - 1)
             win._show_status(f"Pan Global: {pan}")
             return True
         if not shift and not alt and key == ord('0'):
-            win._player.set_pan(0)
-            win._pan_ctrl.SetValue(0)
+            win._set_master_pan_undo(0)
             win._show_status("Pan Global: 0 (centré)")
             return True
         if not shift and not alt and key == wx.WXK_F12:   # Ctrl+F12 : Panic

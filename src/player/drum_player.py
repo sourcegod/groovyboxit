@@ -26,7 +26,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self.playing = False
         self._metro  = Metronome()
         self.bpm = 100
-        self.volume = 80
+        self.volume = 100   # volume maître réel du pilote au démarrage (Phase 7 étape 15a2)
         self.pan = 0
         self._pattern      = Pattern()
         self._cur_track       = 0

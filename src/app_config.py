@@ -119,3 +119,25 @@ class AppConfig:
     @property
     def click2_file(self):
         return self._get_file("click2_file")
+
+    # Volume et pan globaux par défaut (Phase 7 étape 15d1, docs/DESIGN.md
+    # § 15a1 D3, avenant 15a2) : pour un nouveau projet, ou un projet sans
+    # clé "master". L'appli n'écrit jamais config.json.
+
+    MASTER_VOLUME_DEFAULT = 100
+    MASTER_PAN_DEFAULT    = 0
+
+    def _get_int(self, key, default, lo, hi):
+        """Entier borné à lo..hi ; défaut si la clé manque ou est invalide."""
+        value = self._data.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return default
+        return max(lo, min(hi, int(value)))
+
+    @property
+    def master_volume(self):
+        return self._get_int("master_volume", self.MASTER_VOLUME_DEFAULT, 0, 100)
+
+    @property
+    def master_pan(self):
+        return self._get_int("master_pan", self.MASTER_PAN_DEFAULT, -100, 100)

@@ -353,13 +353,11 @@ class CharHandler:
             win._update_bpm_display()
             return True
         if ukey == ord('+') or key == ord('+'):
-            win._player.set_volume(win._player.volume + 1)
-            win._volume_ctrl.SetValue(win._player.volume)
+            win._set_master_volume_undo(win._player.volume + 1)
             win._show_status(f"Volume: {win._player.volume}")
             return True
         if ukey == ord('-') or key == ord('-') or (not shift and not ctrl and key == ord('6')):
-            win._player.set_volume(win._player.volume - 1)
-            win._volume_ctrl.SetValue(win._player.volume)
+            win._set_master_volume_undo(win._player.volume - 1)
             win._show_status(f"Volume: {win._player.volume}")
             return True
 
