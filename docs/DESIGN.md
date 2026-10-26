@@ -4984,3 +4984,118 @@ couverts).
 - L'export MIDI du volume et du pan globaux.
 - Les réglages qui ne sont pas sauvegardés dans le projet (métronome,
   Note Repeat, mode et gamme du clavier en cours…).
+
+---
+
+## Phase 7 étape 16a1 — « Point propre » de l'Undo : revenir à l'état sauvegardé efface le marquage modifié
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 15 : `16a1`, `16b1`, `16c1`… ; un
+commit imprévu inséré après `16b1` s'appelle `16b2`, `16b3`, etc.
+
+### Origine du besoin
+
+Idée de l'utilisateur (2026-10-26, pendant le chantier 15) : on modifie un
+projet, puis Ctrl+Z ramène exactement l'état du fichier sur disque. La
+fermeture ne devrait alors pas proposer de sauvegarder, puisque le projet
+n'a finalement pas changé. Aujourd'hui, `_project_modified` est un
+booléen qui passe à vrai à la première modification et ne revient à faux
+qu'à la sauvegarde, à l'ouverture ou à la création d'un projet.
+
+### Pourquoi pas un booléen dans chaque entrée d'Undo
+
+Mémoriser l'état « modifié » d'avant l'action dans l'entrée, puis le
+rétablir par Ctrl+Z, se trompe après une sauvegarde : on ouvre, on change
+un volume (l'entrée retient « non modifié »), on sauvegarde, puis Ctrl+Z.
+L'entrée rétablit « non modifié » alors que l'appli a l'ancien volume et
+le fichier le nouveau : la fermeture ne propose rien, et le retour arrière
+est perdu.
+
+### État des lieux constaté en code (2026-10-26, 2275 tests verts)
+
+- `_mark_modified` (`mw_project.py`) passe le booléen à vrai. Il est
+  appelé par `_add_undo`, par `_add_mix_undo` quand un réglage rejoint
+  l'entrée précédente, et par `_restore_state` (donc par Ctrl+Z et
+  Shift+Z).
+- Le booléen passe à faux à la sauvegarde, à l'ouverture et à la création
+  d'un projet.
+- `UndoManager` (`undo_manager.py`) : `add`, `pop_last`, `undo`, `redo`,
+  `push_future`, `push_history`. Shift+Z crée une **nouvelle**
+  `UndoEntry` : l'identité d'une entrée ne suffit donc pas à repérer un
+  état, d'où le numéro.
+- **Annulations qui laissent le projet marqué** : une vingtaine de
+  chemins prennent un Undo avant un dialogue ou une action, puis le
+  retirent par `_pop_last_undo` si on annule ou si rien ne change. Ils ne
+  rétablissent pas l'état « modifié » : F2 (piste, pattern, song),
+  propriétés de pattern, éditeur MIDI (`mew_editing`, `mew_numpad`,
+  `mew_delete_clipboard`), fenêtre Songs, `key_handler_ctrl`. Par
+  exemple, F2 puis Annuler sur un projet intact affiche l'astérisque.
+  Seuls `TrackPropertiesDialog`, le dialogue du pad (13b1) et la prise
+  live (`_take_end_if_idle`) remettent l'état d'avant, à la main
+  (`was_modified`).
+- **L'historique passe d'un projet à l'autre** :
+  - Ctrl+O ne vide pas l'historique. Après l'ouverture de B, Ctrl+Z
+    rétablit des états de A (patterns, songs, rack) alors que le fichier
+    courant reste B : un Ctrl+S écraserait B avec le contenu de A.
+  - Ctrl+N ajoute une entrée « Nouveau projet ». Ctrl+Z ramène le contenu
+    de l'ancien projet, mais le nom de fichier reste `noname_00x.gvp`.
+- Ordre d'init de `MainWindow` : `_project_modified = False` est posé
+  avant la création de `self._undo`.
+
+### Décisions validées (utilisateur, 2026-10-26)
+
+**D1 — un numéro d'état, tenu par `UndoManager`.**
+- `UndoManager` garde `current_id` (l'état courant) et `saved_id` (l'état
+  du fichier), et chaque `UndoEntry` gagne un champ `state_id` : le
+  numéro de l'état qu'elle contient.
+- `new_state()` : un nouveau numéro, à chaque modification (y compris un
+  réglage regroupé par `_add_mix_undo`). `mark_saved()` :
+  `saved_id = current_id`. `is_clean()` : `current_id == saved_id`.
+- `add` range le numéro courant dans l'entrée. `undo` et `redo` rendent
+  l'entrée ; `push_future` et `push_history` rangent le numéro courant
+  avec l'état courant ; l'appelant rétablit `current_id` depuis l'entrée
+  restaurée.
+- `_project_modified` devient une **propriété** de `ProjectMixin` :
+  `not self._undo.is_clean()`. Son setter garde les écritures
+  existantes : `False` appelle `mark_saved()`, `True` appelle
+  `new_state()`. `_mark_modified` appelle `new_state()`.
+- `_restore_state` ne marque plus rien : `_undo_action` et `_redo_action`
+  rétablissent le numéro de l'entrée et mettent le titre à jour.
+- Revenir par Ctrl+Z à l'état sauvegardé retire l'astérisque, et la
+  fermeture ne propose rien. Revenir par Ctrl+Z **avant** une sauvegarde
+  laisse le projet modifié.
+
+**D2 — correctif des annulations** : `pop_last()` rétablit le numéro de
+l'entrée retirée, puisque l'état n'a pas changé. Les vingt chemins sont
+corrigés d'un coup, et les rétablissements `was_modified` à la main
+disparaissent (propriétés de piste et de pad, prise live).
+- Cas d'une sauvegarde faite pendant une action encore ouverte (Ctrl+S
+  pendant une prise live) : si `current_id == saved_id` au moment du
+  retrait, `saved_id` suit aussi le numéro rétabli, car le contenu est
+  le même.
+
+**D3 — l'historique appartient à un projet** (option a) : Ctrl+O et
+Ctrl+N vident l'historique (Undo et Redo). L'entrée « Nouveau projet »
+disparaît. Si l'ancien projet est modifié, Ctrl+N et Ctrl+O proposent
+déjà de le sauvegarder (`SaveConfirmDialog`).
+
+### Portée explicitement exclue de ce chantier
+
+- Comparer le contenu réel avec le fichier (un hash de l'état) : le
+  numéro suffit pour tout ce qui passe par l'Undo.
+- Les modifications qui ne passent ni par `_add_undo` ni par
+  `_mark_modified` restent comme aujourd'hui.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **16a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **16b1** | Implémentation — numéros d'état dans `UndoManager` (D1, D2). | `undo_manager.py` |
+| **16c1** | Tests — `UndoManager` : numéros, propre/sale, undo, redo, pop_last, sauvegarde pendant une action ouverte, limite d'historique. | `tests/test_undo_manager.py` |
+| **16d1** | Implémentation — `ProjectMixin` (propriété, `_mark_modified`, Ctrl+Z/Shift+Z, sauvegarde, ouverture, création), retrait des `was_modified`, historique vidé à Ctrl+O et Ctrl+N (D3), ordre d'init. | `ui/mw_project.py`, `ui/main_window.py`, `ui/mw_tracks.py`, `ui/mw_pads.py` |
+| **16e1** | Tests — Ctrl+Z jusqu'à l'état sauvegardé, avant et après une sauvegarde, réglage regroupé, F2 annulé, dialogues, prise live, Ctrl+O et Ctrl+N. | `tests/test_undo_clean_point.py` (nouveau), fakes au besoin |
+| **16f1** | Doc — clôture, `SPECS.md` § Undo, `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- Avant de committer 16d1, l'utilisateur l'essaie dans l'appli.
