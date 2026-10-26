@@ -61,8 +61,8 @@ class TrackMixin:
         # pour Annuler (Phase 7 étape 10h3) ; set_gm_program remplace config
         saved_configs = {}
         # Undo avant le dialog, retiré si Annuler ou rien de changé (Phase 7
-        # étape 10f1, même schéma que F2) ; l'état « modifié » est rétabli.
-        was_modified = self._project_modified
+        # étape 10f1, même schéma que F2) ; le retrait rétablit l'état
+        # « modifié » (16d1).
         self._add_undo(f"Propriétés piste {tidx + 1}")
 
         def apply(slot, vol, pan, mute, solo, channel, program, transpose, gain_db):
@@ -113,8 +113,6 @@ class TrackMixin:
             for slot, config in saved_configs.items():
                 self._rack.get_slot(slot).config = config
             self._pop_last_undo()
-            self._project_modified = was_modified
-            self._update_title()
             if result == wx.ID_OK:
                 self._show_status(f"Piste {tidx + 1}: propriétés inchangées")
             else:

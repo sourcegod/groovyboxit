@@ -12,6 +12,21 @@ from midi.midi_export import export_pattern
 class ProjectMixin:
     """Méthodes MainWindow relatives à la gestion de projet (.gvp)."""
 
+    # « Modifié » = l'état courant n'est pas celui du fichier (Phase 7 étape
+    # 16d1, docs/DESIGN.md § 16a1 D1) : numéros d'état tenus par UndoManager.
+    # Le setter garde les écritures existantes : False = l'état courant est
+    # celui du fichier, True = nouvel état.
+    @property
+    def _project_modified(self):
+        return not self._undo.is_clean()
+
+    @_project_modified.setter
+    def _project_modified(self, value):
+        if value:
+            self._undo.new_state()
+        else:
+            self._undo.mark_saved()
+
     # Regroupement des Undo de mixage (Phase 7 étape 13b1, docs/DESIGN.md
     # § 13a1 D2) : fenêtre glissante, horloge remplaçable dans les tests.
     MIX_UNDO_WINDOW = 1.0
@@ -51,7 +66,7 @@ class ProjectMixin:
                 return
             if resp == wx.ID_YES:
                 self._save_project()
-        self._add_undo("Nouveau projet")
+        self._undo.clear()                 # l'historique appartient au projet (16d1, D3)
         self._player.stop_all()
         self._router.stop_all_synth_voices()
         self._pattern_list    = [Pattern() for _ in range(99)]
@@ -161,8 +176,10 @@ class ProjectMixin:
         self.SetTitle(f"{name}{star} — GroovyboxIt")
 
     def _mark_modified(self):
-        if not self._project_modified:
-            self._project_modified = True
+        """Nouvel état après une modification (Phase 7 étape 16d1, D1)."""
+        was_clean = self._undo.is_clean()
+        self._undo.new_state()
+        if was_clean:
             self._update_title()
 
     def _save_project(self):
@@ -260,6 +277,7 @@ class ProjectMixin:
         except Exception as e:
             self._show_status(f"ERREUR chargement : {e}")
             return
+        self._undo.clear()                     # l'historique appartient au projet (16d1, D3)
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._update_slot_list()
@@ -534,7 +552,6 @@ class ProjectMixin:
         self._update_bpm_display()
         if self._song_window:
             self._song_window.set_cur_song(self._cur_song_idx)
-        self._mark_modified()
 
     def _add_undo(self, title):
         """Capture l'état courant et l'enregistre dans l'historique undo."""
@@ -610,8 +627,10 @@ class ProjectMixin:
         self._mix_undo_last = (key, self._undo.last_entry(), now) if key is not None else None
 
     def _pop_last_undo(self):
-        """Retire la dernière entrée undo (dialog annulé ou aucun changement)."""
+        """Retire la dernière entrée undo (dialog annulé ou aucun changement) ;
+        son numéro d'état est rétabli, et avec lui l'état « modifié » (16d1, D2)."""
         self._undo.pop_last()
+        self._update_title()
 
     #--------------------------------------------------------------------------
     # Prise d'enregistrement live (Phase 7 étape 10d2) : un Undo avant la
@@ -632,27 +651,25 @@ class ProjectMixin:
         est déjà ouverte (ex. Erase pendant un Rec : même prise)."""
         if self._take is not None:
             return
-        sig, was_modified = self._tape_signature(), self._project_modified
+        sig = self._tape_signature()
         self._add_undo(title)
-        self._take = (sig, was_modified, self._undo.last_entry())
+        self._take = (sig, self._undo.last_entry())
 
     def _take_end_if_idle(self):
         """Ferme la prise si le player n'enregistre ni n'efface plus. Si _tape
         n'a pas changé et que l'Undo de la prise est toujours le dernier, il
-        est retiré et l'état « modifié » d'avant la prise est rétabli (sauf
-        sauvegarde entre-temps)."""
+        est retiré et l'état « modifié » d'avant la prise est rétabli par
+        pop_last (Phase 7 étape 16d1, D2, sauvegarde entre-temps comprise)."""
         if self._take is None:
             return
         p = self._player
         if p.recording or p.erasing or p._count_in > 0:
             return
-        sig, was_modified, entry = self._take
+        sig, entry = self._take
         self._take = None
         if entry is not None and self._undo.last_entry() is entry \
                 and self._tape_signature() == sig:
-            self._undo.pop_last()
-            self._project_modified = was_modified and self._project_modified
-            self._update_title()
+            self._pop_last_undo()
 
     def _undo_action(self):
         """Ctrl+Z : annule la dernière action."""
@@ -663,6 +680,8 @@ class ProjectMixin:
         current = self._capture_state()
         self._undo.push_future(entry.title, current)
         self._restore_state(entry.state)
+        self._undo.current_id = entry.state_id     # point propre (16d1, D1)
+        self._update_title()
         self._show_status(f"Undo: {entry.title}  ({entry.rel_time()})")
 
     def _redo_action(self):
@@ -674,6 +693,8 @@ class ProjectMixin:
         current = self._capture_state()
         self._undo.push_history(entry.title, current)
         self._restore_state(entry.state)
+        self._undo.current_id = entry.state_id     # point propre (16d1, D1)
+        self._update_title()
         self._show_status(f"Redo: {entry.title}  ({entry.rel_time()})")
 
     def _undo_history_dialog(self):

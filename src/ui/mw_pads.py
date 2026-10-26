@@ -52,7 +52,6 @@ class PadMixin:
         )
         # Undo avant le dialog, retiré si Annuler ou rien de changé (Phase 7
         # étape 13b1, D3, même schéma que TrackPropertiesDialog).
-        was_modified = self._project_modified
         self._add_undo(f"Propriétés pad {pad_idx + 1}")
 
         def apply(vol, pan, mute, solo, dur):
@@ -81,8 +80,6 @@ class PadMixin:
         else:
             apply(*orig.values())
             self._pop_last_undo()
-            self._project_modified = was_modified
-            self._update_title()
             if result == wx.ID_OK:
                 self._show_status(f"Pad {pad_idx + 1}: propriétés inchangées")
             else:

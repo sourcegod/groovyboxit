@@ -146,7 +146,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._player._on_song_advance_cb   = lambda idx: wx.CallAfter(self._on_song_advance, idx)
         self._player._on_song_cross_nav_cb = self._on_song_cross_nav
         self._project_path     = self._resolve_project_path()
-        self._project_modified = False
+        self._undo             = UndoManager()   # avant tout accès à _project_modified (16d1)
         self._take             = None   # prise live ouverte (mw_project._take_begin)
         self._midi_handler = MidiHandler(self)
         self._midi = MidiManager(
@@ -158,7 +158,6 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             on_program_change = lambda p, c:     wx.CallAfter(self._midi_handler.on_program_change, p, c),
         )
         self._track_editor = TrackEditor()
-        self._undo = UndoManager()
         self._pattern_cache       = [None] * len(self._pattern_list)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
         self._skip_next_track_select = False
