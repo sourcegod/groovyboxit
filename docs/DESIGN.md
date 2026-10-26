@@ -5159,3 +5159,278 @@ l'ancien code n'est pas concluant (voir plus haut).
   `_mark_modified`.
 - Rappel des chantiers en attente : dialogue de réglage de
   `data/config.json`, export audio WAV, 128 pads, mode Rack Synth/GM.
+
+## Phase 7 étape 17a1 — Slot « Banque » : FluidSynth (SF2/SF3) dans le Rack, 4 emplacements de banque
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 16 : `17a1`, `17b1`, `17c1`… ; un
+commit imprévu inséré après `17b1` s'appelle `17b2`, `17b3`, etc.
+
+### Origine du besoin
+
+- Le but suivant est l'**Import MIDI** (Phase 7 étape 18). Pour écouter un
+  `.mid` importé tel qu'il a été écrit, l'utilisateur veut d'abord un vrai
+  synthé General MIDI dans l'appli, et non nos seuls patches WAV.
+- L'export MIDI (étapes 10 à 12) écrit déjà canal, programme, CC7, CC10 et
+  vélocités GM. Un slot qui joue une soundfont doit sonner comme ce que
+  l'export écrit.
+- Contrainte transverse : le moteur audio Python est un **prototype**, la
+  cible est C/C++. L'interface du moteur de banque doit rester étroite et
+  portable, le rendu temps réel séparé de l'UI.
+
+### Essais préalables (ctypes, 2026-10-26)
+
+- FluidSynth 2.4.4 est installé (`libfluidsynth.so.3`), **sans** liaison
+  Python (pas de pyfluidsynth) ni en-têtes de développement. libinstpatch
+  est présent (le DLS est lu).
+- Soundfonts dans `/usr/share/sounds/sf2/` : `FluidR3_GM.sf2` (148 Mo),
+  `GeneralUser_GS.sf2`, `TimGM6mb.sf2` (6 Mo, pour les tests).
+- **Plusieurs soundfonts dans une seule instance** : six chargées sans
+  problème (`sfont_id` 1 à 6), puis
+  `fluid_synth_program_select(synth, chan, sfont_id, bank, preset)`.
+  `synth.midi-channels` vaut 16 par défaut (plage 16 à 256).
+- `fluid_synth_write_float(synth, n, L, 0, 1, R, 0, 1)` rend du son, et
+  peut écrire entrelacé (`lincr = rincr = 2`) directement dans un tampon
+  `(frames, 2)`.
+- **FluidSynth ne lit pas le SFZ** : un `.sfz` valide est refusé (essai
+  SF2 puis DLS). Le SFZ viendra plus tard, par sfizz (lib C, non
+  installée) ou par notre AudioSampler et un analyseur SFZ.
+
+### État des lieux constaté en code (2026-10-26, 2313 tests verts)
+
+**Rack** (`src/rack.py`). 16 `InstrumentSlot` (type, nom, `config`) ; types
+`kit`, `synth`, `loop`, `audio`, `midi_file`, `midi_port`
+(`InstrumentType`). Sauvegardé dans le `.gvp` sous `"rack"`
+(`mw_project.py:192`, relu `:281`) et dans l'instantané d'Undo (`:369`,
+`:513`). Programme GM, transposition et gain GM du slot servent à l'export
+(`gm_program`, `gm_transpose`, `gm_gain_db`).
+
+**Chargement des slots.** Pas de dialogue de slot : l'Explorateur (Alt+X,
+`ExplorerDialog.ITEMS = ["Projects", "Preset", "Kit", "Patch", "Sound"]`,
+`dialogs_simple.py:303`) charge un kit ou un patch dans `_cur_slot`
+(`mw_pads._open_explorer`, `_explorer_kit`, `_explorer_patch`), **sans
+Undo**.
+
+**Routage** (`src/track_router.py`). `TrackRouter` répartit par type de
+slot :
+
+| Événement | Méthode | Aujourd'hui |
+|---|---|---|
+| Note de grille | `on_play` | SYNTH : note de la gamme du clavier (`_kb_notes_play[pad]`) ; sinon WAV du pad |
+| Note KIT de `_tape` | `on_kit_tape` | `SoundManager.play_note` |
+| Note PATCH de `_tape` | `on_patch_tape` | moteur du slot SYNTH |
+| Pitch Bend, Mod Wheel | `on_bend_tape`, `on_mod_tape` | moteur du slot SYNTH |
+| CC générique | `on_cc_tape` | 64/120/121/123 globaux ; 7 et 10 → volume et pan de la piste |
+| Program Change | `on_program_change_tape` | **pont provisoire** `assign_slot(program % 16)` |
+
+- Le jeu direct (pads, clavier, MIDI entrant) passe par `router.synth`, le
+  moteur du slot courant chargé en aperçu (`load_slot_preview`).
+- Les notes sont coupées par `threading.Timer`.
+- Mute et solo : `_track_is_audible` en tête de chaque méthode.
+- Canal de piste : `_track_channels` (sauvegardé dans le pattern,
+  `pattern.py:160`, `:605`) ; `channel_after_slot` met une piste sur le
+  canal 10 quand on lui assigne un kit, et la ramène à son canal par défaut
+  quand elle quitte un kit (`track_router.py:298`).
+
+**Pilote audio** (`src/sound_device_driver.py`). Un seul
+`SoundDeviceDriver` (`main_window.py:190`). `_callback` (`:182`) mixe les
+voix dans `mix`, puis `np.clip(mix * self._master_vol, …)` : le volume
+global s'applique à tout ce qui passe par `mix`.
+
+**Propriétés de piste** (`TrackPropertiesDialog`,
+`dialogs_properties.py:6`). Mute, solo, slot, canal, liste de programmes
+GM (`slot_program`, instruments GM ou kits GM2), transposition et gain GM
+(`slot_gm_tuning`), volume, pan ; Undo avant ouverture, retiré si Annuler
+ou inchangé.
+
+**Export** (`src/midi/midi_export.py`). `build_pattern_midi` écrit au tick
+0 le Program Change (`track_programs`), puis CC7, CC10, réverbération et
+chorus à 0 ; les Program Change et CC de `_tape` suivent.
+
+**Tests.** 51 tests utilisent `InstrumentType.SYNTH` ou `KIT`, dans 12
+fichiers : le nouveau type ne doit pas changer le comportement des types
+existants.
+
+### Décisions validées (utilisateur, 2026-10-26)
+
+**D1 — un moteur de banque commun FluidSynth / SFZ.** Une interface
+« moteur de banque » : charger une banque, lister ses programmes, choisir
+l'instrument d'un canal, note on/off, CC, Pitch Bend, Program Change,
+rendu mixé dans notre callback. FluidSynth maintenant, le SFZ plus tard
+derrière la même interface.
+
+**D2 — liaison par ctypes**, pas pyfluidsynth (absent, et une dépendance
+de moins). Les signatures des fonctions utilisées sont déclarées
+(`argtypes`, `restype`) dans un seul module.
+
+**D3 — un seul type de slot « Banque »** (`InstrumentType.BANK = "bank"`).
+Le moteur est choisi par l'extension du fichier : `.sf2` et `.sf3`
+maintenant, `.sfz` plus tard.
+
+**D4 — 4 emplacements de banque fixes.** Un emplacement = un fichier
+chargé une seule fois dans le moteur, que plusieurs slots du Rack peuvent
+partager (FluidR3 n'est chargé qu'une fois, même pour huit slots). Pour le
+SFZ, un emplacement sera un instrument.
+
+**D5 — dialogue du slot Banque** : fichier de banque, numéro d'emplacement
+(1 à 4), banque et programme. Il est ouvert par un nouvel élément
+**« Banque »** de l'Explorateur (Alt+X), pour le slot courant.
+
+**D6 — liste des programmes lue dans la soundfont** : les presets réels
+(banque, numéro, nom), et non la liste GM fixe.
+
+**D7 — FluidR3 par défaut.** Nouvelles clés de `data/config.json`, lues par
+`AppConfig` : `"soundfonts_dir"` (défaut `/usr/share/sounds/sf2`) et
+`"gm_soundfont"` (défaut `FluidR3_GM.sf2` dans ce dossier). C'est le
+fichier proposé par le dialogue du slot Banque.
+
+**D8 — le canal 10 est joué par FluidSynth** (batterie) quand la piste est
+sur un slot Banque, pour regrouper le son au même endroit. Les KIT WAV
+existants restent des KIT.
+
+**D9 — pas de canal dans le slot.** Le canal reste celui de la **piste**
+(étape 10f1). `channel_after_slot` est étendue : un slot Banque réglé sur
+une batterie (banque 128) met la piste au canal 10 ; un slot Banque
+mélodique la ramène à son canal par défaut si elle était au 10. Un
+routage « canal MIDI entrant → slot » (clavier multi-timbral) sera une
+table du Rack, en mode Rack 16 canaux : **hors périmètre**.
+
+**D10 — deux pistes au même canal sur des slots Banque différents** :
+avertissement dans la barre d'état ; le dernier programme envoyé
+l'emporte, comme sur un vrai synthé.
+
+**D11 — FluidSynth joue ce que l'export écrit** : volume de piste → CC7
+(`volume_to_cc7`), pan → CC10 (`pan_to_cc10`), vélocité de l'export
+(`grid_velocity`, étape 12e1) ; mute et solo suppriment les notes (comme
+aujourd'hui, par `_track_is_audible`).
+
+**D12 — notes de grille** : slot mélodique → gamme du clavier, comme un
+slot SYNTH (`_kb_notes_play[pad]`) ; batterie (canal 10) → pad i = note GM
+36 + i.
+
+**D13 — pan global** ajouté au CC10 de chaque canal de banque (borné). Le
+volume global, lui, s'applique déjà à tout `mix` dans le callback.
+
+**D14 — code.** Nouveau paquet `src/engines/` : l'interface
+(`bank_engine.py`) et `fluidsynth_engine.py`. Le pilote gagne une méthode
+pour brancher une source de rendu dans son callback.
+
+**D15 — propriétés de piste (Ctrl+T) sur un slot Banque, en temps réel** :
+changement de **canal** (dont le passage au 10 = batterie), de
+**programme** (liste de la soundfont, D6), de **banque MSB (CC0) / LSB
+(CC32)**, appliqués **aussitôt au moteur**. Annuler rétablit canal,
+banque et programme dans le moteur ; l'Undo reste celui d'aujourd'hui.
+Pour un SFZ, banque et programme seront grisés.
+
+**D16 — note d'aperçu à chaque changement** de programme, de banque ou de
+canal (do central ; grosse caisse, note 36, au canal 10), comme Alt+↑ sur
+la liste des pads.
+
+**D17 — Bank Select.** `synth.midi-bank-select` en **mode GS par défaut** :
+seul le MSB choisit la banque (FluidR3 et GeneralUser numérotent leurs
+banques comme le MSB : 0, 8, 16…, 128 pour la batterie). Clé
+`"midi_bank_select"` de `config.json` (`"gs"` ou `"mma"`) pour passer en
+**MMA** (banque = MSB × 128 + LSB). Le LSB est toujours enregistré et
+exporté ; le dialogue indique qu'il est sans effet en mode GS.
+
+**D18 — rejeu et export.** Les Program Change et CC0/CC32 de `_tape` sont
+envoyés au moteur sur le canal de la piste : pour une piste sur slot
+Banque, ils **remplacent le pont `program % 16`** (qui reste pour les
+autres slots). L'export écrit CC0 et CC32 avant le Program Change, au
+tick 0.
+
+**D19 — découpage** : trois paires impl → tests, chacune **essayée à
+l'écoute** par l'utilisateur avant le commit d'implémentation : (a)
+moteur et branchement au pilote ; (b) type Banque, 4 emplacements,
+`.gvp`, routage de tous les événements ; (c) dialogues (slot, propriétés
+de piste) et Undo ; puis la clôture. Les tests du moteur utilisent
+TimGM6mb et sont **sautés si libfluidsynth est absente**.
+
+### Choix de conception proposés pour l'implémentation
+
+Ces points découlent des décisions ; ils seront confirmés ou corrigés dans
+« Avancement et écarts » au fil des commits.
+
+**Interface `BankEngine`** (`src/engines/bank_engine.py`), volontairement
+proche de l'API C, sans objet Python dans les appels temps réel :
+
+| Méthode | Rôle |
+|---|---|
+| `load(slot, path)` → bool | charge le fichier dans l'emplacement 0..3 (remplace l'ancien) |
+| `unload(slot)` | libère l'emplacement |
+| `presets(slot)` → `[(bank, program, name)]` | liste lue dans la banque (D6) |
+| `select(channel, slot, bank, program)` | instrument d'un canal |
+| `note_on(ch, note, vel)`, `note_off(ch, note)` | notes |
+| `cc(ch, num, value)`, `pitch_bend(ch, value)`, `program_change(ch, program)` | contrôles |
+| `all_notes_off()`, `all_sounds_off()`, `reset_controllers()` | CC 123, 120, 121 |
+| `render(out)` | ajoute `frames` échantillons stéréo float32 dans `out` `(frames, 2)` |
+
+- `FluidSynthEngine` : une seule instance `fluid_synth`, 16 canaux, à la
+  fréquence du pilote. Le `sfont_id` de chaque emplacement est gardé.
+  L'API de FluidSynth est protégée par son propre verrou
+  (`synth.threadsafe-api`, actif par défaut) : les appels de l'UI, des
+  `threading.Timer` et du séquenceur ne demandent pas de verrou à nous.
+- Le chargement d'un gros fichier (FluidR3, 148 Mo) se fait dans un fil,
+  comme `_ensure_slot_synth` ; le slot reste muet jusqu'à la fin, message
+  dans la barre d'état. Fichier introuvable ou refusé : message, slot muet.
+- libfluidsynth absente : `FluidSynthEngine` n'est pas créé, le type
+  Banque reste choisissable mais muet, avec un message.
+
+**Pilote.** `SoundDeviceDriver.add_render_source(fn)` /
+`remove_render_source(fn)` : `_callback` appelle `fn(mix)` après les voix
+et avant `* self._master_vol`. Le volume global s'applique donc aussi à
+FluidSynth (D13).
+
+**Slot Banque dans le `.gvp`.**
+- `config` du slot : `{"bank_slot": 0..3, "bank_msb": 0..127,
+  "bank_lsb": 0..127, "program": 0..127}`. Le nom du slot est celui du
+  preset (« Acoustic Grand Piano »).
+- Les 4 emplacements sont sauvegardés avec le Rack :
+  `"rack": {"slots": […], "bank_files": [chemin ou null] × 4}`. Ils
+  entrent donc dans l'instantané d'Undo, et `_restore_state` recharge un
+  emplacement seulement si son fichier a changé, puis resélectionne les
+  instruments des canaux. `ProjectManager.VERSION` ne change pas : la clé
+  est absente des anciens fichiers.
+- Programme et banque appartiennent au **slot** (comme `gm_program`
+  aujourd'hui) : deux pistes sur le même slot ont le même instrument, sur
+  leurs canaux respectifs.
+
+**Envoi aux canaux.** Le routeur tient l'état envoyé à chaque canal
+(emplacement, banque, programme) et ne renvoie `select` que s'il change.
+Au démarrage de la lecture, à l'ouverture d'un projet et après un Undo,
+chaque piste sur slot Banque resélectionne son instrument et envoie CC7
+et CC10 (D11, D13). Le jeu direct (pads, clavier, MIDI entrant) sur un
+slot Banque va au canal de la piste courante.
+
+**Export.** Une piste sur slot Banque exporte le programme et la banque du
+slot (D18) ; ses notes de grille suivent D12 ; la transposition et le gain
+GM (12h1) ne s'appliquent pas (SpinCtrl grisés), puisque le programme est
+réel.
+
+### Portée explicitement exclue de ce chantier
+
+- Le **SFZ** (sfizz ou AudioSampler + analyseur) : l'interface est prévue
+  pour lui, l'implémentation viendra plus tard.
+- Le routage « canal MIDI entrant → slot » et le mode Rack 16 canaux
+  (chantier futur « mode Rack Synth/GM »).
+- Réglages de réverbération et chorus de FluidSynth (laissés à 0, comme
+  l'export), polyphonie, interpolation.
+- L'export audio WAV, le dialogue de réglage de `config.json`.
+- L'Import MIDI lui-même (Phase 7 étape 18).
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **17a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **17b1** | Implémentation — (a) `BankEngine`, `FluidSynthEngine` par ctypes (D1, D2, D14, D17), `add_render_source` du pilote, clés `soundfonts_dir`, `gm_soundfont`, `midi_bank_select` (D7). | `src/engines/` (nouveau), `sound_device_driver.py`, `app_config.py`, `ui/main_window.py` |
+| **17c1** | Tests — moteur sur TimGM6mb (chargement, presets, select, rendu non nul, note off, 4 emplacements, mode GS/MMA), source de rendu du pilote, config. Sautés sans libfluidsynth. | `tests/test_fluidsynth_engine.py` (nouveau), `tests/test_sound_device_driver.py` ou nouveau, `tests/test_app_config.py` |
+| **17d1** | Implémentation — (b) `InstrumentType.BANK` (D3), 4 emplacements dans le Rack et le `.gvp` (D4), routage de tous les événements (D8, D11, D12, D13, D18), `channel_after_slot` (D9), avertissement de canal partagé (D10), export (D18). | `rack.py`, `track_router.py`, `ui/mw_project.py`, `midi/midi_export.py`, `ui/midi_handler_window.py` |
+| **17e1** | Tests — Rack et `.gvp`, routage (moteur factice), canal 10, avertissement, export CC0/CC32. | `tests/test_bank_slot.py` (nouveau), tests d'export, fakes au besoin |
+| **17f1** | Implémentation — (c) dialogue du slot Banque et élément « Banque » de l'Explorateur (D5, D6), propriétés de piste en temps réel (D15, D16), Undo. | `ui/dialogs_bank.py` (nouveau) ou `ui/dialogs_properties.py`, `ui/dialogs_simple.py`, `ui/mw_pads.py`, `ui/mw_tracks.py` |
+| **17g1** | Tests — dialogues, application immédiate, Annuler, Undo, note d'aperçu. | `tests/test_bank_dialogs.py` (nouveau), fakes au besoin |
+| **17h1** | Doc — clôture (DESIGN.md, `SPECS.md` : Rack, configuration, format `.gvp`, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+- Avant de committer 17b1, 17d1 et 17f1, l'utilisateur les essaie à
+  l'écoute dans l'appli.
