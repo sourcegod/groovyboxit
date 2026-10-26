@@ -4736,3 +4736,148 @@ de tests, et à chaque clôture de chantier.
 - **Phase 7 étape 15**, le chantier suivant : le pan des pistes et des
   pads, puis le volume et le pan globaux, à sauvegarder d'abord dans le
   `.gvp`.
+
+---
+
+## Phase 7 étape 15a1 — Undo du pan, volume et pan globaux sauvegardés, points de boucle et boucle du song
+
+### Numérotation des commits de ce chantier
+
+Même convention qu'en Phase 7 étapes 6 à 14 : `15a1`, `15b1`, `15c1`… ; un
+commit imprévu inséré après `15b1` s'appelle `15b2`, `15b3`, etc.
+
+### Origine du besoin
+
+- La clôture 13d1 a laissé pour la suite le **pan** des pistes et des pads,
+  et les autres réglages sans Undo qu'on trouverait.
+- En essayant 13b1 (2026-10-25), l'utilisateur a constaté que le **volume
+  global** n'entrait pas dans l'Undo. En fait, ni le volume ni le pan
+  globaux ne sont sauvegardés dans le projet.
+
+### État des lieux constaté en code (2026-10-26, 2202 tests verts)
+
+**Pan des pistes et des pads.** Il est sauvegardé dans le pattern
+(`_track_pans`, `_voices`), et l'instantané d'Undo le contient déjà. Il
+manque seulement l'appel, comme au chantier 13. Les dialogues de
+propriétés de piste et de pad ont déjà l'Undo.
+
+| Réglage | Chemin | Code |
+|---|---|---|
+| Pan de piste | Alt+←/→, Alt+0 sur la liste des pistes | `key_handler_alt.py` |
+| Pan de piste | CC10, liste des pistes focalisée | `midi_handler_window.on_cc` |
+| Pan de pad | Alt+←/→, Alt+0 hors liste des pistes | `key_handler_alt.py` |
+| Pan de pad | CC10 ailleurs que la liste des pistes | `midi_handler_window.on_cc` |
+| Pan de pad | SpinCtrl Pan du pad | `mw_pads._on_pan_spin` |
+
+**Volume et pan globaux** (`DrumPlayer.volume`, 80 au lancement, et
+`DrumPlayer.pan`, 0).
+- Le volume global est le **volume maître** du pilote audio
+  (`SoundDeviceDriver.set_master_volume`) : il s'applique à tout le
+  mixage.
+- Le pan global est un décalage ajouté au pan de chaque pad joué
+  (`_mix_pan`).
+- **Ni l'un ni l'autre n'est dans le `.gvp`, ni dans l'instantané d'Undo.**
+  Nouveau projet et Ouvrir n'y touchent pas : la valeur de la séance
+  continue d'un projet à l'autre, et l'appli repart à 80 et 0 à chaque
+  lancement.
+- L'export MIDI ne les utilise pas.
+
+| Réglage | Chemin | Code |
+|---|---|---|
+| Volume global | Ctrl+↑/↓ | `key_handler_ctrl.py` |
+| Volume global | `+`, `-` (et `6`) | `key_handler_chars.py` |
+| Volume global | SpinCtrl « Vol: » (↑/↓ natifs) | `main_window._on_volume_spin` |
+| Pan global | Ctrl+←/→, Ctrl+0 | `key_handler_ctrl.py` |
+| Pan global | ←/→/↑/↓ dans le SpinCtrl « Pan: » | `key_handler_navigation.py` |
+| Pan global | SpinCtrl « Pan: » | `main_window._on_pan_spin` |
+
+**Points de boucle du pattern.** Ils sont sauvegardés dans le pattern
+(`loop_start`, `loop_end`, `loop_count`, `looping`), et l'instantané les
+contient et les rétablit. Aucun chemin n'a d'Undo :
+
+| Réglage | Chemin | Code |
+|---|---|---|
+| Début de boucle | Ctrl+L | `key_handler_ctrl.py` |
+| Fin de boucle | Shift+L | `key_handler_chars.py` |
+| Réinitialisation | Alt+L | `key_handler_alt.py` |
+| Tout | Dialogue Ctrl+Shift+L (`LoopSelectDialog`) | `mw_patterns._loop_select_dialog` |
+
+**Case « Boucle » d'un song** (`song._looping`, sauvegardé avec le song).
+Elle n'a pas d'Undo (`song_window._on_loop_toggle`), et elle est recopiée
+dans `_player._song_looping` pendant la lecture.
+
+### Décisions validées (utilisateur, 2026-10-26)
+
+**D1 — pan des pistes et des pads : même schéma qu'au chantier 13.**
+- `_add_mix_undo` avec les clés `("track_pan", t)` et `("pad_pan", p)`.
+  Les changements successifs se regroupent s'ils arrivent à moins de 1 s
+  d'écart.
+- Le titre porte la valeur atteinte : `Pan piste 2: -20`, `Pan pad 5: 30`.
+- Rien n'est fait si la valeur ne change pas (Alt+0 sur un pan centré,
+  Alt+→ à +100).
+- Deux méthodes communes, `_set_track_pan_undo` et `_set_pad_pan_undo`,
+  sur le modèle de celles du volume.
+
+**D2 — volume et pan globaux sauvegardés dans le projet** (option a) : une
+seule valeur pour tout le fichier, comme un volume maître, et non une par
+pattern.
+- Le `.gvp` gagne une clé de premier niveau
+  `"master": {"volume": 80, "pan": 0}`. `ProjectManager.VERSION` ne change
+  pas : la clé est simplement absente des anciens fichiers.
+- Ils entrent dans l'instantané d'Undo (`_capture_state`,
+  `_restore_state`, qui remet aussi les deux SpinCtrl à jour).
+
+**D3 — valeurs par défaut dans `data/config.json`** (lecture A) : deux clés,
+`"master_volume"` et `"master_pan"`, lues par `AppConfig`. Si elles
+manquent ou sont invalides, on prend 80 et 0, bornés à 0..100 et
+−100..100.
+- **Création** (Ctrl+N, ou lancement sans projet) : les valeurs de la
+  config.
+- **Ouverture d'un projet** sans clé `master` (ancien fichier) : les
+  valeurs de la config. Avec la clé : celles du projet.
+- **Sauvegarde** : le projet enregistre ses propres valeurs.
+- **Fermeture** (Ctrl+N ou Ctrl+O vers un autre projet) : rien ne passe
+  de l'ancien projet au suivant.
+- L'appli **n'écrit jamais** `config.json` : l'utilisateur change les
+  défauts à la main.
+
+**D4 — Undo du volume et du pan globaux**, sur le schéma de D1 : clés
+`("master_volume",)` et `("master_pan",)`, titres `Volume global: 75` et
+`Pan global: -3`, rien si la valeur ne change pas. Deux méthodes communes,
+`_set_master_volume_undo` et `_set_master_pan_undo`, servent à tous les
+chemins du tableau.
+
+**D5 — points de boucle et boucle du song.**
+- Un Undo avant chaque changement, avec `key=None` : une entrée par action,
+  sans regroupement. Titres : `Début de boucle`, `Fin de boucle`,
+  `Réinitialiser la boucle`, `Boucle du pattern` (dialogue),
+  `Song 03: boucle On`.
+- Rien si la valeur ne change pas.
+- Le dialogue Ctrl+Shift+L suit le schéma de `TrackPropertiesDialog` :
+  Undo avant, retiré si Annuler ou inchangé, état « modifié » rétabli.
+- Après un Ctrl+Z, `_player._song_looping` suit le song rétabli s'il est
+  en lecture.
+
+### Portée explicitement exclue de ce chantier
+
+- **Un dialogue pour régler les paramètres de `config.json`** : demandé
+  par l'utilisateur pour plus tard. Ici, la config se modifie à la main.
+- L'export MIDI du volume et du pan globaux.
+- Les autres réglages qui ne sont pas sauvegardés dans le projet (BPM du
+  métronome, Note Repeat, mode et gamme du clavier en cours…).
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **15a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **15b1** | Implémentation — pan des pistes et des pads (D1). | `ui/mw_tracks.py`, `ui/mw_pads.py`, `ui/key_handler_alt.py`, `ui/midi_handler_window.py` |
+| **15c1** | Tests — D1. | `tests/test_mix_undo.py`, fakes au besoin |
+| **15d1** | Implémentation — volume et pan globaux : `config.json` (D3), `.gvp` (D2), Undo (D4). | `app_config.py`, `ui/main_window.py`, `ui/mw_project.py`, `ui/key_handler_ctrl.py`, `ui/key_handler_chars.py`, `ui/key_handler_navigation.py` |
+| **15e1** | Tests — D2, D3, D4. | `tests/test_master_mix.py` (nouveau), fakes au besoin |
+| **15f1** | Implémentation — points de boucle et boucle du song (D5). | `ui/key_handler_ctrl.py`, `ui/key_handler_chars.py`, `ui/key_handler_alt.py`, `ui/mw_patterns.py`, `ui/song_window.py`, `ui/mw_project.py` |
+| **15g1** | Tests — D5. | `tests/test_loop_undo.py` (nouveau), fakes au besoin |
+| **15h1** | Doc — clôture (DESIGN.md, `SPECS.md` § Undo, § Configuration, format `.gvp`), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+- Avant de committer chaque implémentation, l'utilisateur l'essaie dans
+  l'appli.
