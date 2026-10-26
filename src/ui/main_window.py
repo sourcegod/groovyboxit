@@ -127,7 +127,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             self._rack, self._synths_dir, self._snd,
             lambda msg: wx.CallAfter(self._show_status, msg),
             driver=self._audio_driver,
+            bank_engine=self._bank_engine,                 # 17d1
+            cur_track=lambda: self._player._cur_track,
         )
+        self._player._on_play_start_cb  = self._router.on_play_start
         self._player._on_track_play_cb = self._router.on_play
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
         self._player._on_patch_tape_cb  = self._router.on_patch_tape
@@ -531,7 +534,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _play(self, idx):
         slot = self._rack.get_slot(self._cur_slot)
-        if self._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
+        if self._input_mode == "keyboard" and slot.plays_notes \
                 and self._router.synth_ready() and idx < len(self._router.kb_notes_input):
             midi = self._router.kb_notes_input[idx]
             self._router.synth.play(midi)

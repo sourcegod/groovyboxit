@@ -2,7 +2,7 @@
 """
     File: rack.py
     Rack — 16 slots d'instruments globaux partagés par tous les patterns.
-    Types : kit | synth | loop | audio | midi_file | midi_port
+    Types : kit | synth | bank | loop | audio | midi_file | midi_port
     Date: Fri, 16/05/2026
     Author: Coolbrother
 """
@@ -15,8 +15,9 @@ class InstrumentType:
     AUDIO     = "audio"
     MIDI_FILE = "midi_file"
     MIDI_PORT = "midi_port"
+    BANK      = "bank"      # banque de sons (SF2/SF3 par FluidSynth), Phase 7 étape 17d1
 
-    ALL = (KIT, SYNTH, LOOP, AUDIO, MIDI_FILE, MIDI_PORT)
+    ALL = (KIT, SYNTH, BANK, LOOP, AUDIO, MIDI_FILE, MIDI_PORT)
 
 
 class InstrumentSlot:
@@ -36,6 +37,33 @@ class InstrumentSlot:
     def is_empty(self):
         return self.type is None
 
+    @property
+    def plays_notes(self):
+        """Vrai si le slot joue des notes MIDI (synthé WAV ou banque) :
+        jeu au clavier, notes PATCH, gamme sur les pads."""
+        return self.type in (InstrumentType.SYNTH, InstrumentType.BANK)
+
+    # ------------------------------------------------------------------
+    # Slot Banque (Phase 7 étape 17d1, docs/DESIGN.md § 17a1 D4, D17) :
+    # config = {"bank_slot": 0..3, "bank_msb": 0..127, "bank_lsb": 0..127,
+    #           "program": 0..127, "drums": bool}. "drums" vrai = preset de
+    # batterie (banque 128 de la soundfont), qui ne s'écrit pas en MSB.
+
+    def bank_slot(self):
+        return self._config_int("bank_slot", 0, Rack.NUM_BANK_SLOTS - 1)
+
+    def bank_msb(self):
+        return self._config_int("bank_msb", 0, 127)
+
+    def bank_lsb(self):
+        return self._config_int("bank_lsb", 0, 127)
+
+    def bank_program(self):
+        return self._config_int("program", 0, 127)
+
+    def bank_drums(self):
+        return self.config.get("drums") is True
+
     # ------------------------------------------------------------------
 
     def label(self):
@@ -51,6 +79,8 @@ class InstrumentSlot:
         """Programme GM du slot (Phase 7 étape 10h3) : instrument GM pour un
         synthé, kit GM2 pour un kit ; config["gm_program"] s'il est réglé,
         sinon déduit du nom. None pour un slot vide ou d'un autre type."""
+        if self.type == InstrumentType.BANK:
+            return self.bank_program()            # programme réel de la banque (17d1)
         if self.type not in (InstrumentType.SYNTH, InstrumentType.KIT):
             return None
         program = self.config.get("gm_program")
@@ -90,8 +120,9 @@ class InstrumentSlot:
 
     def gm_gain_db(self):
         """Gain GM en dB (config["gm_gain_db"], borné à -40..0), appliqué
-        à l'export aux CC7 de la piste. 0 pour un slot vide ou sans réglage."""
-        if self.is_empty:
+        à l'export aux CC7 de la piste. 0 pour un slot vide ou sans réglage,
+        et pour une banque, dont le programme est réel (Phase 7 étape 17d1)."""
+        if self.is_empty or self.type == InstrumentType.BANK:
             return 0
         return self._config_int("gm_gain_db", self.GM_GAIN_DB_MIN, self.GM_GAIN_DB_MAX)
 
@@ -140,10 +171,21 @@ class InstrumentSlot:
 class Rack:
     """Rack global de 16 slots d'instruments, partagé par tous les patterns."""
 
-    NUM_SLOTS = 16
+    NUM_SLOTS      = 16
+    NUM_BANK_SLOTS = 4      # emplacements de banque (Phase 7 étape 17d1, D4)
 
     def __init__(self):
         self._slots = [InstrumentSlot(i) for i in range(self.NUM_SLOTS)]
+        # Fichier de banque de chaque emplacement (chemin ou None), partagé
+        # par les slots Banque qui le désignent (config["bank_slot"]).
+        self.bank_files = [None] * self.NUM_BANK_SLOTS
+
+    def set_bank_file(self, index, path):
+        """Fichier de l'emplacement index ; la liste est remplacée, jamais
+        modifiée en place (partagée avec les instantanés d'Undo)."""
+        files = list(self.bank_files)
+        files[index] = path or None
+        self.bank_files = files
 
     # ------------------------------------------------------------------
 
@@ -173,7 +215,8 @@ class Rack:
     # ------------------------------------------------------------------
 
     def to_dict(self):
-        return {"slots": [s.to_dict() for s in self._slots]}
+        return {"slots": [s.to_dict() for s in self._slots],
+                "bank_files": list(self.bank_files)}
 
     # ------------------------------------------------------------------
 
@@ -182,6 +225,11 @@ class Rack:
             idx = d.get("index", 0)
             if 0 <= idx < self.NUM_SLOTS:
                 self._slots[idx] = InstrumentSlot.from_dict(d)
+        # Absente des projets d'avant 17d1 : emplacements vides.
+        files = data.get("bank_files")
+        files = files if isinstance(files, list) else []
+        self.bank_files = [f if isinstance(f, str) and f else None
+                           for f in (files + [None] * self.NUM_BANK_SLOTS)[:self.NUM_BANK_SLOTS]]
 
     # ------------------------------------------------------------------
 

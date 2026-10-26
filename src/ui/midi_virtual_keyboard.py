@@ -45,7 +45,7 @@ class VirtualKeyboardMixin:
         note (convention existante : SoundManager.play_note / bornes SYNTH)."""
         slot   = self._parent._rack.get_slot(self._parent._cur_slot)
         router = self._parent._router
-        if slot.type == InstrumentType.SYNTH:
+        if slot.plays_notes:                         # synthé ou banque (17d1)
             if not router.synth_ready():
                 router.load_slot_preview(self._parent._cur_slot)
                 return

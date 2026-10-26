@@ -266,10 +266,11 @@ class MidiHandler:
         win = self._win
         if win._player.recording:
             win._player.record_program_change(program, channel)
-        track    = win._player._cur_track
-        slot_idx = program % 16
-        win._router.assign_slot(track, slot_idx)
-        win._show_status(f"Piste {track + 1}: Program Change → Slot {slot_idx + 1}")
+        track = win._player._cur_track
+        if win._router.program_change(track, program):    # piste sur banque (17d1, D18)
+            win._show_status(f"Piste {track + 1}: Program Change {program}")
+        else:
+            win._show_status(f"Piste {track + 1}: Program Change → Slot {program % 16 + 1}")
 
     # ------------------------------------------------------------------
     # Note On
@@ -281,7 +282,7 @@ class MidiHandler:
         win      = self._win
         velocity = self._apply_vel_level(velocity)
         slot     = win._rack.get_slot(win._cur_slot)
-        if win._input_mode == "keyboard" and slot.type == InstrumentType.SYNTH \
+        if win._input_mode == "keyboard" and slot.plays_notes \
                 and win._router.synth_ready():
             self._handle_keyboard_note_on(note, velocity, channel)
         else:
@@ -358,13 +359,13 @@ class MidiHandler:
                     if bar_idx == 0 and step_idx < win.COLS:
                         win._cells[p][step_idx].SetValue(False)
         elif win._note_repeat:
-            if slot.type == InstrumentType.SYNTH and win._router.synth_ready() \
+            if slot.plays_notes and win._router.synth_ready() \
                     and pad_idx < len(win._router.kb_notes_input):
                 vm     = win._player.voice_manager
                 v      = vm.get_voice(pad_idx)
                 vol    = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
                 pan    = win._player._mix_pan(v.pan)
-                midi_n = win._router.kb_notes_input[pad_idx]
+                midi_n = win._router.input_note(pad_idx)
                 win._router.synth.play(midi_n, vol, pan, 0)
                 win._router.kb_last_midi    = midi_n
                 win._player.last_played_pad = pad_idx
@@ -396,14 +397,15 @@ class MidiHandler:
             win._show_status(
                 f"NR: Pad {pad_idx + 1} @ {Pattern.QUANT_LIST[win._nr_rate_idx]}"
             )
-        elif slot.type == InstrumentType.SYNTH and win._router.synth_ready() \
+        elif slot.plays_notes and win._router.synth_ready() \
                 and pad_idx < len(win._router.kb_notes_input):
             vm  = win._player.voice_manager
             v   = vm.get_voice(pad_idx)
             vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
             pan = win._player._mix_pan(v.pan)
-            win._router.synth.play(win._router.kb_notes_input[pad_idx], vol, pan, 0)
-            win._router.kb_last_midi    = win._router.kb_notes_input[pad_idx]
+            midi_n = win._router.input_note(pad_idx)
+            win._router.synth.play(midi_n, vol, pan, 0)
+            win._router.kb_last_midi    = midi_n
             win._player.last_played_pad = pad_idx
             win._debug_pad_status(pad_idx, note)
             if win._player.recording:
@@ -441,7 +443,7 @@ class MidiHandler:
                 f"Note Repeat: ON — {mode} — {Pattern.QUANT_LIST[win._nr_rate_idx]}"
             )
         slot = win._rack.get_slot(win._cur_slot)
-        if win._router.synth_ready() and slot.type == InstrumentType.SYNTH:
+        if win._router.synth_ready() and slot.plays_notes:
             if win._input_mode == "keyboard":
                 offset     = win._kb_root_midi - win._kb_play_root
                 transposed = max(0, min(127, note + offset))
@@ -453,7 +455,7 @@ class MidiHandler:
             else:
                 pad_idx = self._midi_to_pad(note)
                 if pad_idx < len(win._router.kb_notes_input):
-                    win._router.synth.stop(win._router.kb_notes_input[pad_idx])
+                    win._router.synth.stop(win._router.input_note(pad_idx))
         self._erase_held.discard(note)
         self._update_erase_range()
         self._update_erase_midi_range()

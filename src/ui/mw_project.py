@@ -109,6 +109,9 @@ class ProjectMixin:
             bpm              = self._player.bpm,
             track_channels   = list(r._track_channels),
             track_is_synth   = [s.type == InstrumentType.SYNTH for s in slots],
+            track_banks      = [(s.bank_msb(), s.bank_lsb(), s.bank_drums())
+                                if s.type == InstrumentType.BANK else None
+                                for s in slots],                  # 17d1 D12, D18
             track_names      = [s.name for s in slots],          # nom du slot (10h2 D12)
             kit_pad_notes    = list(self._snd.pad_notes),        # 11a1 D1
             kit_gm_map       = dict(self._snd.gm_note_map),      # 11a1 D2
@@ -319,7 +322,7 @@ class ProjectMixin:
         self._cur_slot = cur_slot
         self._slot_choice.SetSelection(cur_slot)
         slot = self._rack.get_slot(cur_slot)
-        if slot.type == InstrumentType.SYNTH:
+        if slot.plays_notes:                        # synthé ou banque (17d1)
             self._router.load_slot_preview(cur_slot)
         elif slot.type == InstrumentType.KIT and cur_slot not in loaded_kit_slots:
             self._load_kit_slot(cur_slot)
@@ -584,6 +587,7 @@ class ProjectMixin:
         """Applique au player (et au pilote audio) et aux deux SpinCtrl."""
         self._player.set_volume(volume)
         self._player.set_pan(pan)
+        self._router.set_master_pan(self._player.pan)     # CC10 des banques (17d1, D13)
         self._volume_ctrl.SetValue(self._player.volume)
         self._pan_ctrl.SetValue(self._player.pan)
 
@@ -604,6 +608,7 @@ class ProjectMixin:
         if pan != self._player.pan:
             self._add_mix_undo(f"Pan global: {pan}", ("master_pan",))
             self._player.set_pan(pan)
+            self._router.set_master_pan(pan)
         self._pan_ctrl.SetValue(pan)
         return pan
 

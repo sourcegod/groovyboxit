@@ -24,6 +24,8 @@ class TransportMixin:
     #--------------------------------------------------------------------------
 
     def play_pattern(self):
+        if self._on_play_start_cb:       # instruments des canaux de banque (17d1)
+            self._on_play_start_cb()
         clicked = 0
         if self.clicking:
             self.stop_thread()

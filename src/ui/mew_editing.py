@@ -197,7 +197,7 @@ class EditingMixin:
         virtuel n'a pas de correspondance pad pour ce cas)."""
         slot   = self._parent._rack.get_slot(self._parent._cur_slot)
         router = self._parent._router
-        if slot.type == InstrumentType.SYNTH:
+        if slot.plays_notes:                         # synthé ou banque (17d1)
             return ETYPE_PATCH, self._vk_note
         if self._parent._snd.note_map or (router.kit_synth and router.kit_synth.is_loaded()):
             return ETYPE_KIT, self._vk_note

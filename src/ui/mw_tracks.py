@@ -213,7 +213,7 @@ class TrackMixin:
         self._refresh_grid()
         slot = self._rack.get_slot(self._cur_slot)
         self._show_status(f"Piste {idx + 1} — {slot.name}")
-        if slot.type == InstrumentType.SYNTH:
+        if slot.plays_notes:                        # synthé ou banque (17d1)
             self._router.load_slot_preview(self._cur_slot)
         elif slot.type == InstrumentType.KIT:
             self._load_kit_slot(self._cur_slot)
@@ -230,7 +230,7 @@ class TrackMixin:
             self._show_status(
                 f"Slot {self._cur_slot + 1:02d}: {slot.name} (Ctrl+T pour assigner)"
             )
-            if slot.type == InstrumentType.SYNTH:
+            if slot.plays_notes:                    # synthé ou banque (17d1)
                 self._router.load_slot_preview(self._cur_slot)
             elif slot.type == InstrumentType.KIT:
                 self._load_kit_slot(self._cur_slot)

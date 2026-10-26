@@ -20,7 +20,7 @@ class NumpadHandler:
                 note_idx = key - wx.WXK_NUMPAD1
                 cur_slot = win._rack.get_slot(win._cur_slot)
                 if note_idx < len(win._router.kb_notes_input) \
-                        and cur_slot.type == InstrumentType.SYNTH:
+                        and cur_slot.plays_notes:
                     midi = win._router.kb_notes_input[note_idx]
                     if win._player.erasing:
                         win._player._erase_active_midi_notes.add(midi)
@@ -42,9 +42,9 @@ class NumpadHandler:
             elif win._player.erasing:
                 pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
                 slot = win._rack.get_slot(win._cur_slot)
-                if slot.type == InstrumentType.SYNTH and win._router.synth_ready() \
+                if slot.plays_notes and win._router.synth_ready() \
                         and pad_idx < len(win._router.kb_notes_input):
-                    midi = win._router.kb_notes_input[pad_idx]
+                    midi = win._router.input_note(pad_idx)
                     win._router.synth.stop(midi)
                     result = win._player.erase_patch_tape_note(win._player._cur_track, midi)
                 else:
@@ -84,9 +84,9 @@ class NumpadHandler:
             else:
                 pad_idx = (key - wx.WXK_NUMPAD1) + win._shift_pad
                 slot = win._rack.get_slot(win._cur_slot)
-                if slot.type == InstrumentType.SYNTH and win._router.synth_ready():
+                if slot.plays_notes and win._router.synth_ready():
                     if pad_idx < len(win._router.kb_notes_input):
-                        midi = win._router.kb_notes_input[pad_idx]
+                        midi = win._router.input_note(pad_idx)
                         vm   = win._player.voice_manager
                         v    = vm.get_voice(pad_idx)
                         dur  = max(50, v.duration_ms)

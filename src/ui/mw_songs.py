@@ -147,6 +147,7 @@ class SongMixin:
         self._router._track_pans[:]    = new._track_pans
         self._router._track_channels[:] = new._track_channels
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
+        self._router.sync_banks()          # 17d1
         self._bpm_ctrl.SetValue(int(new._bpm))
         self._show_status(f"Song → Pat_{next_pat_idx+1:02d}")
         if self._song_window:

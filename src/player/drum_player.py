@@ -35,6 +35,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
             for _ in range(self._pattern._num_tracks)
         ]
         self._on_track_play_cb = None  # callback(track_idx, pad_idx, vol, pan)
+        self._on_play_start_cb = None  # callback() au début de la lecture (Phase 7 étape 17d1)
         self.last_played_pad = None
         self.voice_manager = VoiceManager(self._pattern._num_pads)
         self._update_step_duration()

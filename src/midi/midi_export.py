@@ -19,13 +19,15 @@
 """
 import mido
 
-from pattern import (ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
+from pattern import (Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
                      ETYPE_CC, ETYPE_PGM, ETYPE_BEND)
 
 PPQ                = 480
 PATCH_DEFAULT_MS   = 500   # comme au rejeu (TrackRouter.on_patch_tape)
 CC_REVERB          = 91
 CC_CHORUS          = 93
+KIT_CHANNEL         = Pattern.KIT_CHANNEL   # canal 10 (0-based 9)
+BANK_DRUM_GRID_BASE = 36    # pad i d'une banque au canal 10 = note 36 + i (17d1, D12)
 
 # Ordre d'écriture à tick égal (D7) : note-off, PGM, CC, bend, note-on
 _ORDER_NOTE_OFF = 0
@@ -74,7 +76,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_volumes=None, track_pans=None,
                        kit_gm_map=None, unmapped=None, pad_volumes=None,
                        track_transposes=None, track_gain_db=None,
-                       track_audible=None, pad_audible=None):
+                       track_audible=None, pad_audible=None, track_banks=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -111,6 +113,11 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     pad_audible      : bool par pad (VoiceManager.is_audible) ; les cases
                        de grille d'un pad muet ou hors solo sont omises ;
                        None = tous
+    track_banks      : par piste, None ou (msb, lsb, drums) d'un slot Banque
+                       (Phase 7 étape 17d1, D12, D18) : CC0 et CC32 avant le
+                       Program Change au tick 0 (sauf batterie) ; cases de
+                       grille en 36 + pad au canal 10, sinon gamme ; notes
+                       KIT telles quelles, PATCH gardées. None = aucune
     Chaque piste reçoit CC91 et CC93 à 0 au tick 0 : pas de reverb ni de
     chorus, comme dans l'appli (12a1 D3).
     """
@@ -156,7 +163,15 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         transpose = track_transposes[t] if track_transposes else 0
         gain_db   = track_gain_db[t] if track_gain_db else 0
         timed = []     # (tick, ordre, rang dans _tape, message)
+        bank    = track_banks[t] if track_banks else None
+        plays_notes = track_is_synth[t] or bank is not None
         program = track_programs[t] if track_programs else None
+        if bank is not None and not bank[2]:
+            # Bank Select avant le programme (rangs -3, -2 < -1), D18
+            timed.append((0, _ORDER_PGM, -3, mido.Message(
+                "control_change", channel=ch, control=0, value=_clamp(bank[0], 0, 127))))
+            timed.append((0, _ORDER_PGM, -2, mido.Message(
+                "control_change", channel=ch, control=32, value=_clamp(bank[1], 0, 127))))
         if program is not None:
             # rang -1 : avant un ETYPE_PGM capturé au tick 0, qui l'emporte
             timed.append((0, _ORDER_PGM, -1, mido.Message(
@@ -186,7 +201,9 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 pad = p.get("pad", 0)
                 if pad_audible and not pad_audible[pad]:
                     continue  # pad muet ou hors solo au rejeu (12a3 D7)
-                if track_is_synth[t]:
+                if bank is not None and ch == KIT_CHANNEL:
+                    note = BANK_DRUM_GRID_BASE + pad          # D12
+                elif plays_notes:
                     note = synth_grid_notes[pad] + transpose
                 else:
                     note = kit_note(kit_pad_notes[pad])
@@ -196,12 +213,14 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 notes.append((start, start + ms_ticks(ms), note, vel, seq))
             elif ev.etype == ETYPE_KIT:
                 # one-shot (dur toujours 0) : un pas
+                note = p.get("note", 0)
                 notes.append((start, start + max(1, tick(1)),
-                              kit_note(p.get("note", 0)), p.get("vel", 100), seq))
+                              note if bank is not None else kit_note(note),
+                              p.get("vel", 100), seq))
             elif ev.etype == ETYPE_PATCH:
                 # Muette au rejeu sur une piste sans slot SYNTH
                 # (TrackRouter.on_patch_tape) : non exportée (Phase 7 étape 10h5)
-                if not track_is_synth[t]:
+                if not plays_notes:
                     continue
                 ms = ev.dur if ev.dur > 0 else PATCH_DEFAULT_MS
                 notes.append((start, start + ms_ticks(ms), p.get("note", 0) + transpose,
