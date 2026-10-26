@@ -44,6 +44,10 @@ class _FakeSlot:
     def __init__(self, type_):
         self.type = type_
 
+    @property
+    def plays_notes(self):
+        return self.type in (InstrumentType.SYNTH, InstrumentType.BANK)
+
 
 class _FakeRack:
     def __init__(self, slot_type):

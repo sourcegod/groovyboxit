@@ -61,6 +61,7 @@ def _make_router():
     r._track_solos   = [False] * n
     r._track_volumes = [100] * n
     r._track_pans    = [0] * n
+    r.bank_engine    = None          # sans moteur de banque (17d1)
     return r
 
 

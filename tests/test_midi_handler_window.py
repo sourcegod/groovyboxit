@@ -125,6 +125,11 @@ class _FakeRouter:
     def assign_slot(self, track, slot_idx):
         self.assigned_slot = (track, slot_idx)
 
+    def program_change(self, track, program):
+        """Piste hors banque : le pont provisoire de TrackRouter (17d1)."""
+        self.assign_slot(track, program % 16)
+        return False
+
     def synth_ready(self):
         return False
 
