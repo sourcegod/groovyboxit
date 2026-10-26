@@ -137,6 +137,7 @@ groovyboxit/
     ├── test_loop_points_pattern.py
     ├── test_loop_points_player.py
     ├── test_loop_select_dialog.py
+    ├── test_loop_undo.py
     ├── test_master_mix.py
     ├── test_midi_constants.py
     ├── test_midi_editor.py
@@ -1521,6 +1522,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_loop_points_pattern.py` | Loop points : données Pattern (29 tests) |
 | `test_loop_points_player.py` | Loop points : DrumPlayer (21 tests) |
 | `test_loop_select_dialog.py` | LoopSelectDialog (42 tests) |
+| `test_loop_undo.py` | Undo des points de boucle (Ctrl+L, Shift+L, Alt+L, dialogue) et de la case Boucler du song |
 | `test_master_mix.py` | Volume et pan globaux : défauts de config.json, clé « master » du .gvp, Nouveau projet, Undo, raccourcis et champs |
 | `test_midi_constants.py` | midi_constants : tables CC/GM/GM2, noms des percussions GM, note GM devinée, courbe gm_gain |
 | `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
