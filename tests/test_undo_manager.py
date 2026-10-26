@@ -303,3 +303,166 @@ def test_last_entry_follows_pop_last():
     mgr.add("B", _state(2))
     mgr.pop_last()
     assert mgr.last_entry().title == "A"
+
+
+# ---------------------------------------------------------------------------
+# Numéros d'état et point propre (Phase 7 étape 16c1, docs/DESIGN.md § 16a1
+# D1, D2). Les helpers reproduisent l'usage de ProjectMixin : Undo pris
+# avant la modification, puis new_state() ; après restore,
+# current_id = entry.state_id.
+# ---------------------------------------------------------------------------
+
+def _change(mgr, title="X"):
+    mgr.add(title, _state(mgr.current_id))
+    mgr.new_state()
+
+
+def _undo(mgr):
+    e = mgr.undo()
+    mgr.push_future(e.title, _state(mgr.current_id))
+    mgr.current_id = e.state_id
+
+
+def _redo(mgr):
+    e = mgr.redo()
+    mgr.push_history(e.title, _state(mgr.current_id))
+    mgr.current_id = e.state_id
+
+
+def test_new_manager_is_clean():
+    mgr = UndoManager()
+    assert mgr.is_clean()
+    assert mgr.current_id == mgr.saved_id == 0
+
+
+def test_new_state_gives_distinct_increasing_ids():
+    mgr = UndoManager()
+    ids = [mgr.new_state() for _ in range(3)]
+    assert ids == sorted(set(ids))
+    assert mgr.current_id == ids[-1]
+    assert not mgr.is_clean()
+
+
+def test_mark_saved_makes_clean():
+    mgr = UndoManager()
+    mgr.new_state()
+    mgr.mark_saved()
+    assert mgr.is_clean()
+
+
+def test_entry_default_state_id_is_0():
+    assert UndoEntry("T", _state(0)).state_id == 0
+
+
+def test_add_stores_current_id_in_entry():
+    mgr = UndoManager()
+    sid = mgr.new_state()
+    mgr.add("A", _state(1))
+    assert mgr.last_entry().state_id == sid
+
+
+def test_undo_back_to_saved_state_is_clean():
+    mgr = UndoManager()
+    _change(mgr)
+    _change(mgr)
+    assert not mgr.is_clean()
+    _undo(mgr)
+    assert not mgr.is_clean()
+    _undo(mgr)
+    assert mgr.is_clean()
+
+
+def test_redo_after_undo_to_saved_state_is_dirty_again():
+    mgr = UndoManager()
+    _change(mgr)
+    _undo(mgr)
+    assert mgr.is_clean()
+    _redo(mgr)
+    assert not mgr.is_clean()
+
+
+def test_undo_past_a_save_is_dirty():
+    """Le cas du booléen par entrée : ouvrir, changer, sauvegarder, Ctrl+Z."""
+    mgr = UndoManager()
+    _change(mgr)
+    mgr.mark_saved()
+    _undo(mgr)
+    assert not mgr.is_clean()
+    _redo(mgr)
+    assert mgr.is_clean()
+
+
+def test_ids_never_reused_after_undo():
+    mgr = UndoManager()
+    _change(mgr)
+    first = mgr.current_id
+    _undo(mgr)
+    _change(mgr)                                 # autre branche
+    assert mgr.current_id != first
+    assert not mgr.is_clean()
+
+
+def test_push_future_and_history_store_current_id():
+    mgr = UndoManager()
+    _change(mgr)
+    before_undo = mgr.current_id
+    _undo(mgr)
+    assert mgr.future_list()[0].state_id == before_undo
+    _redo(mgr)
+    assert mgr.last_entry().state_id == 0
+
+
+def test_pop_last_restores_id_of_removed_entry():
+    mgr = UndoManager()
+    _change(mgr)                                 # action annulée ensuite
+    assert not mgr.is_clean()
+    mgr.pop_last()
+    assert mgr.is_clean()
+    assert mgr.current_id == 0
+
+
+def test_pop_last_on_already_dirty_project_keeps_it_dirty():
+    mgr = UndoManager()
+    _change(mgr)
+    dirty = mgr.current_id
+    _change(mgr)
+    mgr.pop_last()
+    assert mgr.current_id == dirty
+    assert not mgr.is_clean()
+
+
+def test_pop_last_after_save_during_open_action_stays_clean():
+    """Ctrl+S pendant une prise live restée sans effet : contenu identique."""
+    mgr = UndoManager()
+    _change(mgr, "Prise")
+    mgr.mark_saved()
+    mgr.pop_last()
+    assert mgr.is_clean()
+    assert mgr.current_id == mgr.saved_id == 0
+
+
+def test_pop_last_on_empty_history_changes_nothing():
+    mgr = UndoManager()
+    sid = mgr.new_state()
+    mgr.pop_last()
+    assert mgr.current_id == sid
+
+
+def test_history_limit_keeps_ids_consistent():
+    mgr = UndoManager(max_size=3)
+    for _ in range(5):
+        _change(mgr)
+    assert len(mgr.history_list()) == 3
+    for _ in range(3):
+        _undo(mgr)
+    assert mgr.current_id == 2                   # le plus ancien état gardé
+    assert not mgr.is_clean()
+
+
+def test_clear_keeps_ids():
+    mgr = UndoManager()
+    _change(mgr)
+    sid = mgr.current_id
+    mgr.clear()
+    assert mgr.current_id == sid
+    assert not mgr.is_clean()
