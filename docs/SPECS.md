@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mute, du solo et du volume | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles | en cours |
 
 ---
 
@@ -199,9 +199,13 @@ groovyboxit/
   "click1":       "/chemin/click_downbeat.wav",
   "click2":       "/chemin/click_beat.wav",
   "sound_cache_dir": "/chemin/cache_npz",
-  "exports_dir":  "/chemin/vers/EXPORTS"
+  "exports_dir":  "/chemin/vers/EXPORTS",
+  "master_volume": 100,
+  "master_pan":    0
 }
 ```
+
+`master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
 `exports_dir` (export MIDI, Alt+Shift+E) vaut par défaut le dossier `EXPORTS`
 voisin du dossier des projets (`/home/com/groovybox/EXPORTS`).
@@ -756,8 +760,9 @@ où le format MIDI permet un Program Change à tout moment pendant la lecture.
 ## Volume et Pan
 
 ### Global
-- Volume global : 0..100 (Ctrl+↑/↓)
-- Pan global : -100..+100 (Ctrl+←/→, Ctrl+0 pour centrer)
+- Volume global : 0..100 (Ctrl+↑/↓, `+`/`-`, champ « Vol: ») : volume maître du pilote audio, appliqué à tout le mixage
+- Pan global : -100..+100 (Ctrl+←/→, Ctrl+0 pour centrer, champ « Pan: ») : décalage ajouté au pan de chaque pad joué
+- Une valeur par projet, sauvegardée dans la clé `master` du `.gvp` ; défauts dans `data/config.json` (`master_volume`, `master_pan`), appliqués au pilote dès le lancement (Phase 7 étape 15d1)
 
 ### Par pad (Voice Manager)
 - Volume : 0..100 (Alt+↑/↓)
@@ -956,17 +961,16 @@ UndoManager
 | Shift+Z | Refaire (Redo) |
 | Ctrl+Shift+Z | Afficher l'historique des annulations (dialog) |
 
-`_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, renommer, quantiser, dupliquer, coller, etc.). Depuis la Phase 7 étape 13, le mute, le solo et le volume des pistes et des pads y passent aussi, et marquent le projet modifié :
-- X, S, Shift+X et Shift+S, sur la liste des pistes, sur les pads et dans l'éditeur MIDI (une seule entrée pour toutes les pistes sélectionnées) ;
-- les boutons Mute et Solo des pads ;
-- Alt+↑/↓, le CC7 du contrôleur et le SpinCtrl Volume du pad ;
+`_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, renommer, quantiser, dupliquer, coller, etc.). Depuis les Phase 7 étapes 13 et 15, les réglages de mixage et les boucles y passent aussi, et marquent le projet modifié :
+- **mute et solo** des pistes et des pads : X, S, Shift+X et Shift+S, sur la liste des pistes, sur les pads et dans l'éditeur MIDI (une seule entrée pour toutes les pistes sélectionnées), et les boutons Mute et Solo des pads ;
+- **volume et pan** des pistes et des pads : Alt+↑/↓, Alt+←/→, Alt+0, les CC7 et CC10 du contrôleur, les SpinCtrl Volume et Pan des pads ;
+- **volume et pan globaux** : Ctrl+↑/↓, Ctrl+←/→, Ctrl+0, `+`/`-`, les champs « Vol: » et « Pan: » ;
+- **points de boucle** : Ctrl+L, Shift+L, Alt+L, le dialogue Ctrl+Shift+L ; et la case **« Boucler » d'un song** ;
 - les dialogues de propriétés de piste et de pad (entrée retirée si Annuler ou si rien n'a changé).
 
-Rien n'est enregistré si la valeur ne change pas (volume déjà à 100, Shift+X sans rien de muet).
+Rien n'est enregistré si la valeur ne change pas (volume déjà à 100, Alt+0 sur un pan centré, Shift+X sans rien de muet, Ok du dialogue de boucle sans changement).
 
-`_add_mix_undo(title, key)` : les changements successifs d'un même volume (même `key`, moins de 1 s entre deux, sans autre action entre eux) ne forment qu'une entrée, dont le titre suit la valeur atteinte (`Volume piste 2: 80`). Un tour de bouton rotatif s'annule ainsi d'un seul Ctrl+Z. Les bascules font une entrée chacune.
-
-Le pan, ainsi que le volume et le pan globaux (champs « Vol: » et « Pan: », qui ne sont pas encore sauvegardés dans le projet), n'y passent pas encore.
+`_add_mix_undo(title, key)` : les changements successifs d'un même volume ou pan (même `key`, moins de 1 s entre deux, sans autre action entre eux) ne forment qu'une entrée, dont le titre suit la valeur atteinte (`Volume piste 2: 80`, `Pan pad 5: -20`, `Volume global: 75`). Un tour de bouton rotatif s'annule ainsi d'un seul Ctrl+Z. Les bascules et les boucles font une entrée chacune (`Début de boucle: 2:2:1`, `Song 03: boucle On`).
 
 `pop_last_undo()` : retire la dernière entrée — utilisé après annulation d'un dialog (Cancel ou valeur inchangée).
 
@@ -982,7 +986,8 @@ Format `.gvp` (JSON renommé) : regroupe le rack, les 99 patterns et les 16 song
   "rack":     { ... },
   "patterns": [ ... ],
   "songs":    [ ... ],
-  "cur_song": 0
+  "cur_song": 0,
+  "master":   { "volume": 100, "pan": 0 }
 }
 ```
 
@@ -997,6 +1002,7 @@ Format `.gvp` (JSON renommé) : regroupe le rack, les 99 patterns et les 16 song
 - Les projets sont créés dans le répertoire `data/PROJECTS/` (créé si absent)
 - Le titre de la fenêtre principale affiche le nom du projet courant
 - Le song courant (`cur_song`) est persisté dans le projet
+- Le volume et le pan globaux (`master`) sont persistés dans le projet ; un ancien projet sans la clé prend les défauts de `data/config.json`
 
 ---
 
@@ -1053,7 +1059,8 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
     { "name": "", "sequence": [0, 2, 1], "looping": false },
     "…"
   ],
-  "cur_song": 0
+  "cur_song": 0,
+  "master":   { "volume": 100, "pan": 0 }
 }
 ```
 

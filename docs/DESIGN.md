@@ -4903,3 +4903,84 @@ l'ouverture, et le champ affiche enfin la vraie valeur. On peut toujours
 - La valeur est appliquée au pilote dès le lancement.
 - Avant de committer 15d1, l'utilisateur vérifie à l'écoute, en temps
   réel, qu'un projet sonne comme avant à l'ouverture.
+
+### Phase 7 étape 15 — Avancement et écarts constatés
+
+- **15b1** (`e7ebc12`) — conforme à D1 : `_set_track_pan_undo`
+  (`mw_tracks.py`) et `_set_pad_pan_undo` (`mw_pads.py`), branchées sur
+  Alt+←/→, Alt+0, le CC10 et le SpinCtrl Pan. Essayé par l'utilisateur.
+  `pytest` rouge : 3 fausses fenêtres à adapter.
+- **15c1** (`cd6a7db`) — 14 tests dans `test_mix_undo.py`, 2216 verts.
+  L'instantané réduit de la fausse fenêtre ne gardait pas `_track_pans` :
+  4 tests échouaient pour cette raison seule, corrigée.
+- **15a2** (`d27849b`) — avenant : le volume global affiché (80) n'était
+  jamais transmis au pilote, resté à 100 %. Défaut révisé à **100**.
+- **15d1** (`1aabe35`) — conforme à D2, D3, D4 et à l'avenant 15a2.
+  - `AppConfig.master_volume` et `master_pan` (repli 100 et 0, bornés,
+    valeur invalide → défaut) ; les deux clés sont ajoutées à
+    `data/config.json`, suivi par git.
+  - `MainWindow._master_defaults`, appliqué au pilote dès le lancement ;
+    `DrumPlayer.volume` démarre à 100.
+  - `mw_project` : `_master_dict`, `_master_from_dict` (champ par champ),
+    `_apply_master`, `_set_master_volume_undo`, `_set_master_pan_undo` ;
+    clé `master` à la sauvegarde, à l'ouverture, dans l'instantané, et
+    défauts de la config à Ctrl+N. Un instantané sans la clé laisse les
+    valeurs en place.
+  - **Écart au plan** : les méthodes communes sont dans `mw_project.py`
+    et non dans `main_window.py`, puisque le réglage appartient au projet.
+  - Essayé à l'écoute par l'utilisateur. `pytest` rouge : 6 fausses
+    fenêtres à adapter.
+- **15e1** (`2c84ed9`) — `tests/test_master_mix.py`, 43 tests, 2259 verts.
+  Un vrai `DrumPlayer` avec un `SoundManager` simulé vérifie ce qui
+  atteint le pilote. 42 des 43 tests échouent sur le code d'avant 15d1.
+- **15f1** (`7e50310`) — D5.
+  - **Écart au plan** : le dialogue Ctrl+Shift+L n'applique rien avant
+    Ok. L'Undo est donc pris à l'Ok, seulement si une valeur change, et
+    il n'y a rien à retirer si on annule.
+  - `_restore_state` rétablit aussi le compteur de répétitions
+    (`_loop_remaining`), synchronise `_song_looping` pendant la lecture
+    d'un song, et réveille le thread de lecture.
+  - Essayé par l'utilisateur ; `pytest` resté vert.
+- **15f2** (`d1c930f`), commit imprévu relevé en écrivant 15g1 : le titre
+  d'un point de boucle reprenait `position_str()` entier
+  (`2:2:1 / 1:4:4`) ; il ne garde plus que la position.
+- **15g1** (`1bec5e8`) — `tests/test_loop_undo.py`, 16 tests, 2275 verts.
+
+### Clôture (15h1)
+
+**15a1-15g1 FAITS** (commits `e1c4295`..`1bec5e8`, 10 commits du chantier
+et ce commit de clôture, 2275 tests verts) : **chantier Phase 7 étape 15
+complet**. Tous les réglages de mixage sauvegardés dans le projet, et les
+boucles, entrent dans l'Undo et marquent le projet modifié.
+
+**Ce que le chantier a livré** :
+- **Undo du pan** des pistes et des pads, regroupé comme le volume
+  (`Pan piste 2: -20`).
+- **Volume et pan globaux** :
+  - sauvegardés dans le projet (clé `master` du `.gvp`) ;
+  - valeurs par défaut dans `data/config.json` (`master_volume`,
+    `master_pan`), jamais écrit par l'appli ;
+  - appliqués au pilote dès le lancement : le champ « Vol: » affiche
+    enfin le volume réel ;
+  - Undo regroupé (`Volume global: 75`).
+- **Undo des points de boucle** (Ctrl+L, Shift+L, Alt+L, dialogue) et de
+  la **case « Boucler » du song**.
+
+**Écarts au plan** : l'avenant 15a2 (défaut 100), les méthodes du volume
+global dans `mw_project.py`, l'Undo du dialogue de boucle pris à l'Ok, et
+le correctif 15f2.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, Configuration
+(`master_volume`, `master_pan`), Volume et Pan global, format `.gvp`
+(clé `master`, deux exemples), ProjectManager, Undo (tous les chemins
+couverts).
+
+**Laissé hors périmètre, pour la suite** :
+- **Phase 7 étape 16** : le « point propre » de l'Undo. Revenir par
+  Ctrl+Z à l'état sauvegardé doit effacer le marquage modifié, grâce à un
+  numéro d'état et non à un booléen par entrée.
+- **Un dialogue de réglage de `data/config.json`**, demandé par
+  l'utilisateur.
+- L'export MIDI du volume et du pan globaux.
+- Les réglages qui ne sont pas sauvegardés dans le projet (métronome,
+  Note Repeat, mode et gamme du clavier en cours…).
