@@ -477,6 +477,75 @@ def test_lfo_depth_zero_gives_same_output_as_no_lfo():
 
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Sources de rendu externes (Phase 7 étape 17c1, docs/DESIGN.md § 17a1 D14) :
+# moteur de banque branché dans le callback, avant le volume global. Pilote
+# sans flux audio, pour que le vrai callback ne tourne pas en parallèle.
+# ---------------------------------------------------------------------------
+
+import threading as _threading
+
+
+def _bare_driver(master_vol=1.0):
+    d = SoundDeviceDriver.__new__(SoundDeviceDriver)
+    d._sr, d._blocksize = 44100, 512
+    d._voices, d._loop_voices = [], []
+    d._lock = _threading.Lock()
+    d._master_vol = master_vol
+    d._render_sources = ()
+    return d
+
+
+def _run_callback(d, frames=512):
+    out = np.zeros((frames, 2), dtype=np.float32)
+    d._callback(out, frames, None, None)
+    return out
+
+
+def test_render_source_is_mixed_before_master_volume():
+    d = _bare_driver(master_vol=0.5)
+    d.add_render_source(lambda mix: mix.__iadd__(0.4))
+    assert np.allclose(_run_callback(d), 0.2)
+
+
+def test_render_source_receives_frames_by_2_float32_buffer():
+    d = _bare_driver()
+    seen = []
+    d.add_render_source(lambda mix: seen.append((mix.shape, mix.dtype)))
+    _run_callback(d, frames=256)
+    assert seen == [((256, 2), np.float32)]
+
+
+def test_render_sources_add_up_and_are_clipped():
+    d = _bare_driver()
+    d.add_render_source(lambda mix: mix.__iadd__(0.7))
+    d.add_render_source(lambda mix: mix.__iadd__(0.7))
+    assert np.allclose(_run_callback(d), 1.0)
+
+
+def test_add_render_source_twice_is_ignored():
+    d = _bare_driver()
+    fn = lambda mix: mix.__iadd__(0.1)
+    d.add_render_source(fn)
+    d.add_render_source(fn)
+    assert d._render_sources == (fn,)
+    assert np.allclose(_run_callback(d), 0.1)
+
+
+def test_remove_render_source():
+    d = _bare_driver()
+    fn = lambda mix: mix.__iadd__(0.1)
+    d.add_render_source(fn)
+    d.remove_render_source(fn)
+    assert d._render_sources == ()
+    assert np.all(_run_callback(d) == 0.0)
+    d.remove_render_source(fn)                  # absente : sans erreur
+
+
+def test_new_driver_has_no_render_source_and_samplerate():
+    assert _drv._render_sources == ()
+    assert _drv.samplerate == 44100
+
 if __name__ == "__main__":
     print("=== test_sound_device_driver ===")
     # SdSound
@@ -536,3 +605,4 @@ if __name__ == "__main__":
 
     _drv.close()
     print("Tous les tests : OK")
+

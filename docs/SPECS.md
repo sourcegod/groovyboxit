@@ -120,6 +120,7 @@ groovyboxit/
 └── tests/
     ├── test_all.sh
     ├── conftest.py
+    ├── test_app_config.py
     ├── test_app_launch.py
     ├── test_audio_sampler.py
     ├── test_bend_log.py
@@ -128,6 +129,7 @@ groovyboxit/
     ├── test_event_filter_dialog.py
     ├── test_explorer_actions.py
     ├── test_explorer_dialog.py
+    ├── test_fluidsynth_engine.py
     ├── test_gm_program.py
     ├── test_gm_slot_export.py
     ├── test_key_manager.py
@@ -1520,6 +1522,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 
 | Fichier | Couvre |
 |---|---|
+| `test_app_config.py` | Clés de config.json du slot Banque : soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain |
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
 | `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
@@ -1528,6 +1531,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
 | `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
+| `test_fluidsynth_engine.py` | Moteur de banque : BankEngine (GS/MMA), FluidSynthEngine sur FluidR3_GM (TimGM6mb en repli : emplacements, presets, canaux, rendu), branchement MainWindow ; sautés sans libfluidsynth |
 | `test_gm_program.py` | Program Change par slot : guess_gm_program, gm_program, export au tick 0, propriétés de piste (aperçu, Annuler, Undo, transposition et gain GM) |
 | `test_gm_slot_export.py` | Transposition et gain GM d'un slot : accesseurs, sérialisation du Rack, effet à l'export |
 | `test_key_manager.py` | Raccourcis clavier, transport, ProjectManager |
