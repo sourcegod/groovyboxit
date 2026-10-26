@@ -302,6 +302,8 @@ class FakeWindow:
     # Vraies méthodes de volume (Phase 7 étape 13b1) : bornes et « rien si inchangé »
     _set_track_volume_undo = TrackMixin._set_track_volume_undo
     _set_pad_volume_undo   = PadMixin._set_pad_volume_undo
+    _set_track_pan_undo    = TrackMixin._set_track_pan_undo      # Phase 7 étape 15b1
+    _set_pad_pan_undo      = PadMixin._set_pad_pan_undo
     def _take_begin(self, title):
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
         self.calls.append(('_take_begin', title,
@@ -406,6 +408,7 @@ def test_alt_left_decrements_pad_pan():
     win._cur_row = 2
     km.handle(FakeEvent(key=wx.WXK_LEFT, alt=True))
     assert ('set_pan', 2, -10) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Pan pad 3: -10", ("pad_pan", 2)) in win.calls
     teardown(app)
     print("  Alt+← → voice_manager.set_pan(row, pan-10) : OK")
 
@@ -414,14 +417,17 @@ def test_alt_right_increments_pad_pan():
     win._cur_row = 0
     km.handle(FakeEvent(key=wx.WXK_RIGHT, alt=True))
     assert ('set_pan', 0, 10) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Pan pad 1: 10", ("pad_pan", 0)) in win.calls
     teardown(app)
     print("  Alt+→ → voice_manager.set_pan(row, pan+10) : OK")
 
 def test_alt_0_resets_pad_pan():
     app, win, km = make_km()
     win._cur_row = 1
+    win._player.voice_manager.get_voice(1).pan = 30
     km.handle(FakeEvent(key=ord('0'), alt=True))
     assert ('set_pan', 1, 0) in win._player.voice_manager.calls
+    assert ('_add_mix_undo', "Pan pad 2: 0", ("pad_pan", 1)) in win.calls
     teardown(app)
     print("  Alt+0 → voice_manager.set_pan(row, 0) : OK")
 

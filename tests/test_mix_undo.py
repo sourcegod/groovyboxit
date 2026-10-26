@@ -2,7 +2,8 @@
 """
     File: tests/test_mix_undo.py
     Undo et projet modifié pour le mute, le solo et le volume des pistes et
-    des pads (Phase 7 étape 13c1, docs/DESIGN.md § 13a1) :
+    des pads (Phase 7 étape 13c1, docs/DESIGN.md § 13a1), et le pan (Phase 7
+    étape 15c1, § 15a1 D1) :
     - _add_mix_undo (D2) : regroupement par clé, fenêtre de 1 s glissante
       (horloge injectée), autre action entre deux, key=None, titre qui suit
       la valeur atteinte (« Volume piste 2: 80 ») ;
@@ -92,7 +93,7 @@ class _MixWindow(ProjectMixin, TrackMixin, PadMixin):
         r = self._router
         return copy.deepcopy({
             "mutes": r._track_mutes, "solos": r._track_solos,
-            "volumes": r._track_volumes,
+            "volumes": r._track_volumes, "pans": r._track_pans,
             "voices": self._player.voice_manager.to_list(),
         })
 
@@ -101,6 +102,7 @@ class _MixWindow(ProjectMixin, TrackMixin, PadMixin):
         r._track_mutes   = list(state["mutes"])
         r._track_solos   = list(state["solos"])
         r._track_volumes = list(state["volumes"])
+        r._track_pans    = list(state["pans"])
         self._player.voice_manager.from_list(state["voices"])
         self._mark_modified()
 
@@ -368,6 +370,129 @@ def test_cc7_on_pad_sets_spin_and_undo_restores(win):
 def test_cc7_same_value_adds_nothing(win):
     win._track_list.focus = True
     MidiHandler(win).on_cc(7, 127, 0)                # 127 → 100, déjà à 100
+    assert win.titles() == []
+    assert win._project_modified is False
+
+
+# ---------------------------------------------------------------------------
+# Pan des pistes et des pads (Phase 7 étape 15c1, docs/DESIGN.md § 15a1 D1)
+# ---------------------------------------------------------------------------
+
+def test_alt_right_track_pan_entry_and_undo(win):
+    _alt(win, wx.WXK_RIGHT, on_track_list=True)
+    assert win._router.get_track_pan(0) == 10
+    assert win.titles() == ["Pan piste 1: 10"]
+    assert win._project_modified is True
+    win._undo_action()
+    assert win._router.get_track_pan(0) == 0
+
+
+def test_alt_left_burst_track_pan_is_one_entry_undone_at_once(win):
+    for t in (0.0, 0.4, 0.8):
+        win.now = t
+        _alt(win, wx.WXK_LEFT, on_track_list=True)
+    assert win.titles() == ["Pan piste 1: -30"]
+    win._undo_action()
+    assert win._router.get_track_pan(0) == 0
+
+
+def test_alt_right_track_pan_at_max_adds_nothing(win):
+    win._router.set_track_pan(0, 100)
+    _alt(win, wx.WXK_RIGHT, on_track_list=True)
+    assert win.titles() == []
+    assert win._project_modified is False
+    assert win.status[-1] == "Piste 1: Pan 100"
+
+
+@pytest.mark.parametrize("on_track_list", [True, False])
+def test_alt_0_on_centered_pan_adds_nothing(win, on_track_list):
+    _alt(win, ord('0'), on_track_list=on_track_list)
+    assert win.titles() == []
+    assert win._project_modified is False
+
+
+def test_alt_0_track_pan_entry_and_undo(win):
+    win._router.set_track_pan(0, -40)
+    _alt(win, ord('0'), on_track_list=True)
+    assert win._router.get_track_pan(0) == 0
+    assert win.titles() == ["Pan piste 1: 0"]
+    win._undo_action()
+    assert win._router.get_track_pan(0) == -40
+
+
+def test_alt_left_pad_pan_entry_and_undo(win):
+    win._cur_row = 5
+    _alt(win, wx.WXK_LEFT)
+    assert win.vm().get_pan(5) == -10
+    assert win.titles() == ["Pan pad 6: -10"]
+    assert win._project_modified is True
+    win._undo_action()
+    assert win.vm().get_pan(5) == 0
+
+
+def test_alt_0_pad_pan_entry_and_undo(win):
+    win.vm().set_pan(2, 50)
+    win._cur_row = 2
+    _alt(win, ord('0'))
+    assert win.vm().get_pan(2) == 0
+    assert win.titles() == ["Pan pad 3: 0"]
+    win._undo_action()
+    assert win.vm().get_pan(2) == 50
+
+
+def test_pan_and_volume_of_same_track_are_separate_entries(win):
+    win._router.set_track_volume(0, 50)
+    _alt(win, wx.WXK_UP, on_track_list=True)
+    win.now = 0.2
+    _alt(win, wx.WXK_RIGHT, on_track_list=True)
+    win.now = 0.4
+    _alt(win, wx.WXK_RIGHT, on_track_list=True)
+    assert win.titles() == ["Pan piste 1: 20", "Volume piste 1: 55"]
+
+
+def test_cc10_on_track_list_knob_turn_is_one_entry(win):
+    win._track_list.focus = True
+    mh = MidiHandler(win)
+    for t, value in ((0.0, 127), (0.2, 96), (0.4, 0)):
+        win.now = t
+        mh.on_cc(10, value, 0)
+    assert win._router.get_track_pan(0) == -100
+    assert win.titles() == ["Pan piste 1: -100"]
+    assert win._project_modified is True
+    win._undo_action()
+    assert win._router.get_track_pan(0) == 0
+
+
+def test_cc10_on_pad_sets_spin_and_undo_restores(win):
+    win._cur_row = 4
+    MidiHandler(win).on_cc(10, 127, 0)
+    assert win.vm().get_pan(4) == 100
+    assert win._pan_ctrls[4].value == 100
+    assert win.titles() == ["Pan pad 5: 100"]
+    win._undo_action()
+    assert win.vm().get_pan(4) == 0
+
+
+def test_cc10_center_on_centered_pan_adds_nothing(win):
+    win._track_list.focus = True
+    MidiHandler(win).on_cc(10, 64, 0)               # 64 → 0, déjà centré
+    assert win.titles() == []
+    assert win._project_modified is False
+
+
+def test_pan_spin_entry_and_undo(win):
+    win._pan_ctrls[3].value = -25
+    win._on_pan_spin(3)
+    assert win.vm().get_pan(3) == -25
+    assert win.titles() == ["Pan pad 4: -25"]
+    assert win._project_modified is True
+    assert win.status[-1] == "Pad 4: Pan -25"
+    win._undo_action()
+    assert win.vm().get_pan(3) == 0
+
+
+def test_pan_spin_unchanged_adds_nothing(win):
+    win._on_pan_spin(3)                               # SpinCtrl à 0 = voix
     assert win.titles() == []
     assert win._project_modified is False
 
