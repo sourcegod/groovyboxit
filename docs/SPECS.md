@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo | en cours |
 
 ---
 
@@ -973,7 +973,14 @@ Rien n'est enregistré si la valeur ne change pas (volume déjà à 100, Alt+0 s
 
 `_add_mix_undo(title, key)` : les changements successifs d'un même volume ou pan (même `key`, moins de 1 s entre deux, sans autre action entre eux) ne forment qu'une entrée, dont le titre suit la valeur atteinte (`Volume piste 2: 80`, `Pan pad 5: -20`, `Volume global: 75`). Un tour de bouton rotatif s'annule ainsi d'un seul Ctrl+Z. Les bascules et les boucles font une entrée chacune (`Début de boucle: 2:2:1`, `Song 03: boucle On`).
 
-`pop_last_undo()` : retire la dernière entrée — utilisé après annulation d'un dialog (Cancel ou valeur inchangée).
+`pop_last_undo()` : retire la dernière entrée — utilisé après annulation d'un dialog (Cancel ou valeur inchangée). L'état « modifié » d'avant est rétabli (Phase 7 étape 16d1).
+
+**Point propre** (Phase 7 étape 16) : `UndoManager` numérote les états (`current_id`, `saved_id`, `state_id` de chaque entrée). Le projet est « modifié » (astérisque du titre, sauvegarde proposée à la fermeture) quand l'état courant n'est pas celui du fichier :
+- revenir par Ctrl+Z à l'état sauvegardé efface l'astérisque, et la fermeture ne propose rien ;
+- Ctrl+Z au-delà d'une sauvegarde, ou Shift+Z, remet l'astérisque ;
+- une annulation (dialogue annulé, F2 inchangé, prise live sans effet) rétablit l'état d'avant.
+
+L'historique appartient au projet : **Ctrl+O et Ctrl+N le vident** (Undo et Redo).
 
 ---
 
@@ -994,8 +1001,8 @@ Format `.gvp` (JSON renommé) : regroupe le rack, les 99 patterns et les 16 song
 
 | Raccourci | Action |
 |---|---|
-| Ctrl+N | Nouveau projet (demande confirmation si modifié) |
-| Ctrl+O | Ouvrir un projet (.gvp ou .json) |
+| Ctrl+N | Nouveau projet (demande confirmation si modifié ; vide l'historique d'Undo) |
+| Ctrl+O | Ouvrir un projet (.gvp ou .json ; vide l'historique d'Undo) |
 | Ctrl+S | Enregistrer le projet |
 | Ctrl+Shift+S | Enregistrer sous… |
 | Ctrl+Shift+W | Dupliquer le pattern courant vers un autre slot |

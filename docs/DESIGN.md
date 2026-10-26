@@ -5099,3 +5099,63 @@ déjà de le sauvegarder (`SaveConfirmDialog`).
 | **16f1** | Doc — clôture, `SPECS.md` § Undo, `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
 
 - Avant de committer 16d1, l'utilisateur l'essaie dans l'appli.
+
+### Phase 7 étape 16 — Avancement et écarts constatés
+
+- **16b1** (`fbf0279`) — conforme à D1 et D2 : `UndoEntry.state_id`,
+  `UndoManager.current_id` / `saved_id`, `new_state()`, `mark_saved()`,
+  `is_clean()` ; `pop_last()` rétablit le numéro de l'entrée retirée.
+  L'appli ne s'en sert pas encore ; `pytest` vert.
+- **16c1** (`1e5a0bd`) — 16 tests dans `test_undo_manager.py`, qui
+  échouent tous sans 16b1 ; 2291 verts.
+- **16d1** (`a575fd6`) — conforme à D1, D2 et D3.
+  - `_project_modified` est une propriété de `ProjectMixin`.
+    `_undo_action` et `_redo_action` rétablissent le numéro de l'entrée
+    et le titre ; `_restore_state` ne marque plus rien.
+  - `_pop_last_undo` met aussi le titre à jour. Les `was_modified` des
+    propriétés de piste et de pad et de la prise live sont supprimés ;
+    `_take` ne garde plus que la signature et l'entrée.
+  - `_load_project` et `_new_project` vident l'historique ; l'entrée
+    « Nouveau projet » disparaît.
+  - `MainWindow` crée `_undo` avant tout accès à `_project_modified`.
+  - Essayé par l'utilisateur. `pytest` rouge : 13 échecs et 41 erreurs,
+    tous des fausses fenêtres au contrat d'avant.
+- **16e1** (`e51fce3`) — `tests/test_undo_clean_point.py`, 22 tests ;
+  quatre fausses fenêtres adaptées ; 2313 verts.
+  - **Contrôle non concluant** : sur le code d'avant 16d1, la fenêtre
+    factice n'a pas de `_project_modified` et les 22 tests plantent à la
+    préparation. Les tests de 16c1, eux, échouaient bien sans 16b1.
+
+### Clôture (16f1)
+
+**16a1-16e1 FAITS** (commits `4eb1bd3`, `fbf0279`, `1e5a0bd`, `a575fd6`,
+`e51fce3`, et ce commit de clôture, 2313 tests verts) : **chantier Phase 7
+étape 16 complet**. Revenir par Ctrl+Z à l'état du fichier efface le
+marquage modifié, et la fermeture ne propose plus de sauvegarde inutile.
+
+**Ce que le chantier a livré** :
+- **Point propre** : un numéro par état, tenu par `UndoManager`, et
+  « modifié » ⇔ l'état courant n'est pas celui du fichier. Ctrl+Z
+  au-delà d'une sauvegarde reste correctement « modifié », ce qu'un
+  booléen par entrée n'aurait pas permis.
+- **Correctif des annulations** : une vingtaine de chemins (F2,
+  dialogues, éditeur MIDI, fenêtre Songs…) laissaient l'astérisque après
+  une annulation ; le retrait de l'entrée rétablit maintenant l'état
+  d'avant.
+- **Historique par projet** : Ctrl+O et Ctrl+N le vident. Avant, Ctrl+Z
+  après Ctrl+O pouvait rétablir le projet précédent dans le fichier
+  ouvert, et un Ctrl+S l'aurait écrasé.
+
+**Écarts au plan** : aucun sur le fond ; le contrôle de 16e1 sur
+l'ancien code n'est pas concluant (voir plus haut).
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, section Undo
+(`pop_last_undo`, point propre, historique par projet), Ctrl+N et Ctrl+O.
+
+**Laissé hors périmètre, pour la suite** :
+- Comparer le contenu réel avec le fichier (hash de l'état) : le numéro
+  suffit pour ce qui passe par l'Undo.
+- Les modifications qui ne passent ni par `_add_undo` ni par
+  `_mark_modified`.
+- Rappel des chantiers en attente : dialogue de réglage de
+  `data/config.json`, export audio WAV, 128 pads, mode Rack Synth/GM.
