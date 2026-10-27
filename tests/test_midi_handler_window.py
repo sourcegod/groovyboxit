@@ -125,10 +125,28 @@ class _FakeRouter:
     def assign_slot(self, track, slot_idx):
         self.assigned_slot = (track, slot_idx)
 
+    on_bank      = False   # piste courante sur un slot Banque (17f1)
+    track_chan   = 6       # canal courant de la piste (track_channel_now)
+
     def program_change(self, track, program):
         """Piste hors banque : le pont provisoire de TrackRouter (17d1)."""
+        if self.on_bank:
+            self.live_programs = getattr(self, "live_programs", []) + [(track, program)]
+            return True
         self.assign_slot(track, program % 16)
         return False
+
+    def track_channel_now(self, track):
+        return self.track_chan
+
+    def _bank_slot_of(self, track):
+        return object() if self.on_bank else None
+
+    def bank_select(self, track, cc_num, value, channel=None):
+        self.bank_selects = getattr(self, "bank_selects", []) + [(track, cc_num, value)]
+
+    def bank_preset_name(self, track):
+        return "Violin" if self.on_bank else None
 
     def synth_ready(self):
         return False
@@ -208,7 +226,47 @@ def test_on_program_change_captures_when_recording():
     win._player.recording = True
     handler = mh.MidiHandler(win)
     handler.on_program_change(41, 3)
-    assert win._player.recorded_programs == [(41, 3)]
+    # remis au canal courant de la piste, pas celui du contrôleur (17f1, § 17e3 O7)
+    assert win._player.recorded_programs == [(41, win._router.track_chan)]
+
+
+def test_on_program_change_on_bank_track_changes_sound_only():
+    win = _FakeWinNoEditor()
+    win._router.on_bank = True
+    win._player._cur_track = 3
+    statuses = []
+    win._show_status = statuses.append
+    mh.MidiHandler(win).on_program_change(40, 0)
+    assert win._router.live_programs == [(3, 40)]
+    assert win._router.assigned_slot is None              # pas de pont program % 16
+    assert win._player.recorded_programs == []            # hors enregistrement (Q2)
+    assert statuses == ["Piste 4: Program Change 40 — Violin"]
+
+
+def test_on_cc_bank_select_recorded_on_track_channel():
+    win = _FakeWinNoEditor()
+    win._player.recording = True
+    handler = mh.MidiHandler(win)
+    handler.on_cc(0, 8, 0)
+    handler.on_cc(32, 1, 0)
+    handler.on_cc(74, 50, 0)
+    assert win._player.recorded_ccs == [(0, 8, 6), (32, 1, 6), (74, 50, 0)]
+
+
+def test_on_cc_bank_select_live_on_bank_track():
+    win = _FakeWinNoEditor()
+    win._router.on_bank = True
+    win._player._cur_track = 2
+    handler = mh.MidiHandler(win)
+    handler.on_cc(0, 8, 0)
+    handler.on_cc(32, 3, 0)
+    assert win._router.bank_selects == [(2, 0, 8), (2, 32, 3)]
+
+
+def test_on_cc_bank_select_ignored_off_bank():
+    win = _FakeWinNoEditor()
+    mh.MidiHandler(win).on_cc(0, 8, 0)
+    assert not hasattr(win._router, "bank_selects")
 
 
 def test_on_program_change_no_capture_when_not_recording():

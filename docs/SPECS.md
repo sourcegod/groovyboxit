@@ -1526,7 +1526,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_app_config.py` | Clés de config.json du slot Banque : soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain |
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
-| `test_bank_slot.py` | Slot Banque : Rack et .gvp (config, 4 emplacements), routage vers un moteur factice (sélection, CC7/CC10, pan global, canal 10, avertissement de canal partagé, rejeu, Program Change), jeu direct, export CC0/CC32 |
+| `test_bank_slot.py` | Slot Banque, modèle « orchestre » : Rack et .gvp (slot = emplacement), instrument par canal, Program Change et Bank Select (canal de l'événement, la piste suit), poursuite, le canal impose son instrument, canal 10 = batterie, rejeu, jeu direct, poursuite par le player, export (Bank Select avant le programme, canal courant) |
 | `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
 | `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change + dispatch d'édition (14 tests) |
 | `test_check_specs_tests.py` | tools/check_specs_tests.py sur un faux dépôt : absents, disparus, ligne proposée, code de sortie |

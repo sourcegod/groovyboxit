@@ -38,10 +38,10 @@ def _make_player():
     return DrumPlayer(_RecordingSoundManager())
 
 
-def _add(pl, track, etype, time_val, payload, dur=0):
+def _add(pl, track, etype, time_val, payload, dur=0, channel=0):
     pl._pattern._ensure_track_count(track + 1)
     pl._pattern._tape[track].append(
-        TapeEvent(etype, dur=dur, payload=payload, time=time_val))
+        TapeEvent(etype, dur=dur, channel=channel, payload=payload, time=time_val))
 
 
 def _build(pl, lp_start=0, lp_end=15, total_steps=16, loop_bars=1, elapsed=0.0):
@@ -84,16 +84,16 @@ def test_build_maps_each_etype_to_its_marker():
     pl._pattern.set_cell(0, 3, 0, 0, 90, dur=250)
     _add(pl, 1, ETYPE_KIT,   1.0, {"note": 36, "vel": 80}, dur=10)
     _add(pl, 2, ETYPE_PATCH, 2.0, {"note": 60, "vel": 70}, dur=20)
-    _add(pl, 3, ETYPE_CC,    3.0, {"cc_num": 74, "value": 64})
-    _add(pl, 4, ETYPE_PGM,   4.0, {"program": 5})
+    _add(pl, 3, ETYPE_CC,    3.0, {"cc_num": 74, "value": 64}, channel=6)
+    _add(pl, 4, ETYPE_PGM,   4.0, {"program": 5}, channel=2)
     _add(pl, 5, ETYPE_BEND,  5.0, {"value": -1000})
     sd = pl.step_duration
     assert _build(pl) == [
         (0.0,    DrumPlayer.GRID_EVENT,       (0, 3, 250),   90),
         (1 * sd, DrumPlayer.KIT_TAPE_EVENT,   (1, 36, 10),   80),
         (2 * sd, DrumPlayer.PATCH_TAPE_EVENT, (2, 60, 20),   70),
-        (3 * sd, DrumPlayer.CC_TAPE_EVENT,    (3, 74, 64),   0),
-        (4 * sd, DrumPlayer.PGM_TAPE_EVENT,   (4, 5),        0),
+        (3 * sd, DrumPlayer.CC_TAPE_EVENT,    (3, 74, 64, 6), 0),   # + canal (17f1)
+        (4 * sd, DrumPlayer.PGM_TAPE_EVENT,   (4, 5, 2),     0),
         (5 * sd, DrumPlayer.BEND_TAPE_EVENT,  (5, -1000),    0),
     ]
     print("  _build_measure_events : un marqueur par etype, données et vélocité : OK")
@@ -246,18 +246,18 @@ def test_dispatch_patch_bend_cc_pgm_callbacks():
     pl._on_program_change_tape_cb = lambda *a: got.append(("pgm",) + a)
     pl._dispatch_event(DrumPlayer.PATCH_TAPE_EVENT, (1, 60, 300), 70, 0.0)
     pl._dispatch_event(DrumPlayer.BEND_TAPE_EVENT,  (1, 2048), 0, 0.0)
-    pl._dispatch_event(DrumPlayer.CC_TAPE_EVENT,    (1, 74, 10), 0, 0.0)
-    pl._dispatch_event(DrumPlayer.PGM_TAPE_EVENT,   (1, 7), 0, 0.0)
+    pl._dispatch_event(DrumPlayer.CC_TAPE_EVENT,    (1, 74, 10, 4), 0, 0.0)
+    pl._dispatch_event(DrumPlayer.PGM_TAPE_EVENT,   (1, 7, 4), 0, 0.0)
     assert got == [("patch", 1, 60, 70, 300), ("bend", 1, 2048),
-                   ("cc", 1, 74, 10), ("pgm", 1, 7)]
+                   ("cc", 1, 74, 10, 4), ("pgm", 1, 7, 4)]
     print("  _dispatch_event PATCH/BEND/CC/PGM : callbacks : OK")
 
 def test_dispatch_without_callbacks_is_silent():
     pl = _make_player()
     for marker, data in ((DrumPlayer.PATCH_TAPE_EVENT, (0, 60, 0)),
                          (DrumPlayer.BEND_TAPE_EVENT,  (0, 0)),
-                         (DrumPlayer.CC_TAPE_EVENT,    (0, 1, 0)),
-                         (DrumPlayer.PGM_TAPE_EVENT,   (0, 0))):
+                         (DrumPlayer.CC_TAPE_EVENT,    (0, 1, 0, 0)),
+                         (DrumPlayer.PGM_TAPE_EVENT,   (0, 0, 0))):
         pl._dispatch_event(marker, data, 0, 0.0)
     assert pl.sound_man.calls == []
     print("  _dispatch_event : sans callback, rien n'est joué : OK")
