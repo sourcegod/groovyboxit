@@ -5611,3 +5611,146 @@ Inchangée par rapport à 17a1 (SFZ, routage canal entrant → slot, mode Rack
 | **17h1** | Implémentation — R8 et R9 : Ctrl+T en temps réel sur une banque, dialogue du slot Banque dans l'Explorateur, Undo. Essayé à l'écoute. | `ui/dialogs_properties.py`, `ui/dialogs_bank.py` (nouveau), `ui/dialogs_simple.py`, `ui/mw_pads.py`, `ui/mw_tracks.py` |
 | **17i1** | Tests — dialogues, temps réel, Annuler, Undo, note d'aperçu. | `tests/test_bank_dialogs.py` (nouveau), fakes au besoin |
 | **17j1** | Doc — clôture (avancement 17c1 à 17i1, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+## Phase 7 étape 17e3 — Révision du plan : le canal est l'instrument (modèle « orchestre »)
+
+### Origine
+
+- Essai à l'écoute de 17f1 (non committé), programme par piste (17e2) :
+  quatre pistes sur un seul slot Banque s'entendent bien. Mais changer le
+  canal d'une piste dans Ctrl+T ne fait pas toujours entendre l'instrument
+  du nouveau canal : quand deux pistes partagent un canal, la piste de plus
+  grand numéro l'emporte (D10). La basse (piste 4) mise au canal 1 garde
+  son son, et c'est le piano qui devient basse.
+- L'utilisateur précise son modèle (2026-10-27) : **le canal est un
+  instrument de l'orchestre, les pistes sont les musiciens.** Un musicien
+  joue l'instrument qu'il veut, et peut en changer, donc changer de canal,
+  en cours de morceau.
+- Il demande que canal, programme et banque soient des **événements de la
+  piste**, écrits à la validation de Ctrl+T, visibles dans la liste des
+  événements et modifiables à la main ou par automation.
+- Pas de nouveau type d'événement « canal » : le Program Change porte déjà
+  un numéro de canal. Pour changer de canal, on écrit un nouveau Program
+  Change.
+
+**Principe directeur** (utilisateur, 2026-10-27) : les normes MIDI et les
+banques GM n'entrent dans l'appli que pour retrouver les habitudes des
+séquenceurs comme **Sonar**, efficaces pour enregistrer et composer. En
+cas de doute, on reproduit leur comportement.
+
+### État des lieux constaté en code
+
+- `TapeEvent.channel` existe pour tous les événements. À la capture, il
+  reçoit le canal **du contrôleur** (`record_program_change(program,
+  channel)`, `dp_recording.py:256`). À l'export, il est ignoré : tout
+  s'écrit sur le canal de la piste
+  (`test_every_event_on_track_channel_not_ev_channel`,
+  `test_midi_export.py:152`).
+- Rejeu : `PGM_TAPE_EVENT` transmet `(piste, programme)` sans le canal
+  (`dp_playback.py:180-183`) ; `TrackRouter.program_change` l'envoie sur
+  le canal de la piste.
+- Aucune « poursuite » : démarrer au milieu du pattern ne renvoie pas les
+  Program Change déjà passés.
+- Export : à tick égal, le Program Change s'écrit **avant** les CC
+  (`_ORDER_PGM = 1 < _ORDER_CC = 2`, `midi_export.py:34-35`). Des CC0 /
+  CC32 de `_tape` au même tick qu'un Program Change arriveraient après lui
+  et ne choisiraient pas la banque.
+
+### Décisions validées (utilisateur, 2026-10-27)
+
+Gardées de 17e2 : **R1** (slot Banque = emplacement seul), **R3** (canal
+10 = batterie, banque 128 ; un slot Banque garde le canal de la piste),
+**R7** (libellé de piste = nom du preset), **R9** (dialogue du slot Banque :
+fichier et emplacement), **R10** (synthés et kits inchangés), **Q1**
+(tout appartient au pattern ; un `.mid` est un pattern) et **Q2** (un
+Program Change du contrôleur, hors enregistrement, ne change que le son).
+**Abandonnée : R2** (listes `_track_programs`, `_track_bank_msb`,
+`_track_bank_lsb` du pattern, écrites en 17f1 et non committées) : la
+source devient les événements (O2).
+
+**O1 — le canal est l'instrument.** Chacun des 16 canaux a un instrument
+(programme, MSB, LSB), entendu par toutes les pistes de ce canal. Le
+routeur tient l'instrument courant de chaque canal ; sans Program Change,
+programme 0 banque 0 (au canal 10 : kit 0 de la banque 128).
+
+**O2 — les événements de la piste sont la seule source.** Program Change
+(`ETYPE_PGM`), CC0 et CC32 (`ETYPE_CC`) de `_tape`. L'**entête** d'une
+piste = ses CC0, CC32 et Program Change à 1.1.1. Ils sont visibles dans la
+liste des événements (Ctrl+2), modifiables, et l'Import MIDI les
+produira directement.
+
+**O3 — le Program Change porte le canal.** Le canal courant d'une piste,
+à un instant, est celui de son **dernier Program Change** avant cet
+instant ; avant le premier, le canal de la piste (`_track_channels`).
+Changer de canal en cours de morceau = écrire un Program Change sur un
+autre canal. Un Program Change change aussi l'instrument de son canal
+(O1), comme sur un vrai module.
+- Les notes, CC, Pitch Bend de la piste vont à son canal courant (leur
+  propre champ `channel` reste ignoré, comme aujourd'hui).
+- Modifier à la main le canal d'un Program Change à 1.1.1 change aussi le
+  canal de la piste (`_track_channels`), pour que Ctrl+T, le libellé et
+  l'export restent d'accord.
+
+**O4 — poursuite (chase).** Au début de la lecture, en partant de
+n'importe quelle position, au chargement d'un pattern, à l'avance du song
+et après un Undo : pour chaque canal, l'appli renvoie au moteur le dernier
+CC0, CC32 et Program Change rencontrés avant la position (toutes pistes
+confondues, à temps égal dans l'ordre des pistes), et chaque piste reprend
+le canal de son dernier Program Change. Remplace la resélection de
+`on_play_start` (17d1).
+
+**O5 — Ctrl+T sur une piste Banque, choix B : le canal impose son
+instrument.**
+- Programme, MSB et LSB affichés = l'instrument **du canal choisi**.
+  Passer la piste sur un autre canal fait entendre et afficher
+  l'instrument de ce canal.
+- Changer le programme ou la banque change l'instrument du canal, en
+  direct, pour toutes ses pistes, avec la note d'aperçu (D16).
+- **Ok** écrit l'entête de la piste : CC0, CC32 et Program Change à 1.1.1,
+  sur le canal de la piste, en remplaçant les précédents.
+- **Les autres pistes du même canal** qui ont un entête le reçoivent mis à
+  jour aussi (message dans la barre d'état) : le canal reste cohérent.
+- **Annuler** rétablit canal et instrument dans le moteur ; Undo comme
+  aujourd'hui (posé avant, retiré si Annuler ou rien changé).
+
+**O6 — entête seulement pour les pistes sur slot Banque.** Sur un synthé
+WAV ou un kit, un Program Change réassigne le slot (pont `program % 16`) :
+Ctrl+T n'y écrit pas d'entête.
+
+**O7 — capture : le Program Change est remis au canal de la piste
+(validé).** Un Program Change enregistré depuis le contrôleur
+porte le canal du contrôleur. Avec O3, il ferait changer la piste de canal.
+À la capture, Program Change, CC0 et CC32 reçoivent le **canal
+courant de la piste** (comme le « rechannelize » d'un séquenceur). Changer
+de canal reste un geste explicite : Ctrl+T, ou édition de l'événement.
+
+**O8 — export.**
+- À tick égal, CC0 et CC32 s'écrivent avant le Program Change ; les
+  autres CC restent après (ordre D7 sinon inchangé).
+- Chaque événement s'écrit sur le canal courant de la piste à son instant
+  (O3) : une piste peut changer de canal dans le fichier, ce que le SMF
+  permet.
+- Pistes Banque : plus de `track_programs` ni de CC0/CC32 de slot au tick
+  0, l'entête de `_tape` suffit ; notes de grille au canal 10 = 36 + pad,
+  selon le canal courant. Nom de la piste SMF = preset de l'entête.
+
+### Ce qui change dans 17f1 (non committé)
+
+- Retirés : les trois listes de `Pattern` et du routeur (R2),
+  `set_track_program`, leur copie dans `mw_patterns.py` / `mw_songs.py`,
+  les paramètres d'export qui en dépendent.
+- Gardés : `rack.py` (slot = emplacement, `gm_program` None pour une
+  banque), `channel_after_slot` (une banque garde le canal), libellé de
+  piste et `bank_preset_name` (lu sur l'instrument du canal de la piste),
+  cache des noms de presets.
+
+### Découpage en commits révisé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **17e3** | Doc — cette révision. | `docs/DESIGN.md` |
+| **17f1** | Implémentation — R1, R3, R7, O1 à O4, O7, O8 : slot = emplacement, instrument par canal tiré des événements, canal porté par le Program Change au rejeu, poursuite, capture au canal de la piste, export. Essayé à l'écoute. | `rack.py`, `track_router.py`, `player/dp_playback.py`, `player/dp_recording.py`, `midi/midi_export.py`, `ui/mw_project.py`, `ui/mw_patterns.py`, `ui/mw_songs.py`, `ui/mw_tracks.py` |
+| **17g1** | Tests — 17f1 ; `tests/test_bank_slot.py` et tests d'export adaptés. | `tests/test_bank_slot.py`, `tests/test_midi_export.py`, tests du player au besoin |
+| **17h1** | Implémentation — O5, O6, R9 : Ctrl+T (canal impose l'instrument, écriture des entêtes), dialogue du slot Banque, édition du canal d'un Program Change à 1.1.1 (O3). Essayé à l'écoute. | `ui/dialogs_properties.py`, `ui/dialogs_bank.py` (nouveau), `ui/dialogs_simple.py`, `ui/mw_pads.py`, `ui/mw_tracks.py`, éditeur d'événements |
+| **17i1** | Tests — dialogues, temps réel, entêtes, Annuler, Undo. | `tests/test_bank_dialogs.py` (nouveau), fakes au besoin |
+| **17j1** | Doc — clôture (avancement 17c1 à 17i1, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
