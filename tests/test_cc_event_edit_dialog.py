@@ -123,12 +123,36 @@ def test_get_value_returns_spin_value():
 
 
 # ---------------------------------------------------------------------------
+# Champ Canal (CC et Program Change, Phase 7 étape 17h1, § 17e3 O3)
+# ---------------------------------------------------------------------------
+
+def test_channel_field_shown_1_based_for_cc_and_pgm():
+    for ev in (dict(_cc_ev(), channel=4), dict(_pgm_ev(), channel=9)):
+        frame, dlg = make_dlg(ev)
+        assert dlg._chan_sp.GetValue() == ev["channel"] + 1
+        assert (dlg._chan_sp.GetMin(), dlg._chan_sp.GetMax()) == (1, 16)
+        assert dlg._chan_sp.GetName() == "Canal"
+        assert dlg.get_channel() == ev["channel"]          # rendu 0..15
+        dlg._chan_sp.SetValue(16)
+        assert dlg.get_channel() == 15
+        teardown(frame, dlg)
+
+
+def test_no_channel_field_for_bend():
+    frame, dlg = make_dlg({"type": "bend", "track": 0, "bar": 0, "step": 0,
+                           "offset": 0, "value": 0, "channel": 0, "event_idx": 0})
+    assert dlg._chan_sp is None and dlg.get_channel() is None
+    teardown(frame, dlg)
+
+
+# ---------------------------------------------------------------------------
 # Dispatch de MidiEditorWindow._edit_cc_dialog (étape 4m)
 # ---------------------------------------------------------------------------
 
 class _StubDialog:
     """Remplace _CcEventEditDialog : valide immédiatement avec des valeurs fixes."""
     value, bar, step = 55, 0, 3
+    channel          = None            # canal inchangé (17h1)
     created_with     = []
 
     def __init__(self, parent, ev, pattern):
@@ -138,6 +162,7 @@ class _StubDialog:
     def get_value(self):  return self.value
     def get_bar(self):    return self.bar
     def get_step(self):   return self.step
+    def get_channel(self): return self.channel
     def Destroy(self):    pass
 
 
@@ -146,20 +171,47 @@ class _FakeEditPlayer:
         self._pattern = pattern
         self.playing  = False
 
+    def _current_offset(self):
+        return 2.0
+
+
+class _FakeEditRouter:
+    """Routeur minimal (17h1) : pistes sur slot Banque, canal et poursuite."""
+    NUM_TRACKS = 16
+
+    def __init__(self, bank_tracks=()):
+        self.bank_tracks = set(bank_tracks)
+        self.calls       = []
+
+    def _bank_slot_of(self, track):
+        return object() if track in self.bank_tracks else None
+
+    def set_track_channel(self, track, channel):
+        self.calls.append(("channel", track, channel))
+
+    def chase(self, tape, pos):
+        self.calls.append(("chase", pos))
+
 
 class _FakeEditParent:
     def __init__(self, pattern):
         self._player = _FakeEditPlayer(pattern)
+        self._router = _FakeEditRouter()
         self.popped  = 0
+        self.track_list_refreshed = 0
 
     def _pop_last_undo(self):
         self.popped += 1
 
+    def _refresh_track_list(self):
+        self.track_list_refreshed += 1
+
 
 class _FakeEditWindow:
     """Objet minimal exposant le vrai _edit_cc_dialog et _bbt_str."""
-    _edit_cc_dialog = mew.MidiEditorWindow._edit_cc_dialog
-    _bbt_str        = mew.MidiEditorWindow._bbt_str
+    _edit_cc_dialog       = mew.MidiEditorWindow._edit_cc_dialog
+    _sync_bank_after_edit = mew.MidiEditorWindow._sync_bank_after_edit
+    _bbt_str              = mew.MidiEditorWindow._bbt_str
 
     def __init__(self, pattern):
         self._parent       = _FakeEditParent(pattern)
@@ -231,6 +283,61 @@ def test_edit_cc_dialog_still_handles_bend(monkeypatch):
     assert bend.time == p._bar_step_to_time(0, 3)
     assert [e.etype for e in p._tape[0] if e.time == p._bar_step_to_time(0, 4)] == [ETYPE_CC, ETYPE_PGM]
     assert "Bend" in win.undos[0]
+
+
+
+# ---------------------------------------------------------------------------
+# Canal édité : écrit dans _tape ; piste Banque suivie (17h1, § 17e3 O3)
+# ---------------------------------------------------------------------------
+
+def _pgm_of(p, track=0):
+    return [e for e in p._tape[track] if e.etype == ETYPE_PGM][0]
+
+
+def test_edit_dialog_writes_new_channel(monkeypatch):
+    win, p = _win_with_cc_pgm(monkeypatch)
+    monkeypatch.setattr(_StubDialog, "channel", 6)
+    for kind, etype in (("pgm", ETYPE_PGM), ("cc", ETYPE_CC)):
+        ev = [e for e in win._midi_editor.get_cc_pgm_events(p, 0) if e["type"] == kind][0]
+        win._edit_cc_dialog(ev)
+        assert [e for e in p._tape[0] if e.etype == etype][0].channel == 6
+
+
+def test_edit_dialog_channel_none_keeps_channel(monkeypatch):
+    win, p = _win_with_cc_pgm(monkeypatch)
+    ev = [e for e in win._midi_editor.get_cc_pgm_events(p, 0) if e["type"] == "pgm"][0]
+    win._edit_cc_dialog(ev)
+    assert _pgm_of(p).channel == 1
+
+
+def test_header_pgm_channel_moves_bank_track_and_chases(monkeypatch):
+    win, p = _win_with_cc_pgm(monkeypatch)
+    win._parent._router.bank_tracks = {0}
+    monkeypatch.setattr(_StubDialog, "bar", 0)
+    monkeypatch.setattr(_StubDialog, "step", 0)          # PGM ramené à 1.1.1
+    monkeypatch.setattr(_StubDialog, "channel", 4)
+    ev = [e for e in win._midi_editor.get_cc_pgm_events(p, 0) if e["type"] == "pgm"][0]
+    win._edit_cc_dialog(ev)
+    assert win._parent._router.calls == [("channel", 0, 4), ("chase", 2.0)]
+    assert win._parent.track_list_refreshed == 1
+
+
+def test_pgm_later_in_track_only_chases(monkeypatch):
+    win, p = _win_with_cc_pgm(monkeypatch)
+    win._parent._router.bank_tracks = {0}
+    monkeypatch.setattr(_StubDialog, "channel", 4)
+    ev = [e for e in win._midi_editor.get_cc_pgm_events(p, 0) if e["type"] == "pgm"][0]
+    win._edit_cc_dialog(ev)                              # pas 3 : pas l'entête
+    assert win._parent._router.calls == [("chase", 2.0)]
+
+
+def test_edit_on_non_bank_track_leaves_router_alone(monkeypatch):
+    win, p = _win_with_cc_pgm(monkeypatch)
+    monkeypatch.setattr(_StubDialog, "step", 0)
+    ev = [e for e in win._midi_editor.get_cc_pgm_events(p, 0) if e["type"] == "pgm"][0]
+    win._edit_cc_dialog(ev)
+    assert win._parent._router.calls == []
+    assert win._parent.track_list_refreshed == 0
 
 
 if __name__ == "__main__":

@@ -116,8 +116,9 @@ def test_on_change_receives_initial_values_on_first_call():
     app, frame, dlg = make_dlg(on_change=lambda *a: received.append(a))
     dlg._on_widget_change(FakeEvent())
     # canal en 6e (10f1), programme en 7e (10h3), transposition et gain en
-    # 8e et 9e (12h1) : None sans slot_program ni slot_gm_tuning
-    assert received == [(2, 75, -20, True, False, 3, None, None, None)]
+    # 8e et 9e (12h1), banque MSB et LSB en 10e et 11e (17h1) : None sans
+    # slot_program, slot_gm_tuning ni bank_info
+    assert received == [(2, 75, -20, True, False, 3, None, None, None, None, None)]
     teardown(app, frame, dlg)
     print("  on_change reçoit les valeurs initiales : OK")
 
@@ -376,9 +377,10 @@ def test_program_list_follows_channel_in_tab_order():
                                slot_gm_tuning=_fake_slot_gm_tuning)
     focusable = [w for w in dlg.GetChildren() if w.AcceptsFocus()]
     i = focusable.index(dlg._channels)
-    assert focusable[i + 1:i + 5] == [dlg._programs, dlg._transpose, dlg._gain, dlg._vol]
+    assert focusable[i + 1:i + 7] == [dlg._programs, dlg._msb, dlg._lsb,
+                                      dlg._transpose, dlg._gain, dlg._vol]
     teardown(app, frame, dlg)
-    print("  ordre Tab : Canal → Programme → Transposition → Gain → Volume : OK")
+    print("  ordre Tab : Canal → Programme → MSB → LSB → Transposition → Gain → Volume : OK")
 
 def test_slot_change_reloads_programs_synth_to_kit_and_back():
     received = []
@@ -464,7 +466,7 @@ def test_slot_change_reloads_gm_tuning():
     dlg._slots.SetSelection(2)
     dlg._on_slot_change(FakeEvent())
     assert (dlg.get_transpose(), dlg.get_gain_db()) == (24, -14)
-    assert [r[7:] for r in received] == [(None, -6), (0, 0), (24, -14)]
+    assert [r[7:9] for r in received] == [(None, -6), (0, 0), (24, -14)]
     teardown(app, frame, dlg)
     print("  changement de slot : réglages GM rechargés et transmis : OK")
 
@@ -475,7 +477,7 @@ def test_on_change_reflects_chosen_transpose_and_gain():
     dlg._transpose.SetValue(12)
     dlg._gain.SetValue(-20)
     dlg._on_widget_change(FakeEvent())
-    assert received[-1][7:] == (12, -20)
+    assert received[-1][7:9] == (12, -20)
     teardown(app, frame, dlg)
     print("  on_change : transposition et gain choisis : OK")
 
@@ -488,7 +490,7 @@ def test_gm_tuning_spinctrls_bound_to_preview():
         evt = wx.SpinEvent(wx.wxEVT_SPINCTRL, ctrl.GetId())
         evt.SetEventObject(ctrl)
         ctrl.GetEventHandler().ProcessEvent(evt)
-    assert [r[7:] for r in received] == [(7, -14), (7, -3)]
+    assert [r[7:9] for r in received] == [(7, -14), (7, -3)]
     teardown(app, frame, dlg)
     print("  SpinCtrl Transposition et Gain : aperçu en temps réel : OK")
 

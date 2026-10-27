@@ -197,7 +197,9 @@ class _FakeTrackWindow(TrackMixin):
     def __init__(self, cur_track=3, modified=False):
         self._router           = _make_router()
         self._rack             = self._router._rack
-        self._player           = SimpleNamespace(_cur_track=cur_track)
+        # pattern vivant et position : copie des pistes et poursuite (17h1)
+        self._player           = SimpleNamespace(_cur_track=cur_track, _pattern=Pattern(),
+                                                 _current_offset=lambda: 0.0)
         self._cur_slot         = KIT
         self._slot_choice      = MagicMock()
         self._project_modified = modified
@@ -240,6 +242,9 @@ def _fake_dialog(result, values=None, seen=None):
         def get_program(self):  return self._v[6]
         def get_transpose(self): return self._v[7]
         def get_gain_db(self):  return self._v[8]
+        # Banque MSB / LSB (17h1) : None hors slot Banque
+        def get_msb(self):      return self._v[9] if len(self._v) > 9 else None
+        def get_lsb(self):      return self._v[10] if len(self._v) > 10 else None
         def Destroy(self):      pass
     return FakeDlg
 

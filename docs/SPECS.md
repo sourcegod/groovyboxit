@@ -123,6 +123,7 @@ groovyboxit/
     ├── test_app_config.py
     ├── test_app_launch.py
     ├── test_audio_sampler.py
+    ├── test_bank_dialogs.py
     ├── test_bank_slot.py
     ├── test_bend_log.py
     ├── test_cc_event_edit_dialog.py
@@ -1526,9 +1527,10 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_app_config.py` | Clés de config.json du slot Banque : soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain |
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
+| `test_bank_dialogs.py` | Slot Banque, dialogues : entête de piste, propriétés de piste en direct (liste du canal, MSB / LSB, le canal impose son instrument, piste temporaire, autres pistes du canal, note d'aperçu, Annuler, Undo, aller-retour de canal), dialogue Banque de l'Explorateur |
 | `test_bank_slot.py` | Slot Banque, modèle « orchestre » : Rack et .gvp (slot = emplacement), instrument par canal, Program Change et Bank Select (canal de l'événement, la piste suit), poursuite, le canal impose son instrument, canal 10 = batterie, rejeu, jeu direct, poursuite par le player, export (Bank Select avant le programme, canal courant) |
 | `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
-| `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change + dispatch d'édition (14 tests) |
+| `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change, champ Canal + dispatch d'édition, piste Banque suivie (19 tests) |
 | `test_check_specs_tests.py` | tools/check_specs_tests.py sur un faux dépôt : absents, disparus, ligne proposée, code de sortie |
 | `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
