@@ -5452,3 +5452,162 @@ réel.
   - Essayé à l'écoute par l'utilisateur. `pytest` rouge : 1 échec, la
     fausse fenêtre de `test_live_take.py` n'a pas `_bank_engine`
     (adaptée en 17c1).
+
+## Phase 7 étape 17e2 — Révision du plan : programme et banque par piste
+
+### Origine
+
+- À l'ouverture de 17f1 (dialogues), l'utilisateur demande comment jouer
+  plusieurs instruments, plus une batterie, à partir du même slot Banque.
+- Dans le modèle de 17a1 à 17e1, **un slot du Rack = un instrument**
+  (`config` : emplacement, MSB, LSB, programme, batterie). Plusieurs
+  instruments demandent plusieurs slots qui désignent le même emplacement
+  (fichier chargé une fois, D4). Chaque instrument consomme l'un des 16
+  slots, partagés avec les kits et les synthés WAV : ce n'est pas un module
+  GM « 16 canaux sur un slot ».
+- L'Import MIDI (Phase 7 étape 18) va dans l'autre sens : un `.mid` de 16
+  canaux doit devenir 16 pistes, chacune avec son canal, sa banque et son
+  programme, sans consommer 16 slots.
+- Décision de l'utilisateur (2026-10-27) : étudier le passage du programme
+  à la **piste**, plan d'abord.
+
+### État des lieux constaté en code (après 17e1, 2444 tests verts)
+
+**Réglages par piste.** Ils appartiennent au **pattern** : `Pattern` porte
+`_track_slots`, `_track_mutes`, `_track_solos`, `_track_volumes`,
+`_track_pans`, `_track_channels` (`pattern.py:152-160`), sauvegardés par
+`to_dict` (`:507-512`), relus par `from_dict` (`:598-606`), complétés par
+`_extend_tracks` (`:646-652`). Ils sont copiés vers le routeur par
+`_apply_pattern_from_store` (`mw_patterns.py:82-87`) et l'avance du song
+(`mw_songs.py:143-148`), et retour par `_flush_pattern_to_store`
+(`mw_patterns.py:67-72`). Ils entrent donc déjà dans l'Undo (dict du
+pattern) et dans le `.gvp`.
+
+**Instrument d'une banque (17d1).** Lu dans le slot : `InstrumentSlot`
+`bank_msb`, `bank_lsb`, `bank_program`, `bank_drums` (`rack.py`) ;
+`TrackRouter._bank_key(slot)` (`track_router.py:345`) ;
+`channel_after_slot` met au canal 10 un slot dont `drums` est vrai
+(`:534`) ; `gm_program` d'un slot Banque = son programme ; l'export lit
+`track_banks` et `track_programs` sur le slot (`mw_project.py:112, :121`).
+
+**Programme GM des synthés et kits** (`gm_program`, 10h3) : réglage du
+**slot**, pour l'export seulement ; Ctrl+T le modifie
+(`mw_tracks.py:79-81`).
+
+**Libellé de piste** (`mw_tracks.py:142`) : `Track_03 - Slot_06 - <nom du
+slot>`.
+
+### Décisions validées (utilisateur, 2026-10-27)
+
+**R1 — le slot Banque ne désigne que l'emplacement.** `config =
+{"bank_slot": 0..3}`. Son nom par défaut est celui du fichier
+(« FluidR3_GM »). Les clés `bank_msb`, `bank_lsb`, `program`, `drums` du
+slot disparaissent avec leurs accesseurs ; elles sont ignorées si un
+`.gvp` les contient (seul le projet d'essai de 17d1 en a : pas de
+migration).
+
+**R2 — banque et programme appartiennent à la piste, donc au pattern**,
+comme son slot et son canal. Trois nouvelles listes de `Pattern`,
+sauvegardées, relues, complétées et copiées comme les autres :
+`_track_programs` (0..127, défaut 0), `_track_bank_msb` et
+`_track_bank_lsb` (0..127, défaut 0). Clés absentes des anciens fichiers :
+valeurs par défaut. Elles ne servent qu'aux pistes sur slot Banque. Le
+routeur les reçoit comme `_track_channels`.
+
+**R3 — la batterie, c'est le canal 10.** Plus de drapeau : une piste sur
+slot Banque au canal 10 joue la banque 128 de la soundfont (convention GM,
+et ce que fait FluidSynth en mode GS), avec son programme (0 Standard,
+8 Room, 16 Power…) ; MSB et LSB y sont sans effet. `channel_after_slot` :
+un slot Banque **garde** le canal de la piste, 10 compris (seul un kit
+force le 10 ; quitter un kit ramène au canal par défaut, comme
+aujourd'hui).
+
+**R4 — routeur.** `_bank_key(track)` = (emplacement du slot, 128 si canal
+10 sinon `bank_number(MSB, LSB)` de la piste, programme de la piste). Le
+cache par canal, l'avertissement de canal partagé (D10 : deux pistes au
+même canal avec des instruments différents), le mixage CC7/CC10 et le
+reste du routage de 17d1 ne changent pas. Nouveau
+`set_track_program(track, program, msb, lsb)` : enregistre et resélectionne
+aussitôt (Ctrl+T temps réel, D15).
+
+**R5 — Program Change et CC0/CC32 reçus ou rejoués** : comme en 17d1, au
+moteur sur le canal de la piste, **sans** modifier les réglages
+enregistrés de la piste. Un Program Change venu du contrôleur ne change
+que le son ; si l'on relance la lecture, le début de lecture resélectionne
+l'instrument enregistré de la piste (`on_play_start`), puis les Program
+Change capturés dans `_tape` le changent en cours de route, comme sur un
+vrai module (Q2).
+
+**R6 — export.** `track_programs` et `track_banks` viennent de la piste
+pour un slot Banque : CC0/CC32 (piste hors canal 10) puis Program Change au
+tick 0. Le nom de la piste SMF est celui du **preset** (« Violin »), lu
+dans la soundfont, à défaut celui du slot. Synthés et kits : inchangés
+(`gm_program` du slot).
+
+**R7 — libellé de piste** sur slot Banque : nom du preset de la piste
+(`Track_03 - Slot_06 - Violin`, « Standard » au canal 10) ;
+« (preset absent) » si la banque ne le contient pas ; nom du slot si
+l'emplacement est vide.
+
+**R8 — Ctrl+T sur une piste Banque (D15, D16), en temps réel.**
+- **Programme** : ListBox des 128 programmes de la banque de la piste,
+  noms lus dans la soundfont (D6), « (vide) » pour un numéro absent ; au
+  canal 10, les kits de la banque 128.
+- **Banque MSB** et **LSB** : deux SpinCtrl 0..127 ; changer le MSB (ou le
+  LSB en mode MMA) recharge la liste. Grisés au canal 10. Le libellé du
+  LSB indique « sans effet en mode GS » en mode GS (D17).
+- Chaque changement de canal, banque ou programme est appliqué aussitôt au
+  moteur, avec une note d'aperçu (do central ; 36 au canal 10). Annuler
+  rétablit le tout ; Undo inchangé (posé avant, retiré si Annuler ou rien
+  changé).
+- Transposition et gain GM grisés sur un slot Banque (programme réel).
+
+**R9 — dialogue du slot Banque (D5 simplifié)** : élément « Banque »
+ajouté en fin de liste de l'Explorateur (Alt+X) ; il règle le **slot
+courant** : fichier (champ + « Parcourir… », défaut `gm_soundfont`) et
+emplacement (ListBox « Emplacement 1 » à « Emplacement 4 », avec le
+fichier qu'il contient déjà). Plus de liste d'instruments ici : on choisit
+l'instrument par piste (R8). Appliqué à Ok ; Undo posé avant, retiré si
+Annuler ou rien changé. Remplacer le fichier d'un emplacement change le son
+de tous les slots qui le désignent : le dialogue l'annonce.
+
+**R10 — synthés et kits inchangés.** Leur programme GM d'export reste un
+réglage du slot. Le passer aussi à la piste serait cohérent, mais c'est un
+autre chantier (non demandé).
+
+### Questions tranchées (utilisateur, 2026-10-27)
+
+- **Q1 — programme par pattern** (R2), comme le slot et le canal : changer
+  de pattern peut changer d'instrument. Un fichier `.mid` est un pattern
+  (Import MIDI, étape 18).
+- **Q2 — un Program Change du contrôleur ne change que le son**, pas le
+  programme enregistré de la piste (R5) : la piste se règle par Ctrl+T,
+  avec Undo, et la relance de la lecture rejoue le programme enregistré.
+
+### Ce qui est repris de 17d1 et 17e1
+
+- `rack.py` : accesseurs `bank_msb/lsb/program/drums` retirés ;
+  `gm_program` d'un slot Banque → None ; `channel_after_slot` sans la
+  clause batterie du slot.
+- `track_router.py` : `_bank_key` par piste, listes de piste, R4.
+- `pattern.py`, `mw_patterns.py`, `mw_songs.py` : trois listes (R2).
+- `mw_project.py` : paramètres d'export (R6).
+- `tests/test_bank_slot.py` : une vingtaine de tests à réécrire (config du
+  slot, batterie, `channel_after_slot`, sélection, export) ; le reste
+  (emplacements, rejeu, jeu direct, contrôles globaux) ne change pas.
+
+### Portée exclue
+
+Inchangée par rapport à 17a1 (SFZ, routage canal entrant → slot, mode Rack
+16 canaux, réglages de réverbération et chorus, export WAV, Import MIDI).
+
+### Découpage en commits révisé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **17e2** | Doc — cette révision. | `docs/DESIGN.md` |
+| **17f1** | Implémentation — R1 à R7 : slot = emplacement, banque et programme par piste dans le pattern, batterie = canal 10, routeur, export, libellé de piste. Essayé à l'écoute. | `rack.py`, `pattern.py`, `track_router.py`, `ui/mw_patterns.py`, `ui/mw_songs.py`, `ui/mw_project.py`, `ui/mw_tracks.py` |
+| **17g1** | Tests — R1 à R7, `tests/test_bank_slot.py` adapté. | `tests/test_bank_slot.py`, tests de Pattern au besoin |
+| **17h1** | Implémentation — R8 et R9 : Ctrl+T en temps réel sur une banque, dialogue du slot Banque dans l'Explorateur, Undo. Essayé à l'écoute. | `ui/dialogs_properties.py`, `ui/dialogs_bank.py` (nouveau), `ui/dialogs_simple.py`, `ui/mw_pads.py`, `ui/mw_tracks.py` |
+| **17i1** | Tests — dialogues, temps réel, Annuler, Undo, note d'aperçu. | `tests/test_bank_dialogs.py` (nouveau), fakes au besoin |
+| **17j1** | Doc — clôture (avancement 17c1 à 17i1, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
