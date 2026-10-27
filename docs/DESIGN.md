@@ -5712,6 +5712,16 @@ instrument.**
   jour aussi (message dans la barre d'état) : le canal reste cohérent.
 - **Annuler** rétablit canal et instrument dans le moteur ; Undo comme
   aujourd'hui (posé avant, retiré si Annuler ou rien changé).
+- **Précision 17f2 (essai de 17f1, utilisateur, 2026-10-27) : piste
+  temporaire pendant le dialogue.** Si la lecture tourne en boucle pendant
+  Ctrl+T, la poursuite et le rejeu de l'entête d'origine ramenaient la
+  piste à son ancien canal et à son ancien son à chaque tour. Donc, dès
+  l'ouverture, la piste (et les autres pistes du canal touchées) est
+  copiée ; chaque changement de canal, de programme ou de banque réécrit
+  aussitôt l'entête **dans la piste**, temporairement, si bien que le
+  bouclage rejoue le nouveau réglage. **Ok** garde ces entêtes ;
+  **Annuler** remet les pistes d'origine, puis la poursuite rétablit
+  canaux et instruments.
 
 **O6 — entête seulement pour les pistes sur slot Banque.** Sur un synthé
 WAV ou un kit, un Program Change réassigne le slot (pont `program % 16`) :
