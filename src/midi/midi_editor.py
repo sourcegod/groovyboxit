@@ -522,9 +522,13 @@ class MidiEditor:
     # n'a plus de type "mod" séparé, il est édité par edit_cc_event comme
     # n'importe quel CC générique (_mod_tape lui-même supprimé en 5h).
 
-    def _replace_tape_event(self, pattern, ev, etype, payload, new_bar, new_step):
+    def _replace_tape_event(self, pattern, ev, etype, payload, new_bar, new_step,
+                            new_channel=None):
         """Remplace le TapeEvent repéré par (time, event_idx) par un nouveau de
         même etype/canal avec `payload`, éventuellement à une autre position.
+
+        new_channel : canal 0..15 du nouvel événement (None = inchangé ;
+        Program Change et CC, Phase 7 étape 17h1, § 17e3 O3).
 
         Retourne (bar, step, time, event_idx, channel) du nouvel événement, ou
         None si la position visée est hors pattern / l'index ne résout rien /
@@ -558,13 +562,14 @@ class MidiEditor:
             old_ev = track_list[matches[old_idx]]
             if old_ev.etype != etype:
                 return None
-            channel = old_ev.channel
+            channel = old_ev.channel if new_channel is None else max(0, min(15, new_channel))
             del track_list[matches[old_idx]]
             track_list.append(TapeEvent(etype, channel=channel, payload=payload, time=new_time))
             new_idx = sum(1 for e in track_list if e.time == new_time) - 1
         return n_bar, n_step, new_time, new_idx, channel
 
-    def edit_cc_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
+    def edit_cc_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None,
+                      new_channel=None):
         """Modifie un CC générique de _tape (etype ETYPE_CC).
 
         Seuls la valeur (0..127) et la position sont éditables — cc_num reste
@@ -575,7 +580,8 @@ class MidiEditor:
         n_val  = new_value if new_value is not None else ev["value"]
         n_val  = max(0, min(127, n_val))
         res = self._replace_tape_event(
-            pattern, ev, ETYPE_CC, {"cc_num": cc_num, "value": n_val}, new_bar, new_step
+            pattern, ev, ETYPE_CC, {"cc_num": cc_num, "value": n_val}, new_bar, new_step,
+            new_channel
         )
         if res is None:
             return None
@@ -593,14 +599,17 @@ class MidiEditor:
             "event_idx": new_idx,
         }
 
-    def edit_pgm_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None):
+    def edit_pgm_event(self, pattern, ev, new_value=None, new_bar=None, new_step=None,
+                       new_channel=None):
         """Modifie un Program Change de _tape (etype ETYPE_PGM) : numéro de
-        program (0..127) et/ou position. Retourne le nouvel event_info ou None.
+        program (0..127), position et/ou canal (17h1 : sur une piste
+        Banque, le canal où passe la piste). Retourne le nouvel event_info
+        ou None.
         """
         n_prog = new_value if new_value is not None else ev["program"]
         n_prog = max(0, min(127, n_prog))
         res = self._replace_tape_event(
-            pattern, ev, ETYPE_PGM, {"program": n_prog}, new_bar, new_step
+            pattern, ev, ETYPE_PGM, {"program": n_prog}, new_bar, new_step, new_channel
         )
         if res is None:
             return None

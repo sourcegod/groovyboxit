@@ -1,5 +1,6 @@
 import wx
 from rack import InstrumentType
+from pattern import Pattern, bank_header, with_bank_header
 from .dialogs import TrackPropertiesDialog
 
 
@@ -39,11 +40,32 @@ class TrackMixin:
     def _slot_gm_tuning(self, slot_idx):
         """(transposition, gain_db) GM du slot pour TrackPropertiesDialog
         (Phase 7 étape 12h1, docs/DESIGN.md § 12a2 D6) : transposition pour
-        un synthé seulement, gain pour tout slot non vide ; None sinon."""
+        un synthé seulement, gain pour tout slot non vide sauf une banque,
+        dont le programme est réel (17h1, § 17e2 R8) ; None sinon."""
         slot = self._rack.get_slot(slot_idx)
         transpose = slot.gm_transpose() if slot.type == InstrumentType.SYNTH else None
-        gain_db   = None if slot.is_empty else slot.gm_gain_db()
+        gain_db   = None if slot.is_empty or slot.type == InstrumentType.BANK \
+            else slot.gm_gain_db()
         return transpose, gain_db
+
+    def _bank_info(self, slot_idx, channel, msb=None, lsb=None, instruments=None):
+        """Banque d'un slot pour TrackPropertiesDialog (Phase 7 étape 17h1,
+        § 17e3 O5) : None hors slot Banque. MSB None : instrument du canal
+        (le canal impose son instrument), lu dans instruments (état des 16
+        canaux à l'ouverture du dialogue) ou, à défaut, dans le routeur ;
+        sinon noms de la banque demandée, programme inchangé (None)."""
+        if self._rack.get_slot(slot_idx).type != InstrumentType.BANK:
+            return None
+        r = self._router
+        program = None
+        if msb is None:
+            program, msb, lsb = instruments[channel] if instruments is not None \
+                else r.channel_instrument(channel)
+        engine = r.bank_engine
+        return {"names": r.program_names(slot_idx, channel, msb, lsb),
+                "program": program, "msb": msb, "lsb": lsb,
+                "drums": channel == Pattern.KIT_CHANNEL,
+                "gs": engine is None or engine.bank_select == "gs"}
 
     def _track_properties_dialog(self):
         tidx = self._player._cur_track
@@ -57,6 +79,25 @@ class TrackMixin:
         )
         orig['program'] = self._rack.get_slot(orig['slot']).gm_program()
         orig['transpose'], orig['gain_db'] = self._slot_gm_tuning(orig['slot'])   # 12a2 D6
+        orig['msb'] = orig['lsb'] = None
+        if self._rack.get_slot(orig['slot']).type == InstrumentType.BANK:
+            # instrument du canal de la piste (17h1, § 17e3 O5)
+            orig['program'], orig['msb'], orig['lsb'] = \
+                self._router.channel_instrument(self._router.track_channel_now(tidx))
+        orig_key = (orig['channel'], orig['program'], orig['msb'], orig['lsb'])
+        # Piste temporaire (17f2) : copie des pistes à l'ouverture ; chaque
+        # changement repart de la copie et y écrit l'entête, que le bouclage
+        # rejoue ; Annuler remet la copie.
+        live = self._player._pattern
+        with live._lock:
+            saved_tape = [list(events) for events in live._tape]
+        bank_state = {"last": orig_key, "others": []}
+        # Instrument des 16 canaux à l'ouverture (correctif de l'essai de
+        # 17h1) : un canal que la piste quitte garde son instrument, même si
+        # elle seule le définissait — sans cela, la poursuite le remettait
+        # à l'état GM par défaut (piano) et le retour de la piste sur son
+        # canal d'origine imposait ce piano.
+        instruments = [self._router.channel_instrument(c) for c in range(16)]
         # config d'origine de chaque slot dont le programme a été changé,
         # pour Annuler (Phase 7 étape 10h3) ; set_gm_program remplace config
         saved_configs = {}
@@ -65,7 +106,9 @@ class TrackMixin:
         # « modifié » (16d1).
         self._add_undo(f"Propriétés piste {tidx + 1}")
 
-        def apply(slot, vol, pan, mute, solo, channel, program, transpose, gain_db):
+        def apply(slot, vol, pan, mute, solo, channel, program, transpose, gain_db,
+                  msb=None, lsb=None):
+            was_bank = self._router._bank_slot_of(tidx) is not None
             if slot != self._router.slot_for_track(tidx):
                 self._router.assign_slot(tidx, slot)
                 self._cur_slot = slot
@@ -76,7 +119,11 @@ class TrackMixin:
             self._router._track_solos[tidx] = solo
             self._router.set_track_channel(tidx, channel)
             slot_obj = self._rack.get_slot(slot)
-            if program is not None and slot_obj.gm_program() != program:
+            is_bank  = slot_obj.type == InstrumentType.BANK
+            if is_bank or was_bank:
+                self._apply_bank_header(tidx, live, saved_tape, bank_state, orig_key,
+                                        is_bank, slot, channel, program, msb, lsb)
+            elif program is not None and slot_obj.gm_program() != program:
                 saved_configs.setdefault(slot, slot_obj.config)
                 slot_obj.set_gm_program(program)
             if transpose is not None and slot_obj.gm_transpose() != transpose:
@@ -100,14 +147,19 @@ class TrackMixin:
             channel_after_slot=lambda slot, ch: self._router.channel_after_slot(tidx, slot, ch),
             slot_program=slot_program,
             slot_gm_tuning=self._slot_gm_tuning,
+            bank_info=lambda slot, ch, msb=None, lsb=None:
+                self._bank_info(slot, ch, msb, lsb, instruments),
         )
         result = dlg.ShowModal()
         values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
                   dlg.get_mute(), dlg.get_solo(), dlg.get_channel(), dlg.get_program(),
-                  dlg.get_transpose(), dlg.get_gain_db())
+                  dlg.get_transpose(), dlg.get_gain_db(), dlg.get_msb(), dlg.get_lsb())
         if result == wx.ID_OK and values != tuple(orig.values()):
             apply(*values)
-            self._show_status(f"Piste {tidx + 1}: propriétés mises à jour")
+            others = bank_state["others"]
+            self._show_status(f"Piste {tidx + 1}: propriétés mises à jour" + (
+                "; entête mis à jour aussi sur les pistes "
+                + ", ".join(str(t + 1) for t in others) if others else ""))
         else:
             apply(*orig.values())
             for slot, config in saved_configs.items():
@@ -118,6 +170,38 @@ class TrackMixin:
             else:
                 self._show_status(f"Piste {tidx + 1}: modifications annulées")
         dlg.Destroy()
+
+    def _apply_bank_header(self, tidx, live, saved_tape, state, orig_key,
+                           is_bank, slot, channel, program, msb, lsb):
+        """Propriétés de piste (Alt+Entrée) sur une piste Banque, en direct (Phase 7 étape 17h1,
+        docs/DESIGN.md § 17e3 O5, précision 17f2). Repart des pistes copiées
+        à l'ouverture ; si canal, programme ou banque diffèrent de
+        l'origine, écrit l'entête (CC0, CC32, Program Change à 1.1.1) de la
+        piste et des autres pistes Banque dont l'entête est sur ce canal ;
+        puis poursuite à la position courante, pour que le moteur suive les
+        pistes. Note d'aperçu à chaque nouvel instrument ou canal (D16)."""
+        r = self._router
+        key = (channel, program, msb, lsb)
+        others = []
+        with live._lock:
+            for t, events in enumerate(saved_tape):
+                live._tape[t] = list(events)
+            if is_bank and program is not None and key != orig_key:
+                live._tape[tidx] = with_bank_header(saved_tape[tidx], channel, program, msb, lsb)
+                for t, events in enumerate(saved_tape):
+                    if t == tidx or t >= r.NUM_TRACKS or r._bank_slot_of(t) is None:
+                        continue
+                    header = bank_header(events)
+                    if header is not None and header[0] == channel \
+                            and header != (channel, program, msb, lsb):
+                        live._tape[t] = with_bank_header(events, channel, program, msb, lsb)
+                        others.append(t)
+        state["others"] = others
+        r.chase(live._tape, self._player._current_offset())
+        if is_bank and key != state["last"] and r.bank_slot_ready(slot):
+            note = r.DRUM_GRID_BASE if channel == Pattern.KIT_CHANNEL else 60
+            r.bank_note(channel, note, 100, 400)
+        state["last"] = key
 
     def _rename_track(self):
         """F2 : renomme la piste courante via un TextEntryDialog."""

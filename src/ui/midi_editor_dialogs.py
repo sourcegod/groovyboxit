@@ -390,6 +390,15 @@ class _CcEventEditDialog(wx.Dialog):
                                    initial=initial, size=(90, -1))
         self._val_sp.SetName(val_label.rstrip(" :"))
 
+        # --- Canal (CC et Program Change, Phase 7 étape 17h1, § 17e3 O3) :
+        # 1..16 ; un Program Change porte le canal où passe la piste ---
+        self._chan_sp = None
+        if kind in ("cc", "pgm"):
+            chan_lbl      = wx.StaticText(self, label="Canal (1..16) :")
+            self._chan_sp = wx.SpinCtrl(self, min=1, max=16,
+                                        initial=ev.get("channel", 0) + 1, size=(90, -1))
+            self._chan_sp.SetName("Canal")
+
         # --- Boutons ---
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
@@ -415,6 +424,9 @@ class _CcEventEditDialog(wx.Dialog):
         vbox.Add(self._pos_txt,  0, wx.ALL, 6)
         vbox.Add(val_lbl,        0, wx.LEFT | wx.RIGHT, 6)
         vbox.Add(self._val_sp,   0, wx.ALL, 6)
+        if self._chan_sp is not None:
+            vbox.Add(chan_lbl,      0, wx.LEFT | wx.RIGHT, 6)
+            vbox.Add(self._chan_sp, 0, wx.ALL, 6)
         vbox.Add(btn_sizer,      0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
@@ -462,3 +474,7 @@ class _CcEventEditDialog(wx.Dialog):
 
     def get_value(self):
         return self._val_sp.GetValue()
+
+    def get_channel(self):
+        """Canal 0..15 choisi, None sans champ canal (bend)."""
+        return self._chan_sp.GetValue() - 1 if self._chan_sp is not None else None

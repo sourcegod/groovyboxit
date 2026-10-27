@@ -9,6 +9,7 @@ from .dialogs_simple import (
     UndoHistoryDialog,
     SaveConfirmDialog,
 )
+from .dialogs_bank import BankSlotDialog
 from .dialogs_properties import (
     TrackPropertiesDialog,
     PatternPropertiesDialog,

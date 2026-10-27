@@ -299,8 +299,9 @@ class SavePatternDialog(wx.Dialog):
 
 
 class ExplorerDialog(wx.Dialog):
-    """Choix du type de fichier à charger : Kit, Patch ou Sound."""
-    ITEMS = ["Projects", "Preset", "Kit", "Patch", "Sound"]
+    """Choix du type de fichier à charger : Kit, Patch, Sound ou Banque
+    (slot Banque, Phase 7 étape 17h1)."""
+    ITEMS = ["Projects", "Preset", "Kit", "Patch", "Sound", "Banque"]
 
     def __init__(self, parent):
         super().__init__(parent, title="Explorateur")
@@ -318,7 +319,7 @@ class ExplorerDialog(wx.Dialog):
         vbox.Add(self._listbox, 1, wx.EXPAND | wx.ALL, 8)
         vbox.Add(btn_sizer,     0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
-        self.SetSize((220, 185))
+        self.SetSize((220, 205))
         self.Centre()
 
         self._listbox.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))

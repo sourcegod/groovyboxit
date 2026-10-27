@@ -109,6 +109,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._presets_dir  = cfg.presets_dir
         self._projects_dir = cfg.projects_dir
         self._exports_dir  = cfg.exports_dir
+        self._soundfonts_dir = cfg.soundfonts_dir     # slot Banque (17h1, D7)
+        self._gm_soundfont   = cfg.gm_soundfont
         sound_cache.init(cfg.sound_cache_dir)
         self._master_defaults = (cfg.master_volume, cfg.master_pan)   # 15d1 D3
         self._rack = Rack()

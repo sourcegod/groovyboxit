@@ -394,12 +394,29 @@ class TrackRouter:
         if slot is None or self.bank_engine is None \
                 or self.bank_engine.loaded_path(slot.bank_slot()) is None:
             return None
-        names = self._preset_names.get(slot.bank_slot())
-        if names is None:
-            names = {(b, p): n for b, p, n in self.bank_engine.presets(slot.bank_slot())}
-            self._preset_names[slot.bank_slot()] = names
         _, bank, program = self._bank_key(self._track_cur_channels[track_idx], slot)
-        return names.get((bank, program), "(preset absent)")
+        return self._preset_names_of(slot.bank_slot()).get((bank, program), "(preset absent)")
+
+    def _preset_names_of(self, bank_slot):
+        """{(banque, programme): nom} de l'emplacement, lu une fois."""
+        names = self._preset_names.get(bank_slot)
+        if names is None:
+            names = {(b, p): n for b, p, n in self.bank_engine.presets(bank_slot)}
+            self._preset_names[bank_slot] = names
+        return names
+
+    def program_names(self, slot_idx, channel, msb, lsb):
+        """Noms des 128 programmes de la banque que choisiraient MSB / LSB
+        sur ce canal (128 au canal 10), dans le fichier du slot Banque ;
+        None pour un numéro absent (propriétés de piste, Alt+Entrée, Phase 7 étape 17h1, § 17e3 O5)."""
+        slot = self._rack.get_slot(slot_idx)
+        if self.bank_engine is None or slot.type != InstrumentType.BANK \
+                or self.bank_engine.loaded_path(slot.bank_slot()) is None:
+            return [None] * 128
+        bank = self.DRUM_BANK if channel == Pattern.KIT_CHANNEL \
+            else self.bank_engine.bank_number(msb, lsb)
+        names = self._preset_names_of(slot.bank_slot())
+        return [names.get((bank, p)) for p in range(128)]
 
     def bank_note(self, channel, note, velocity, duration_ms):
         """Note du moteur de banque ; coupée après duration_ms (> 0), tenue

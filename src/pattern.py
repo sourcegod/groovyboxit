@@ -55,6 +55,40 @@ class TapeEvent:
                 f"channel={self.channel!r}, payload={self.payload!r})")
 
 
+# Entête d'une piste sur slot Banque (Phase 7 étape 17h1, docs/DESIGN.md
+# § 17e3 O2, O5) : CC0, CC32 et Program Change à 1.1.1 (time 0).
+
+def _is_header_event(ev):
+    return ev.time == 0 and (ev.etype == ETYPE_PGM or (
+        ev.etype == ETYPE_CC and ev.payload.get("cc_num") in (0, 32)))
+
+
+def bank_header(events):
+    """(canal, programme, MSB, LSB) de l'entête de la piste, ou None sans
+    Program Change à 1.1.1 ; MSB / LSB absents : 0."""
+    header = {"pgm": None, 0: 0, 32: 0}
+    for ev in events:
+        if not _is_header_event(ev):
+            continue
+        if ev.etype == ETYPE_PGM:
+            header["pgm"] = (ev.channel, ev.payload.get("program", 0))
+        else:
+            header[ev.payload["cc_num"]] = ev.payload.get("value", 0)
+    if header["pgm"] is None:
+        return None
+    channel, program = header["pgm"]
+    return channel, program, header[0], header[32]
+
+
+def with_bank_header(events, channel, program, msb, lsb):
+    """Nouvelle liste : events sans l'ancien entête, précédés de CC0, CC32
+    et Program Change à 1.1.1 sur channel (rejoués dans cet ordre)."""
+    head = [TapeEvent(ETYPE_CC, channel=channel, payload={"cc_num": 0, "value": msb}, time=0),
+            TapeEvent(ETYPE_CC, channel=channel, payload={"cc_num": 32, "value": lsb}, time=0),
+            TapeEvent(ETYPE_PGM, channel=channel, payload={"program": program}, time=0)]
+    return head + [ev for ev in events if not _is_header_event(ev)]
+
+
 class Track:
     DRUM  = "drum"
     SYNTH = "synth"

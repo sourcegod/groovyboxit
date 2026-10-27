@@ -8,7 +8,7 @@ class TrackPropertiesDialog(wx.Dialog):
 
     def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
                  on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None,
-                 slot_program=None, slot_gm_tuning=None):
+                 slot_program=None, slot_gm_tuning=None, bank_info=None):
         """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
         channel) -> canal : règle appliquée quand l'utilisateur change de slot
         (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé.
@@ -18,7 +18,12 @@ class TrackPropertiesDialog(wx.Dialog):
         slot_gm_tuning(slot_idx) -> (transposition, gain_db) du slot pour
         l'export GM, chacun None si le réglage ne s'applique pas (SpinCtrl
         grisé) — Phase 7 étape 12h1, docs/DESIGN.md § 12a2 D6 ; None = les
-        deux grisés."""
+        deux grisés.
+        bank_info(slot_idx, channel, msb, lsb) -> None (slot non Banque) ou
+        dict names (128 noms ou None), program, msb, lsb (instrument du
+        canal si msb est None : le canal impose son instrument), drums
+        (canal 10), gs (mode Bank Select GS) — Phase 7 étape 17h1,
+        docs/DESIGN.md § 17e3 O5 ; None = jamais de banque."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
         self._on_change          = on_change
@@ -27,9 +32,11 @@ class TrackPropertiesDialog(wx.Dialog):
         self._slot_program       = slot_program
         self._program_values     = []   # programme de chaque entrée de la liste
         self._slot_gm_tuning     = slot_gm_tuning
+        self._bank_info          = bank_info
+        self._is_bank            = False
 
-        # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Transposition
-        # → Gain → Volume → Pan
+        # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Banque MSB
+        # → Banque LSB → Transposition → Gain → Volume → Pan
         self._mute = wx.CheckBox(self, label="Mute")
         self._mute.SetValue(mute)
         self._solo = wx.CheckBox(self, label="Solo")
@@ -48,8 +55,17 @@ class TrackPropertiesDialog(wx.Dialog):
         )
         self._channels.SetSelection(channel)
 
-        program_label  = wx.StaticText(self, label="Programme GM du slot :")
+        self._program_label = wx.StaticText(self, label="Programme GM du slot :")
         self._programs = wx.ListBox(self, style=wx.LB_SINGLE, size=(-1, self._LIST_H))
+
+        # Banque MSB (CC0) / LSB (CC32) du canal, slot Banque seulement
+        # (17h1) ; grisés au canal 10 (batterie, banque 128)
+        msb_label      = wx.StaticText(self, label="Banque MSB (CC0) :")
+        self._msb      = wx.SpinCtrl(self, min=0, max=127, initial=0)
+        self._msb.SetName("Banque MSB")
+        self._lsb_label = wx.StaticText(self, label="Banque LSB (CC32) :")
+        self._lsb      = wx.SpinCtrl(self, min=0, max=127, initial=0)
+        self._lsb.SetName("Banque LSB")
         self._load_programs(cur_slot_idx)
 
         transpose_label  = wx.StaticText(self, label="Transposition GM du slot (demi-tons) :")
@@ -86,8 +102,14 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox.Add(self._slots, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(channel_label,  0, wx.LEFT | wx.RIGHT, 8)
         vbox.Add(self._channels, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
-        vbox.Add(program_label,  0, wx.LEFT | wx.RIGHT, 8)
+        vbox.Add(self._program_label, 0, wx.LEFT | wx.RIGHT, 8)
         vbox.Add(self._programs, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        bank = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
+        bank.Add(msb_label,       0, wx.ALIGN_CENTER_VERTICAL)
+        bank.Add(self._msb,       0, wx.EXPAND)
+        bank.Add(self._lsb_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        bank.Add(self._lsb,       0, wx.EXPAND)
+        vbox.Add(bank, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         tuning = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
         tuning.Add(transpose_label, 0, wx.ALIGN_CENTER_VERTICAL)
         tuning.Add(self._transpose, 0, wx.EXPAND)
@@ -104,8 +126,10 @@ class TrackPropertiesDialog(wx.Dialog):
         self._mute.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
         self._solo.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
         self._slots.Bind(wx.EVT_LISTBOX, self._on_slot_change)
-        self._channels.Bind(wx.EVT_LISTBOX, self._on_widget_change)
+        self._channels.Bind(wx.EVT_LISTBOX, self._on_channel_change)
         self._programs.Bind(wx.EVT_LISTBOX, self._on_widget_change)
+        self._msb.Bind(wx.EVT_SPINCTRL, self._on_bank_change)
+        self._lsb.Bind(wx.EVT_SPINCTRL, self._on_bank_change)
         self._transpose.Bind(wx.EVT_SPINCTRL, self._on_widget_change)
         self._gain.Bind(wx.EVT_SPINCTRL,      self._on_widget_change)
         self._vol.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
@@ -116,7 +140,19 @@ class TrackPropertiesDialog(wx.Dialog):
 
     def _load_programs(self, slot_idx):
         """Remplit la liste des programmes selon le genre du slot :
-        128 instruments GM (synthé), kits GM2 (kit), vide et désactivée sinon."""
+        programmes de la banque du canal (slot Banque, 17h1), 128
+        instruments GM (synthé), kits GM2 (kit), vide et désactivée sinon."""
+        info = self._bank_info(slot_idx, self._channels.GetSelection(), None, None) \
+            if self._bank_info else None
+        self._is_bank = info is not None
+        if self._is_bank:
+            self._msb.SetValue(info["msb"])
+            self._lsb.SetValue(info["lsb"])
+            self._show_bank(info, info["program"])
+            return
+        self._program_label.SetLabel("Programme GM du slot :")
+        self._msb.Enable(False)
+        self._lsb.Enable(False)
         kind, program = self._slot_program(slot_idx) if self._slot_program else (None, None)
         if kind == "synth":
             entries = list(enumerate(GM_PATCH_NAMES))
@@ -129,6 +165,38 @@ class TrackPropertiesDialog(wx.Dialog):
         if program in self._program_values:
             self._programs.SetSelection(self._program_values.index(program))
         self._programs.Enable(bool(entries))
+
+    def _show_bank(self, info, program):
+        """Liste des 128 programmes de la banque du canal (noms lus dans le
+        fichier, « (vide) » pour un numéro absent), MSB / LSB grisés au
+        canal 10."""
+        channel = self._channels.GetSelection()
+        self._program_label.SetLabel(f"Programme du canal {channel + 1} :")
+        self._program_values = list(range(128))
+        self._programs.Set([f"{p + 1} - {name or '(vide)'}"
+                            for p, name in enumerate(info["names"])])
+        if program is not None:
+            self._programs.SetSelection(max(0, min(127, program)))
+        self._programs.Enable(True)
+        self._msb.Enable(not info["drums"])
+        self._lsb.Enable(not info["drums"])
+        self._lsb_label.SetLabel("Banque LSB (CC32, sans effet en mode GS) :"
+                                 if info["gs"] else "Banque LSB (CC32) :")
+
+    def _on_channel_change(self, event):
+        """Changement de canal : sur une banque, le canal impose son
+        instrument (§ 17e3 O5, choix B) — liste, MSB et LSB rechargés."""
+        if self._is_bank:
+            self._load_programs(self._slots.GetSelection())
+        self._on_widget_change(event)
+
+    def _on_bank_change(self, event):
+        """MSB / LSB changés : liste de la nouvelle banque, même programme."""
+        if self._is_bank:
+            info = self._bank_info(self._slots.GetSelection(), self._channels.GetSelection(),
+                                   self._msb.GetValue(), self._lsb.GetValue())
+            self._show_bank(info, self._programs.GetSelection())
+        self._on_widget_change(event)
 
     def _load_gm_tuning(self, slot_idx):
         """Valeurs et grisage des SpinCtrl Transposition et Gain selon le
@@ -145,7 +213,7 @@ class TrackPropertiesDialog(wx.Dialog):
         if self._channel_after_slot:
             self._channels.SetSelection(self._channel_after_slot(
                 slot_idx, self._channels.GetSelection()))
-        self._load_programs(slot_idx)
+        self._load_programs(slot_idx)      # après le canal : instrument du canal (17h1)
         self._load_gm_tuning(slot_idx)
         self._on_widget_change(event)
 
@@ -161,6 +229,8 @@ class TrackPropertiesDialog(wx.Dialog):
                 self.get_program(),
                 self.get_transpose(),
                 self.get_gain_db(),
+                self.get_msb(),
+                self.get_lsb(),
             )
         event.Skip()
 
@@ -190,6 +260,14 @@ class TrackPropertiesDialog(wx.Dialog):
     def get_gain_db(self):
         """Gain GM en dB, None si grisé (slot vide)."""
         return self._gain.GetValue() if self._gain.IsEnabled() else None
+
+    def get_msb(self):
+        """Banque MSB du canal (slot Banque, 17h1), None sinon."""
+        return self._msb.GetValue() if self._is_bank else None
+
+    def get_lsb(self):
+        """Banque LSB du canal (slot Banque, 17h1), None sinon."""
+        return self._lsb.GetValue() if self._is_bank else None
 
 
 class PatternPropertiesDialog(wx.Dialog):

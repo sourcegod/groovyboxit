@@ -2,7 +2,7 @@ import os
 import wx
 from rack import InstrumentType
 from project_manager import ProjectManager
-from .dialogs import ExplorerDialog, PadPropertiesDialog
+from .dialogs import ExplorerDialog, PadPropertiesDialog, BankSlotDialog
 
 
 class PadMixin:
@@ -154,6 +154,8 @@ class PadMixin:
             self._explorer_patch()
         elif choice == "Sound":
             self._explorer_sound()
+        elif choice == "Banque":
+            self._explorer_bank()
 
     def _explorer_projects(self):
         projects_dir = self._projects_dir
@@ -209,6 +211,49 @@ class PadMixin:
             self._update_slot_list()
             self._router.reload_slot(self._cur_slot)
         dlg.Destroy()
+
+    def _explorer_bank(self):
+        """Slot courant en slot Banque : fichier et emplacement (Phase 7
+        étape 17h1, docs/DESIGN.md § 17e2 R9). Undo posé avant, retiré si
+        Annuler ou rien changé ; nom du slot = nom du fichier."""
+        slot = self._rack.get_slot(self._cur_slot)
+        files = self._rack.bank_files
+        if slot.type == InstrumentType.BANK:
+            bank_slot = slot.bank_slot()
+        else:   # premier emplacement vide, sinon le premier
+            bank_slot = next((i for i, f in enumerate(files) if f is None), 0)
+        self._add_undo(f"Banque slot {self._cur_slot + 1:02d}")
+        dlg = BankSlotDialog(self, self._cur_slot, files, bank_slot,
+                             self._gm_soundfont, self._soundfonts_dir)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            self._pop_last_undo()
+            self._show_status("Banque : annulé")
+            return
+        bank_slot, path = dlg.get_bank_slot(), dlg.get_path()
+        dlg.Destroy()
+        name   = os.path.splitext(os.path.basename(path))[0] or f"Banque {bank_slot + 1}"
+        config = {"bank_slot": bank_slot}
+        if not path or (slot.type == InstrumentType.BANK and slot.config == config
+                        and slot.name == name and files[bank_slot] == path):
+            self._pop_last_undo()
+            self._show_status("Banque : inchangé" if path else "Banque : aucun fichier")
+            return
+        others = (self._rack.get_slot(i) for i in range(self._rack.NUM_SLOTS)
+                  if i != self._cur_slot)
+        shared = [s.index + 1 for s in others
+                  if s.type == InstrumentType.BANK and s.bank_slot() == bank_slot]
+        replaced = files[bank_slot] not in (None, path)
+        self._rack.set_bank_file(bank_slot, path)
+        self._rack.set_slot(self._cur_slot, InstrumentType.BANK, name, config)
+        self._update_slot_list()
+        self._router.sync_banks()
+        self._router.load_slot_preview(self._cur_slot)
+        self._refresh_track_list()
+        msg = f"Slot {self._cur_slot + 1:02d}: banque {name}, emplacement {bank_slot + 1}"
+        if replaced and shared:
+            msg += " — son changé aussi pour les slots " + ", ".join(f"{i:02d}" for i in shared)
+        self._show_status(msg)
 
     def _explorer_sound(self):
         start = self._samples_dir if os.path.isdir(self._samples_dir) else os.path.expanduser("~")

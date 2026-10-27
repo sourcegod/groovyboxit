@@ -96,13 +96,16 @@ class EditingMixin:
         )
         dlg = _CcEventEditDialog(self, ev, pat)
         if dlg.ShowModal() == wx.ID_OK:
+            extra = {} if ev["type"] == "bend" else {"new_channel": dlg.get_channel()}
             new_ev = edit_fn(
                 pat, ev,
                 new_value = dlg.get_value(),
                 new_bar   = dlg.get_bar(),
                 new_step  = dlg.get_step(),
+                **extra,
             )
             if new_ev:
+                self._sync_bank_after_edit(new_ev)
                 if self._parent._player.playing:
                     self._parent._player._wakeup.set()
                 self._refresh()
@@ -124,6 +127,21 @@ class EditingMixin:
         else:
             self._parent._pop_last_undo()
         dlg.Destroy()
+
+    def _sync_bank_after_edit(self, new_ev):
+        """Après l'édition d'un Program Change ou d'un CC d'une piste Banque
+        (Phase 7 étape 17h1, § 17e3 O3) : un Program Change d'entête (1.1.1)
+        donne son canal à la piste ; puis poursuite, pour entendre aussitôt
+        l'instrument modifié."""
+        parent = self._parent
+        router = parent._router
+        track  = new_ev["track"]
+        if track >= router.NUM_TRACKS or router._bank_slot_of(track) is None:
+            return
+        if new_ev["type"] == "pgm" and new_ev["offset"] == 0:
+            router.set_track_channel(track, new_ev["channel"])
+        router.chase(parent._player._pattern._tape, parent._player._current_offset())
+        parent._refresh_track_list()
 
     # ------------------------------------------------------------------
     # Duplication / Insertion (étape 7i)
