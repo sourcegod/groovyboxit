@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument) | en cours |
 
 ---
 
@@ -47,6 +47,9 @@ groovyboxit/
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
 │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
 │   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
+│   ├── engines/          # Moteurs de banque (Phase 7 étape 17)
+│   │   ├── bank_engine.py      # BankEngine : interface (emplacements, canaux, rendu)
+│   │   └── fluidsynth_engine.py # FluidSynthEngine : FluidSynth par ctypes (SF2/SF3)
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
 │   ├── metronome.py      # Classe Metronome isolée
@@ -81,6 +84,7 @@ groovyboxit/
 │   │   └── dp_erase.py     # Mixin : mode Erase
 │   └── ui/
 │       ├── dialogs.py          # Boîtes de dialogue (explorateur)
+│       ├── dialogs_bank.py     # BankSlotDialog : fichier et emplacement d'un slot Banque
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
@@ -206,9 +210,20 @@ groovyboxit/
   "sound_cache_dir": "/chemin/cache_npz",
   "exports_dir":  "/chemin/vers/EXPORTS",
   "master_volume": 100,
-  "master_pan":    0
+  "master_pan":    0,
+  "soundfonts_dir":   "/usr/share/sounds/sf2",
+  "gm_soundfont":     "FluidR3_GM.sf2",
+  "midi_bank_select": "gs",
+  "fluidsynth_gain":  1.0
 }
 ```
+
+Slot Banque (Phase 7 étape 17) : `soundfonts_dir` (dossier ouvert par
+« Parcourir… », défaut `/usr/share/sounds/sf2`), `gm_soundfont` (fichier
+proposé pour un emplacement vide, absolu ou relatif à `soundfonts_dir`,
+défaut `FluidR3_GM.sf2`), `midi_bank_select` (`"gs"` : le MSB seul choisit
+la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
+10.0, défaut 1.0, validé à l'écoute à côté des pads WAV).
 
 `master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
@@ -235,8 +250,9 @@ Le Rack est **global et partagé par tous les patterns**. Il contient 16 slots.
 | `AUDIO` | `"audio"` | WAV one-shot libre (prévu) |
 | `MIDI_FILE` | `"midi_file"` | Fichier MIDI .mid (prévu) |
 | `MIDI_PORT` | `"midi_port"` | Port MIDI externe (prévu) |
+| `BANK` | `"bank"` | Banque de sons SF2/SF3 jouée par FluidSynth (Phase 7 étape 17) |
 
-*Implémentés et opérationnels : KIT et SYNTH.*
+*Implémentés et opérationnels : KIT, SYNTH et BANK.*
 
 ### Structure d'un slot
 
@@ -248,6 +264,9 @@ Slot
   └── config  : dict
         KIT   → { "kit": "/chemin/vers/kit.json" }
         SYNTH → { "patch": "/chemin/vers/dossier_patch" }
+        BANK  → { "bank_slot": 0..3 }  emplacement de banque ; le slot porte
+                le nom du fichier ; l'instrument appartient au canal
+                (voir « Banques de sons »)
         + "gm_program" (0..127, facultatif) : instrument GM (synthé) ou kit
           GM2 (kit) écrit en Program Change à l'export ; absent → déduit du
           nom du slot (guess_gm_program). Réglable dans les propriétés de piste.
@@ -264,6 +283,52 @@ Slot
 ### Sérialisation Rack
 
 `Rack.to_dict()` / `Rack.from_dict(data)` — inclus dans le preset JSON sous la clé `"rack"`.
+Le Rack porte aussi `bank_files` : le fichier de chacun des 4 emplacements de
+banque (chemin ou `null`), absent des projets d'avant la Phase 7 étape 17
+(emplacements vides).
+
+---
+
+## Banques de sons (type BANK, FluidSynth)
+
+Phase 7 étape 17 (docs/DESIGN.md § 17a1, 17e3). Principe : retrouver les
+habitudes d'un séquenceur comme Sonar devant un module General MIDI.
+
+- **Moteur** : `FluidSynthEngine` (FluidSynth par ctypes, une seule
+  instance, 16 canaux), rendu ajouté au mixage du pilote audio avant le
+  volume global ; muet si `libfluidsynth` est absente. Lit SF2 et SF3
+  (pas le SFZ).
+- **4 emplacements** : un fichier chargé une seule fois, partagé par les
+  slots Banque qui le désignent ; dialogue **« Banque »** de l'Explorateur
+  (Alt+X) pour le slot courant (emplacement, fichier).
+- **Le canal est l'instrument** : chacun des 16 canaux a un programme et
+  une banque (MSB / LSB), entendus par toutes les pistes de ce canal ;
+  sans Program Change : programme 0, banque 0. **Canal 10 = batterie**
+  (banque 128 de la soundfont, MSB et LSB sans effet).
+- **Programme et banque sont des événements de la piste** : CC0 (MSB),
+  CC32 (LSB) et Program Change de `_tape`. L'**entête** d'une piste = ces
+  trois événements à 1.1.1. Un Program Change porte un canal : la piste
+  passe sur ce canal (changer d'instrument en cours de morceau) ; CC0 et
+  CC32 vont à leur propre canal.
+- **Poursuite** : au démarrage de la lecture, à chaque saut de position,
+  au changement de pattern, à l'avance du song et après Undo, chaque
+  canal retrouve le dernier programme et la dernière banque rencontrés
+  avant la position, chaque piste le canal de son dernier Program Change.
+- **Contrôleur** : un Program Change ou un Bank Select reçu hors
+  enregistrement ne change que le son ; la relance de la lecture rejoue
+  la piste. Enregistrés, ils sont remis au canal de la piste.
+- **Propriétés de piste (Alt+Entrée)** sur une banque, en direct : liste
+  « Programme du canal N » (128 programmes, noms lus dans la soundfont,
+  « (vide) »), Banque MSB et LSB ; changer de canal fait entendre
+  l'instrument de ce canal ; chaque changement réécrit l'entête de la
+  piste (et des autres pistes du canal qui en ont un), joue une note
+  d'aperçu (do central, grosse caisse au canal 10) et survit au
+  bouclage ; Annuler remet les pistes d'origine.
+- **Notes** : grille → gamme du pattern (36 + pad au canal 10) ; KIT et
+  PATCH telles quelles ; volume et pan de piste → CC7 et CC10 du canal,
+  pan global ajouté.
+- **Deux pistes d'un même canal sur deux emplacements** : avertissement,
+  la dernière l'emporte.
 
 ---
 
@@ -473,6 +538,9 @@ Deux comportements selon le type du slot courant :
 TrackRouter
   ├── _track_slots[16]    slot assigné à chaque piste (défaut : slot 0)
   ├── _track_channels[16] canal MIDI de chaque piste (0..15, export MIDI)
+  ├── _track_cur_channels[16] canal courant d'une piste Banque (dernier Program Change)
+  ├── _chan_prog/_msb/_lsb[16] instrument de chaque canal (slot Banque)
+  ├── bank_engine         moteur de banque (FluidSynthEngine ou None)
   ├── _slot_synths        {slot_idx: SynthEngine} — un moteur par slot SYNTH commis
   ├── _synth              moteur de preview interactive (slot courant)
   ├── _kit_synth          moteur dédié au mode Keyboard/KIT pitché
@@ -483,6 +551,8 @@ TrackRouter
 `on_play(track, pad, vol, pan, dur)` :
 - Slot KIT → `sound_manager.play_sound(pad_idx)`
 - Slot SYNTH → `_slot_synths[slot_idx].play(kb_notes[pad_idx])`
+- Slot BANK → note au moteur de banque sur le canal courant de la piste
+  (`chase(tape, pos)` rétablit instruments et canaux, voir « Banques de sons »)
 
 ---
 
@@ -727,6 +797,8 @@ Capturé dans `_tape` (etype `ETYPE_PGM`, payload `{"program"}`). Effet
 (`assign_slot(track, program % 16)`), en attendant le mode Rack Synth/GM
 (16 canaux MIDI → 16 slots avec leurs patchs, lecture de fichiers `.mid`),
 où le format MIDI permet un Program Change à tout moment pendant la lecture.
+Sur une piste **Banque** (Phase 7 étape 17), le Program Change change
+l'instrument de son canal, où passe la piste ; voir « Banques de sons ».
 
 ### Pitch Bend temps réel
 
@@ -860,6 +932,10 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   avec la table du kit du slot courant
 - Un ancien projet sans canaux enregistrés s'ouvre avec ses pistes kit sur
   le canal 10
+- Piste sur slot Banque (Phase 7 étape 17) : banque et programme viennent
+  de ses événements (entête) ; à tick égal, CC0 et CC32 avant le Program
+  Change ; chaque événement sur le canal courant de la piste ; nom de
+  piste = nom du preset ; notes KIT non converties
 
 ---
 
@@ -1042,8 +1118,11 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
       { "index": 0, "type": "kit",   "name": "TR-707",
         "config": { "kit": "/chemin/tr_707.json" } },
       { "index": 1, "type": "synth", "name": "Piano",
-        "config": { "patch": "/chemin/Piano" } }
-    ]
+        "config": { "patch": "/chemin/Piano" } },
+      { "index": 5, "type": "bank",  "name": "FluidR3_GM",
+        "config": { "bank_slot": 0 } }
+    ],
+    "bank_files": ["/usr/share/sounds/sf2/FluidR3_GM.sf2", null, null, null]
   },
   "patterns": [
     {
@@ -1411,20 +1490,24 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `EventFilterDialog` | dialogs_temporal | Ctrl+Shift+F | Filtre/sélection d'événements MIDI par type, note, vélocité, pitch bend, position |
 | `SavePatternDialog` | dialogs_simple | (interne) | Sauvegarder le pattern sous un nouveau nom |
 | `RenameDialog` | dialogs_simple | F2 | Renommer piste, pattern ou song |
-| `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo) |
+| `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo ; sur une banque : programme du canal, banque MSB / LSB, en direct) |
 | `TrackSelectDialog` | dialogs_properties | Ctrl+Entrée (liste pistes) | Sélection de pistes + plage BBT |
 | `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, BPM, mesures, pas) |
 | `PadPropertiesDialog` | dialogs_properties | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée, mute_group) |
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |
+| `BankSlotDialog` | dialogs_bank | Alt+X → Banque | Emplacement (1 à 4) et fichier SF2/SF3 du slot courant |
 
 ### ExplorerDialog (Alt+X)
 
-ListBox avec 4 items :
+ListBox avec 6 items :
+- **Projects** : ouvre un projet `.gvp` dans `projects_dir`
 - **Preset** : ouvre un FileDialog dans `presets_dir`, charge le fichier `.json` sélectionné
 - **Kit** : ouvre un FileDialog dans `kits_dir`, affecte le kit au slot courant
 - **Patch** : ouvre un FileDialog dans `patches_dir`, affecte le patch au slot courant (SYNTH)
 - **Sound** : ouvre un FileDialog dans `samples_dir`, remplace le WAV du pad courant
+- **Banque** : `BankSlotDialog` — le slot courant devient un slot Banque
+  (emplacement, fichier ; nom du slot = nom du fichier ; Undo)
 
 Le double-clic sur un item valide directement la sélection (`EVT_LISTBOX_DCLICK → EndModal(ID_OK)`).
 

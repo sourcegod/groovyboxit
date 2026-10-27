@@ -5452,6 +5452,32 @@ réel.
   - Essayé à l'écoute par l'utilisateur. `pytest` rouge : 1 échec, la
     fausse fenêtre de `test_live_take.py` n'a pas `_bank_engine`
     (adaptée en 17c1).
+- **17c1** (`6c82f3a`) — `tests/test_fluidsynth_engine.py` (38 tests),
+  sur **FluidR3_GM** à la demande de l'utilisateur (TimGM6mb en repli),
+  sautés sans libfluidsynth ; seuil de son audible 1e-4, presets sans
+  dépendre des noms ; source de rendu du pilote (6 tests), clés de
+  config (29 tests) ; 2386 verts. FluidR3 se charge en 0,08 s.
+- **17d1** (`1845318`) — conforme au plan d'origine (D3, D4, D8-D13,
+  D18) : `InstrumentType.BANK`, instrument dans la config du slot, 4
+  emplacements dans le Rack, le `.gvp` et l'Undo, routage de tous les
+  événements, `BankPreview` pour le jeu direct, export CC0/CC32.
+  - **Écart : chargement sans fil.** FluidSynth lit la soundfont à la
+    demande (FluidR3 en 0,1 s) : pas de fil de chargement.
+  - Essayé à l'écoute (lecture, volume, pan, pan global, mute, solo,
+    export). `pytest` rouge : 27 faux objets.
+- **17d2** (`4726b58`) — correctif trouvé par les tests de 17e1 :
+  `assign_slot_by_user` synchronisait la banque **avant** de poser le
+  canal ; une batterie était sélectionnée sur l'ancien canal de la piste.
+- **17e1** (`6c0e5b3`) — `tests/test_bank_slot.py` (58 tests), 27 faux
+  objets adaptés ; 2444 verts.
+  - **Piège : crash de pytest à la sortie.** Un vrai `SynthEngine` sans
+    pilote (créé par `assign_slot` sur un slot SYNTH) ouvre un
+    `SoundDeviceDriver`, flux audio jamais fermé, qui faisait planter
+    l'interpréteur après les tests (8 fois sur 10). Les tests remplacent
+    désormais `track_router.SynthEngine`.
+- **17e2** (`e8a2682`) puis **17e3** (`e04f96e`) — deux révisions du plan,
+  ci-dessous : à l'essai de 17d1 puis de 17f1, l'utilisateur veut
+  plusieurs instruments sur un même slot, puis le modèle « orchestre ».
 
 ## Phase 7 étape 17e2 — Révision du plan : programme et banque par piste
 
@@ -5764,3 +5790,91 @@ de canal reste un geste explicite : Alt+Entrée, ou édition de l'événement.
 | **17h1** | Implémentation — O5, O6, R9 : Alt+Entrée (canal impose l'instrument, écriture des entêtes), dialogue du slot Banque, édition du canal d'un Program Change à 1.1.1 (O3). Essayé à l'écoute. | `ui/dialogs_properties.py`, `ui/dialogs_bank.py` (nouveau), `ui/dialogs_simple.py`, `ui/mw_pads.py`, `ui/mw_tracks.py`, éditeur d'événements |
 | **17i1** | Tests — dialogues, temps réel, entêtes, Annuler, Undo. | `tests/test_bank_dialogs.py` (nouveau), fakes au besoin |
 | **17j1** | Doc — clôture (avancement 17c1 à 17i1, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 7 étape 17 — Avancement après les révisions (17f1 à 17i1)
+
+- **17f1** (`025e221`) — conforme à 17e3 (R1, R3, R7, O1-O4, O7, O8) :
+  slot Banque = emplacement ; instrument des 16 canaux dans le routeur
+  (`channel_instrument`) ; canal courant par piste (`track_channel_now`),
+  celui de son dernier Program Change ; `program_change` /
+  `bank_select` au canal de l'événement ; `chase(tape, pos)` au
+  démarrage, à chaque saut, au changement de pattern, à l'avance du song
+  et après Undo ; capture remise au canal de la piste ; export : Bank
+  Select avant le Program Change à tick égal, canal qui suit la piste.
+  - **Précision de O3** : CC0 et CC32 vont, comme le Program Change, à
+    **leur propre canal** (et non au canal courant de la piste), pour
+    qu'un entête qui change de canal choisisse la banque du bon canal.
+  - Essayé à l'écoute : bon. `pytest` rouge : 28 tests.
+- **17f2** (`aac5b79`) — précision de O5 trouvée à l'essai : pendant les
+  propriétés de piste, la boucle rejouait l'entête d'origine ; la piste
+  est donc copiée et son entête réécrit en direct.
+- **17g1** (`a879d35`) — `tests/test_bank_slot.py` réécrit (77 tests) ;
+  2467 verts.
+- **17h1** (`c2f7df8`) — conforme à O5, O6, R8, R9 et 17f2 : propriétés de
+  piste en direct sur une banque (liste du canal, MSB / LSB, entêtes,
+  autres pistes du canal, note d'aperçu, Annuler) ; `BankSlotDialog`
+  (élément « Banque » d'Alt+X) ; champ Canal des CC et Program Change
+  dans l'éditeur MIDI (un Program Change à 1.1.1 donne son canal à la
+  piste).
+  - **Écart : raccourci.** Le plan disait « Ctrl+T » pour les propriétés
+    de piste ; c'est **Alt+Entrée** (ou Ctrl+Maj+T). Ctrl+T assigne le
+    slot à la piste. Corrigé dans le plan et dans `SPECS.md`.
+  - **Correctif de l'essai : aller-retour de canal.** La basse, seule à
+    définir le canal 4, le quittait ; la poursuite remettait ce canal à
+    l'état GM (piano) et le retour de la basse imposait le piano. Le
+    dialogue retient l'instrument des 16 canaux à son ouverture.
+  - Essayé à l'écoute. `pytest` rouge : 28 tests.
+- **17i1** (`77fc811`) — `tests/test_bank_dialogs.py` (32 tests), tests de
+  l'édition du canal ; 28 tests adaptés ; 2506 verts.
+
+### Clôture (17j1)
+
+**17a1-17i1 FAITS** (commits `ee09786` à `77fc811`, et ce commit de
+clôture, 2506 tests verts) : **chantier Phase 7 étape 17 complet**.
+L'appli joue les soundfonts SF2 / SF3 par FluidSynth, comme un module GM
+dont les pistes sont les musiciens.
+
+**Ce que le chantier a livré** :
+- **Moteur de banque** (`src/engines/`) : `BankEngine`, interface étroite
+  et portable (cible C/C++), et `FluidSynthEngine` par ctypes, rendu
+  dans le callback du pilote ; clés `soundfonts_dir`, `gm_soundfont`,
+  `midi_bank_select`, `fluidsynth_gain`.
+- **Slot Banque** : un emplacement parmi 4 (un fichier chargé une fois,
+  partagé), sauvegardé dans le `.gvp` et l'Undo ; dialogue « Banque »
+  de l'Explorateur.
+- **Modèle « orchestre »** : le canal est l'instrument ; programme et
+  banque sont des événements de la piste (entête à 1.1.1), visibles et
+  modifiables ; le Program Change porte le canal de la piste ;
+  poursuite à toute position ; canal 10 = batterie.
+- **Propriétés de piste en direct** : le canal impose son instrument,
+  programme et banque au son près, entêtes réécrits (boucle comprise),
+  Annuler.
+- **Export** fidèle : Bank Select avant le Program Change, canal qui
+  suit la piste, nom du preset.
+
+**Écarts au plan** : deux révisions de fond (17e2, puis 17e3, qui
+remplace 17e2), une précision (17f2), le gain par défaut de FluidSynth
+(1.0), le chargement sans fil, le raccourci (Alt+Entrée), deux
+correctifs trouvés à l'essai ou par les tests (17d2, aller-retour de
+canal) ; voir plus haut.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, arborescence
+(`src/engines/`, `dialogs_bank.py`), configuration, Rack (type BANK,
+`bank_files`), section « Banques de sons », TrackRouter, Program Change,
+export, format `.gvp`, boîtes de dialogue, Explorateur, tests ;
+`docs/shortcuts.md` : Alt+X, propriétés de piste, édition d'un CC ou
+d'un Program Change.
+
+**Restent à essayer** (pas de matériel ou pas encore fait) :
+- le jeu au contrôleur MIDI sur une banque (notes, Program Change, Bank
+  Select en direct, enregistrement au canal de la piste) ;
+- des pistes de deux banques différentes jouées ensemble.
+
+**Laissé hors périmètre, pour la suite** :
+- le **SFZ** (sfizz ou AudioSampler + analyseur), derrière la même
+  interface ;
+- le routage « canal MIDI entrant → slot » et le mode Rack 16 canaux ;
+- la poursuite à la reprise d'une boucle qui ne commence pas à 1.1.1 ;
+- les noms des cases d'une banque au canal 10 dans l'éditeur MIDI ;
+- réverbération, chorus, polyphonie de FluidSynth ;
+- **Phase 7 étape 18 : Import MIDI** (le but initial du chantier).

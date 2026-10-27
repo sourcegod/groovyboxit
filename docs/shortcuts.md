@@ -132,7 +132,8 @@ NumPad -         ShiftPad vers pads 1-8
 --- Mode Keyboard (Ctrl+2 pour activer, Ctrl+1 pour revenir en Pad) ---
 Ctrl+1           Passer en mode Pad
 Ctrl+2           Passer en mode Keyboard
-Alt+X            Ouvrir l'explorateur de patch (charger un instrument)
+Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banque :
+                 fichier SF2/SF3 et emplacement 1 à 4 du slot courant)
 
   -- Slot SYNTH (instrument mélodique) --
   NumPad 1-8     Jouer les 8 premières notes de la gamme courante
@@ -164,6 +165,10 @@ Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (b
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  Mute, Solo, Slot, Canal MIDI (1 à 16), Programme GM du slot
                  (instruments pour un synthé, kits GM2 pour un kit), Volume, Pan
+                 Sur un slot Banque, en direct : Programme du canal (liste de la
+                 soundfont), Banque MSB et LSB ; changer de canal fait entendre
+                 l'instrument de ce canal ; note d'aperçu ; Ok écrit l'entête
+                 de la piste (CC0, CC32, Program Change à 1.1.1)
 Double-clic      Jouer le pad courant
 Double-clic+Alt  Ouvrir les propriétés de la piste
 X / Shift+X      Mute piste / Démuter toutes
@@ -244,7 +249,9 @@ Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), comme la fe
   Ctrl+Q         Quantiser le pattern depuis la grille courante (sans dialog)
   Shift+Q        Quantiser le pattern avec les derniers paramètres mémorisés (sans dialog)
   Ctrl+Shift+Q   Ouvrir le dialog de quantisation (résolution, force, swing, fenêtre)
-  Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity)
+  Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity) ;
+                 un CC ou un Program Change : valeur, position, canal (1 à 16) — un
+                 Program Change à 1.1.1 d'une piste Banque lui donne son canal
   Suppr / Ret.   Supprimer l'événement sélectionné
   Ctrl+C         Copier les événements sélectionnés
   Ctrl+X         Couper les événements sélectionnés
