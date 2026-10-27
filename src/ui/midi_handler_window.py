@@ -205,9 +205,20 @@ class MidiHandler:
         étape 5h, CC#1 n'a plus qu'une seule copie, dans _tape)."""
         self._notify_editor_midi("cc", channel, cc_num=cc_num, value=value)
         win = self._win
+        track = win._player._cur_track
         if win._player.recording:
-            win._player.record_cc(cc_num, value, channel)
-        if cc_num == 120:                          # CC#120 : All Sounds Off
+            if cc_num in (0, 32):
+                # Bank Select remis au canal courant de la piste, comme le
+                # Program Change (Phase 7 étape 17f1, § 17e3 O7)
+                win._player.record_cc(cc_num, value, win._router.track_channel_now(track))
+            else:
+                win._player.record_cc(cc_num, value, channel)
+        if cc_num in (0, 32) and win._router._bank_slot_of(track) is not None:
+            # piste Banque : banque du canal au prochain programme (son seul, Q2)
+            win._router.bank_select(track, cc_num, value)
+            win._show_status(f"Piste {track + 1}: Bank Select {'MSB' if cc_num == 0 else 'LSB'} {value}")
+            return
+        if cc_num == 120:                         # CC#120 : All Sounds Off
             win._router.stop_all_sounds()
             win._show_status("All Sounds Off")
             return
@@ -264,11 +275,15 @@ class MidiHandler:
         était une simplification de développement, pas définitive)."""
         self._notify_editor_midi("program_change", channel, program=program)
         win = self._win
-        if win._player.recording:
-            win._player.record_program_change(program, channel)
         track = win._player._cur_track
+        if win._player.recording:
+            # remis au canal courant de la piste (17f1, § 17e3 O7) : un
+            # Program Change enregistré ne change pas la piste de canal
+            win._player.record_program_change(program, win._router.track_channel_now(track))
         if win._router.program_change(track, program):    # piste sur banque (17d1, D18)
-            win._show_status(f"Piste {track + 1}: Program Change {program}")
+            name = win._router.bank_preset_name(track)
+            win._show_status(f"Piste {track + 1}: Program Change {program}"
+                             + (f" — {name}" if name else ""))
         else:
             win._show_status(f"Piste {track + 1}: Program Change → Slot {program % 16 + 1}")
 

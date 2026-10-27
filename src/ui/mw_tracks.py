@@ -141,7 +141,8 @@ class TrackMixin:
 
     def _track_label(self, idx):
         slot_idx  = self._router.slot_for_track(idx)
-        slot_name = self._router.slot_name(idx)
+        # piste sur slot Banque : nom du preset de la piste (17f1, § 17e2 R7)
+        slot_name = self._router.bank_preset_name(idx) or self._router.slot_name(idx)
         prefix    = "* " if self._track_editor.is_selected(idx) else "  "
         track_name = self._player.voice_manager.get_name(idx)
         if track_name:

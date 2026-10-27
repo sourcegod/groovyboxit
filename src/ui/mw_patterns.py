@@ -86,7 +86,8 @@ class PatternMixin:
         self._router._track_pans[:]    = new._track_pans
         self._router._track_channels[:] = new._track_channels
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
-        self._router.sync_banks()          # emplacements et canaux de banque (17d1)
+        # instruments des canaux de banque à la position courante (17f1, § 17e3 O4)
+        self._router.chase(live._tape, self._player._current_offset())
 
     def _play_toggle(self):
         """Bascule lecture / arrêt (utilisé comme callback par les dialogs de propriétés)."""

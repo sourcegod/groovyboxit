@@ -106,10 +106,13 @@ class PlaybackLoopMixin:
                                            ev.payload.get("vel")))
                         elif ev.etype == ETYPE_CC:
                             events.append((t_sec, self.CC_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("cc_num"), ev.payload.get("value")), 0))
+                                           (t_idx, ev.payload.get("cc_num"), ev.payload.get("value"),
+                                            ev.channel), 0))
                         elif ev.etype == ETYPE_PGM:
+                            # canal de l'événement : celui où la piste Banque
+                            # passe (Phase 7 étape 17f1, docs/DESIGN.md § 17e3 O3)
                             events.append((t_sec, self.PGM_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("program")), 0))
+                                           (t_idx, ev.payload.get("program"), ev.channel), 0))
                         elif ev.etype == ETYPE_BEND:
                             events.append((t_sec, self.BEND_TAPE_EVENT,
                                            (t_idx, ev.payload.get("value")), 0))
@@ -174,13 +177,13 @@ class PlaybackLoopMixin:
             if self._on_bend_tape_cb:
                 self._on_bend_tape_cb(t_idx, bend_val)
         elif track_or_type == self.CC_TAPE_EVENT:
-            t_idx, cc_num, value = evt_data
+            t_idx, cc_num, value, channel = evt_data
             if self._on_cc_tape_cb:
-                self._on_cc_tape_cb(t_idx, cc_num, value)
+                self._on_cc_tape_cb(t_idx, cc_num, value, channel)
         elif track_or_type == self.PGM_TAPE_EVENT:
-            t_idx, program = evt_data
+            t_idx, program, channel = evt_data
             if self._on_program_change_tape_cb:
-                self._on_program_change_tape_cb(t_idx, program)
+                self._on_program_change_tape_cb(t_idx, program, channel)
         elif track_or_type == self.NR_EVENT:
             pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
             if pad is not None and self.voice_manager.is_audible(pad):

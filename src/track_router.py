@@ -9,7 +9,7 @@
 import threading
 from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
 from rack import InstrumentType
-from pattern import Pattern
+from pattern import Pattern, ETYPE_CC, ETYPE_PGM
 from bend_log import bend_log
 from midi.midi_export import volume_to_cc7, pan_to_cc10
 
@@ -27,7 +27,7 @@ class BankPreview:
         self.sustain    = False
 
     def _channel(self):
-        return self._router.get_track_channel(self._router.cur_track())
+        return self._router.track_channel_now(self._router.cur_track())
 
     def is_loaded(self):
         return self._router.bank_slot_ready(self.slot_idx)
@@ -115,6 +115,9 @@ class TrackRouter:
         self._track_pans     = [0]     * self.NUM_TRACKS  # -100..+100
         self._track_channels = [Pattern.default_channel(t)    # 0..15 (export MIDI)
                                 for t in range(self.NUM_TRACKS)]
+        # Canal courant de chaque piste sur slot Banque : celui de son dernier
+        # Program Change (17f1, docs/DESIGN.md § 17e3 O3), sinon _track_channels.
+        self._track_cur_channels = list(self._track_channels)
         self._slot_synths    = {}       # {slot_idx: SynthEngine}
         self._synth          = None     # moteur de preview
         self._synth_slot_idx = None     # slot_idx actuellement chargé dans _synth
@@ -137,6 +140,12 @@ class TrackRouter:
         self.bank_engine    = bank_engine
         self._cur_track_cb  = cur_track or (lambda: 0)
         self._chan_sel      = [None] * 16
+        # Instrument de chaque canal (§ 17e3 O1) : dernier programme, CC0 et
+        # CC32 reçus ou rejoués ; programme 0 banque 0 par défaut.
+        self._chan_prog     = [0] * 16
+        self._chan_msb      = [0] * 16
+        self._chan_lsb      = [0] * 16
+        self._preset_names  = {}        # {emplacement: {(banque, programme): nom}}
         self.master_pan     = 0
         self._bank_preview  = BankPreview(self)
 
@@ -342,11 +351,55 @@ class TrackRouter:
         return slot.type == InstrumentType.BANK \
             and self.bank_engine.loaded_path(slot.bank_slot()) is not None
 
-    def _bank_key(self, slot):
-        """(emplacement, banque de la soundfont, programme) d'un slot Banque."""
-        bank = 128 if slot.bank_drums() else \
-            self.bank_engine.bank_number(slot.bank_msb(), slot.bank_lsb())
-        return slot.bank_slot(), bank, slot.bank_program()
+    DRUM_BANK = 128        # banque des batteries d'une soundfont GM (§ 17e2 R3)
+
+    def track_channel_now(self, track_idx):
+        """Canal courant de la piste : celui de son dernier Program Change
+        sur slot Banque (§ 17e3 O3), sinon son canal."""
+        if self._bank_slot_of(track_idx) is not None:
+            return self._track_cur_channels[track_idx]
+        return self._track_channels[track_idx]
+
+    def channel_instrument(self, channel):
+        """(programme, MSB, LSB) courants du canal (§ 17e3 O1)."""
+        return self._chan_prog[channel], self._chan_msb[channel], self._chan_lsb[channel]
+
+    def _chan_bank(self, channel):
+        """Banque de la soundfont jouée par le canal : 128 au canal 10
+        (batterie, R3), sinon celle de son MSB / LSB selon le mode Bank Select."""
+        if channel == Pattern.KIT_CHANNEL:
+            return self.DRUM_BANK
+        return self.bank_engine.bank_number(self._chan_msb[channel], self._chan_lsb[channel])
+
+    def _bank_key(self, channel, slot):
+        """(emplacement du slot, banque, programme) à sélectionner sur le canal."""
+        return slot.bank_slot(), self._chan_bank(channel), self._chan_prog[channel]
+
+    def _select_channel(self, channel, slot, track_idx):
+        """Envoie au moteur l'instrument du canal s'il a changé."""
+        key = self._bank_key(channel, slot)
+        if self._chan_sel[channel] == key:
+            return
+        if not self.bank_engine.select(channel, *key):
+            self._status_cb(f"Piste {track_idx + 1}: banque {key[0] + 1} vide ou "
+                            f"preset {key[1]}:{key[2]} introuvable")
+        self._chan_sel[channel] = key
+
+    def bank_preset_name(self, track_idx):
+        """Nom du preset que joue une piste sur slot Banque : l'instrument de
+        son canal courant (§ 17e3 R7, O1). None si la piste n'est pas sur une
+        banque ou si son emplacement est vide ; « (preset absent) » si la
+        banque ne le contient pas."""
+        slot = self._bank_slot_of(track_idx)
+        if slot is None or self.bank_engine is None \
+                or self.bank_engine.loaded_path(slot.bank_slot()) is None:
+            return None
+        names = self._preset_names.get(slot.bank_slot())
+        if names is None:
+            names = {(b, p): n for b, p, n in self.bank_engine.presets(slot.bank_slot())}
+            self._preset_names[slot.bank_slot()] = names
+        _, bank, program = self._bank_key(self._track_cur_channels[track_idx], slot)
+        return names.get((bank, program), "(preset absent)")
 
     def bank_note(self, channel, note, velocity, duration_ms):
         """Note du moteur de banque ; coupée après duration_ms (> 0), tenue
@@ -363,7 +416,7 @@ class TrackRouter:
     def _bank_grid_note(self, track_idx, pad_idx):
         """Note d'un pad sur une piste Banque (D12) : canal 10 → 36 + pad,
         sinon la gamme du clavier (comme un synthé). None hors gamme."""
-        if self._track_channels[track_idx] == Pattern.KIT_CHANNEL:
+        if self._track_cur_channels[track_idx] == Pattern.KIT_CHANNEL:
             return self.DRUM_GRID_BASE + pad_idx
         if pad_idx < len(self._kb_notes_play):
             return self._kb_notes_play[pad_idx]
@@ -373,13 +426,14 @@ class TrackRouter:
         """Note jouée par un pad en direct : batterie sur une banque au canal
         10 → 36 + pad, sinon la gamme d'entrée (kb_notes_input)."""
         if self._synth is self._bank_preview \
-                and self._track_channels[self.cur_track()] == Pattern.KIT_CHANNEL:
+                and self.track_channel_now(self.cur_track()) == Pattern.KIT_CHANNEL:
             return self.DRUM_GRID_BASE + pad_idx
         return self.kb_notes_input[pad_idx]
 
     def _send_bank_mix(self, track_idx):
-        """CC7 (volume de piste) et CC10 (pan de piste + pan global) au canal (D11, D13)."""
-        ch = self._track_channels[track_idx]
+        """CC7 (volume de piste) et CC10 (pan de piste + pan global) au canal
+        courant de la piste (D11, D13)."""
+        ch = self._track_cur_channels[track_idx]
         pan = max(-100, min(100, self._track_pans[track_idx] + self.master_pan))
         self.bank_engine.cc(ch, 7, volume_to_cc7(self._track_volumes[track_idx]))
         self.bank_engine.cc(ch, 10, pan_to_cc10(pan))
@@ -395,6 +449,7 @@ class TrackRouter:
             if engine.loaded_path(i) == path:
                 continue
             self._chan_sel = [None] * len(self._chan_sel)
+            self._preset_names.pop(i, None)
             if path is None:
                 engine.unload(i)
             elif not engine.load(i, path):
@@ -402,11 +457,11 @@ class TrackRouter:
                 self._status_cb(f"Banque {i + 1}: fichier refusé ou introuvable — {path}")
 
     def sync_banks(self, force=False):
-        """Emplacements, puis instrument, CC7 et CC10 de chaque piste sur
-        slot Banque. force : resélectionne même un instrument déjà envoyé
-        (début de lecture : un Program Change rejoué a pu le changer).
-        Deux pistes au même canal avec des instruments différents :
-        avertissement, la dernière l'emporte (D10)."""
+        """Emplacements, puis instrument de chaque canal joué par une piste
+        sur slot Banque (§ 17e3 O1), CC7 et CC10 de ces pistes. force :
+        resélectionne même un instrument déjà envoyé. Deux pistes au même
+        canal sur des emplacements différents : avertissement, la dernière
+        l'emporte (D10)."""
         engine = self.bank_engine
         if engine is None:
             return
@@ -418,26 +473,48 @@ class TrackRouter:
             slot = self._bank_slot_of(t)
             if slot is None:
                 continue
-            ch, key = self._track_channels[t], self._bank_key(slot)
+            ch = self._track_cur_channels[t]
             prev = owners.get(ch)
-            if prev is not None and prev[1] != key:
+            if prev is not None and prev[1].bank_slot() != slot.bank_slot():
                 self._status_cb(f"Canal {ch + 1}: pistes {prev[0] + 1} et {t + 1} "
-                                f"sur des instruments différents — la piste {t + 1} l'emporte")
-            owners[ch] = (t, key)
+                                f"sur des banques différentes — la piste {t + 1} l'emporte")
+            owners[ch] = (t, slot)
+        for ch, (t, slot) in owners.items():
+            self._select_channel(ch, slot, t)
         for t in range(self.NUM_TRACKS):
-            slot = self._bank_slot_of(t)
-            if slot is None:
-                continue
-            ch, key = self._track_channels[t], self._bank_key(slot)
-            if owners[ch][0] == t and self._chan_sel[ch] != key:
-                if not engine.select(ch, *key):
-                    self._status_cb(f"Piste {t + 1}: banque {key[0] + 1} vide ou "
-                                    f"preset {key[1]}:{key[2]} introuvable")
-                self._chan_sel[ch] = key
-            self._send_bank_mix(t)
+            if self._bank_slot_of(t) is not None:
+                self._send_bank_mix(t)
 
-    def on_play_start(self):
-        """Début de lecture (DrumPlayer._on_play_start_cb)."""
+    def chase(self, tape, pos=0.0):
+        """Poursuite (§ 17e3 O4) : remet les canaux à l'état GM par défaut,
+        puis rejoue, toutes pistes sur slot Banque confondues, les CC0, CC32
+        et Program Change de tape (listes d'événements par piste) jusqu'à
+        pos (en pas) compris, dans l'ordre des temps puis des pistes ;
+        chaque piste reprend le canal de son dernier Program Change (O3).
+        Enfin, instruments et mixage envoyés au moteur."""
+        self._track_cur_channels = list(self._track_channels)
+        self._chan_prog = [0] * 16
+        self._chan_msb  = [0] * 16
+        self._chan_lsb  = [0] * 16
+        found = []
+        for t, events in enumerate(tape[:self.NUM_TRACKS]):
+            if self._bank_slot_of(t) is None:
+                continue
+            for seq, ev in enumerate(events):
+                if ev.time > pos:
+                    continue
+                if ev.etype == ETYPE_PGM or (ev.etype == ETYPE_CC
+                                             and ev.payload.get("cc_num") in (0, 32)):
+                    found.append((ev.time, t, seq, ev))
+        for _, t, _, ev in sorted(found, key=lambda f: f[:3]):
+            ch = max(0, min(15, ev.channel))
+            if ev.etype == ETYPE_PGM:
+                self._chan_prog[ch] = max(0, min(127, ev.payload.get("program", 0)))
+                self._track_cur_channels[t] = ch
+            elif ev.payload.get("cc_num") == 0:
+                self._chan_msb[ch] = max(0, min(127, ev.payload.get("value", 0)))
+            else:
+                self._chan_lsb[ch] = max(0, min(127, ev.payload.get("value", 0)))
         self.sync_banks(force=True)
 
     def set_master_pan(self, pan):
@@ -448,19 +525,41 @@ class TrackRouter:
                 if self._bank_slot_of(t) is not None:
                     self._send_bank_mix(t)
 
-    def program_change(self, track_idx, program):
-        """Program Change d'une piste (rejeu de _tape et réception live) :
-        au moteur sur le canal de la piste si elle est sur un slot Banque
-        (D18) ; sinon le pont provisoire assign_slot(program % 16).
-        Retourne True si le moteur l'a reçu."""
-        if self._bank_slot_of(track_idx) is not None:
-            if self.bank_engine is not None:
-                ch = self._track_channels[track_idx]
-                self.bank_engine.program_change(ch, program)
-                self._chan_sel[ch] = None
-            return True
-        self.assign_slot(track_idx, program % 16)
-        return False
+    def program_change(self, track_idx, program, channel=None):
+        """Program Change d'une piste (rejeu de _tape et réception live).
+        Piste sur slot Banque (§ 17e3 O1, O3) : l'instrument du canal change
+        (channel, sinon le canal courant de la piste) et la piste passe sur
+        ce canal. Sinon le pont provisoire assign_slot(program % 16).
+        Retourne True si la piste est sur une banque."""
+        slot = self._bank_slot_of(track_idx)
+        if slot is None:
+            self.assign_slot(track_idx, program % 16)
+            return False
+        ch = self._track_cur_channels[track_idx] if channel is None \
+            else max(0, min(15, channel))
+        self._chan_prog[ch] = max(0, min(127, program))
+        moved = self._track_cur_channels[track_idx] != ch
+        self._track_cur_channels[track_idx] = ch
+        if self.bank_engine is not None:
+            self._chan_sel[ch] = None             # Program Change : toujours renvoyé
+            self._select_channel(ch, slot, track_idx)
+            if moved:
+                self._send_bank_mix(track_idx)
+        return True
+
+    def bank_select(self, track_idx, cc_num, value, channel=None):
+        """CC0 (MSB) ou CC32 (LSB) d'une piste sur slot Banque : banque du
+        canal (channel, sinon le canal courant de la piste), appliquée au
+        prochain Program Change, comme en MIDI."""
+        ch = self._track_cur_channels[track_idx] if channel is None \
+            else max(0, min(15, channel))
+        value = max(0, min(127, value))
+        if cc_num == 0:
+            self._chan_msb[ch] = value
+        else:
+            self._chan_lsb[ch] = value
+        if self.bank_engine is not None:
+            self.bank_engine.cc(ch, cc_num, value)
 
     # ------------------------------------------------------------------
     # Mute / Solo par piste
@@ -520,19 +619,24 @@ class TrackRouter:
         return self._track_channels[track_idx]
 
     def set_track_channel(self, track_idx, channel):
+        """Canal de la piste, qui devient aussi son canal courant. Sur un
+        slot Banque, la piste entend aussitôt l'instrument de ce canal
+        (§ 17e3 O5, choix B : le canal impose son instrument)."""
         self._track_channels[track_idx] = max(0, min(15, channel))
+        self._track_cur_channels[track_idx] = self._track_channels[track_idx]
         if self._bank_slot_of(track_idx) is not None:
             self.sync_banks()                  # instrument et mixage sur le nouveau canal
 
     def channel_after_slot(self, track_idx, slot_idx, channel):
-        """Canal d'une piste à qui l'utilisateur assigne slot_idx : un kit, ou
-        une banque sur un preset de batterie (17d1, D9), la met sur le canal
-        10 ; un autre slot la ramène à son canal par défaut si elle était sur
-        10 ; sinon le canal ne change pas."""
+        """Canal d'une piste à qui l'utilisateur assigne slot_idx : un kit la
+        met sur le canal 10 ; une banque garde le canal, 10 compris (la
+        batterie, § 17e2 R3) ; un autre slot la ramène à son canal par
+        défaut si elle était sur 10 ; sinon le canal ne change pas."""
         slot = self._rack.get_slot(slot_idx)
-        if slot.type == InstrumentType.KIT \
-                or (slot.type == InstrumentType.BANK and slot.bank_drums()):
+        if slot.type == InstrumentType.KIT:
             return Pattern.KIT_CHANNEL
+        if slot.type == InstrumentType.BANK:
+            return channel
         if channel == Pattern.KIT_CHANNEL:
             return Pattern.default_channel(track_idx)
         return channel
@@ -542,9 +646,10 @@ class TrackRouter:
         l'utilisateur : le pont Program Change et le chargement d'un projet
         appellent assign_slot seul, sans toucher au canal. Le canal est
         posé d'abord : une banque est synchronisée sur son canal final
-        (batterie au canal 10, 17d2)."""
+        (17d2)."""
         self._track_channels[track_idx] = self.channel_after_slot(
             track_idx, slot_idx, self._track_channels[track_idx])
+        self._track_cur_channels[track_idx] = self._track_channels[track_idx]
         self.assign_slot(track_idx, slot_idx)
 
     # ------------------------------------------------------------------
@@ -624,7 +729,7 @@ class TrackRouter:
             note = self._bank_grid_note(track_idx, pad_idx)
             if note is not None:
                 vel = max(1, min(127, round(127 * min(1.0, vol_factor))))
-                self.bank_note(self._track_channels[track_idx], note, vel,
+                self.bank_note(self._track_cur_channels[track_idx], note, vel,
                                duration_ms if duration_ms > 0 else 500)
             return
         vol_factor = vol_factor * (self._track_volumes[track_idx] / 100.0)
@@ -644,7 +749,7 @@ class TrackRouter:
         if not self._track_is_audible(track_idx):
             return
         if self._bank_slot_of(track_idx) is not None:          # 17d1 : note telle quelle
-            self.bank_note(self._track_channels[track_idx], midi_note, velocity,
+            self.bank_note(self._track_cur_channels[track_idx], midi_note, velocity,
                            duration_ms if duration_ms > 0 else 500)
             return
         vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
@@ -660,7 +765,7 @@ class TrackRouter:
         slot_idx = self._track_slots[track_idx]
         slot     = self._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.BANK:                   # 17d1
-            self.bank_note(self._track_channels[track_idx], midi_note, velocity,
+            self.bank_note(self._track_cur_channels[track_idx], midi_note, velocity,
                            duration_ms if duration_ms > 0 else 500)
             return
         if slot.type != InstrumentType.SYNTH:
@@ -683,7 +788,7 @@ class TrackRouter:
         slot     = self._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.BANK:                   # 17d1 : état du canal
             if self.bank_engine is not None:
-                self.bank_engine.pitch_bend(self._track_channels[track_idx], bend_value)
+                self.bank_engine.pitch_bend(self._track_cur_channels[track_idx], bend_value)
             return
         if slot.type != InstrumentType.SYNTH:
             return
@@ -702,7 +807,7 @@ class TrackRouter:
         slot     = self._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.BANK:                   # 17d1
             if self.bank_engine is not None:
-                self.bank_engine.cc(self._track_channels[track_idx], 1, mod_value)
+                self.bank_engine.cc(self._track_cur_channels[track_idx], 1, mod_value)
             return
         if slot.type != InstrumentType.SYNTH:
             return
@@ -710,15 +815,16 @@ class TrackRouter:
         if engine and engine.is_loaded():
             engine.set_mod_wheel(mod_value)
 
-    def on_cc_tape(self, track_idx, cc_num, value):
+    def on_cc_tape(self, track_idx, cc_num, value, channel=None):
         """Rejoue un CC générique capturé pendant la lecture (Phase 7 étape
         4g, voir docs/DESIGN.md § Phase 7 étape 4a, décision 2) — même
         effet que la réception live (MidiHandler.on_cc). Effets globaux
         (64/120/121/123) indépendants de track_idx ; volume/pan (7/10) et
         mod wheel (1, délégué à on_mod_tape) appliqués à track_idx, la
         piste d'origine de l'événement (pas de notion de focus UI à la
-        lecture)."""
-        if cc_num == 120:                          # CC#120 : All Sounds Off
+        lecture). channel : canal de l'événement, pour CC0 / CC32 d'une
+        piste Banque (§ 17e3 O3) ; None = canal courant de la piste."""
+        if cc_num == 120:                         # CC#120 : All Sounds Off
             self.stop_all_sounds()
             return
         if cc_num == 121:                          # CC#121 : Reset All Controllers
@@ -733,13 +839,13 @@ class TrackRouter:
         if not self._track_is_audible(track_idx):
             return
         if cc_num not in (7, 10) and self._bank_slot_of(track_idx) is not None:
-            # Piste Banque (17d1, D18) : les autres CC vont au canal, tels
-            # quels ; CC0 / CC32 changent la banque au prochain programme.
-            if self.bank_engine is not None:
-                ch = self._track_channels[track_idx]
-                self.bank_engine.cc(ch, cc_num, value)
-                if cc_num in (0, 32):
-                    self._chan_sel[ch] = None
+            # Piste Banque (17d1, D18) : CC0 / CC32 changent la banque de
+            # leur canal au prochain programme (17f1, § 17e3 O3) ; les autres
+            # CC vont au canal courant de la piste, tels quels.
+            if cc_num in (0, 32):
+                self.bank_select(track_idx, cc_num, value, channel)
+            elif self.bank_engine is not None:
+                self.bank_engine.cc(self._track_cur_channels[track_idx], cc_num, value)
             return
         if cc_num == 1:                            # CC#1 : Modulation Wheel
             self.on_mod_tape(track_idx, value)
@@ -748,13 +854,14 @@ class TrackRouter:
         elif cc_num == 10:                         # CC#10 : Pan standard
             self.set_track_pan(track_idx, round((value - 64) * 100 / 63))
 
-    def on_program_change_tape(self, track_idx, program):
+    def on_program_change_tape(self, track_idx, program, channel=None):
         """Rejoue un Program Change capturé pendant la lecture (Phase 7
         étape 4g) : même effet provisoire que la réception live
         (MidiHandler.on_program_change) — assign_slot sur le Rack — mais
         ciblant track_idx, la piste d'origine de l'événement, plutôt que
-        la piste courante. Piste sur slot Banque : au moteur (17d1, D18)."""
-        self.program_change(track_idx, program)
+        la piste courante. Piste sur slot Banque : instrument du canal de
+        l'événement, où la piste passe (17f1, § 17e3 O1, O3)."""
+        self.program_change(track_idx, program, channel)
 
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):
         """Mode Keyboard/KIT : joue pad_idx pitché sur la gamme courante."""

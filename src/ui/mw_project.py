@@ -104,21 +104,25 @@ class ProjectMixin:
         slots = [self._rack.get_slot(s) for s in r._track_slots]
         idx   = self._cur_pattern_idx
         vm    = self._player.voice_manager
+        is_bank = [s.type == InstrumentType.BANK for s in slots]
+        # Piste sur slot Banque (17f1, § 17e3 O8) : banque et programme
+        # viennent des événements de _tape ; nom = preset de son canal.
+        preset_names = [r.bank_preset_name(t) if is_bank[t] else None
+                        for t in range(len(slots))]
         return dict(
             name             = self._pattern_list[idx]._name or f"Pat_{idx + 1:02d}",
             bpm              = self._player.bpm,
             track_channels   = list(r._track_channels),
             track_is_synth   = [s.type == InstrumentType.SYNTH for s in slots],
-            track_banks      = [(s.bank_msb(), s.bank_lsb(), s.bank_drums())
-                                if s.type == InstrumentType.BANK else None
-                                for s in slots],                  # 17d1 D12, D18
-            track_names      = [s.name for s in slots],          # nom du slot (10h2 D12)
+            track_is_bank    = is_bank,
+            track_names      = [preset_names[t] or s.name        # nom du slot (10h2 D12)
+                                for t, s in enumerate(slots)],
             kit_pad_notes    = list(self._snd.pad_notes),        # 11a1 D1
             kit_gm_map       = dict(self._snd.gm_note_map),      # 11a1 D2
             synth_grid_notes = list(r._kb_notes_play),
             voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
             pad_volumes      = [vm.get_voice(i).volume for i in range(Pattern.NUM_PADS)],  # 12a1 D2
-            track_programs   = [s.gm_program() for s in slots],
+            track_programs   = [s.gm_program() for s in slots],  # None pour une banque
             track_transposes = [s.gm_transpose() for s in slots],      # 12a2 D4
             track_gain_db    = [s.gm_gain_db() for s in slots],        # 12a2 D5
             track_audible    = [r._track_is_audible(t) for t in range(len(r._track_slots))],  # 12a3 D7

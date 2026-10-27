@@ -29,12 +29,15 @@ CC_CHORUS          = 93
 KIT_CHANNEL         = Pattern.KIT_CHANNEL   # canal 10 (0-based 9)
 BANK_DRUM_GRID_BASE = 36    # pad i d'une banque au canal 10 = note 36 + i (17d1, D12)
 
-# Ordre d'écriture à tick égal (D7) : note-off, PGM, CC, bend, note-on
+# Ordre d'écriture à tick égal (D7) : note-off, Bank Select (CC0 / CC32,
+# avant le programme qu'il choisit : 17f1, § 17e3 O8), PGM, autres CC,
+# bend, note-on
 _ORDER_NOTE_OFF = 0
-_ORDER_PGM      = 1
-_ORDER_CC       = 2
-_ORDER_BEND     = 3
-_ORDER_NOTE_ON  = 4
+_ORDER_BANK     = 1
+_ORDER_PGM      = 2
+_ORDER_CC       = 3
+_ORDER_BEND     = 4
+_ORDER_NOTE_ON  = 5
 
 
 def _clamp(v, lo, hi):
@@ -76,7 +79,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_volumes=None, track_pans=None,
                        kit_gm_map=None, unmapped=None, pad_volumes=None,
                        track_transposes=None, track_gain_db=None,
-                       track_audible=None, pad_audible=None, track_banks=None):
+                       track_audible=None, pad_audible=None, track_is_bank=None):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -113,11 +116,14 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     pad_audible      : bool par pad (VoiceManager.is_audible) ; les cases
                        de grille d'un pad muet ou hors solo sont omises ;
                        None = tous
-    track_banks      : par piste, None ou (msb, lsb, drums) d'un slot Banque
-                       (Phase 7 étape 17d1, D12, D18) : CC0 et CC32 avant le
-                       Program Change au tick 0 (sauf batterie) ; cases de
-                       grille en 36 + pad au canal 10, sinon gamme ; notes
-                       KIT telles quelles, PATCH gardées. None = aucune
+    track_is_bank    : bool par piste — slot Banque (Phase 7 étape 17f1,
+                       docs/DESIGN.md § 17e3 O3, O8) : banque et programme
+                       viennent des CC0 / CC32 / Program Change de _tape,
+                       écrits sur leur propre canal ; chaque Program Change
+                       fait passer la piste sur son canal, où vont les
+                       événements suivants ; cases de grille en 36 + pad au
+                       canal 10, sinon gamme ; notes KIT telles quelles,
+                       PATCH gardées. None = aucune
     Chaque piste reçoit CC91 et CC93 à 0 au tick 0 : pas de reverb ni de
     chorus, comme dans l'appli (12a1 D3).
     """
@@ -159,19 +165,27 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             continue
         if track_audible and not track_audible[t]:
             continue      # muette ou hors solo au rejeu (12a3 D7)
-        ch = track_channels[t]
+        is_bank = bool(track_is_bank and track_is_bank[t])
+        # Canal courant de la piste à chaque instant (O3) : celui de son
+        # dernier Program Change sur une banque, à temps égal compris.
+        changes = sorted((ev.time, seq, _clamp(ev.channel, 0, 15))
+                         for seq, ev in enumerate(events)
+                         if is_bank and ev.etype == ETYPE_PGM)
+
+        def chan_at(time_steps, base=track_channels[t]):
+            ch_now = base
+            for when, _seq, c in changes:
+                if when > time_steps:
+                    break
+                ch_now = c
+            return ch_now
+
+        ch = chan_at(0)
         transpose = track_transposes[t] if track_transposes else 0
         gain_db   = track_gain_db[t] if track_gain_db else 0
         timed = []     # (tick, ordre, rang dans _tape, message)
-        bank    = track_banks[t] if track_banks else None
-        plays_notes = track_is_synth[t] or bank is not None
+        plays_notes = track_is_synth[t] or is_bank
         program = track_programs[t] if track_programs else None
-        if bank is not None and not bank[2]:
-            # Bank Select avant le programme (rangs -3, -2 < -1), D18
-            timed.append((0, _ORDER_PGM, -3, mido.Message(
-                "control_change", channel=ch, control=0, value=_clamp(bank[0], 0, 127))))
-            timed.append((0, _ORDER_PGM, -2, mido.Message(
-                "control_change", channel=ch, control=32, value=_clamp(bank[1], 0, 127))))
         if program is not None:
             # rang -1 : avant un ETYPE_PGM capturé au tick 0, qui l'emporte
             timed.append((0, _ORDER_PGM, -1, mido.Message(
@@ -197,11 +211,12 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             if start >= end_tick:
                 continue   # hors du pattern : jamais rejoué (12a4 D8)
             p = ev.payload
+            ev_ch = chan_at(ev.time)
             if ev.etype == ETYPE_GRID:
                 pad = p.get("pad", 0)
                 if pad_audible and not pad_audible[pad]:
                     continue  # pad muet ou hors solo au rejeu (12a3 D7)
-                if bank is not None and ch == KIT_CHANNEL:
+                if is_bank and ev_ch == KIT_CHANNEL:
                     note = BANK_DRUM_GRID_BASE + pad          # D12
                 elif plays_notes:
                     note = synth_grid_notes[pad] + transpose
@@ -210,13 +225,13 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 ms = ev.dur if ev.dur > 0 else voice_durations[pad]
                 vel = grid_velocity(p.get("vel", 100),
                                     pad_volumes[pad] if pad_volumes else 100)
-                notes.append((start, start + ms_ticks(ms), note, vel, seq))
+                notes.append((start, start + ms_ticks(ms), note, vel, seq, ev_ch))
             elif ev.etype == ETYPE_KIT:
                 # one-shot (dur toujours 0) : un pas
                 note = p.get("note", 0)
                 notes.append((start, start + max(1, tick(1)),
-                              note if bank is not None else kit_note(note),
-                              p.get("vel", 100), seq))
+                              note if is_bank else kit_note(note),
+                              p.get("vel", 100), seq, ev_ch))
             elif ev.etype == ETYPE_PATCH:
                 # Muette au rejeu sur une piste sans slot SYNTH
                 # (TrackRouter.on_patch_tape) : non exportée (Phase 7 étape 10h5)
@@ -224,21 +239,25 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                     continue
                 ms = ev.dur if ev.dur > 0 else PATCH_DEFAULT_MS
                 notes.append((start, start + ms_ticks(ms), p.get("note", 0) + transpose,
-                              p.get("vel", 100), seq))
+                              p.get("vel", 100), seq, ev_ch))
             elif ev.etype == ETYPE_PGM:
                 timed.append((start, _ORDER_PGM, seq, mido.Message(
-                    "program_change", channel=ch,
+                    "program_change", channel=_clamp(ev.channel, 0, 15) if is_bank else ev_ch,
                     program=_clamp(p.get("program", 0), 0, 127))))
             elif ev.etype == ETYPE_CC:
                 control = _clamp(p.get("cc_num", 0), 0, 127)
                 value   = _clamp(p.get("value", 0), 0, 127)
                 if control == 7:
                     value = apply_gain_db(value, gain_db)
-                timed.append((start, _ORDER_CC, seq, mido.Message(
-                    "control_change", channel=ch, control=control, value=value)))
+                bank_select = control in (0, 32)
+                timed.append((start, _ORDER_BANK if bank_select else _ORDER_CC, seq,
+                              mido.Message("control_change",
+                                           channel=_clamp(ev.channel, 0, 15)
+                                           if is_bank and bank_select else ev_ch,
+                                           control=control, value=value)))
             elif ev.etype == ETYPE_BEND:
                 timed.append((start, _ORDER_BEND, seq, mido.Message(
-                    "pitchwheel", channel=ch,
+                    "pitchwheel", channel=ev_ch,
                     pitch=_clamp(p.get("value", 0), -8192, 8191))))
 
         # Chevauchements (D6) : une même note rejouée avant son note-off voit
@@ -246,7 +265,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         # même tick est ignoré.
         by_note = {}
         for n in sorted(notes, key=lambda n: (n[0], n[4])):
-            by_note.setdefault(n[2], []).append(n)
+            by_note.setdefault((n[5], n[2]), []).append(n)     # (canal, note)
         for same in by_note.values():
             kept = []
             for n in same:
@@ -255,15 +274,15 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 if kept and kept[-1][1] > n[0]:
                     kept[-1] = (kept[-1][0], n[0]) + kept[-1][2:]
                 kept.append(n)
-            for start, stop, note, vel, seq in kept:
+            for start, stop, note, vel, seq, note_ch in kept:
                 # Fin du fichier pile à la fin du pattern (12a4 D8) : note-off
                 # ramené à la fin.
                 stop = min(stop, end_tick)
                 note = _clamp(note, 0, 127)
                 timed.append((start, _ORDER_NOTE_ON, seq, mido.Message(
-                    "note_on", channel=ch, note=note, velocity=_clamp(vel, 1, 127))))
+                    "note_on", channel=note_ch, note=note, velocity=_clamp(vel, 1, 127))))
                 timed.append((stop, _ORDER_NOTE_OFF, seq, mido.Message(
-                    "note_off", channel=ch, note=note, velocity=0)))
+                    "note_off", channel=note_ch, note=note, velocity=0)))
 
         timed.sort(key=lambda e: (e[0], e[1], e[2]))
         track = mido.MidiTrack()

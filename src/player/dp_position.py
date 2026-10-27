@@ -25,6 +25,8 @@ class PositionMixin:
         if active:
             self.stop_thread()
         self._resume_offset = offset
+        if self.playing:
+            self._chase(offset or 0.0)      # instruments de banque (17f1, § 17e3 O4)
         if active:
             self.start_thread()
 

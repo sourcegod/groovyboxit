@@ -23,9 +23,16 @@ class TransportMixin:
 
     #--------------------------------------------------------------------------
 
+    def _chase(self, pos):
+        """Poursuite des instruments de banque à la position pos, en pas
+        (Phase 7 étape 17f1, docs/DESIGN.md § 17e3 O4)."""
+        if self._on_play_start_cb:
+            with self._pattern._lock:
+                tape = [list(track_list) for track_list in self._pattern._tape]
+            self._on_play_start_cb(tape, pos)
+
     def play_pattern(self):
-        if self._on_play_start_cb:       # instruments des canaux de banque (17d1)
-            self._on_play_start_cb()
+        self._chase(self._resume_offset or 0.0)
         clicked = 0
         if self.clicking:
             self.stop_thread()

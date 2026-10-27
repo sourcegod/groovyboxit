@@ -44,25 +44,12 @@ class InstrumentSlot:
         return self.type in (InstrumentType.SYNTH, InstrumentType.BANK)
 
     # ------------------------------------------------------------------
-    # Slot Banque (Phase 7 étape 17d1, docs/DESIGN.md § 17a1 D4, D17) :
-    # config = {"bank_slot": 0..3, "bank_msb": 0..127, "bank_lsb": 0..127,
-    #           "program": 0..127, "drums": bool}. "drums" vrai = preset de
-    # batterie (banque 128 de la soundfont), qui ne s'écrit pas en MSB.
+    # Slot Banque (Phase 7 étape 17d1, révisé en 17f1, docs/DESIGN.md
+    # § 17e2 R1) : config = {"bank_slot": 0..3}, l'emplacement seul ; banque
+    # et programme appartiennent à la piste (Pattern._track_programs…).
 
     def bank_slot(self):
         return self._config_int("bank_slot", 0, Rack.NUM_BANK_SLOTS - 1)
-
-    def bank_msb(self):
-        return self._config_int("bank_msb", 0, 127)
-
-    def bank_lsb(self):
-        return self._config_int("bank_lsb", 0, 127)
-
-    def bank_program(self):
-        return self._config_int("program", 0, 127)
-
-    def bank_drums(self):
-        return self.config.get("drums") is True
 
     # ------------------------------------------------------------------
 
@@ -78,9 +65,8 @@ class InstrumentSlot:
     def gm_program(self):
         """Programme GM du slot (Phase 7 étape 10h3) : instrument GM pour un
         synthé, kit GM2 pour un kit ; config["gm_program"] s'il est réglé,
-        sinon déduit du nom. None pour un slot vide ou d'un autre type."""
-        if self.type == InstrumentType.BANK:
-            return self.bank_program()            # programme réel de la banque (17d1)
+        sinon déduit du nom. None pour un slot vide ou d'un autre type,
+        banque comprise : son programme est celui de la piste (17e2 R2)."""
         if self.type not in (InstrumentType.SYNTH, InstrumentType.KIT):
             return None
         program = self.config.get("gm_program")

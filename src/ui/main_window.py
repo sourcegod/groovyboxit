@@ -130,7 +130,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             bank_engine=self._bank_engine,                 # 17d1
             cur_track=lambda: self._player._cur_track,
         )
-        self._player._on_play_start_cb  = self._router.on_play_start
+        self._player._on_play_start_cb  = self._router.chase      # 17f1, § 17e3 O4
         self._player._on_track_play_cb = self._router.on_play
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
         self._player._on_patch_tape_cb  = self._router.on_patch_tape
