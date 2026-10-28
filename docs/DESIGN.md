@@ -5878,3 +5878,208 @@ d'un Program Change.
 - les noms des cases d'une banque au canal 10 dans l'éditeur MIDI ;
 - réverbération, chorus, polyphonie de FluidSynth ;
 - **Phase 7 étape 18 : Import MIDI** (le but initial du chantier).
+
+## Phase 7 étape 18a1 — Import MIDI : un fichier `.mid` devient un pattern
+
+### Numérotation des commits de ce chantier
+
+`18a1` = ce plan (doc seule). Le code commence à `18b1`. Une paire impl →
+tests par sous-chantier ; `18a2`, `18b2`… pour un commit imprévu.
+
+### Origine du besoin
+
+- But initial du chantier 17 : l'utilisateur voulait d'abord un vrai
+  synthé GM (slot Banque, FluidSynth) pour **écouter fidèlement les `.mid`
+  importés**. Le chantier 17 est clos (17j1) ; l'import vient maintenant.
+- Acquis à respecter :
+  - **un `.mid` = un pattern** (Q1 de 17e2, gardée en 17e3) ;
+  - **modèle « orchestre »** (17e3) : le canal est l'instrument ; les
+    Program Change, CC0 et CC32 d'une piste sont ses événements, l'entête
+    à 1.1.1 ; le Program Change porte le canal. O2 annonçait déjà que
+    « l'Import MIDI les produira directement » ;
+  - l'**export** existe (`src/midi/midi_export.py`, mido, SMF 1, PPQ 480) :
+    l'import en est l'inverse, et un aller-retour export → import doit
+    rendre le même pattern ;
+  - comportement de référence : **Sonar**.
+
+### État des lieux constaté en code (2026-10-29, 2506 tests verts)
+
+- **mido 1.3.3** installé, déjà utilisé par l'export ; aucun code de
+  lecture de `.mid` dans l'appli. `InstrumentType.MIDI_FILE` existe dans
+  `rack.py` mais n'est utilisé nulle part : sans rapport avec ce chantier
+  (slot de lecture de fichier, jamais commencé).
+- **Positions** (`pattern.py`) : `TapeEvent.time` = pas cumulés
+  (`mesure × _num_steps + pas`). Les notes (GRID, KIT, PATCH) sont posées
+  sur un **pas entier** (`dp_recording.py:148`, `:223` ; commentaire de
+  `_clipboard_to_dict`, `mw_project.py:404`) ; CC et Pitch Bend sont en
+  **temps flottant** (`record_cc`, `record_bend`, Phase 7 étape 5b).
+- **Résolution** : `_num_steps` ∈ `VALID_NUM_STEPS = (16, 32, 64, 128)` pas
+  par mesure ; `_num_bars` 1..999.
+- **Signature** : `_num_beats = 4` et `_denumerator = 4` existent, mais
+  **ne sont ni sauvés ni relus** (`to_dict` / `from_dict`) et aucune UI ne
+  les change : une mesure fait toujours 4 noires. L'export écrit
+  `time_signature 4/4` et convertit `tick = steps × PPQ × 4 / num_steps`.
+- **Tempo** : `_bpm` entier par pattern (SpinCtrl 1..600,
+  `main_window.py:233`) ; un temps = 60 / BPM (Phase 7 étape 10b1).
+- **Durée d'une note PATCH en millisecondes** (`ev.dur`, mesurée au
+  note-off ; l'export la convertit au BPM : `ms_ticks`). Une note
+  importée doit donc recevoir sa durée en ms au BPM du pattern.
+- **16 pistes** par pattern ; `_track_channels` (canal 0..15 par piste),
+  `_track_slots`, `_track_volumes` (0..100), `_track_pans` (-100..+100).
+  Au rejeu, un CC7 / CC10 de `_tape` règle le volume / pan de la piste
+  (`TrackRouter.on_cc_tape`, `track_router.py:835`) ; l'export écrit leur
+  inverse exact (`volume_to_cc7`, `pan_to_cc10`).
+- **Entête** : `bank_header` / `with_bank_header` (`pattern.py:66-89`) ;
+  canal courant d'une piste = celui de son dernier Program Change
+  (`TrackRouter.chase`, `track_router.py:505`).
+- **Notes sur une banque** : un PATCH est joué tel quel au canal courant
+  de la piste, canal 10 compris (`on_patch_tape`, `track_router.py:768`) ;
+  l'export garde la note telle quelle. Une note de batterie importée en
+  PATCH sonne donc juste au canal 10, avec sa durée.
+- **Noms de pistes** : le nom d'une piste (F2, `_rename_track`,
+  `mw_tracks.py:206`) est le nom du **pad** du même numéro
+  (`voice_manager.get_name`, sauvé dans `Pattern._voices`). Le libellé
+  d'une piste Banque affiche le preset de son canal (`bank_preset_name`).
+- **Rack** : 16 slots, 4 emplacements de banque (`Rack.bank_files`,
+  `set_bank_file`) ; `AppConfig.gm_soundfont` (FluidR3 par défaut).
+- **Raccourcis** : Alt+Shift+E = export (fenêtre principale,
+  `key_handler_alt.py:83`, et éditeur MIDI, `mew_keymap.py:333`).
+  **Alt+Shift+I est libre** dans la fenêtre principale. Dans l'éditeur
+  MIDI, le test de Shift+I (limiteur gauche, `mew_keymap.py:267`) ne
+  regarde pas Alt : Alt+Shift+I doit être testé **avant** lui.
+
+### Décisions validées (utilisateur, 2026-10-29)
+
+**I1 — Commande.** **Alt+Shift+I** (fenêtre principale et éditeur MIDI,
+comme l'export) ouvre un dialogue de fichier `*.mid` / `*.midi`, dans le
+dossier EXPORTS (`exports_dir`) par défaut.
+
+**I2 — Destination : le pattern courant** (choix a). S'il n'est pas vide,
+une confirmation Oui / Non le dit avant de le remplacer. Un Undo
+« Import MIDI : nom.mid » est posé avant ; Non ou une erreur de lecture
+le retirent (`_pop_last_undo`). Le pattern est entièrement remplacé :
+boucle, mute, solo, voix des pads remis aux valeurs d'un pattern neuf,
+puis rempli par l'import. Son nom = nom de la piste conductor, sinon nom
+du fichier sans extension.
+
+**I3 — Slot : le premier slot Banque du Rack** (choix a). Toutes les
+pistes importées y sont assignées. S'il n'y en a pas, l'import en crée un
+dans le **premier slot vide**, avec la soundfont `gm_soundfont` : à
+l'emplacement de banque qui la contient déjà, sinon au premier emplacement
+libre, sinon à l'emplacement 1 tel qu'il est. Rack plein et sans slot
+Banque : import refusé, message dans la barre d'état. Le Rack est dans
+l'état de l'Undo : I2 le couvre.
+
+**I4 — Notes arrondies au pas** (choix de l'utilisateur). L'import prend
+le plus petit nombre de pas par mesure (16, 32, 64, 128) qui place
+**toutes** les notes exactement ; sinon 128 (1/32 de noire), chaque note
+arrondie au pas le plus proche, et le compte rendu dit combien de notes
+ont bougé. CC, Pitch Bend et Program Change hors entête gardent leur
+position exacte (temps flottant). **Chantier suivant prévu : les notes en
+temps flottant**, pour une précision complète (voir « Portée exclue »).
+
+**I5 — Noms des pistes : écrits comme noms de pistes F2** (choix b). Le
+nom SMF (`track_name`) est nécessaire pour savoir quel instrument doit
+jouer la piste. Il va dans le nom du pad du même numéro
+(`Pattern._voices[t]["name"]`), avec le mélange pistes / pads connu
+(séparation hors périmètre). Un nom vide laisse le nom vide.
+
+**I6 — Pistes.** Une piste Groovebox par couple (piste SMF, canal) qui
+porte au moins un événement de canal, dans l'ordre du fichier. Un SMF de
+type 0 (une piste, plusieurs canaux) donne donc une piste par canal. Une
+piste ne joue que sur un canal à la fois (O3) : c'est pourquoi une piste
+SMF à plusieurs canaux est découpée. Plus de 16 pistes : les pistes d'un
+même canal sont fusionnées (16 canaux au plus, donc 16 pistes au plus),
+nom de la première ; le compte rendu le dit. SMF de type 2 : refusé.
+`_track_channels[t]` = canal de la piste.
+
+**I7 — Entête.** Les Program Change, CC0 et CC32 d'une piste **placés
+avant sa première note** vont à 1.1.1 (beaucoup de fichiers les posent
+quelques ticks après 0), dans l'ordre CC0, CC32, Program Change ; s'il y en
+a plusieurs du même type, le dernier l'emporte (comme un module qui les
+reçoit dans l'ordre). Chacun garde son propre canal (O3). Après la
+première note, ils restent des événements à leur position. Sans Program
+Change, pas d'entête : le canal garde l'instrument GM 0 (O1), kit 0 au
+canal 10.
+
+**I8 — Volume et pan.** Les CC7 et CC10 placés avant la première note
+règlent `_track_volumes` / `_track_pans` (même conversion que
+`on_cc_tape` : `round(v × 100 / 127)`, `round((v − 64) × 100 / 63)`), le
+dernier l'emportant ; ils ne vont pas dans `_tape`. Ceux d'après restent
+des événements CC. Un export suivi d'un import rend ainsi le même volume
+et le même pan.
+
+**I9 — Événements.**
+- note on / note off (note on de vélocité 0 = note off) → **ETYPE_PATCH**
+  (note, vélocité), position arrondie (I4), durée en ms au BPM du pattern
+  (au moins 1 ms) ; appariement premier entré, premier sorti pour une même
+  note ; note jamais fermée = fermée à la fin de sa piste ;
+- control change → **ETYPE_CC**, CC91 / CC93 compris (tels quels) ;
+- pitchwheel → **ETYPE_BEND** ;
+- program change → **ETYPE_PGM** ;
+- le champ `channel` de chaque événement = son canal MIDI ;
+- ignorés et comptés dans le compte rendu : aftertouch de canal et
+  polyphonique (pas d'etype), SysEx (dont les reset GM / GS), métas autres
+  que nom de piste, tempo, signature et fin de piste.
+
+**I10 — Tempo, signature, longueur.**
+- BPM = premier `set_tempo` (arrondi, borné 1..600), 120 sans tempo (défaut
+  MIDI). Les changements de tempo suivants sont ignorés et comptés : les
+  positions en noires ne dépendent pas du tempo ; seul le rythme change.
+- Signature : la mesure reste de 4 noires (`_num_beats` n'est pas
+  sauvé) ; une autre signature est annoncée dans le compte rendu, les
+  événements gardent leur position en noires.
+- Conversion : `steps = tick × num_steps / (PPQ du fichier × 4)`.
+- Longueur : `_num_bars` = fin la plus tardive (dernier note-off ou
+  `end_of_track` de la piste la plus longue), arrondie à la mesure
+  supérieure, bornée 1..999 ; au-delà de 999 mesures, les événements sont
+  perdus, et comptés.
+
+**I11 — Après l'import.** Pattern rechargé comme un changement de pattern
+(poursuite O4 comprise), listes et grille rafraîchies, projet marqué
+modifié (par l'Undo). Compte rendu dans la barre d'état, par exemple :
+« Import MIDI : song.mid → Pattern 03, 8 pistes, 32 mesures, 96 BPM,
+128 pas ; 12 notes déplacées ; ignorés : 40 aftertouch, 2 SysEx ».
+
+**I12 — Code.** `src/midi/midi_import.py`, sans wx ni player (comme
+l'export) : `build_pattern_from_midi(mid, *, name)` rend un `Pattern`
+neuf (avec `_track_channels`, volumes, pans, noms dans `_voices`) et un
+compte rendu ; le choix du slot (I3), le remplacement du pattern, l'Undo
+et l'UI vont dans `ui/mw_project.py` (`_import_midi`, à côté de
+`_export_midi`).
+
+### Alternatives écartées
+
+- Destination : premier pattern vide, ou dialogue de choix (I2) ;
+- slot : slot courant seulement, ou dialogue de choix (I3) ;
+- noms SMF ignorés, ou séparation préalable des noms pistes / pads (I5) ;
+- notes en temps flottant dès ce chantier (I4) : chantier à part ;
+- notes de batterie en ETYPE_KIT : one-shot d'un pas, la durée se
+  perdrait ; ou en cases de grille (pads) : il faudrait un kit et une
+  table note → pad. PATCH joue juste sur une banque, au canal 10 compris ;
+- une piste Groovebox par piste SMF sans découpage par canal :
+  incompatible avec O3 (une piste joue sur un canal à la fois).
+
+### Portée explicitement exclue de ce chantier
+
+- **Notes en temps flottant** (grille, piano roll, liste des événements,
+  quantisation, presse-papier, enregistrement) : **chantier suivant**,
+  demandé par l'utilisateur ;
+- import d'un song ou de plusieurs patterns, carte de tempo, signatures
+  autres que 4/4 (il faudrait d'abord sauver `_num_beats`) ;
+- import sur un slot synthé WAV ou kit, conversion des notes de batterie
+  en pads ;
+- séparation des noms de pistes et des noms de pads ;
+- aftertouch, SysEx, réverbération / chorus de FluidSynth ;
+- routage « canal → slot », mode Rack 16 canaux.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **18a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **18b1** | Implémentation — `midi_import.py` : I4, I6 à I10 (lecture, pistes, entêtes, volume / pan, événements, tempo, longueur, compte rendu). | `src/midi/midi_import.py` (nouveau) |
+| **18c1** | Tests — fichiers construits avec mido ; aller-retour export → import ; type 0 ; plus de 16 pistes ; arrondi ; entête décalé ; notes non fermées. | `tests/test_midi_import.py` (nouveau), `docs/SPECS.md` (liste des tests) |
+| **18d1** | Implémentation — I1 à I3, I5, I11 : Alt+Shift+I (deux fenêtres), dialogue, confirmation, slot Banque, remplacement du pattern, Undo, compte rendu. Essayé à l'écoute sur de vrais `.mid`. | `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py` |
+| **18e1** | Tests — commande, slot trouvé / créé / Rack plein, Undo, Non, erreur de lecture. | `tests/test_midi_import_ui.py` (nouveau), fakes au besoin |
+| **18f1** | Doc — clôture (avancement, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
