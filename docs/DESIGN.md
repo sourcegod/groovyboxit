@@ -6083,3 +6083,23 @@ et l'UI vont dans `ui/mw_project.py` (`_import_midi`, à côté de
 | **18d1** | Implémentation — I1 à I3, I5, I11 : Alt+Shift+I (deux fenêtres), dialogue, confirmation, slot Banque, remplacement du pattern, Undo, compte rendu. Essayé à l'écoute sur de vrais `.mid`. | `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py` |
 | **18e1** | Tests — commande, slot trouvé / créé / Rack plein, Undo, Non, erreur de lecture. | `tests/test_midi_import_ui.py` (nouveau), fakes au besoin |
 | **18f1** | Doc — clôture (avancement, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 7 étape 18 — Avancement et écarts constatés
+
+- **18b1** — `src/midi/midi_import.py` : `build_pattern_from_midi(mid,
+  *, name)` → `(Pattern, ImportReport)`, `import_pattern(path)` ;
+  `ImportReport.details()` donne les remarques du compte rendu (I11).
+  Conforme à I4, I6 à I10. Essayé sur un aller-retour export → import et
+  sur dix vrais `.mid` (types 0 et 1, batterie seule, 3/4, fichier abîmé).
+  Précisions trouvées à l'essai :
+  - **SMF de type 0** : le nom de son unique piste est le nom du morceau ;
+    il devient le nom du **pattern**, et les pistes (une par canal)
+    restent sans nom (sinon elles porteraient toutes le même).
+  - **Lecture tolérante** (`clip=True`) : un fichier abîmé (octet de
+    données hors 0..127) que mido refusait se lit, l'octet ramené à 127.
+  - **Noms** sans les espaces de début et de fin (`"Bass  "`).
+  - L'export écrit CC91 et CC93 à 0 au tick 0 (12a1 D3) : réimportés, ils
+    restent des événements CC (I9), sans effet sur le rendu ; un nouvel
+    export les écrit deux fois au tick 0.
+  - Le pan revient à ±1 près (`pan_to_cc10`, 127 valeurs pour 201
+    positions) ; le volume revient exact.
