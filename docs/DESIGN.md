@@ -6103,3 +6103,5 @@ et l'UI vont dans `ui/mw_project.py` (`_import_midi`, à côté de
     export les écrit deux fois au tick 0.
   - Le pan revient à ±1 près (`pan_to_cc10`, 127 valeurs pour 201
     positions) ; le volume revient exact.
+- **18c1** — `tests/test_midi_import.py` (62 tests), fichiers construits
+  avec mido ; `SPECS.md` (arborescence, liste des tests). 2568 verts.

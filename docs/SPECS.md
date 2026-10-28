@@ -72,6 +72,7 @@ groovyboxit/
 │   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
 │   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
 │   │   ├── midi_export.py    # Export du pattern en fichier .mid (mido, SMF type 1)
+│   │   ├── midi_import.py    # Import d'un fichier .mid en pattern (Phase 7 étape 18b1)
 │   │   ├── midi_manager.py   # Connexion ports MIDI in/out
 │   │   └── midi_parser.py    # Décodage des messages MIDI temps réel
 │   ├── player/           # Séquenceur DrumPlayer (Phase 7 étape 8)
@@ -154,6 +155,7 @@ groovyboxit/
     ├── test_midi_export.py
     ├── test_midi_export_mix.py
     ├── test_midi_export_ui.py
+    ├── test_midi_import.py
     ├── test_midi_handler_window.py
     ├── test_midi_manager.py
     ├── test_midi_parser.py
@@ -1637,6 +1639,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_export.py` | Export MIDI : fichier relu par mido, pistes, canaux, notes GRID/KIT/PATCH, CC/PGM/BEND, conversion GM, mute/solo, fin pile |
 | `test_midi_export_mix.py` | Export MIDI : volume et pan de piste (CC7/CC10), notes PATCH sans synthé omises, CC91/CC93 à 0 |
 | `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E |
+| `test_midi_import.py` | Import MIDI : nom, tempo, signature, longueur, pas et arrondi des notes, durées, pistes par canal, type 0, fusion, entête, volume / pan, CC / Bend, ignorés, compte rendu, aller-retour, fichier abîmé |
 | `test_midi_handler_window.py` | Statut MIDI live de l'éditeur : format_midi_status, _notify_editor_midi |
 | `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
 | `test_midi_parser.py` | midi_parser en isolation : decode_message, describe_note/cc/program |
