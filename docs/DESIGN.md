@@ -6562,3 +6562,63 @@ l'avance du song, la carte du pattern suivant remplace la courante.
   - `pytest` rouge : 1 test (`test_bpm_increase_via_key5`, fausse fenêtre
     sans `tempo_at` / `set_tempo_at`), plus un second qui n'échoue qu'à sa
     suite (application wx laissée ouverte).
+
+## Phase 7 étape 19d2 — Avenant : ralentir tout le morceau, tempos décimaux
+
+### Origine
+
+Essai à l'écoute de 19d1 (utilisateur, 2026-10-29) : le ralenti de
+`bach_01.mid` s'entend bien, mais avec T7 (le champ BPM ne change que le
+tempo en vigueur à la position), un morceau à plusieurs tempos ne peut pas
+être ralenti d'un seul geste. Or **ralentir un morceau pour l'étudier et
+en relever les notes est l'intérêt premier de la carte de tempo**.
+
+### Décisions validées (utilisateur, 2026-10-29)
+
+**R1 — Tempos décimaux, à 0,01 près** (choix a). Tempo de départ et
+changements gardent deux décimales : une mise à l'échelle est exacte et
+un aller-retour (plus lent puis plus vite) revient au même point, sans
+dérive d'arrondi. L'import garde les tempos exacts du fichier (93,75 au
+lieu de 94), l'export les écrit tels quels. Le champ BPM reste un
+SpinCtrl entier (seul widget annoncé en temps réel par le lecteur
+d'écran) : il affiche le tempo arrondi à l'unité. Ailleurs (dialogue
+Tempo, liste des événements, compte rendu de l'import), un tempo
+s'affiche avec ses décimales seulement s'il en a, à la française :
+« 46,5 BPM ». Remplace « BPM entier » de T2.
+
+**R2 — Champ BPM, Tap Tempo, ±5 : tous les tempos changent dans la même
+proportion** (remplace T7). Le champ **affiche le tempo en vigueur à la
+position** (choix b, « pour pouvoir lire le changement de tempo en direct
+avec un lecteur d'écran ») ; le modifier, taper un tempo (H) ou faire ±5
+applique le rapport *nouveau / tempo affiché exact* au tempo de départ et
+à tous les changements. Un tempo qui sortirait de 1..600 est borné.
+- Affichage mis à jour après un déplacement à l'arrêt, à l'arrêt de la
+  lecture, et **pendant la lecture, à chaque changement de tempo
+  franchi** (le player signale le tempo atteint ; le champ suit, pour
+  qu'un lecteur d'écran le lise). *Interprétation de « en direct », à
+  confirmer à l'essai.*
+- Undo inchangés : Tap Tempo en pose un ; le champ et ±5 non.
+
+**R3 — Dialogue Tempo (T8), « Modifier » : deux choix.** « **Changer le
+tempo récent** » (seul l'élément sélectionné, ou le tempo en vigueur à la
+position, change ; le « modifier le tempo en vigueur » de Sonar) et
+« **Tous les tempos** » (même proportion que R2). « Insérer » et
+« Supprimer » inchangés.
+
+### Ce qui reste de 19d1
+
+Le player et la carte (T4), la position gardée quand le tempo change en
+lecture, les ms par pas au tempo de la position, le mode song. `set_tempo_at`
+(changer le tempo en vigueur) reste : il sert au choix « Changer le tempo
+récent » du dialogue (19f1).
+
+### Découpage en commits révisé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **19d2** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **19d3** | Implémentation — R1 (tempos à 0,01, import, export, affichage), R2 (mise à l'échelle de tous les tempos, champ qui suit le tempo en lecture). Essayé à l'écoute et au lecteur d'écran. | `tempo_map.py`, `pattern.py`, `player/*.py`, `midi/midi_import.py`, `ui/main_window.py`, `ui/key_handler_chars.py`, `ui/mw_project.py`, `ui/mw_patterns.py`, `ui/mw_songs.py` |
+| **19e1** | Tests — 19d1 et 19d3. | `tests/test_tempo_playback.py` (nouveau), `tests/test_tempo_map.py`, fakes au besoin |
+| **19f1** | Implémentation — T8 avec R3, T9. | inchangé |
+| **19g1** | Tests — 19f1. | inchangé |
+| **19h1** | Doc — clôture. | inchangé |
