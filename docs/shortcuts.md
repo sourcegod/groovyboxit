@@ -14,6 +14,7 @@ Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), dossier EXPORTS
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace)
+Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer (dialogue Tempo)
 Ctrl+P           Charger le pattern de démonstration
 Shift+P          Générer un pattern aléatoire
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)
@@ -108,6 +109,9 @@ H                Tap Tempo : frapper au rythme pour définir le BPM
                  (4 frappes minimum = 1 mesure ; pause > 2 s repart de zéro)
 ( ou 5           BPM +5
 )                BPM -5
+                 Champ BPM, H, ( et ) : tous les tempos du pattern changent
+                 dans la même proportion ; le champ affiche le tempo en
+                 vigueur à la position (et le suit pendant la lecture)
 +                Volume +1
 - ou 6           Volume -1
 Ctrl+↑           Volume Global +1 (0..100)
@@ -224,6 +228,7 @@ Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
 Échap            Fermer la fenêtre
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), comme la fenêtre principale
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant, comme la fenêtre principale
+Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
 
   -- Modes d'affichage --
   Ctrl+1         Afficher les notes de la piste courante seulement (mode sauvegardé)
@@ -253,8 +258,11 @@ Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant, comme 
   Ctrl+Shift+Q   Ouvrir le dialog de quantisation (résolution, force, swing, fenêtre)
   Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity) ;
                  un CC ou un Program Change : valeur, position, canal (1 à 16) — un
-                 Program Change à 1.1.1 d'une piste Banque lui donne son canal
-  Suppr / Ret.   Supprimer l'événement sélectionné
+                 Program Change à 1.1.1 d'une piste Banque lui donne son canal ;
+                 une ligne Tempo : position, BPM et portée (le plus récent, tous à
+                 cette valeur, tous proportionnellement)
+  Suppr / Ret.   Supprimer l'événement sélectionné (une ligne Tempo : ce changement ;
+                 le tempo de départ ne se supprime pas)
   Ctrl+C         Copier les événements sélectionnés
   Ctrl+X         Couper les événements sélectionnés
   Ctrl+V         Coller le presse-papier

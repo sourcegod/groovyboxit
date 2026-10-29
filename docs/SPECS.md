@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern) | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM) | en cours |
 
 ---
 
@@ -64,6 +64,7 @@ groovyboxit/
 │   ├── sound_device_driver.py # SoundDeviceDriver : backend audio polyphonique
 │   ├── sound_manager.py  # Lecture WAV : kits, note_map, pad_sound
 │   ├── synth_engine.py   # Moteur synthé : chargement patch, pitch shifting, cache
+│   ├── tempo_map.py      # TempoMap : carte de tempo, pas ↔ secondes (Phase 7 étape 19)
 │   ├── track_editor.py   # TrackEditor : sélection multi-pistes, limiteurs, clipboard
 │   ├── track_router.py   # Routage piste→slot→SynthEngine, dispatch audio
 │   ├── undo_manager.py   # UndoManager : historique annulations/rétablissements
@@ -88,6 +89,7 @@ groovyboxit/
 │       ├── dialogs_bank.py     # BankSlotDialog : fichier et emplacement d'un slot Banque
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
+│       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
 │       ├── key_handler_alt.py  # Raccourcis Alt+*
 │       ├── key_handler_chars.py # Raccourcis caractères (H, R, E, Q…)
@@ -104,6 +106,7 @@ groovyboxit/
 │       ├── mw_patterns.py      # Mixin MainWindow : gestion patterns
 │       ├── mw_project.py       # Mixin MainWindow : projet (sauvegarde, chargement)
 │       ├── mw_songs.py         # Mixin MainWindow : fenêtre Songs
+│       ├── mw_tempo.py         # Mixin MainWindow : tempos du pattern (dialogue, Undo)
 │       ├── mw_tracks.py        # Mixin MainWindow : pistes et dispatch
 │       └── song_window.py      # Fenêtre Songs (Alt+5)
 ├── data/
@@ -581,7 +584,8 @@ TrackRouter
 ```
 Pattern
   ├── _name          str
-  ├── _bpm           float (tempo)
+  ├── _bpm           float (tempo de départ, à 0,01 près)
+  ├── _tempo_changes [(position en pas, bpm)]  changements de tempo (Phase 7 étape 19)
   ├── _num_bars      int (1–999)
   ├── _num_steps     int (16, 32, 64, 128 — pas par mesure)
   ├── _start_bar     int (première mesure jouée)
@@ -875,13 +879,42 @@ l'instrument de son canal, où passe la piste ; voir « Banques de sons ».
 
 ---
 
-## BPM et Tap Tempo
+## BPM, Tap Tempo et carte de tempo
 
-- Plage : 1–600 BPM
-- Raccourcis : `(` ou `5` → BPM+5 ; `)` → BPM-5
+- Plage : 1–600 BPM, à 0,01 près (Phase 7 étape 19d3)
+- **Carte de tempo** (Phase 7 étape 19, docs/DESIGN.md § 19a1, § 19d2) :
+  un tempo de départ (`_bpm`) et des changements instantanés
+  (`_tempo_changes`, position en pas, éventuellement fractionnaire). Un
+  changement égal au tempo qui le précède est retiré (comme Sonar). Pas de
+  rampes. Sauvée dans le `.gvp` (`"tempo_changes"`, absente = tempo unique)
+  et dans l'Undo ; suit la copie, le redimensionnement, le doublement (la
+  seconde moitié repart du tempo de départ) et la division du pattern ;
+  vidée par « Nouveau pattern », gardée par Shift+Suppr.
+- **Le player suit la carte** (`TempoMap`, pas ↔ secondes par morceaux) :
+  lecture, boucle, position, pause, enregistrement, effacement, métronome,
+  décompte (au tempo de la position de reprise), Note Repeat, dialogue
+  Aller à en secondes, temps affiché. Un changement de tempo en lecture
+  garde la position musicale. En mode song, chaque pattern a sa carte.
+- **Champ BPM, Tap Tempo (H), `(` ou `5` (+5), `)` (−5)** : **tous les
+  tempos changent dans la même proportion**, celle qui amène le tempo en
+  vigueur à la position à la nouvelle valeur (pour ralentir tout un morceau
+  et l'étudier). Le champ (SpinCtrl entier) affiche le tempo en vigueur à
+  la position, arrondi : après un déplacement à l'arrêt, à l'arrêt de la
+  lecture, et pendant la lecture à chaque changement franchi (lu par le
+  lecteur d'écran). Tap Tempo pose un Undo ; le champ et ±5 non.
 - **Tap Tempo (H)** : 4 frappes minimum pour émettre le BPM ; pause > 2 s repart de zéro
-- Stocké par pattern dans `_bpm`
-- Affiché et éditable via PatternPropertiesDialog
+- **Dialogue Tempo (Alt+Shift+T, fenêtre principale et éditeur MIDI)** :
+  liste « 1:1:1, 92 BPM, départ », « 21:2:1, 70 BPM »… ; Insérer (à la
+  position courante, modifiable), Modifier, Supprimer (pas le départ),
+  Fermer ; Entrée = Modifier, Suppr = Supprimer, Échap = Fermer. Le
+  dialogue d'édition : Mesure, Temps, Pas, BPM (texte, « 46,5 ») et, pour
+  Modifier, la portée : « Changer le tempo le plus récent », « Changer
+  tous les tempos à cette valeur » (un seul tempo reste), « Changer tous
+  les tempos proportionnellement ». Un Undo par changement (« Tempo :
+  insérer 70 BPM à 21:2:1 »…) ; en lecture, le changement s'entend aussitôt.
+- Durées des notes : toujours en millisecondes ; les ms par pas
+  (quantisation des durées, grille et dialogue de l'éditeur MIDI) prennent
+  le tempo de la position.
 
 ---
 
@@ -923,7 +956,9 @@ Phase 7 étape 10), depuis la fenêtre principale ou l'éditeur MIDI. Un
 dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
 
 - SMF de type 1, 480 ticks par noire ; piste conductor : nom, tempo
-  (un temps = 60/BPM, quel que soit le nombre de pas), signature 4/4
+  (un temps = 60/BPM, quel que soit le nombre de pas), un `set_tempo` par
+  changement de la carte de tempo (Phase 7 étape 19b1), signature 4/4 ;
+  fins de notes calculées au tempo en vigueur sur la note
 - Une piste SMF par piste non vide et audible, nommée d'après son slot, sur
   le canal de la piste ; en tête : Program Change du slot, volume (CC7,
   atténué du gain GM du slot), pan (CC10), reverb et chorus à 0 (CC91,
@@ -988,21 +1023,23 @@ pattern (pan à ±1 près).
   d'une piste vont à 1.1.1 (CC0, CC32, Program Change ; le dernier de
   chaque type l'emporte). CC7 et CC10 placés avant la première note
   règlent le volume et le pan de la piste.
-- **Événements** : notes → PATCH (durée en ms au BPM du pattern ; note on
+- **Événements** : notes → PATCH (durée en ms au tempo en vigueur sur la note ; note on
   de vélocité 0 = note off ; note jamais fermée fermée à la fin de sa
   piste) ; CC, Pitch Bend, Program Change à leur position exacte (temps
   flottant), sur leur canal. Ignorés et comptés : aftertouch, SysEx,
   métas autres que nom, tempo, signature, fin de piste.
 - **Temps** : notes **arrondies au pas** : le plus petit nombre de pas
   par mesure (16, 32, 64, 128) qui les place toutes exactement, sinon 128
-  et arrondi. Une mesure = 4 noires (autre signature lue en 4/4). BPM =
-  premier tempo (120 sans tempo), changements suivants ignorés. Longueur
+  et arrondi. Une mesure = 4 noires (autre signature lue en 4/4). Tempo
+  de départ = dernier tempo au tick 0 (120 sans tempo) ; chaque tempo
+  suivant devient un changement de la carte, à 0,01 près (Phase 7
+  étape 19). Longueur
   = fin la plus tardive, arrondie à la mesure, 1 à 999 mesures. Une
   mesure vide au début est gardée (TiMidity, lui, la saute par défaut).
 - **Compte rendu** au statut : pistes, mesures, BPM, pas, slot créé, notes
   déplacées, changements de tempo, signature, fusion, événements perdus,
   messages ignorés.
-- Pas encore : notes en temps flottant, carte de tempo (chantiers à
+- Pas encore : notes en temps flottant (chantier reporté, non urgent ;
   venir).
 
 ---
@@ -1196,6 +1233,7 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
     {
       "name": "",
       "bpm": 100,
+      "tempo_changes": [[32, 80], [40.5, 46.5]],
       "num_bars": 1,
       "num_steps": 16,
       "start_bar": 0,
@@ -1303,6 +1341,9 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   - CC générique : `index: position, Canal N, CC, Numéro NN (nom), Valeur NNN`
   - Program Change : `index: position, Canal N, Program Change, Program NN (nom)`
   - Pitch Bend : `index: position, Canal N, Pitch Bend, Valeur +NNN`
+  - Tempo (Phase 7 étape 19f1) : `index: position, Tempo, NN BPM[, départ]`,
+    en tête de sa position, quelles que soient les pistes sélectionnées ; le
+    tempo de départ est toujours listé (une liste n'est jamais vide)
     (même format que les autres types depuis la Phase 7 étape 6d1)
   - `index` = position 1-based de la ligne dans la liste affichée (pas un
     compteur d'accord) ; `Canal` = canal MIDI réel de l'événement
@@ -1356,6 +1397,8 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
   `edit_bend_event`/`edit_cc_event`/`edit_pgm_event` dans `MidiEditor`. Valeur
   seule modifiée → position exacte (fraction de pas) conservée ; position
   modifiée → posé sur le pas entier choisi
+- Entrée sur une ligne Tempo : le dialogue d'édition du dialogue Tempo
+  (position, BPM, portée), Undo par la fenêtre principale (Phase 7 étape 19f1)
 - Suppr : supprimer l'élément courant ou la sélection (Phase 7 étape 7b1)
   - sélection : tous les événements sélectionnés, quel que soit leur type
     (notes, CC, Program Change, Pitch Bend)
@@ -1363,6 +1406,8 @@ Fenêtre d'édition liste des événements MIDI du pattern courant.
     du même pas sont conservés)
   - sans sélection, curseur sur un CC, un Program Change ou un Pitch Bend
     (Ctrl+2) : cet événement seul
+  - curseur sur une ligne Tempo : ce changement de tempo ; le tempo de
+    départ ne se supprime pas (Phase 7 étape 19f1)
 - Limiteurs (i/o) : le limiteur droit inclut tout son pas, fraction comprise
   (un CC/bend à 5.4 est dans une plage qui finit au pas 5 — Phase 7 étape 6g2)
 - Ctrl+C/X/V : presse-papier événements (cross-pistes)
@@ -1555,12 +1600,14 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `GridDialog` | dialogs_properties | Ctrl+Shift+G | Résolution de grille (4 mes. à 1/128) |
 | `GotoDialog` | dialogs_temporal | Ctrl+G | Aller à une position (bar:beat:tick) |
 | `LoopSelectDialog` | dialogs_temporal | Ctrl+Shift+L | Points de boucle (début, fin, répétitions) |
-| `EventFilterDialog` | dialogs_temporal | Ctrl+Shift+F | Filtre/sélection d'événements MIDI par type, note, vélocité, pitch bend, position |
+| `EventFilterDialog` | dialogs_temporal | Ctrl+Shift+F | Filtre/sélection d'événements MIDI par type (dont Tempo, Phase 7 étape 19f1), note, vélocité, pitch bend, position |
 | `SavePatternDialog` | dialogs_simple | (interne) | Sauvegarder le pattern sous un nouveau nom |
 | `RenameDialog` | dialogs_simple | F2 | Renommer piste, pattern ou song |
 | `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo ; sur une banque : programme du canal, banque MSB / LSB, en direct) |
 | `TrackSelectDialog` | dialogs_properties | Ctrl+Entrée (liste pistes) | Sélection de pistes + plage BBT |
-| `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, BPM, mesures, pas) |
+| `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, début, longueur, pas) |
+| `TempoDialog` | dialogs_tempo | Alt+Shift+T | Liste des tempos du pattern : insérer, modifier, supprimer (Phase 7 étape 19f1) |
+| `TempoEditDialog` | dialogs_tempo | Insérer / Modifier, Entrée sur une ligne Tempo | Position, BPM et portée d'un tempo |
 | `PadPropertiesDialog` | dialogs_properties | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée, mute_group) |
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |

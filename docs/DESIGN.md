@@ -6702,3 +6702,57 @@ récent » du dialogue (19f1).
     tests du clavier : afficher le dialogue pour lui donner un vrai focus
     faisait planter Python (erreur de segmentation) à la sortie de la
     suite complète. 2765 verts.
+
+### Clôture (19h1)
+
+**19a1-19g1 FAITS** (commits `73ae931` à `f11647f`, et ce commit de
+clôture, 2765 tests verts) : **chantier Phase 7 étape 19 complet**. Un
+pattern a une carte de tempo : le ralenti final de `bach_01.mid` s'entend
+comme sous TiMidity, et tout un morceau se ralentit d'un geste pour être
+étudié.
+
+**Ce que le chantier a livré** :
+- **`TempoMap`** (`src/tempo_map.py`, sans wx ni player, portable) :
+  tempo de départ et changements instantanés, pas ↔ secondes par
+  morceaux ; tempos à 0,01 près, `format_bpm` (« 46,5 »).
+- **Carte du pattern** (`_tempo_changes`) : `.gvp`, Undo, copie,
+  redimensionnement, doubler, diviser ; import (tous les tempos du
+  fichier) et export (un `set_tempo` par changement), durées au tempo
+  local.
+- **Player** : tout le minutage suit la carte ; position gardée quand le
+  tempo change en lecture ; mode song.
+- **Champ BPM, Tap Tempo, ±5** : tous les tempos dans la même proportion ;
+  le champ affiche le tempo de la position, en direct pendant la lecture.
+- **Dialogue Tempo (Alt+Shift+T)** et **lignes Tempo de Ctrl+2** :
+  insérer, modifier (le plus récent, tous à cette valeur, tous
+  proportionnellement), supprimer, Undo, filtre.
+
+**Écarts au plan** : avenant 19d2 (tous les tempos en proportion au lieu
+du seul tempo en vigueur, tempos décimaux, affichage en direct) ; trois
+portées au lieu de deux et positions « 21:2:1 » (19f1) ; ligne du tempo de
+départ toujours dans Ctrl+2 ; focus simulé dans les tests du clavier
+(19g1) ; défauts plus anciens corrigés en chemin (pattern du player figé à
+100 BPM, positions dans une boucle qui ne commence pas à 1.1.1) ; voir
+plus haut.
+
+**Leçons notées** : tester un dialogue par le chemin réel de l'appli
+(`steps_per_beat()` est un float que `wx.SpinCtrl` refuse : deux allers-
+retours avec l'utilisateur) ; ne pas afficher de dialogue dans un test
+(Python plante à la sortie de la suite) ; vérifier le code de sortie de
+`pytest`.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, arborescence
+(`tempo_map.py`, `dialogs_tempo.py`, `mw_tempo.py`), structure Pattern et
+format `.gvp`, section « BPM, Tap Tempo et carte de tempo », export,
+import, liste des événements (lignes Tempo, Entrée, Suppr), boîtes de
+dialogue (`TempoDialog`, `TempoEditDialog` ; `PatternPropertiesDialog`
+corrigé : il n'a pas de champ BPM) ; `docs/shortcuts.md` : Alt+Shift+T
+(deux fenêtres), champ BPM / H / ( / ) proportionnels, Entrée et Suppr
+sur une ligne Tempo.
+
+**Laissé hors périmètre, pour la suite** :
+- **signatures** (une par pattern, puis leurs changements : il faudrait
+  d'abord sauver `_num_beats`, puis revoir le codage des positions) ;
+- rampes de tempo ; tempo dans le piano roll (Ctrl+1) ;
+- Undo du champ BPM et de ±5 ;
+- notes en temps flottant (reportées, non urgentes).
