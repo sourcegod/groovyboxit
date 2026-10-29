@@ -6499,3 +6499,26 @@ l'avance du song, la carte du pattern suivant remplace la courante.
 | **19f1** | Implémentation — T8, T9 : dialogue Tempo (Alt+Shift+T, deux fenêtres), tempos dans la liste des événements (affichage, Entrée, Suppr, filtre), Undo. Essayé au lecteur d'écran. | `ui/dialogs_tempo.py` (nouveau), `ui/key_handler_alt.py`, `ui/mew_keymap.py`, `midi/midi_editor.py`, `ui/mew_*.py`, `ui/midi_editor_dialogs.py` |
 | **19g1** | Tests — 19f1. | `tests/test_tempo_dialog.py` (nouveau), `tests/test_midi_editor*.py` |
 | **19h1** | Doc — clôture (avancement, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 7 étape 19 — Avancement et écarts constatés
+
+- **19b1** — `src/tempo_map.py` (`TempoMap`, `normalize_changes`,
+  `clamp_bpm`) ; `Pattern._tempo_changes` (`.gvp` : `"tempo_changes"`),
+  `tempo_map()`, `set_tempo_changes()`, `steps_per_beat()` ; recalés par
+  `copy_from`, `resize`, `double_bars` (la seconde moitié repart du tempo
+  de départ), `halve_bars` ; vidés par `new_pattern` (Nouveau pattern),
+  **gardés par `reset_pattern`** (Shift+Suppr n'efface que les notes).
+  Import : tempo de départ = dernier tempo au tick 0, sinon 120 jusqu'au
+  premier ; chaque tempo suivant devient un changement ; durées au tempo
+  local ; le compte rendu dit « N changements de tempo » (plus
+  « ignorés »). Export : un `set_tempo` par changement dans la piste
+  conductor, fin de note au tempo local (`end_tick`). À tempo unique,
+  tous les tests de l'export passent sans changement.
+  - Essai sur `bach_01.mid` : 60 changements, de 92 à 40 BPM ; durée
+    jusqu'au dernier événement 98,30 s, comme mido ; notes identiques
+    après export puis import.
+  - **Limite de résolution** : un changement placé à une position que PPQ
+    480 ne représente pas (fichier à PPQ 256, un tick avant la mesure)
+    revient décalé de 1/600 de pas après export puis import, comme un CC.
+  - `pytest` rouge : 2 tests de l'import attendaient « changements de
+    tempo ignorés ».

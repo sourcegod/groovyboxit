@@ -1,6 +1,8 @@
 import random
 import threading
 
+from tempo_map import TempoMap, normalize_changes
+
 # Événement enregistré dans _tape (liste plate par piste, position = time).
 # etype: ETYPE_GRID = grille (pad de la séquence), ETYPE_KIT = kit (note MIDI brute),
 #        ETYPE_PATCH = patch synth (note + bend), ETYPE_CC = Control Change
@@ -165,7 +167,10 @@ class Pattern:
         Pattern._counter += 1
         self._id          = Pattern._counter
         self._name        = ""
-        self._bpm         = 100
+        self._bpm         = 100   # tempo de départ (T2, Phase 7 étape 19b1)
+        # Changements de tempo [(position en pas, BPM)], positions > 0
+        # (docs/DESIGN.md § 19a1 T2) ; vide = tempo unique
+        self._tempo_changes = []
         self._num_beats   = 4     # numérateur de la signature rythmique
         self._num_steps   = 16    # pas par mesure : 16, 32, 64, 128
         self._num_bars    = 1     # nombre de mesures : 1..999
@@ -389,6 +394,7 @@ class Pattern:
         self._num_pads   = other._num_pads
         self._num_bars   = other._num_bars
         self._num_steps  = other._num_steps
+        self._tempo_changes = list(other._tempo_changes)       # 19b1, T2
         with self._lock:
             self._tape = [list(track_list) for track_list in other._tape]
 
@@ -398,6 +404,7 @@ class Pattern:
         self._num_bars  = num_bars
         self._num_steps = num_steps
         self._tape       = [[] for _ in range(self._num_tracks)]
+        self._tempo_changes = []          # pattern neuf : tempo unique (19b1)
 
     #--------------------------------------------------------------------------
 
@@ -466,6 +473,10 @@ class Pattern:
             ]
             for track_list in self._tape
         ]
+        # Seconde moitié : repart du tempo de départ (19b1, T2)
+        self._tempo_changes = normalize_changes(
+            self._bpm, self._tempo_changes + [(half_steps, self._bpm)]
+            + [(pos + half_steps, bpm) for pos, bpm in self._tempo_changes])
         self._num_bars *= 2
         return True
 
@@ -481,6 +492,8 @@ class Pattern:
             [ev for ev in track_list if ev.time < half_steps]
             for track_list in self._tape
         ]
+        self._tempo_changes = [(pos, bpm) for pos, bpm in self._tempo_changes
+                               if pos < half_steps]
         self._num_bars = half
         return True
 
@@ -505,6 +518,22 @@ class Pattern:
         return not any(self._tape)
 
     #--------------------------------------------------------------------------
+    # Carte de tempo (Phase 7 étape 19b1, docs/DESIGN.md § 19a1 T2, T4)
+
+    def steps_per_beat(self):
+        return self._num_steps / self._num_beats
+
+    def tempo_map(self, start_bpm=None):
+        """TempoMap du pattern ; start_bpm remplace le tempo de départ
+        (celui du player, qui peut avoir changé depuis le dernier flush)."""
+        return TempoMap(self._bpm if start_bpm is None else start_bpm,
+                        self._tempo_changes, self.steps_per_beat())
+
+    def set_tempo_changes(self, changes):
+        """Remplace les changements de tempo (normalisés, T2)."""
+        self._tempo_changes = normalize_changes(self._bpm, changes)
+
+    #--------------------------------------------------------------------------
 
     def resize(self, num_bars, num_steps):
         """Étend ou tronque le pattern sans effacer les données existantes."""
@@ -527,6 +556,13 @@ class Pattern:
                                                payload=ev.payload, time=new_time))
             new_tape.append(new_list)
         self._tape = new_tape
+        # Changements de tempo recalés comme les événements (19b1, T2)
+        tempo = []
+        for pos, bpm in self._tempo_changes:
+            bar, step = divmod(int(pos), old_steps)
+            if bar < num_bars and step < num_steps:
+                tempo.append((bar * num_steps + step + (pos - int(pos)), bpm))
+        self._tempo_changes = normalize_changes(self._bpm, tempo)
 
         if num_steps != old_steps:
             self._num_steps = num_steps
@@ -548,6 +584,7 @@ class Pattern:
         return {
             "name":          self._name,
             "bpm":           self._bpm,
+            "tempo_changes": [[pos, bpm] for pos, bpm in self._tempo_changes],
             "num_bars":      self._num_bars,
             "num_steps":     self._num_steps,
             "num_tracks":    self._num_tracks,
@@ -610,6 +647,9 @@ class Pattern:
         """
         self._name       = d.get("name", "")
         self._bpm        = d.get("bpm", 100)
+        # Absente (projet d'avant 19b1) : tempo unique
+        self._tempo_changes = normalize_changes(
+            self._bpm, [tuple(c) for c in d.get("tempo_changes") or []])
         self._num_bars   = d.get("num_bars", 1)
         self._num_steps  = d.get("num_steps", 16)
         self._start_bar  = d.get("start_bar", 0)

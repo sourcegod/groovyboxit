@@ -13,7 +13,9 @@
     gain GM du slot de chaque piste (Phase 7 étape 12f1, § 12a2). Pistes et
     pads muets ou hors solo omis, comme au rejeu (Phase 7 étape 12f2,
     § 12a3). Chaque piste finit pile à la fin du pattern (Phase 7 étape
-    12i2, § 12a4).
+    12i2, § 12a4). Carte de tempo : un set_tempo par changement, durées
+    converties au tempo en vigueur sur chaque note (Phase 7 étape 19b1,
+    § 19a1 T5, T6).
     Date: Tue, 20/10/2026
     Author: Coolbrother
 """
@@ -83,7 +85,9 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
-    bpm              : tempo du player (un temps = 60/bpm, Phase 7 étape 10b1)
+    bpm              : tempo de départ, celui du player (un temps = 60/bpm,
+                       Phase 7 étape 10b1) ; les changements viennent de
+                       pattern._tempo_changes (Phase 7 étape 19b1)
     track_channels   : canal 0..15 de chaque piste (TrackRouter, D5)
     track_is_synth   : bool par piste — slot SYNTH (note GRID = gamme ; sans
                        SYNTH, les notes PATCH, muettes au rejeu, sont omises)
@@ -135,8 +139,13 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     def tick(time_steps):
         return round(time_steps * PPQ * num_beats / num_steps)
 
-    def ms_ticks(ms):
-        return max(1, round(ms / 1000.0 * bpm / 60.0 * PPQ))
+    tmap = pattern.tempo_map(start_bpm=bpm)
+
+    def end_tick(time_steps, ms):
+        # Fin d'une note de ms millisecondes partant de time_steps, au
+        # tempo en vigueur sur la note (T5) ; au moins un tick
+        stop = tmap.steps(tmap.secs(time_steps) + ms / 1000.0)
+        return max(tick(time_steps) + 1, tick(stop))
 
     def kit_note(note):
         # Note de kit → note GM ; sans correspondance, gardée et signalée (D4)
@@ -149,15 +158,23 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             return note
         return gm
 
-    end_tick = tick(pattern._num_bars * num_steps)
+    pattern_end = tick(pattern._num_bars * num_steps)
 
     mid = mido.MidiFile(type=1, ticks_per_beat=PPQ)
     conductor = mido.MidiTrack()
     conductor.append(mido.MetaMessage("track_name", name=name, time=0))
-    conductor.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm), time=0))
+    conductor.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(tmap.start_bpm), time=0))
     conductor.append(mido.MetaMessage("time_signature", numerator=num_beats,
                                       denominator=4, time=0))
-    conductor.append(mido.MetaMessage("end_of_track", time=end_tick))
+    now = 0
+    for pos, change_bpm in tmap.changes:        # carte de tempo (T6)
+        at = tick(pos)
+        if at >= pattern_end:
+            break
+        conductor.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(change_bpm),
+                                          time=at - now))
+        now = at
+    conductor.append(mido.MetaMessage("end_of_track", time=pattern_end - now))
     mid.tracks.append(conductor)
 
     for t, events in enumerate(tape):
@@ -208,7 +225,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         notes = []     # (début, fin, note, vélocité, rang) avant chevauchements
         for seq, ev in enumerate(events):
             start = tick(ev.time)
-            if start >= end_tick:
+            if start >= pattern_end:
                 continue   # hors du pattern : jamais rejoué (12a4 D8)
             p = ev.payload
             ev_ch = chan_at(ev.time)
@@ -225,7 +242,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 ms = ev.dur if ev.dur > 0 else voice_durations[pad]
                 vel = grid_velocity(p.get("vel", 100),
                                     pad_volumes[pad] if pad_volumes else 100)
-                notes.append((start, start + ms_ticks(ms), note, vel, seq, ev_ch))
+                notes.append((start, end_tick(ev.time, ms), note, vel, seq, ev_ch))
             elif ev.etype == ETYPE_KIT:
                 # one-shot (dur toujours 0) : un pas
                 note = p.get("note", 0)
@@ -238,7 +255,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                 if not plays_notes:
                     continue
                 ms = ev.dur if ev.dur > 0 else PATCH_DEFAULT_MS
-                notes.append((start, start + ms_ticks(ms), p.get("note", 0) + transpose,
+                notes.append((start, end_tick(ev.time, ms), p.get("note", 0) + transpose,
                               p.get("vel", 100), seq, ev_ch))
             elif ev.etype == ETYPE_PGM:
                 timed.append((start, _ORDER_PGM, seq, mido.Message(
@@ -277,7 +294,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
             for start, stop, note, vel, seq, note_ch in kept:
                 # Fin du fichier pile à la fin du pattern (12a4 D8) : note-off
                 # ramené à la fin.
-                stop = min(stop, end_tick)
+                stop = min(stop, pattern_end)
                 note = _clamp(note, 0, 127)
                 timed.append((start, _ORDER_NOTE_ON, seq, mido.Message(
                     "note_on", channel=note_ch, note=note, velocity=_clamp(vel, 1, 127))))
@@ -292,7 +309,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
         for at, _order, _seq, msg in timed:
             track.append(msg.copy(time=at - now))
             now = at
-        track.append(mido.MetaMessage("end_of_track", time=max(0, end_tick - now)))
+        track.append(mido.MetaMessage("end_of_track", time=max(0, pattern_end - now)))
         mid.tracks.append(track)
     return mid
 

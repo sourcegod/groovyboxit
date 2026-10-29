@@ -8,7 +8,8 @@
     position exacte, entête (CC0, CC32, Program Change) à 1.1.1, CC7 / CC10
     du début en volume / pan de piste. Aucune dépendance à wx ni au player :
     le choix du slot, le remplacement du pattern et l'Undo appartiennent à
-    l'UI (ui/mw_project.py).
+    l'UI (ui/mw_project.py). Tous les changements de tempo vont dans la
+    carte du pattern, durées au tempo local (Phase 7 étape 19b1, § 19a1).
     Date: Thu, 29/10/2026
     Author: Coolbrother
 """
@@ -45,7 +46,8 @@ class ImportReport:
     num_steps       : pas par mesure retenus (I4)
     bpm             : tempo du pattern
     moved_notes     : notes déplacées par l'arrondi au pas (I4)
-    tempo_changes   : changements de tempo ignorés (I10)
+    tempo_changes   : changements de tempo gardés dans la carte du pattern
+                      (Phase 7 étape 19b1, § 19a1 T6 ; ignorés avant)
     time_signature  : (numérateur, dénominateur) de la première signature
                       si elle n'est pas 4/4, sinon None (I10)
     merged          : vrai si les pistes d'un même canal ont été fusionnées,
@@ -78,7 +80,7 @@ class ImportReport:
             out.append("pistes d'un même canal fusionnées")
         if self.tempo_changes:
             out.append(f"{self.tempo_changes} changement{'s' if self.tempo_changes > 1 else ''}"
-                       f" de tempo ignoré{'s' if self.tempo_changes > 1 else ''}")
+                       f" de tempo")
         if self.time_signature:
             num, den = self.time_signature
             out.append(f"signature {num}/{den} lue en 4/4")
@@ -226,15 +228,13 @@ def build_pattern_from_midi(mid, *, name=""):
         groups = _merge_by_channel(groups)
         report.merged = True
 
-    # Tempo (I10) : le premier ; les changements suivants sont comptés
-    tempos.sort(key=lambda x: x[0])
-    tempo = tempos[0][1] if tempos else mido.bpm2tempo(DEFAULT_BPM)
-    bpm   = max(BPM_MIN, min(BPM_MAX, round(mido.tempo2bpm(tempo))))
-    cur   = tempo
-    for _tick, tp in tempos[1:]:
-        if tp != cur:
-            report.tempo_changes += 1
-            cur = tp
+    # Tempo (I10, carte de tempo en Phase 7 étape 19b1, § 19a1 T6) : tempo
+    # de départ = dernier tempo au tick 0, sinon 120 (défaut MIDI) jusqu'au
+    # premier ; chaque tempo suivant devient un changement de la carte.
+    tempos.sort(key=lambda x: x[0])        # tri stable : ordre du fichier à tick égal
+    start = [tp for tick, tp in tempos if tick == 0]
+    bpm   = max(BPM_MIN, min(BPM_MAX, round(mido.tempo2bpm(
+        start[-1] if start else mido.bpm2tempo(DEFAULT_BPM)))))
     if sigs:
         _tick, num, den = min(sigs, key=lambda s: s[0])
         if (num, den) != (BEATS_PER_BAR, 4):
@@ -250,14 +250,21 @@ def build_pattern_from_midi(mid, *, name=""):
         q, r = divmod(tick * num_steps, bar_ticks)
         return q if r == 0 else tick * num_steps / bar_ticks
 
-    def ms(ticks):
-        return max(1, round(ticks * 60000.0 / (bpm * ppq)))
-
     pat = Pattern()
     pat._name      = conductor_name or name
     pat._bpm       = bpm
     pat._num_steps = num_steps
     pat._num_bars  = num_bars
+    pat.set_tempo_changes([(exact_time(tick), mido.tempo2bpm(tp))
+                           for tick, tp in tempos if 0 < tick < max_tick])
+    report.tempo_changes = len(pat._tempo_changes)
+    tmap = pat.tempo_map()
+
+    def ms(start_tick, stop_tick):
+        # Durée au tempo en vigueur sur la note (T5)
+        secs = tmap.secs_between(start_tick * num_steps / bar_ticks,
+                                 stop_tick * num_steps / bar_ticks)
+        return max(1, round(secs * 1000.0))
 
     for t, g in enumerate(groups):
         events = []
@@ -301,7 +308,7 @@ def build_pattern_from_midi(mid, *, name=""):
                 events.append(TapeEvent(ETYPE_CC, channel=g.channel, time=0,
                                         payload={"cc_num": msg.control, "value": msg.value}))
 
-        # Notes (I4, I9) : début arrondi au pas, durée en ms au BPM du pattern
+        # Notes (I4, I9) : début arrondi au pas, durée en ms au tempo local (T5)
         for start, stop, note, vel, rank in g.notes:
             if start >= max_tick:
                 report.lost_events += 1
@@ -311,7 +318,7 @@ def build_pattern_from_midi(mid, *, name=""):
             if step != exact:
                 report.moved_notes += 1
             timed.append((start, rank, TapeEvent(
-                ETYPE_PATCH, dur=ms(stop - start), channel=g.channel, time=step,
+                ETYPE_PATCH, dur=ms(start, stop), channel=g.channel, time=step,
                 payload={"note": note, "vel": vel})))
 
         timed.sort(key=lambda x: (x[0], x[1]))
