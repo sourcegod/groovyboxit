@@ -125,8 +125,11 @@ class TestFile:
         assert rep.tempo_changes == 0
 
     def test_bpm_rounded_and_clamped(self):
+        # Tempos à 0,01 près depuis la Phase 7 étape 19d3 (§ 19d2 R1)
         pat, _ = _import(_track(_note(0, 100)), conductor=[_tempo(97.6)])
-        assert pat._bpm == 98
+        assert pat._bpm == 97.6
+        pat, _ = _import(_track(_note(0, 100)), conductor=[_tempo(93.75)])
+        assert pat._bpm == 93.75
         pat, _ = _import(_track(_note(0, 100)),
                          conductor=[mido.MetaMessage("set_tempo", tempo=50000)])  # 1200 BPM
         assert pat._bpm == 600

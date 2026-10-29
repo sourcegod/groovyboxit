@@ -187,6 +187,7 @@ groovyboxit/
     ├── test_tap_tempo.py
     ├── test_tape.py
     ├── test_tempo_map.py
+    ├── test_tempo_playback.py
     ├── test_track_channels.py
     ├── test_track_editor.py
     ├── test_track_properties_dialog.py
@@ -1735,6 +1736,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_tap_tempo.py` | Tap Tempo : BPM, TAP_MIN_TAPS, timeout (20 tests) |
 | `test_tape.py` | _tape (TapeEvent G/K/P) : enregistrement, sérialisation |
 | `test_tempo_map.py` | Carte de tempo : TempoMap (pas ↔ secondes par morceaux, tempo en vigueur), changements de tempo du pattern (.gvp, copie, redimensionner, doubler, diviser), import et export de la carte, durées au tempo local, aller-retour |
+| `test_tempo_playback.py` | Player sur la carte de tempo : tempo en vigueur, tempo changé à la position ou partout en proportion, position dans la fenêtre, minutage (événements, métronome, Note Repeat, décompte), tempos franchis signalés, pause, position gardée, song, ms par pas, Aller à en secondes, champ BPM, lecture chronométrée |
 | `test_track_channels.py` | Canal MIDI par piste : défauts, migration, règle du kit, Ctrl+T et propriétés de piste (Undo) |
 | `test_track_editor.py` | TrackEditor : sélection multi-pistes, limiteurs, clipboard |
 | `test_track_properties_dialog.py` | TrackPropertiesDialog : slot, volume, pan |

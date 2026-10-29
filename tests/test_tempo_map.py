@@ -20,7 +20,7 @@ import mido
 import pytest
 
 from pattern import Pattern, TapeEvent, ETYPE_PATCH, ETYPE_CC
-from tempo_map import TempoMap, normalize_changes, clamp_bpm
+from tempo_map import TempoMap, normalize_changes, clamp_bpm, format_bpm
 from midi.midi_import import build_pattern_from_midi
 from midi.midi_export import build_pattern_midi, PPQ
 
@@ -31,10 +31,22 @@ BAR = PPQ * 4
 # clamp_bpm, normalize_changes
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("bpm, expected", [(92, 92), (93.6, 94), (0, 1), (-5, 1),
-                                           (601, 600), (1200.4, 600)])
+@pytest.mark.parametrize("bpm, expected", [(92, 92), (93.6, 93.6), (93.756, 93.76),
+                                           (0, 1), (-5, 1), (601, 600), (1200.4, 600)])
 def test_clamp_bpm(bpm, expected):
+    # À 0,01 près (Phase 7 étape 19d3, § 19d2 R1)
     assert clamp_bpm(bpm) == expected
+
+
+def test_clamp_bpm_integral_value_is_int():
+    assert isinstance(clamp_bpm(92.0), int) and isinstance(clamp_bpm(92.004), int)
+    assert isinstance(clamp_bpm(92.5), float)
+
+
+@pytest.mark.parametrize("bpm, text", [(92, "92"), (92.0, "92"), (46.5, "46,5"),
+                                       (93.75, "93,75"), (93.756, "93,76"), (0.2, "1")])
+def test_format_bpm(bpm, text):
+    assert format_bpm(bpm) == text
 
 
 def test_normalize_sorts_and_drops_non_positive_positions():
@@ -52,7 +64,7 @@ def test_normalize_drops_redundant_tempo():
 
 
 def test_normalize_rounds_and_clamps():
-    assert normalize_changes(100, [(16, 93.6), (32, 900)]) == [(16, 94), (32, 600)]
+    assert normalize_changes(100, [(16, 93.604), (32, 900)]) == [(16, 93.6), (32, 600)]
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +103,7 @@ def test_bpm_at_applies_from_change_position():
 
 
 def test_map_normalizes_its_input():
-    m = TempoMap(100.4, [(32, 80), (16, 100), (0, 50)], 4)
+    m = TempoMap(100.004, [(32, 80), (16, 100), (0, 50)], 4)
     assert m.start_bpm == 100
     assert m.changes == [(32, 80)]
     assert not m.is_constant

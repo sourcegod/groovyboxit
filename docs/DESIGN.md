@@ -6644,3 +6644,16 @@ récent » du dialogue (19f1).
   - `pytest` rouge : 6 tests (4 BPM entiers dans `test_tempo_map.py` et
     `test_midi_import.py`, la fausse fenêtre de `test_key_manager.py` et
     un échec qui n'en est que la suite).
+- **19e1** — `tests/test_tempo_playback.py` (44 tests : carte du player
+  en cache, tempo en vigueur, `set_tempo_at`, `scale_tempos` /
+  `set_tempo_scaled` et aller-retour exact, `_position_at` dans une
+  fenêtre, `_t_to_offset`, `_measure_clock` et décompte, événements /
+  métronome / Note Repeat minutés par la carte, `TEMPO_EVENT`, pause,
+  déplacement à l'arrêt, position gardée par `set_bpm` et la mise à
+  l'échelle, avance du song, `ms_per_step_at`, Aller à en secondes, champ
+  BPM de la fenêtre principale, lecture réelle chronométrée) ;
+  `format_bpm` et tempos à 0,01 dans `tests/test_tempo_map.py` ; 6 tests
+  adaptés (BPM décimaux, `FakePlayer.tempo_at` / `set_tempo_scaled`).
+  Huit défauts réintroduits à l'essai : chacun fait échouer au moins un
+  test (deux trous trouvés ainsi et bouchés : `set_bpm` qui garde la
+  position, Note Repeat dans une boucle). 2716 verts.

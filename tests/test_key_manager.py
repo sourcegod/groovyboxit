@@ -146,6 +146,12 @@ class FakePlayer:
         self.calls.append('stop_note_repeat')
     def set_bpm(self, v):
         self.calls.append(('set_bpm', v));    self.bpm = v
+    # Carte de tempo (Phase 7 étape 19d3, § 19d2 R2) : tempo unique ici
+    def tempo_at(self, pos=None):
+        return self.bpm
+    def set_tempo_scaled(self, v, pos=None):
+        self.calls.append(('set_tempo_scaled', v)); self.bpm = v
+        return v
     def set_volume(self, v):
         self.calls.append(('set_volume', v)); self.volume = v
     def set_pan(self, v):
@@ -842,9 +848,9 @@ def test_bpm_increase_via_key5():
     app, win, km = make_km()
     win._player.bpm = 120
     km.handle(FakeEvent(key=ord('5')))   # '5' AZERTY = '(' position US
-    assert ('set_bpm', 125) in win._player.calls
+    assert ('set_tempo_scaled', 125) in win._player.calls     # 19d3, R2
     teardown(app)
-    print("  Touche '5' → set_bpm(bpm+5) : OK")
+    print("  Touche '5' → tous les tempos à +5 depuis le tempo affiché : OK")
 
 def test_volume_decrease_via_key6():
     app, win, km = make_km()
