@@ -6522,3 +6522,10 @@ l'avance du song, la carte du pattern suivant remplace la courante.
     revient décalé de 1/600 de pas après export puis import, comme un CC.
   - `pytest` rouge : 2 tests de l'import attendaient « changements de
     tempo ignorés ».
+- **19c1** — `tests/test_tempo_map.py` (42 tests : `clamp_bpm`,
+  `normalize_changes`, `TempoMap` — à tempo unique, l'ancien calcul
+  linéaire —, changements du pattern, import, export, aller-retour exact
+  d'une carte faite dans l'appli) ; 2 tests de l'import adaptés (« N
+  changements de tempo » ; un tempo pile à la fin du pattern est écarté).
+  Quatre défauts de 19b1 réintroduits à l'essai : chacun fait échouer au
+  moins un test. 2664 verts.

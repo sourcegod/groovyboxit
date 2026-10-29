@@ -131,14 +131,16 @@ class TestFile:
                          conductor=[mido.MetaMessage("set_tempo", tempo=50000)])  # 1200 BPM
         assert pat._bpm == 600
 
-    def test_tempo_changes_counted(self):
+    def test_tempo_changes_kept_in_map(self):
+        # Phase 7 étape 19b1 (§ 19a1 T6) : gardés, plus ignorés
         conductor = _track([(0, _tempo(100)), (BAR, _tempo(100)),
                             (2 * BAR, _tempo(120)), (3 * BAR, _tempo(90))])
         mid = mido.MidiFile(type=1, ticks_per_beat=PPQ)
-        mid.tracks.extend([conductor, _track(_note(0, 100))])
+        mid.tracks.extend([conductor, _track(_note(0, 100), end=4 * BAR)])
         pat, rep = build_pattern_from_midi(mid)
         assert pat._bpm == 100
-        assert rep.tempo_changes == 2       # le même tempo répété ne compte pas
+        assert pat._tempo_changes == [(32, 120), (48, 90)]   # 100 répété : retiré
+        assert rep.tempo_changes == 2
 
     def test_time_signature_reported_if_not_4_4(self):
         sig = mido.MetaMessage("time_signature", numerator=3, denominator=4)
@@ -455,7 +457,7 @@ class TestReport:
         rep.ignored       = {"aftertouch": 40, "SysEx": 2}
         assert rep.details() == [
             "12 notes déplacées",
-            "1 changement de tempo ignoré",
+            "1 changement de tempo",
             "signature 3/4 lue en 4/4",
             "2 événements au-delà de 999 mesures",
             "ignorés : 40 aftertouch, 2 SysEx",
