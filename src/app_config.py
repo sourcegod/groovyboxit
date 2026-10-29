@@ -147,7 +147,7 @@ class AppConfig:
     SOUNDFONTS_DIR_DEFAULT   = "/usr/share/sounds/sf2"
     GM_SOUNDFONT_DEFAULT     = "FluidR3_GM.sf2"
     MIDI_BANK_SELECT_DEFAULT = "gs"
-    FLUIDSYNTH_GAIN_DEFAULT  = 1.0
+    FLUIDSYNTH_GAIN_DEFAULT  = 0.4     # 1.0 écrêtait un orchestre GM importé (18d4)
 
     def _get_str(self, key):
         value = self._data.get(key, "")
@@ -180,7 +180,7 @@ class AppConfig:
 
     @property
     def fluidsynth_gain(self):
-        """Gain de FluidSynth (synth.gain, 0.0..10.0) ; défaut 1.0."""
+        """Gain de FluidSynth (synth.gain, 0.0..10.0) ; défaut 0.4."""
         value = self._data.get("fluidsynth_gain", self.FLUIDSYNTH_GAIN_DEFAULT)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return self.FLUIDSYNTH_GAIN_DEFAULT

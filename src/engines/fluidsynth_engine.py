@@ -98,8 +98,10 @@ class FluidSynthEngine(BankEngine):
 
     FLUID_FAILED = -1
     # synth.gain : 0.2 chez FluidSynth, trop faible à côté de nos pads WAV
-    # normalisés (crête 1.0) ; réglable par la clé "fluidsynth_gain".
-    GAIN         = 1.0
+    # normalisés (crête 1.0) ; 1.0 (17b1) écrêtait un orchestre GM de dix
+    # pistes (crête 2,95) : 0.4 (Phase 7 étape 18d4) ; réglable par la clé
+    # "fluidsynth_gain".
+    GAIN         = 0.4
 
     def __init__(self, samplerate=44100, bank_select="gs", gain=GAIN):
         super().__init__(bank_select)

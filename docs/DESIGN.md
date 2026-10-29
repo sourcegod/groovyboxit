@@ -6241,3 +6241,26 @@ Undo, une pédale restée enfoncée ne survit plus à une relance.
   - **Dossier de l'import retenu** pour la session (`_import_dir`), sinon
     EXPORTS ; pas d'une session à l'autre, `config.json` étant en lecture
     seule.
+
+### Phase 7 étape 18d4 — Avenant : gain de FluidSynth, mesure vide initiale
+
+Essai de `survive1.mid` (dix pistes, karaoké ; utilisateur, 2026-10-29) :
+
+- **Saturation.** L'appli joue nettement plus fort que TiMidity et
+  sature par moments. Rendu hors appli de deux minutes du morceau, avec
+  les CC7 du fichier : au gain 1.0 (défaut de 17b1, validé sur quatre
+  pistes à côté des pads WAV), crête 2,95 et 43,5 % des blocs écrêtés ;
+  à 0.5, crête 1,47 (0,8 %) ; à 0.4, crête 1,18 (0,1 %). Le pilote
+  écrête net (`np.clip`, `sound_device_driver.py:212`).
+  **Décision (utilisateur) : défaut de `fluidsynth_gain` à 0.4** « pour
+  l'instant ». Alternative écartée pour ce chantier : un limiteur doux
+  sur la sortie générale (plus de code dans le pilote, à refaire dans le
+  moteur natif) ; à reprendre s'il manque de niveau.
+- **Mesure vide au début.** TiMidity commence tout de suite ; l'appli
+  joue d'abord une mesure vide. Elle est dans le fichier (première note
+  à la mesure 2, un seul tempo) ; TiMidity supprime le silence initial
+  par défaut (son aide : « Default: drop initial silence »,
+  `--preserve-silence`). **L'import reste fidèle**, comme Sonar, qui
+  ouvre le fichier tel quel ; Ctrl+G permet de partir de la mesure 2.
+- **Ralenti final de `bach_01.mid`** (60 changements de tempo) : carte de
+  tempo, hors périmètre (18a1), chantier futur.

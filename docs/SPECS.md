@@ -216,7 +216,7 @@ groovyboxit/
   "soundfonts_dir":   "/usr/share/sounds/sf2",
   "gm_soundfont":     "FluidR3_GM.sf2",
   "midi_bank_select": "gs",
-  "fluidsynth_gain":  1.0
+  "fluidsynth_gain":  0.4
 }
 ```
 
@@ -225,7 +225,8 @@ Slot Banque (Phase 7 étape 17) : `soundfonts_dir` (dossier ouvert par
 proposé pour un emplacement vide, absolu ou relatif à `soundfonts_dir`,
 défaut `FluidR3_GM.sf2`), `midi_bank_select` (`"gs"` : le MSB seul choisit
 la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
-10.0, défaut 1.0, validé à l'écoute à côté des pads WAV).
+10.0, défaut 0.4 : sans écrêtage sur un orchestre GM importé, Phase 7 étape
+18d4 ; 1.0 avant).
 
 `master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
