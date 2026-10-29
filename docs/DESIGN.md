@@ -6326,9 +6326,9 @@ configuration (gain, dossier d'import), section « Banques de sons »
 fenêtres.
 
 **Laissé hors périmètre, pour la suite** :
-- **notes en temps flottant** (demandé par l'utilisateur, chantier
-  suivant prévu) : l'arrondi au pas déplace des milliers de notes jouées
-  à la main ;
+- **notes en temps flottant** (demandé par l'utilisateur, puis **reporté,
+  non urgent** : l'import au pas marche bien ; corrigé en 19a1) : l'arrondi
+  au pas déplace des milliers de notes jouées à la main ;
 - **carte de tempo** : changements de tempo (ralenti final de
   `bach_01.mid`), signatures autres que 4/4 (`_num_beats` à sauver
   d'abord) ;
@@ -6341,3 +6341,161 @@ fenêtres.
   séparation des noms de pistes et des noms de pads ;
 - message « No preset found » de FluidSynth quand un Undo retire la
   dernière banque (sans effet sur le son).
+
+## Phase 7 étape 19a1 — Carte de tempo : plusieurs tempos par pattern
+
+### Numérotation des commits de ce chantier
+
+`19a1` = ce plan (doc seule). Le code commence à `19b1`. Une paire impl →
+tests par sous-chantier ; `19a2`, `19b2`… pour un commit imprévu.
+
+### Origine du besoin
+
+- Essai de l'Import MIDI (Phase 7 étape 18) : TiMidity joue le ralenti
+  final de `bach_01.mid` (60 changements de tempo, de 92 à 94 BPM puis
+  plus lent), que l'appli ignore : un seul BPM par pattern, le premier.
+- L'utilisateur demande la carte de tempo comme chantier suivant
+  (2026-10-29) ; les notes en temps flottant sont reportées.
+
+### Comportement de Sonar (vérifié le 2026-10-29)
+
+Forums de Cakewalk (discuss.cakewalk.com, fils 19746, 38042, 89704,
+29073, 2341) ; aucune page officielle à jour trouvée :
+- **Insert Tempo** (menu Project) : un dialogue propose soit de
+  **modifier le tempo en vigueur** à la position, soit d'**insérer un
+  nouveau tempo** ; la position est celle du curseur, modifiable.
+- Un changement de tempo en cours de morceau **décale toutes les barres de
+  mesure qui suivent** (dans le temps réel).
+- Un tempo égal au précédent est supprimé (redondant).
+- Sonar connaît les **rampes** (le tempo glisse jusqu'au suivant).
+- **Non trouvé** : ce que fait le champ de tempo de la barre de transport
+  quand une carte existe ; aucune décision ne s'appuie dessus.
+
+### État des lieux constaté en code (2026-10-29, 2622 tests verts)
+
+- **Temps linéaire partout.** `DrumPlayer.step_duration = 60 ·
+  _num_beats / (bpm · _num_steps)` (`player/drum_player.py:163`) ; toute
+  conversion pas ↔ secondes est `pas × step_duration` ou `secondes /
+  step_duration`, une soixantaine d'endroits :
+  - lecture : `_run_thread`, `_build_measure_events` (`t_sec`), durée de
+    la boucle, Note Repeat, décompte (`player/dp_playback.py`) ;
+  - position : `_current_offset`, `position_str`, `navigate_bar`, saut en
+    secondes (`player/dp_position.py`) ; pause (`dp_transport.py:93`) ;
+  - enregistrement (`dp_recording.py:86`, `:111`), effacement
+    (`dp_erase.py`) ;
+  - métronome (`metronome.py:42`, reçoit `step_duration`) ;
+  - dialogues : Aller à, sélection de boucle et de pistes, en secondes
+    (`ui/dialogs_temporal.py`, `mw_patterns.py:231`, `song_window.py:252`,
+    `mew_quantize.py:79`) ;
+  - millisecondes par pas : quantisation des durées
+    (`quantize_manager.py:138`), insertion au pavé numérique
+    (`ui/mew_numpad.py:22`), dialogue d'insertion (`midi_editor_dialogs.py:131`).
+- **Le BPM** : `Pattern._bpm` (entier), `DrumPlayer.bpm`, `set_bpm`
+  (`dp_transport.py:144`, réveille le thread) ; champ BPM (SpinCtrl
+  1..600, `main_window.py:234`, sans Undo), Tap Tempo (avec Undo) et ±5
+  (`key_handler_chars.py:191`, `:351`) ; en mode song, le BPM du pattern
+  suivant est repris à l'avance (`dp_playback.py:268`, `:282`).
+- **Positions** : `TapeEvent.time` en pas cumulés ; toutes les mesures ont
+  le même nombre de pas, la mesure fait 4 noires (`_num_beats` n'est ni
+  sauvé ni modifiable).
+- **Durées des notes en millisecondes** (PATCH, cases de grille sans durée
+  propre : durée du pad) : indépendantes du tempo au rejeu.
+- **Opérations qui déplacent le temps du pattern** : `resize` (change de
+  `_num_steps`), `double_bars`, `halve_bars`, `copy_from` (ne copie pas
+  le BPM : le player le reçoit à part), `to_dict` / `from_dict`.
+- **Export** : un seul `set_tempo` au tick 0 ; durées ms → ticks au BPM
+  unique (`ms_ticks`, `midi_export.py:138`).
+- **Import** : premier tempo seul, changements suivants comptés et
+  ignorés ; durées ticks → ms au BPM unique (`midi_import.py`).
+- **Liste des événements** (Ctrl+2, `MidiEditor.get_all_events`,
+  `midi/midi_editor.py:163`) : lignes (dictionnaires) tirées de `_tape`
+  des pistes sélectionnées ; rien hors des pistes.
+- **Alt+Shift+T** est libre dans la fenêtre principale et dans l'éditeur
+  MIDI (Ctrl+Shift+T = propriétés de piste, Ctrl+T = assigner le slot).
+
+### Décisions validées (utilisateur, 2026-10-29)
+
+**T1 — Périmètre : le tempo seulement** (choix a). La mesure reste de 4
+noires ; une signature par pattern, puis ses changements, feront un
+autre chantier (ils touchent au codage des positions).
+
+**T2 — Carte de tempo par pattern.** `Pattern._bpm` reste le **tempo de
+départ** ; `Pattern._tempo_changes` = liste triée de `(position en pas,
+BPM)`, position > 0, flottante (exacte depuis un import, comme un CC).
+BPM **entier** 1..600, comme le champ BPM. Un changement égal au tempo
+qui le précède est retiré (Sonar). Sauvé dans le `.gvp` (clé
+`"tempo_changes"`, absente = aucun changement) et donc dans l'Undo ;
+copié par `copy_from`, recalé par `resize`, `double_bars` et
+`halve_bars`, comme les événements.
+
+**T3 — Changements instantanés.** Comme dans un fichier MIDI ; un ralenti
+est une suite de changements. Les rampes de Sonar sont exclues.
+
+**T4 — `TempoMap`** (`src/tempo_map.py`, sans wx ni player, portable
+C/C++) : construite depuis le tempo de départ, les changements et le
+nombre de pas par noire ; `secs(pas)` (secondes depuis 0, linéaire par
+morceaux), `steps(secs)` (inverse), `bpm_at(pas)`. Le player garde la
+carte du pattern joué et l'utilise à la place de `step_duration` partout
+(durée de la boucle = `secs(fin) − secs(début)`). **À tempo unique, mêmes
+résultats qu'aujourd'hui** : les 2622 tests restent verts sans
+adaptation de fond.
+
+**T5 — Durées des notes : toujours en millisecondes.** L'import les
+calcule au tempo en vigueur au début de chaque note, l'export les
+reconvertit de même ; les millisecondes par pas (quantisation, pavé
+numérique, dialogue d'insertion) prennent le tempo de la position.
+
+**T6 — Import et export.** L'import garde tous les changements de tempo
+(ils ne sont plus « ignorés » au compte rendu, qui dit combien il en a
+lus) ; l'export écrit chaque changement dans la piste conductor. Un
+aller-retour rend la même carte.
+
+**T7 — Champ BPM, Tap Tempo, ±5 : le tempo en vigueur à la position
+courante** (choix a ; le « modifier le tempo en vigueur » de Sonar).
+Arrêté à 1.1.1, c'est le tempo de départ. Après un déplacement de la
+position à l'arrêt (Aller à, mesure suivante ou précédente, début, fin),
+le champ affiche le tempo de la position ; **pas pendant la lecture**
+(pas de bavardage du lecteur d'écran). Tap Tempo garde son Undo ; le
+champ et ±5 restent sans Undo, comme aujourd'hui.
+
+**T8 — Dialogue « Tempo » (Alt+Shift+T, deux fenêtres)** (choix c, avec
+T9). Liste des tempos du pattern : « 1.1.1 — 92 BPM » (départ), puis un
+élément par changement, position en mesure.temps.pas. Boutons : **Insérer**
+(à la position courante, position et BPM modifiables avant validation),
+**Modifier** (BPM et position de l'élément ; le départ : BPM seul),
+**Supprimer** (pas le départ), **Fermer**. Clavier : Entrée = Modifier,
+Suppr = Supprimer, Échap = Fermer. Un Undo par changement (« Tempo :
+insérer 80 BPM à 33.1.1 »). En lecture, un changement est entendu aussitôt
+(réveil du thread, position gardée).
+
+**T9 — Liste des événements (Ctrl+2).** Les tempos y apparaissent en tête
+de chaque position, comme une piste « Tempo » (conductor), quelles que
+soient les pistes sélectionnées : « Tempo 80 BPM ». Entrée les modifie (BPM,
+position), Suppr les supprime (pas le départ), avec Undo ; le filtre
+d'événements (Ctrl+Shift+F) gagne le type « Tempo ». Pas de copie /
+duplication / insertion de tempo depuis la liste : le dialogue s'en charge.
+
+**T10 — Mode song.** Chaque pattern joue avec sa propre carte ; à
+l'avance du song, la carte du pattern suivant remplace la courante.
+
+### Portée explicitement exclue de ce chantier
+
+- **Signatures** (une par pattern, puis leurs changements) : chantier à
+  part (T1) ;
+- **rampes** de tempo (T3) ; BPM décimaux ;
+- tempo dans le piano roll (Ctrl+1) ;
+- Undo du champ BPM et de ±5 (inchangés) ;
+- notes en temps flottant (reportées, non urgentes).
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **19a1** | Doc — ce plan ; correction de la clôture 18f1 (notes en temps flottant reportées). | `docs/DESIGN.md` |
+| **19b1** | Implémentation — T2, T4, T6 : `TempoMap`, `_tempo_changes` (`.gvp`, `copy_from`, `resize`, doubler / diviser), import et export avec la carte, durées au tempo local (T5). | `src/tempo_map.py` (nouveau), `pattern.py`, `midi/midi_import.py`, `midi/midi_export.py` |
+| **19c1** | Tests — 19b1 ; aller-retour export → import de la carte. | `tests/test_tempo_map.py` (nouveau), `tests/test_midi_import.py`, `tests/test_midi_export.py`, `docs/SPECS.md` |
+| **19d1** | Implémentation — T4 dans le player (lecture, boucle, position, pause, enregistrement, effacement, métronome, décompte, Note Repeat), T5 (ms par pas), T7, T10, dialogues en secondes. Essayé à l'écoute (ralenti de Bach). | `player/*.py`, `metronome.py`, `quantize_manager.py`, `ui/main_window.py`, `ui/key_handler_chars.py`, `ui/dialogs_temporal.py`, `ui/mew_numpad.py`, `ui/midi_editor_dialogs.py`, `ui/mw_patterns.py`, `ui/mw_songs.py` |
+| **19e1** | Tests — 19d1 (à tempo unique, rien ne change ; avec changements, positions, boucle, enregistrement, song). | `tests/test_tempo_playback.py` (nouveau), tests existants au besoin |
+| **19f1** | Implémentation — T8, T9 : dialogue Tempo (Alt+Shift+T, deux fenêtres), tempos dans la liste des événements (affichage, Entrée, Suppr, filtre), Undo. Essayé au lecteur d'écran. | `ui/dialogs_tempo.py` (nouveau), `ui/key_handler_alt.py`, `ui/mew_keymap.py`, `midi/midi_editor.py`, `ui/mew_*.py`, `ui/midi_editor_dialogs.py` |
+| **19g1** | Tests — 19f1. | `tests/test_tempo_dialog.py` (nouveau), `tests/test_midi_editor*.py` |
+| **19h1** | Doc — clôture (avancement, SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
