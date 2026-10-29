@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument) | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern) | en cours |
 
 ---
 
@@ -31,7 +31,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Lecture WAV | `soundfile` |
 | Traitement audio | `numpy` |
 | MIDI in/out | `rtmidi` (via `python-rtmidi`) |
-| Fichiers MIDI (.mid) | `mido` — export du pattern (Phase 7 étape 10h1) |
+| Fichiers MIDI (.mid) | `mido` — export du pattern (Phase 7 étape 10h1), import (Phase 7 étape 18b1) |
 | Effets (futur) | `pedalboard` (Spotify) |
 
 ---
@@ -68,7 +68,7 @@ groovyboxit/
 │   ├── track_router.py   # Routage piste→slot→SynthEngine, dispatch audio
 │   ├── undo_manager.py   # UndoManager : historique annulations/rétablissements
 │   ├── voice_manager.py  # Volume, pan, mute, solo, durée par pad
-│   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10)
+│   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10, import en Phase 7 étape 18)
 │   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
 │   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
 │   │   ├── midi_export.py    # Export du pattern en fichier .mid (mido, SMF type 1)
@@ -231,7 +231,7 @@ la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
 
 `master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
-`exports_dir` (export MIDI, Alt+Shift+E) vaut par défaut le dossier `EXPORTS`
+`exports_dir` (export MIDI, Alt+Shift+E ; premier dossier proposé par l'import, Alt+Shift+I) vaut par défaut le dossier `EXPORTS`
 voisin du dossier des projets (`/home/com/groovybox/EXPORTS`).
 
 Chaque clé est facultative : si absente ou vide, le chemin correspondant tombe en fallback sur un sous-dossier relatif à la racine du projet (`patches/`, `samples/`, `kits/`, `presets/`).
@@ -333,6 +333,17 @@ habitudes d'un séquenceur comme Sonar devant un module General MIDI.
   pan global ajouté.
 - **Deux pistes d'un même canal sur deux emplacements** : avertissement,
   la dernière l'emporte.
+- **Pédale, Pitch Bend, modulation** (Phase 7 étape 18d3, comme Sonar) :
+  la pédale (CC64) d'une piste ne tient que son canal, même piste muette
+  (sur un synthé WAV, elle reste globale) ; à l'arrêt, à la pause et en
+  fin de lecture, pédale, Pitch Bend et modulation sont remis à zéro sur
+  les 16 canaux (« Zero Controllers When Play Stops ») ; la poursuite
+  reprend aussi la dernière pédale, le dernier Pitch Bend et la dernière
+  modulation de chaque canal avant la position, sinon zéro (« MIDI Event
+  Chase on Play »).
+- **Événements simultanés** rejoués dans l'ordre de la piste (Phase 7
+  étape 18d3) : un Reset All Controllers (CC121) suivi d'une pédale
+  enfoncée laisse la pédale enfoncée.
 
 ---
 
@@ -940,6 +951,56 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   de ses événements (entête) ; à tick égal, CC0 et CC32 avant le Program
   Change ; chaque événement sur le canal courant de la piste ; nom de
   piste = nom du preset ; notes KIT non converties
+
+---
+
+## Import MIDI (Alt+Shift+I)
+
+Importe un fichier MIDI standard dans le **pattern courant**
+(`src/midi/midi_import.py`, Phase 7 étape 18, docs/DESIGN.md § 18a1),
+depuis la fenêtre principale ou l'éditeur MIDI. Un `.mid` = un pattern ;
+l'import est l'inverse de l'export, et un aller-retour rend le même
+pattern (pan à ±1 près).
+
+- **Dialogue** : `*.mid` et `*.midi`, ouvert dans le dernier dossier
+  validé de la session, sinon `exports_dir`. Le fichier est lu avant toute
+  question : un fichier illisible n'est signalé qu'au statut. Lecture
+  tolérante (octet de données hors 0..127 ramené à 127). SMF de type 2
+  refusé.
+- **Pattern courant remplacé** : confirmation Oui / Non (Non par défaut)
+  s'il n'est pas vide ; lecture arrêtée, lecteur remis à 1.1.1, Undo
+  « Import MIDI : nom.mid ». Nom du pattern = nom de la piste conductor,
+  sinon nom du fichier (type 0 : nom de son unique piste) ; boucle, mute,
+  solo et voix d'un pattern neuf.
+- **Slot** : toutes les pistes importées vont sur le premier slot Banque
+  du Rack ; sans slot Banque, l'import en crée un dans le premier slot
+  vide, avec `gm_soundfont` (emplacement qui la tient déjà, sinon premier
+  emplacement libre, sinon le premier) ; Rack plein sans slot Banque :
+  import refusé.
+- **Pistes** : une piste par couple (piste SMF, canal), dans l'ordre du
+  fichier (un type 0 donne une piste par canal) ; au-delà de 16, les
+  pistes d'un même canal sont fusionnées. Canal de la piste = canal MIDI ;
+  nom SMF → nom de la piste (nom du pad de même numéro).
+- **Entête** : Program Change, CC0 et CC32 placés avant la première note
+  d'une piste vont à 1.1.1 (CC0, CC32, Program Change ; le dernier de
+  chaque type l'emporte). CC7 et CC10 placés avant la première note
+  règlent le volume et le pan de la piste.
+- **Événements** : notes → PATCH (durée en ms au BPM du pattern ; note on
+  de vélocité 0 = note off ; note jamais fermée fermée à la fin de sa
+  piste) ; CC, Pitch Bend, Program Change à leur position exacte (temps
+  flottant), sur leur canal. Ignorés et comptés : aftertouch, SysEx,
+  métas autres que nom, tempo, signature, fin de piste.
+- **Temps** : notes **arrondies au pas** : le plus petit nombre de pas
+  par mesure (16, 32, 64, 128) qui les place toutes exactement, sinon 128
+  et arrondi. Une mesure = 4 noires (autre signature lue en 4/4). BPM =
+  premier tempo (120 sans tempo), changements suivants ignorés. Longueur
+  = fin la plus tardive, arrondie à la mesure, 1 à 999 mesures. Une
+  mesure vide au début est gardée (TiMidity, lui, la saute par défaut).
+- **Compte rendu** au statut : pistes, mesures, BPM, pas, slot créé, notes
+  déplacées, changements de tempo, signature, fusion, événements perdus,
+  messages ignorés.
+- Pas encore : notes en temps flottant, carte de tempo (chantiers à
+  venir).
 
 ---
 

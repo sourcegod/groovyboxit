@@ -6275,12 +6275,69 @@ Essai de `survive1.mid` (dix pistes, karaoké ; utilisateur, 2026-10-29) :
   `grid_row` dans `tests/test_pattern_grid_api.py` ; 6 tests du gain
   adaptés. Chaque correction de 18d3 défaite à l'essai fait échouer au
   moins un test. 2620 verts.
-- **18e2** — 2 tests de 18d5 dans `tests/test_midi_import_ui.py` (lecteur
-  remis au début et poursuite depuis 1.1.1 ; position gardée si Non). 2622
-  verts.
 - **18d5** — Ajout demandé avant la clôture (utilisateur, 2026-10-29) :
   **l'import place le lecteur au début** (`goto_start` après l'arrêt,
   avant le chargement du pattern, donc poursuite depuis 1.1.1). Arrêté,
   le player garde sa position (`_resume_offset`) : `bach_01.mid` importé
   après `survive1.mid` reprenait au milieu, à la position où ce dernier
   avait été arrêté.
+- **18e2** — 2 tests de 18d5 dans `tests/test_midi_import_ui.py` (lecteur
+  remis au début et poursuite depuis 1.1.1 ; position gardée si Non). 2622
+  verts.
+
+### Clôture (18f1)
+
+**18a1-18e2 FAITS** (commits `f78408f` à `c8fbe05`, et ce commit de
+clôture, 2622 tests verts) : **chantier Phase 7 étape 18 complet**. Un
+fichier `.mid` s'ouvre dans le pattern courant et se joue par FluidSynth,
+avec ses instruments, sa pédale et ses noms de pistes.
+
+**Ce que le chantier a livré** :
+- **`src/midi/midi_import.py`**, sans wx ni player, inverse de l'export :
+  pistes par (piste SMF, canal), fusion au-delà de 16, entête à 1.1.1,
+  volume et pan de piste, notes PATCH arrondies au pas, CC / Pitch Bend /
+  Program Change en temps flottant, tempo, longueur, compte rendu ;
+  lecture tolérante d'un fichier abîmé.
+- **Alt+Shift+I** (fenêtre principale et éditeur MIDI) : dialogue
+  (dernier dossier retenu), confirmation, slot Banque trouvé ou créé,
+  pattern courant remplacé, noms de pistes, lecteur à 1.1.1, Undo,
+  compte rendu au statut.
+- **Rejeu des banques, comme Sonar** (avenant 18d2) : pédale au canal de
+  la piste, Zero Controllers à l'arrêt, poursuite de la pédale, du Pitch
+  Bend et de la modulation.
+- **Trois défauts plus anciens, révélés par les vrais fichiers** :
+  événements simultanés rejoués dans le désordre (chantier 4), grille
+  recalculée case par case qui faisait sauter la lecture, gain de
+  FluidSynth qui écrêtait un orchestre (1.0 → 0.4).
+
+**Écarts au plan** : fichier lu avant toute question (18d1) ; nom d'un
+SMF de type 0 donné au pattern, lecture tolérante, noms nettoyés (18b1) ;
+l'avenant 18d2 et les corrections 18d3, le gain (18d4), le lecteur remis
+au début (18d5) ; voir plus haut.
+
+**Règle de travail confirmée** : pour reproduire Sonar, dire d'où vient
+l'information (de mémoire ou vérifiée) et la vérifier avant d'en faire
+une décision (§ 18d2, « Comportement de Sonar »).
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, outils, arborescence,
+configuration (gain, dossier d'import), section « Banques de sons »
+(pédale, arrêt, poursuite, ordre), nouvelle section « Import MIDI
+(Alt+Shift+I) », tests ; `docs/shortcuts.md` : Alt+Shift+I dans les deux
+fenêtres.
+
+**Laissé hors périmètre, pour la suite** :
+- **notes en temps flottant** (demandé par l'utilisateur, chantier
+  suivant prévu) : l'arrondi au pas déplace des milliers de notes jouées
+  à la main ;
+- **carte de tempo** : changements de tempo (ralenti final de
+  `bach_01.mid`), signatures autres que 4/4 (`_num_beats` à sauver
+  d'abord) ;
+- limiteur doux sur la sortie générale, si le gain 0.4 manque de niveau ;
+- dossier d'import gardé d'une session à l'autre (avec le dialogue de
+  configuration, `config.json` étant en lecture seule) ;
+- pédale du contrôleur en direct, qui reste globale ;
+- réverbération et chorus de FluidSynth (CC91 / CC93 des fichiers) ;
+- aftertouch, SysEx ; import d'un song ou de plusieurs patterns ;
+  séparation des noms de pistes et des noms de pads ;
+- message « No preset found » de FluidSynth quand un Undo retire la
+  dernière banque (sans effet sur le son).

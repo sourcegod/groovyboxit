@@ -13,6 +13,7 @@ Ctrl+Shift+Z     Afficher l'historique des annulations
 Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), dossier EXPORTS
+Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace)
 Ctrl+P           Charger le pattern de démonstration
 Shift+P          Générer un pattern aléatoire
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)
@@ -222,6 +223,7 @@ Double-clic      Connecter le port MIDI sélectionné (liste des ports)
 Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
 Échap            Fermer la fenêtre
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), comme la fenêtre principale
+Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant, comme la fenêtre principale
 
   -- Modes d'affichage --
   Ctrl+1         Afficher les notes de la piste courante seulement (mode sauvegardé)
