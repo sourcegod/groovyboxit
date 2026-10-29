@@ -142,6 +142,28 @@ def test_build_sorts_bend_before_patch_note_at_same_time():
                        DrumPlayer.BEND_TAPE_EVENT, DrumPlayer.PATCH_TAPE_EVENT]
     print("  _build_measure_events : tri par temps, bend avant note au même temps : OK")
 
+def test_build_keeps_tape_order_at_same_time():
+    """Phase 7 étape 18d3 : à temps égal, les CC gardent l'ordre de _tape.
+    Avant, le tri sur les données les classait par numéro : le CC121 de
+    bach_01.mid passait après le CC64 = 127 et relâchait la pédale."""
+    pl = _make_player()
+    pl.playing = True
+    for cc, val in [(121, 0), (64, 0), (121, 0), (64, 127)]:
+        _add(pl, 0, ETYPE_CC, 0.0, {"cc_num": cc, "value": val})
+    _add(pl, 1, ETYPE_CC, 0.0, {"cc_num": 7, "value": 90})
+    got = [e[2][:3] for e in _build(pl) if e[1] == DrumPlayer.CC_TAPE_EVENT]
+    assert got == [(0, 121, 0), (0, 64, 0), (0, 121, 0), (0, 64, 127), (1, 7, 90)]
+    print("  _build_measure_events : ordre de _tape gardé à temps égal : OK")
+
+def test_build_same_time_order_follows_tape_not_values():
+    pl = _make_player()
+    pl.playing = True
+    _add(pl, 0, ETYPE_PATCH, 3.0, {"note": 72, "vel": 100})
+    _add(pl, 0, ETYPE_PATCH, 3.0, {"note": 60, "vel": 100})
+    notes = [e[2][1] for e in _build(pl) if e[1] == DrumPlayer.PATCH_TAPE_EVENT]
+    assert notes == [72, 60]
+    print("  _build_measure_events : notes simultanées dans l'ordre de _tape : OK")
+
 def test_build_adds_note_repeat_events():
     pl = _make_player()
     pl._note_repeat_active = True
@@ -403,3 +425,53 @@ def test_measure_end_waits_until_end_of_measure():
     pl._on_measure_end(ms, secs, 0)
     assert time.perf_counter() >= ms + secs
     print("  _on_measure_end : attend la fin de mesure : OK")
+
+
+# ---------------------------------------------------------------------------
+# Rappel de fin de lecture aux arrêts automatiques (Phase 7 étape 18d3,
+# docs/DESIGN.md § 18d2 P2)
+# ---------------------------------------------------------------------------
+
+def _with_stop_cb(pl):
+    pl._stops = []
+    pl._on_play_stop_cb = lambda: pl._stops.append(True)
+    return pl
+
+def test_measure_end_loop_counter_stop_calls_play_stop_cb():
+    pl = _with_stop_cb(_make_player())
+    pl.playing = True
+    pl._lm._remaining = 1
+    ms, secs = _past_measure(pl)
+    pl._on_measure_end(ms, secs, 0)
+    assert pl._stops == [True]
+    print("  _on_measure_end : fin des répétitions → rappel de fin de lecture : OK")
+
+def test_measure_end_non_looping_pattern_calls_play_stop_cb():
+    pl = _with_stop_cb(_make_player())
+    pl.playing = True
+    pl._pattern._looping = False
+    ms, secs = _past_measure(pl)
+    pl._on_measure_end(ms, secs, 0)
+    assert pl._stops == [True]
+    print("  _on_measure_end : fin d'un pattern sans boucle → rappel : OK")
+
+def test_measure_end_song_end_calls_play_stop_cb():
+    pl = _with_stop_cb(_make_song_player(bpms=(100, 100)))
+    pl._song_pos = 1
+    ms, secs = _past_measure(pl)
+    pl._on_measure_end(ms, secs, 0)
+    assert pl._stops == [True]
+    print("  _on_measure_end : fin du song → rappel : OK")
+
+def test_measure_end_without_stop_does_not_call_play_stop_cb():
+    for pl in (_with_stop_cb(_make_song_player(bpms=(100, 120))),
+               _with_stop_cb(_make_song_player(bpms=(90, 120), looping=True))):
+        ms, secs = _past_measure(pl)
+        pl._on_measure_end(ms, secs, 0)
+        assert pl._stops == []
+    pl = _with_stop_cb(_make_player())
+    pl.playing = True
+    ms, secs = _past_measure(pl)
+    pl._on_measure_end(ms, secs, 0)           # pattern en boucle
+    assert pl._stops == []
+    print("  _on_measure_end : song qui avance ou boucle, pattern en boucle → pas de rappel : OK")

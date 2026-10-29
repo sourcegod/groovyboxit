@@ -288,8 +288,9 @@ def test_gain_zero_is_silent():
 
 
 @needs_fluidsynth
-def test_default_gain_is_1():
-    assert FluidSynthEngine.GAIN == 1.0
+def test_default_gain_is_0_4():
+    # 1.0 écrêtait un orchestre GM importé (Phase 7 étape 18d4)
+    assert FluidSynthEngine.GAIN == 0.4
 
 
 @needs_fluidsynth

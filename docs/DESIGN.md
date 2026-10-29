@@ -6264,3 +6264,14 @@ Essai de `survive1.mid` (dix pistes, karaoké ; utilisateur, 2026-10-29) :
   ouvre le fichier tel quel ; Ctrl+G permet de partir de la mesure 2.
 - **Ralenti final de `bach_01.mid`** (60 changements de tempo) : carte de
   tempo, hors périmètre (18a1), chantier futur.
+- **18d4** (`02ee85d`) — gain de FluidSynth par défaut à 0.4 ; `pytest`
+  rouge : 6 tests de l'ancien défaut.
+- **18e1** — `tests/test_midi_import_ui.py` (25 tests : slot Banque,
+  dialogue et dossier retenu, annulation, erreur de lecture, Rack plein,
+  confirmation, remplacement, noms, Undo, compte rendu, Alt+Shift+I dans
+  les deux fenêtres) ; P1 à P3 et rappel de fin de lecture dans
+  `tests/test_bank_slot.py` (17 tests) ; ordre de `_tape` à temps égal et
+  rappel aux arrêts automatiques dans `tests/test_playback_loop.py` ;
+  `grid_row` dans `tests/test_pattern_grid_api.py` ; 6 tests du gain
+  adaptés. Chaque correction de 18d3 défaite à l'essai fait échouer au
+  moins un test. 2620 verts.

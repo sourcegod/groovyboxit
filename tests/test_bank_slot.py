@@ -24,7 +24,7 @@ import track_router as tr_mod
 from rack import Rack, InstrumentSlot, InstrumentType
 from track_router import TrackRouter, BankPreview
 from pattern import (Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
-                     ETYPE_CC, ETYPE_PGM)
+                     ETYPE_CC, ETYPE_PGM, ETYPE_BEND)
 from project_manager import ProjectManager
 from engines.bank_engine import BankEngine
 from midi.midi_export import build_pattern_midi, volume_to_cc7, pan_to_cc10
@@ -1069,3 +1069,148 @@ def test_export_non_bank_track_ignores_program_change_channel():
     mid = _export(p, gm_map={50: 38})
     assert {m.channel for m in mid.tracks[1] if hasattr(m, "channel")} == {2}
     assert [m[3] for m in _msgs(mid.tracks[1], ("note_on",))] == [38, 38]
+
+
+# ---------------------------------------------------------------------------
+# Pédale, Pitch Bend et modulation des banques (Phase 7 étape 18e1,
+# docs/DESIGN.md § 18d2 P1-P3)
+# ---------------------------------------------------------------------------
+
+def _bend(time_val, value, channel=0):
+    return _ev(ETYPE_BEND, time_val, {"value": value}, channel)
+
+
+def test_cc64_bank_track_goes_to_its_current_channel_only():
+    """P1 : la pédale d'une piste Banque ne tient que son canal."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(2, BANK_A)
+    router.program_change(2, 0, channel=7)
+    eng.calls.clear()
+    router.on_cc_tape(2, 64, 127, 0)
+    assert eng.ccs(num=64) == [("cc", 7, 64, 127)]
+
+
+def test_cc64_bank_track_sent_even_when_muted():
+    """P1 : un relâchement de pédale ne se perd pas sur une piste muette."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(2, BANK_A)
+    router.toggle_track_mute(2)
+    eng.calls.clear()
+    router.on_cc_tape(2, 64, 0, 0)
+    assert eng.ccs(num=64) == [("cc", 2, 64, 0)]
+
+
+def test_cc64_synth_track_keeps_global_sustain():
+    """P1 : sur un synthé WAV, la pédale reste globale (set_sustain)."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(1, 1)
+    got = []
+    router.set_sustain = got.append
+    router.on_cc_tape(1, 64, 100, 0)
+    assert got == [True]
+
+
+def test_on_play_stop_zeroes_pedal_bend_mod_on_16_channels():
+    """P2 : Zero Controllers à l'arrêt."""
+    router, eng, *_ = _make_router()
+    eng.calls.clear()
+    router.on_play_stop()
+    assert sorted(c[1] for c in eng.ccs(num=64)) == list(range(16))
+    assert sorted(c[1] for c in eng.ccs(num=1)) == list(range(16))
+    assert all(c[3] == 0 for c in eng.ccs())
+    assert sorted(eng.of("bend")) == [("bend", ch, 0) for ch in range(16)]
+
+
+def test_on_play_stop_without_engine():
+    router, *_ = _make_router(with_engine=False)
+    router.on_play_stop()                       # sans erreur
+
+
+def _last(eng, kind, channel, num=None):
+    if kind == "bend":
+        return [c for c in eng.of("bend") if c[1] == channel][-1][2]
+    return eng.ccs(channel, num)[-1][3]
+
+
+def test_chase_restores_pedal_bend_and_mod_before_position():
+    """P3 : dernière valeur avant la position, position comprise."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(0, BANK_A)
+    tape = _tape(t0=[_cc(0, 64, 127, 0), _cc(4, 64, 0, 0), _cc(8, 64, 127, 0),
+                     _bend(2, -2000), _cc(3, 1, 90, 0), _cc(12, 1, 10, 0)])
+    router.chase(tape, 6.0)
+    assert (_last(eng, "cc", 0, 64), _last(eng, "bend", 0), _last(eng, "cc", 0, 1)) == (0, -2000, 90)
+    router.chase(tape, 8.0)
+    assert (_last(eng, "cc", 0, 64), _last(eng, "cc", 0, 1)) == (127, 90)
+
+
+def test_chase_zeroes_controllers_without_events():
+    """P3 : une pédale enfoncée par une lecture précédente ne survit pas."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(0, BANK_A)
+    router.on_cc_tape(0, 64, 127, 0)
+    router.chase(_tape(), 0.0)
+    for ch in range(16):
+        assert (_last(eng, "cc", ch, 64), _last(eng, "cc", ch, 1), _last(eng, "bend", ch)) == (0, 0, 0)
+
+
+def test_chase_controllers_follow_track_channel_at_their_time():
+    """P3 : le canal d'une pédale est celui de la piste à son instant (O3)."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(0, BANK_A)
+    tape = _tape(t0=[_cc(0, 64, 127, 0), _pgm(4, 5, 6), _cc(6, 64, 100, 0), _bend(6, 512)])
+    router.chase(tape, 8.0)
+    assert _last(eng, "cc", 0, 64) == 127
+    assert _last(eng, "cc", 6, 64) == 100
+    assert _last(eng, "bend", 6) == 512 and _last(eng, "bend", 0) == 0
+
+
+def test_chase_controllers_sent_after_instruments():
+    """P3 : un changement d'instrument ne remet pas la pédale poursuivie à 0."""
+    router, eng, *_ = _make_router()
+    router.assign_slot(0, BANK_A)
+    eng.calls.clear()
+    router.chase(_tape(t0=[_pgm(0, 3, 0), _cc(0, 64, 127, 0)]), 0.0)
+    kinds = [c[0] for c in eng.calls]
+    assert kinds.index("select") < eng.calls.index(("cc", 0, 64, 127))
+
+
+def test_chase_controllers_ignore_non_bank_tracks():
+    router, eng, *_ = _make_router()
+    router.assign_slot(1, 1)                       # synthé WAV
+    router.chase(_tape(t1=[_cc(0, 64, 127, 1)]), 0.0)
+    assert _last(eng, "cc", 1, 64) == 0
+
+
+# ---------------------------------------------------------------------------
+# Player : rappel de fin de lecture (§ 18d2 P2)
+# ---------------------------------------------------------------------------
+
+def _player_with_stop(monkeypatch):
+    pl, _got = _player_with_chase(monkeypatch)
+    stops = []
+    pl._on_play_stop_cb = lambda: stops.append(True)
+    return pl, stops
+
+
+@pytest.mark.parametrize("stop", ["stop_pattern", "pause_pattern", "stop_all"])
+def test_stop_calls_play_stop_cb_when_playing(monkeypatch, stop):
+    pl, stops = _player_with_stop(monkeypatch)
+    pl.play_pattern()
+    getattr(pl, stop)()
+    assert stops == [True]
+
+
+@pytest.mark.parametrize("stop", ["stop_pattern", "pause_pattern", "stop_all"])
+def test_stop_without_playback_does_not_call_play_stop_cb(monkeypatch, stop):
+    pl, stops = _player_with_stop(monkeypatch)
+    getattr(pl, stop)()
+    assert stops == []
+
+
+def test_stop_after_pause_calls_play_stop_cb_once(monkeypatch):
+    pl, stops = _player_with_stop(monkeypatch)
+    pl.play_pattern()
+    pl.pause_pattern()
+    pl.stop_pattern()
+    assert stops == [True]

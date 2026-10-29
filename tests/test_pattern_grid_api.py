@@ -239,3 +239,54 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
     print("Tous les tests test_pattern_grid_api ont réussi.")
+
+
+# ---------------------------------------------------------------------------
+# grid_row en un passage (Phase 7 étape 18d3) : même résultat que get_cell
+# case par case
+# ---------------------------------------------------------------------------
+
+def test_grid_row_matches_get_cell():
+    p = Pattern()
+    p._num_bars = 3
+    for bar, step, pad, vel in [(0, 0, 2, 90), (0, 15, 2, 40), (1, 3, 2, 70),
+                                (0, 4, 5, 100), (2, 15, 2, 20)]:
+        p.set_cell(0, pad, bar, step, vel)
+    p._tape[0].append(TapeEvent(ETYPE_PATCH, payload={"note": 60, "vel": 1}, time=6))
+    p._tape[0].append(TapeEvent(ETYPE_BEND, payload={"value": 9}, time=7))
+    for pad in range(16):
+        for bar in range(3):
+            assert p.grid_row(0, pad, bar) == [p.get_cell(0, pad, bar, s) for s in range(16)]
+    assert p.grid_row(0, 2, 0)[15] == 40 and p.grid_row(0, 2, 2)[15] == 20
+
+
+def test_grid_row_first_event_wins_like_get_cell():
+    p = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 30}, time=5))
+    p._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 99}, time=5))
+    assert p.grid_row(0, 1, 0)[5] == p.get_cell(0, 1, 0, 5) == 30
+
+
+def test_grid_row_ignores_fractional_times_and_other_tracks():
+    p = Pattern()
+    p._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 30}, time=5.5))
+    p.set_cell(1, 1, 0, 5, 80)
+    assert p.grid_row(0, 1, 0) == [0] * 16
+    assert p.grid_row(99, 1, 0) == [0] * 16
+
+
+def test_grid_row_is_linear_in_track_size():
+    """Une piste de 20 000 notes : une ligne en un passage, pas 16."""
+    p = Pattern()
+    p._num_bars, p._num_steps = 999, 128
+    p._tape[0] = [TapeEvent(ETYPE_PATCH, payload={"note": 60, "vel": 1}, time=t)
+                  for t in range(20000)]
+    calls = [0]
+    real = p._tape[0]
+    class Counting(list):
+        def __iter__(self):
+            calls[0] += 1
+            return list.__iter__(self)
+    p._tape[0] = Counting(real)
+    p.grid_row(0, 0, 0)
+    assert calls[0] == 1

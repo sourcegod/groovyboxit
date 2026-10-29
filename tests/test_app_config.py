@@ -84,11 +84,11 @@ def test_midi_bank_select_default(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# fluidsynth_gain (écart de 17b1)
+# fluidsynth_gain (écart de 17b1 ; défaut 0.4 depuis la Phase 7 étape 18d4)
 # ---------------------------------------------------------------------------
 
 def test_fluidsynth_gain_default(tmp_path):
-    assert _cfg(tmp_path).fluidsynth_gain == 1.0
+    assert _cfg(tmp_path).fluidsynth_gain == 0.4
 
 
 @pytest.mark.parametrize("value, expected", [
@@ -100,4 +100,4 @@ def test_fluidsynth_gain_read_and_clamped(tmp_path, value, expected):
 
 @pytest.mark.parametrize("bad", ["0.5", None, True, [1]])
 def test_fluidsynth_gain_invalid_gives_default(tmp_path, bad):
-    assert _cfg(tmp_path, {"fluidsynth_gain": bad}).fluidsynth_gain == 1.0
+    assert _cfg(tmp_path, {"fluidsynth_gain": bad}).fluidsynth_gain == 0.4

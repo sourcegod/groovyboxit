@@ -156,6 +156,7 @@ groovyboxit/
     ├── test_midi_export_mix.py
     ├── test_midi_export_ui.py
     ├── test_midi_import.py
+    ├── test_midi_import_ui.py
     ├── test_midi_handler_window.py
     ├── test_midi_manager.py
     ├── test_midi_parser.py
@@ -1614,7 +1615,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
 | `test_bank_dialogs.py` | Slot Banque, dialogues : entête de piste, propriétés de piste en direct (liste du canal, MSB / LSB, le canal impose son instrument, piste temporaire, autres pistes du canal, note d'aperçu, Annuler, Undo, aller-retour de canal), dialogue Banque de l'Explorateur |
-| `test_bank_slot.py` | Slot Banque, modèle « orchestre » : Rack et .gvp (slot = emplacement), instrument par canal, Program Change et Bank Select (canal de l'événement, la piste suit), poursuite, le canal impose son instrument, canal 10 = batterie, rejeu, jeu direct, poursuite par le player, export (Bank Select avant le programme, canal courant) |
+| `test_bank_slot.py` | Slot Banque, modèle « orchestre » : Rack et .gvp (slot = emplacement), instrument par canal, Program Change et Bank Select (canal de l'événement, la piste suit), poursuite, le canal impose son instrument, canal 10 = batterie, rejeu, jeu direct, poursuite par le player, export (Bank Select avant le programme, canal courant) ; pédale au canal de la piste, Zero Controllers à l'arrêt, poursuite de la pédale, du Pitch Bend et de la modulation, rappel de fin de lecture |
 | `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
 | `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change, champ Canal + dispatch d'édition, piste Banque suivie (19 tests) |
 | `test_check_specs_tests.py` | tools/check_specs_tests.py sur un faux dépôt : absents, disparus, ligne proposée, code de sortie |
@@ -1641,6 +1642,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_export_mix.py` | Export MIDI : volume et pan de piste (CC7/CC10), notes PATCH sans synthé omises, CC91/CC93 à 0 |
 | `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E |
 | `test_midi_import.py` | Import MIDI : nom, tempo, signature, longueur, pas et arrondi des notes, durées, pistes par canal, type 0, fusion, entête, volume / pan, CC / Bend, ignorés, compte rendu, aller-retour, fichier abîmé |
+| `test_midi_import_ui.py` | Interface de l'import MIDI : slot Banque trouvé ou créé, dossier du dialogue, annulation, erreur de lecture, confirmation, remplacement du pattern, noms de pistes, Undo, compte rendu, Alt+Shift+I |
 | `test_midi_handler_window.py` | Statut MIDI live de l'éditeur : format_midi_status, _notify_editor_midi |
 | `test_midi_manager.py` | MidiManager : connexion, déconnexion, ports |
 | `test_midi_parser.py` | midi_parser en isolation : decode_message, describe_note/cc/program |
@@ -1650,11 +1652,11 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
 | `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |
 | `test_pattern.py` | Pattern : création, reset, resize, double/halve, random |
-| `test_pattern_grid_api.py` | API grille de Pattern (get_cell, set_cell, iter_grid, copy_from…) au-dessus de _tape |
+| `test_pattern_grid_api.py` | API grille de Pattern (get_cell, set_cell, iter_grid, copy_from…) au-dessus de _tape ; grid_row en un passage |
 | `test_pattern_properties_bug.py` | Non-régression : Doubler/Diviser/Redimensionner gardent grille et _tape synchronisées |
 | `test_pattern_properties_dialog.py` | PatternPropertiesDialog : BPM, mesures, pas |
 | `test_pattern_serialization.py` | to_dict / from_dict (round-trip) |
-| `test_playback_loop.py` | Boucle de lecture : _build_measure_events, _dispatch_event, _on_measure_end |
+| `test_playback_loop.py` | Boucle de lecture : _build_measure_events (ordre de _tape à temps égal), _dispatch_event, _on_measure_end (rappel de fin de lecture) |
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
 | `test_rename.py` | Renommage F2 : piste, pattern, song (18 tests) |
