@@ -251,7 +251,8 @@ def test_all_events_sorted():
 def test_all_events_empty_sel():
     me = MidiEditor()
     p  = _make_pattern()
-    assert me.get_all_events(p, []) == []
+    # Sans piste : seul le tempo de départ, toujours listé (Phase 7 étape 19f1)
+    assert [e["type"] for e in me.get_all_events(p, [])] == ["tempo"]
 
 
 # ---------------------------------------------------------------------------
@@ -1880,7 +1881,8 @@ def test_all_events_right_limiter_includes_fraction_of_its_step():
 
 def test_filter_pos_to_includes_fraction_of_its_step():
     me = MidiEditor()
-    ev = me.get_all_events(_pattern_fractional_edge(), [0])
+    ev = [e for e in me.get_all_events(_pattern_fractional_edge(), [0])
+          if e["type"] != "tempo"]                       # ligne de départ (19f1)
     crit = {"active": True, "etype_filter": "all", "pos_from": 0, "pos_to": 5}
     assert sorted(ev[i]["offset"] for i in me.filter_events(ev, crit)) == [5.4, 5.4]
 
@@ -1916,8 +1918,8 @@ def test_delete_events_mixed_grid_patch_bend_same_step():
     add_tape_at(p, 0, 0, 2, TapeEvent(ETYPE_BEND, payload={"value": 500}))
     add_tape_at(p, 0, 0, 2, _patch(48))
     ev = me.get_all_events(p, [0])
-    assert len(ev) == 4
-    assert me.delete_events(p, ev) == 4
+    assert len(ev) == 5                    # + tempo de départ (Phase 7 étape 19f1)
+    assert me.delete_events(p, ev) == 4    # le départ ne se supprime pas
     assert tape_at(p, 0, 0, 2) == []
 
 

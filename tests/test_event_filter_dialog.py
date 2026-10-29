@@ -230,7 +230,7 @@ def test_selecting_to_come_type_reverts_to_last_valid():
     app, frame, dlg = make_dlg()
     dlg._type_lb.SetSelection(1)   # Notes (valide)
     dlg._on_type_change(None)
-    dlg._type_lb.SetSelection(6)   # "(à venir) Poly Aftertouch"
+    dlg._type_lb.SetSelection(7)   # "(à venir) Poly Aftertouch" (6 = Tempo, 19f1)
     dlg._on_type_change(None)
     assert dlg._type_lb.GetSelection() == 1
     assert "indisponible" in dlg._status_ctrl.GetString(0).lower()
@@ -239,7 +239,7 @@ def test_selecting_to_come_type_reverts_to_last_valid():
 
 def test_selecting_to_come_type_does_not_crash():
     app, frame, dlg = make_dlg()
-    for idx in range(6, 9):
+    for idx in range(6, 10):
         dlg._type_lb.SetSelection(idx)
         dlg._on_type_change(None)
     teardown(app, frame, dlg)

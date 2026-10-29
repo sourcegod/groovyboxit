@@ -1125,7 +1125,7 @@ def test_delete_cursor_on_cc_removes_only_the_cc():
     win._midi_editor._cur_idx = _idx_of(win, "cc")
     win._delete_event()
     assert tape_at(p, 0, 0, 5) == []
-    assert len(win._events) == 4
+    assert len(win._events) == 5      # + tempo de départ (19f1)
     assert win.statuses[-1] == "CC#7 supprimé"
     assert win._parent.undo_labels == ["Suppr CC#7 Tr1 B1:S6"]
 
@@ -1136,7 +1136,7 @@ def test_delete_cursor_on_pgm_removes_only_the_pgm():
     win._midi_editor._cur_idx = _idx_of(win, "pgm")
     win._delete_event()
     assert tape_at(p, 0, 0, 8) == []
-    assert len(win._events) == 4
+    assert len(win._events) == 5
     assert win.statuses[-1] == "Program Change supprimé"
 
 
@@ -1158,6 +1158,7 @@ def test_delete_chord_recorded_high_then_low_fully_removed():
     add_tape_at(p, 0, 0, 0, _del_patch(67))
     add_tape_at(p, 0, 0, 0, _del_patch(60))
     win = _FakeDeleteWindow(p)
+    win._midi_editor._cur_idx = _idx_of(win, "note")   # 0 = tempo de départ (19f1)
     win._delete_event()
     assert p._tape[0] == []
     assert win.statuses[-1] == "Accord supprimé(e) (2 note(s))"
@@ -1216,7 +1217,12 @@ def test_delete_cursor_moves_back_after_single_event():
     assert win._midi_editor._cur_idx == i - 1
 
 
-def test_delete_empty_list_does_nothing():
+def test_delete_empty_pattern_deletes_nothing(monkeypatch):
+    """Pattern vide : seule la ligne du tempo de départ (Phase 7 étape
+    19f1), qui ne se supprime pas (bip, sans wx.App dans ce test)."""
+    bells = []
+    monkeypatch.setattr(wx, "Bell", lambda: bells.append(True))
     win = _FakeDeleteWindow(Pattern())
     win._delete_event()
-    assert win.statuses == [] and win._parent.undo_labels == []
+    assert win.statuses == ["Le tempo de départ ne se supprime pas"]
+    assert win._parent.undo_labels == [] and bells == [True]

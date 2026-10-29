@@ -6689,3 +6689,16 @@ récent » du dialogue (19f1).
   - Essayé au lecteur d'écran (utilisateur, 2026-10-29) : ça marche.
   - `pytest` rouge : 8 tests (ligne de départ en tête de Ctrl+2 :
     indices décalés, liste jamais vide ; type « Tempo » du filtre).
+- **19g1** — `tests/test_tempo_dialog.py` (49 tests : opérations du
+  player et trois portées, `TempoMixin` et titres d'Undo, dialogue Tempo et
+  dialogue d'édition ouverts par le chemin de l'appli — vrai Pattern dont
+  `steps_per_beat()` est un float —, Insérer / Modifier / Supprimer,
+  Entrée / Espace / Suppr, lignes Tempo de Ctrl+2, filtre, Entrée sur une
+  ligne Tempo, Alt+Shift+T dans les deux fenêtres) ; 8 tests adaptés à la
+  ligne de départ en tête de Ctrl+2 et au type « Tempo » du filtre.
+  Les deux défauts de 19f1 et « à cette valeur » qui garderait les
+  changements, réintroduits à l'essai, font échouer des tests.
+  - **Écart : focus simulé** (`wx.Window.FindFocus` remplacé) dans les
+    tests du clavier : afficher le dialogue pour lui donner un vrai focus
+    faisait planter Python (erreur de segmentation) à la sortie de la
+    suite complète. 2765 verts.
