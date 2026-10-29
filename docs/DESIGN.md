@@ -6622,3 +6622,25 @@ récent » du dialogue (19f1).
 | **19f1** | Implémentation — T8 avec R3, T9. | inchangé |
 | **19g1** | Tests — 19f1. | inchangé |
 | **19h1** | Doc — clôture. | inchangé |
+
+### Phase 7 étape 19 — Avancement après l'avenant (19d3)
+
+- **19d3** — conforme à 19d2 :
+  - R1 : `clamp_bpm` arrondit à 0,01 (entier s'il n'a pas de décimales),
+    `format_bpm` (« 46,5 ») ; import exact à 0,01 (constantes `BPM_MIN` /
+    `BPM_MAX` de l'import retirées) ; compte rendu de l'import formaté ;
+    champ BPM arrondi à l'unité.
+  - R2 : `DrumPlayer.scale_tempos(ratio)` et `set_tempo_scaled(bpm)`
+    (rapport nouveau / tempo exact à la position, position musicale
+    gardée) pour le champ BPM, Tap Tempo et ±5 (±5 depuis le tempo
+    affiché, arrondi) ; marqueur `TEMPO_EVENT` dans la mesure (début de la
+    fenêtre et chaque changement, seulement s'il y a des changements) →
+    `_on_tempo_cb` → champ BPM mis à jour en lecture.
+  - Essai sans le son : Bach à 46 → départ 46, fin 20, durée doublée
+    (202,6 s) ; 46, +5 ×7, −5 ×7, puis 92 : carte identique ; en lecture
+    depuis la mesure 34, tempos signalés 85, 83, 80, 77, 70, 60, 50, 40.
+    **Essayé à l'écoute et au lecteur d'écran (utilisateur, 2026-10-29) :
+    « ça marche bien »** ; affichage en direct confirmé.
+  - `pytest` rouge : 6 tests (4 BPM entiers dans `test_tempo_map.py` et
+    `test_midi_import.py`, la fausse fenêtre de `test_key_manager.py` et
+    un échec qui n'en est que la suite).

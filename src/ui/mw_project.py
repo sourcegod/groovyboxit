@@ -8,6 +8,7 @@ from rack import InstrumentType
 from project_manager import ProjectManager
 from midi.midi_export import export_pattern
 from midi.midi_import import import_pattern
+from tempo_map import format_bpm
 
 
 class ProjectMixin:
@@ -298,7 +299,7 @@ class ProjectMixin:
         n = report.num_tracks
         msg = (f"Import MIDI : {base} → Pattern {idx + 1:02d}, {n} piste{'s' if n > 1 else ''}, "
                f"{report.num_bars} mesure{'s' if report.num_bars > 1 else ''}, "
-               f"{report.bpm} BPM, {report.num_steps} pas")
+               f"{format_bpm(report.bpm)} BPM, {report.num_steps} pas")
         if created:
             msg += f" ; slot {slot_idx + 1:02d} créé : banque {self._rack.get_slot(slot_idx).name}"
         details = report.details()

@@ -135,6 +135,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._player._on_play_start_cb  = self._router.chase      # 17f1, § 17e3 O4
         self._player._on_play_stop_cb   = self._on_play_stopped      # 18d3, § 18d2 P2 ; 19d1
         self._player._on_stopped_move_cb = self._update_bpm_display  # 19d1, § 19a1 T7
+        self._player._on_tempo_cb = lambda bpm: wx.CallAfter(        # 19d3, § 19d2 R2
+            self._bpm_ctrl.SetValue, int(round(bpm)))
         self._player._on_track_play_cb = self._router.on_play
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
         self._player._on_patch_tape_cb  = self._router.on_patch_tape
@@ -443,7 +445,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _on_bpm_spin(self, event):
         bpm = self._bpm_ctrl.GetValue()
-        self._player.set_tempo_at(bpm)          # tempo en vigueur (19d1, T7)
+        self._player.set_tempo_scaled(bpm)      # tous les tempos (19d3, § 19d2 R2)
         self._show_status(f"BPM: {bpm}")
 
     def _on_volume_spin(self, event):
@@ -476,8 +478,9 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         event.Skip()
 
     def _update_bpm_display(self):
-        """Tempo en vigueur à la position courante (Phase 7 étape 19d1, T7)."""
-        self._bpm_ctrl.SetValue(self._player.tempo_at())
+        """Tempo en vigueur à la position courante, arrondi (Phase 7 étape
+        19d1, § 19d2 R1, R2)."""
+        self._bpm_ctrl.SetValue(int(round(self._player.tempo_at())))
 
     def _on_play_stopped(self):
         """Fin de lecture (thread du player possible) : contrôleurs des banques

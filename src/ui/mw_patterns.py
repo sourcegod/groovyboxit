@@ -76,7 +76,7 @@ class PatternMixin:
         live = self._player._pattern
         live.copy_from(new)
         self._player.set_bpm(new._bpm)
-        self._bpm_ctrl.SetValue(int(new._bpm))
+        self._bpm_ctrl.SetValue(int(round(new._bpm)))
         live._looping  = new._looping
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots

@@ -5,6 +5,7 @@
     (T2-T4). Un tempo de départ et des changements instantanés (position en
     pas, BPM entier) ; conversion pas ↔ secondes linéaire par morceaux.
     Sans dépendance à wx ni au player : interface étroite, portable C/C++.
+    Tempos décimaux à 0,01 près depuis la Phase 7 étape 19d3 (§ 19d2 R1).
     Date: Thu, 29/10/2026
     Author: Coolbrother
 """
@@ -15,8 +16,19 @@ BPM_MAX = 600
 
 
 def clamp_bpm(bpm):
-    """BPM entier borné à 1..600, comme le champ BPM (T2)."""
-    return max(BPM_MIN, min(BPM_MAX, int(round(bpm))))
+    """BPM borné à 1..600 et arrondi à 0,01 (§ 19d2 R1) ; entier s'il n'a pas
+    de décimales (.gvp et affichage plus lisibles)."""
+    value = round(max(BPM_MIN, min(BPM_MAX, float(bpm))), 2)
+    return int(value) if value == int(value) else value
+
+
+def format_bpm(bpm):
+    """Tempo pour l'affichage : décimales seulement s'il en a, virgule
+    française (« 92 », « 46,5 », « 93,75 ») — § 19d2 R1."""
+    value = clamp_bpm(bpm)
+    if isinstance(value, int):
+        return str(value)
+    return f"{value:.2f}".rstrip("0").replace(".", ",")
 
 
 def normalize_changes(start_bpm, changes):

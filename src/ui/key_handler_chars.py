@@ -1,4 +1,5 @@
 import wx
+from tempo_map import format_bpm
 from pattern import Pattern
 
 
@@ -188,10 +189,10 @@ class CharHandler:
                 and (ukey == ord('h') or key == ord('H')):
             metro = win._player._metro
             if metro.is_fresh_sequence():
-                win._add_undo(f"Tap Tempo (BPM: {win._player.tempo_at()})")
+                win._add_undo(f"Tap Tempo (BPM: {format_bpm(win._player.tempo_at())})")
             bpm = metro.tap()
             if bpm is not None:
-                win._player.set_tempo_at(bpm)        # tempo en vigueur (19d1, T7)
+                win._player.set_tempo_scaled(bpm)    # tous les tempos (19d3, § 19d2 R2)
                 win._bpm_ctrl.SetValue(bpm)
                 win._show_status(f"Tap Tempo: {bpm} BPM")
             return True
@@ -348,11 +349,11 @@ class CharHandler:
 
         # BPM / Volume
         if ukey == ord('(') or key == ord('(') or (not shift and not ctrl and key == ord('5')):
-            win._player.set_tempo_at(win._player.tempo_at() + 5)   # 19d1, T7
+            win._player.set_tempo_scaled(round(win._player.tempo_at()) + 5)   # 19d3, R2
             win._update_bpm_display()
             return True
         if ukey == ord(')') or key == ord(')'):
-            win._player.set_tempo_at(win._player.tempo_at() - 5)
+            win._player.set_tempo_scaled(round(win._player.tempo_at()) - 5)
             win._update_bpm_display()
             return True
         if ukey == ord('+') or key == ord('+'):

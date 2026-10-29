@@ -20,11 +20,10 @@ import mido
 
 from pattern import (Pattern, TapeEvent, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM,
                      ETYPE_BEND)
+from tempo_map import clamp_bpm
 
 BEATS_PER_BAR = 4       # une mesure = 4 noires (_num_beats n'est pas sauvé, I10)
 DEFAULT_BPM   = 120     # tempo MIDI par défaut, sans set_tempo (I10)
-BPM_MIN       = 1       # bornes du SpinCtrl de BPM (main_window.py)
-BPM_MAX       = 600
 
 # Métas lus par l'import ; les autres sont ignorés et comptés (I9)
 _KNOWN_METAS  = ("track_name", "set_tempo", "time_signature", "end_of_track")
@@ -233,8 +232,8 @@ def build_pattern_from_midi(mid, *, name=""):
     # premier ; chaque tempo suivant devient un changement de la carte.
     tempos.sort(key=lambda x: x[0])        # tri stable : ordre du fichier à tick égal
     start = [tp for tick, tp in tempos if tick == 0]
-    bpm   = max(BPM_MIN, min(BPM_MAX, round(mido.tempo2bpm(
-        start[-1] if start else mido.bpm2tempo(DEFAULT_BPM)))))
+    bpm   = clamp_bpm(mido.tempo2bpm(          # exact à 0,01 (19d3, § 19d2 R1)
+        start[-1] if start else mido.bpm2tempo(DEFAULT_BPM)))
     if sigs:
         _tick, num, den = min(sigs, key=lambda s: s[0])
         if (num, den) != (BEATS_PER_BAR, 4):

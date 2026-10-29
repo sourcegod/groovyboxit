@@ -148,7 +148,7 @@ class SongMixin:
         self._router._track_channels[:] = new._track_channels
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
         self._router.chase(new._tape, 0.0)  # instruments du nouveau pattern (17f1, § 17e3 O4)
-        self._bpm_ctrl.SetValue(int(new._bpm))
+        self._bpm_ctrl.SetValue(int(round(new._bpm)))
         self._show_status(f"Song → Pat_{next_pat_idx+1:02d}")
         if self._song_window:
             self._song_window.on_song_advance(next_pat_idx)

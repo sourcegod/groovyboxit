@@ -16,6 +16,7 @@ class PlaybackLoopMixin:
     # CC_TAPE_EVENT (_tape), qui délègue déjà à on_mod_tape (TrackRouter.on_cc_tape).
     CC_TAPE_EVENT    = -7   # marqueur interne pour les événements CC générique (etype ETYPE_CC de _tape)
     PGM_TAPE_EVENT   = -8   # marqueur interne pour les événements Program Change (etype ETYPE_PGM de _tape)
+    TEMPO_EVENT      = -9   # changement de tempo franchi (carte de tempo, Phase 7 étape 19d3)
 
     def _run_thread(self):
         # Position de reprise, appliquée dès que la fenêtre est connue (19d1)
@@ -127,6 +128,16 @@ class PlaybackLoopMixin:
                         elif ev.etype == ETYPE_BEND:
                             events.append((t_sec, self.BEND_TAPE_EVENT,
                                            (t_idx, ev.payload.get("value")), 0))
+            # Tempos franchis, pour l'affichage du champ BPM en lecture (§ 19d2
+            # R2) : début de la fenêtre (retour de boucle) et chaque changement
+            tm = self.tempo_map()
+            if not tm.is_constant and self._count_in == 0:
+                marks = [(lp_start, tm.bpm_at(lp_start))] + \
+                        [(at, b) for at, b in tm.changes if lp_start < at < lp_end + 1]
+                for at, b in marks:
+                    t_sec = to_sec(at - lp_start)
+                    if t_sec > elapsed - 0.002:
+                        events.append((t_sec, self.TEMPO_EVENT, b, 0))
         events.extend(self._metro.build_events(
             loop_bars, self._pattern._num_steps, self._pattern._num_beats,
             to_sec, elapsed))
@@ -231,6 +242,9 @@ class PlaybackLoopMixin:
                     )
                 if self.recording:
                     self._record_nr_hit(pad, self._t_to_offset(t_sec))
+        elif track_or_type == self.TEMPO_EVENT:
+            if self._on_tempo_cb:
+                self._on_tempo_cb(evt_data)
         elif track_or_type == Metronome.METRO_EVENT:
             self.sound_man.play_metronome(evt_data)
 

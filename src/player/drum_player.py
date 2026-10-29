@@ -2,7 +2,7 @@ import threading
 
 from metronome import Metronome
 from pattern import Pattern
-from tempo_map import normalize_changes
+from tempo_map import normalize_changes, clamp_bpm
 from voice_manager import VoiceManager
 from quantize_manager import QuantizeManager
 from loop_manager import LoopManager, LoopWindow
@@ -44,6 +44,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._tmap_key = None
         self._on_stopped_move_cb = None   # callback() : position déplacée à l'arrêt (19d1, T7)
         self._resync_offset      = None   # position à garder après un changement de tempo (19d1)
+        self._on_tempo_cb        = None   # callback(bpm) : changement de tempo franchi en lecture (19d3)
         self._update_step_duration()
         self.quant_idx = 7  # défaut: 1/16
         self._grid_idx = Pattern.GRID_DEFAULT_IDX   # grille globale (navigation + quantise)
@@ -190,6 +191,29 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         """Tempo en vigueur à la position pos (défaut : position courante)."""
         return self.tempo_map().bpm_at(self._current_offset() if pos is None else pos)
 
+    def scale_tempos(self, ratio):
+        """Multiplie le tempo de départ et tous les changements par ratio,
+        chaque tempo borné à 1..600 (Phase 7 étape 19d3, § 19d2 R2). En
+        lecture, la position musicale est gardée."""
+        pat = self._pattern
+        self._keep_position()
+        start   = clamp_bpm(self.bpm * ratio)
+        changes = [(at, clamp_bpm(bpm * ratio)) for at, bpm in pat._tempo_changes]
+        self.bpm = pat._bpm = start
+        pat._tempo_changes = normalize_changes(start, changes)
+        self._update_step_duration()
+        self._wakeup.set()
+
+    def set_tempo_scaled(self, bpm, pos=None):
+        """Champ BPM, Tap Tempo, ±5 (§ 19d2 R2) : le tempo en vigueur à pos
+        (défaut : position courante) devient bpm, et tous les tempos changent
+        dans la même proportion. Retourne le tempo atteint à pos, ou None
+        hors de 1..600."""
+        if not 1 <= bpm <= 600:
+            return None
+        self.scale_tempos(bpm / self.tempo_at(pos))
+        return self.tempo_at(pos)
+
     def set_tempo_at(self, bpm, pos=None):
         """Modifie le tempo en vigueur à la position pos (défaut : position
         courante) : le tempo de départ avant le premier changement, sinon le
@@ -199,6 +223,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
             return None
         pos = self._current_offset() if pos is None else pos
         pat = self._pattern
+        bpm = clamp_bpm(bpm)
         idx = None
         for i, (at, _old) in enumerate(pat._tempo_changes):
             if at <= pos:
