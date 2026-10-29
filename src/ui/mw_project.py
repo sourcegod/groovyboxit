@@ -183,6 +183,8 @@ class ProjectMixin:
     # § 18a1 I1-I3, I5, I11) : midi_import construit le pattern, l'UI choisit
     # le slot Banque, remplace le pattern courant et pose l'Undo.
 
+    _import_dir = None          # dernier dossier d'import validé (session)
+
     def _import_bank_slot(self):
         """(slot, emplacement, créé) du slot Banque des pistes importées
         (I3) : le premier slot Banque du Rack ; sinon un slot à créer dans le
@@ -210,7 +212,9 @@ class ProjectMixin:
         résultat. Le fichier est lu avant toute question : une erreur de
         lecture ne pose ni confirmation ni Undo."""
         status = status or self._show_status
-        start  = self._exports_dir if os.path.isdir(self._exports_dir) else os.path.expanduser("~")
+        # Dernier dossier validé de la session, sinon EXPORTS (18d3)
+        start  = next((d for d in (self._import_dir, self._exports_dir)
+                       if d and os.path.isdir(d)), os.path.expanduser("~"))
         dlg = wx.FileDialog(
             parent or self, "Importer un fichier MIDI…",
             defaultDir=start,
@@ -223,6 +227,7 @@ class ProjectMixin:
         if not path:
             status("Import MIDI annulé")
             return
+        self._import_dir = os.path.dirname(path)
         base = os.path.basename(path)
         try:
             imported, report = import_pattern(path)

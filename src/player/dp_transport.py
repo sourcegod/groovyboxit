@@ -31,6 +31,12 @@ class TransportMixin:
                 tape = [list(track_list) for track_list in self._pattern._tape]
             self._on_play_start_cb(tape, pos)
 
+    def _play_stopped(self):
+        """Fin d'une lecture qui tournait : contrôleurs des banques à zéro
+        (Phase 7 étape 18d3, docs/DESIGN.md § 18d2 P2)."""
+        if self._on_play_stop_cb:
+            self._on_play_stop_cb()
+
     def play_pattern(self):
         self._chase(self._resume_offset or 0.0)
         clicked = 0
@@ -47,6 +53,7 @@ class TransportMixin:
     #--------------------------------------------------------------------------
 
     def stop_pattern(self):
+        was_playing            = self.playing
         self.playing           = False
         self.clicking          = False
         self._count_in         = 0
@@ -58,6 +65,8 @@ class TransportMixin:
             self.stop_thread()
         else:
             self._wakeup.set()
+        if was_playing:
+            self._play_stopped()
 
     #--------------------------------------------------------------------------
 
@@ -92,6 +101,7 @@ class TransportMixin:
             self.stop_thread()
         else:
             self._wakeup.set()
+        self._play_stopped()
 
     #--------------------------------------------------------------------------
 
@@ -114,6 +124,7 @@ class TransportMixin:
     #--------------------------------------------------------------------------
 
     def stop_all(self):
+        was_playing              = self.playing
         self.playing             = False
         self.clicking            = False
         self._note_repeat_active = False
@@ -125,6 +136,8 @@ class TransportMixin:
         self._count_in           = 0
         self.stop_thread()
         self.sound_man.stop_all()
+        if was_playing:
+            self._play_stopped()
 
     #--------------------------------------------------------------------------
 

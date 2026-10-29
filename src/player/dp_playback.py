@@ -128,7 +128,12 @@ class PlaybackLoopMixin:
                 if t_sec > elapsed - 0.002:
                     events.append((t_sec, self.NR_EVENT, 0, 100))
                 nr_step += interval
-        events.sort()
+        # Tri stable sur (temps, marqueur) seulement : à temps égal, les
+        # événements gardent l'ordre de _tape (pistes, puis rang dans la
+        # piste). Trier aussi sur les données classait les CC par numéro :
+        # un CC121 (Reset All Controllers) passait après le CC64 qui le
+        # suit, et relâchait la pédale (Phase 7 étape 18d3, § 18d2).
+        events.sort(key=lambda e: (e[0], e[1]))
         return events
 
     #--------------------------------------------------------------------------
@@ -246,6 +251,7 @@ class PlaybackLoopMixin:
                 if self._lm.on_measure_end():
                     self._resume_offset = float(lp_start)
                     self.playing = False
+                    self._play_stopped()               # 18d3, § 18d2 P2
                     if self._song_mode:
                         self._song_mode = False
                         if self._on_song_advance_cb:
@@ -285,6 +291,7 @@ class PlaybackLoopMixin:
                         total_steps = self._pattern._num_bars * self._pattern._num_steps
                         self._resume_offset = float(total_steps - 1)
                         self.playing = False
+                        self._play_stopped()           # 18d3, § 18d2 P2
                         if self._song_mode:
                             self._song_mode = False
                             if self._on_song_advance_cb:

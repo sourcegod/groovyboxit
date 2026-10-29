@@ -331,8 +331,27 @@ class Pattern:
                                   if not (ev.etype == ETYPE_GRID and ev.time in time_set)]
 
     def grid_row(self, track, pad, bar):
-        """Snapshot list[int] (longueur _num_steps) — lecture seule."""
-        return [self.get_cell(track, pad, bar, step) for step in range(self._num_steps)]
+        """Snapshot list[int] (longueur _num_steps) — lecture seule.
+
+        Un seul passage sur la piste (même résultat que get_cell case par
+        case : la première note GRID trouvée à un pas l'emporte). Case par
+        case, une piste importée de milliers de notes coûtait 300 ms au
+        thread de l'UI à chaque changement de piste, et la lecture sautait
+        (Phase 7 étape 18d3)."""
+        num_steps = self._num_steps
+        row = [0] * num_steps
+        if track >= len(self._tape):
+            return row
+        start = self._bar_step_to_time(bar, 0)
+        found = [False] * num_steps
+        for ev in self._tape[track]:
+            if ev.etype != ETYPE_GRID or ev.payload.get("pad") != pad:
+                continue
+            step = ev.time - start
+            if 0 <= step < num_steps and step == int(step) and not found[int(step)]:
+                found[int(step)] = True
+                row[int(step)] = ev.payload.get("vel")
+        return row
 
     def set_grid_row(self, track, pad, bar, values):
         """Remplace toute la ligne (track,pad,bar) par values (bulk write)."""

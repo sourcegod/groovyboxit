@@ -9,7 +9,7 @@
 import threading
 from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
 from rack import InstrumentType
-from pattern import Pattern, ETYPE_CC, ETYPE_PGM
+from pattern import Pattern, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from bend_log import bend_log
 from midi.midi_export import volume_to_cc7, pan_to_cc10
 
@@ -502,17 +502,26 @@ class TrackRouter:
             if self._bank_slot_of(t) is not None:
                 self._send_bank_mix(t)
 
+    # Contrôleurs d'état poursuivis et remis à zéro à l'arrêt sur les canaux
+    # de banque (Phase 7 étape 18d3, docs/DESIGN.md § 18d2 P2, P3)
+    _CHASED_CCS = (1, 64)          # modulation, pédale sustain
+
     def chase(self, tape, pos=0.0):
         """Poursuite (§ 17e3 O4) : remet les canaux à l'état GM par défaut,
         puis rejoue, toutes pistes sur slot Banque confondues, les CC0, CC32
         et Program Change de tape (listes d'événements par piste) jusqu'à
         pos (en pas) compris, dans l'ordre des temps puis des pistes ;
         chaque piste reprend le canal de son dernier Program Change (O3).
-        Enfin, instruments et mixage envoyés au moteur."""
+        Enfin, instruments et mixage envoyés au moteur, puis pédale, Pitch
+        Bend et modulation de chaque canal : la dernière valeur avant pos,
+        au canal courant de sa piste à son instant, sinon zéro (Event Chase
+        de Sonar, 18d3, § 18d2 P3)."""
         self._track_cur_channels = list(self._track_channels)
         self._chan_prog = [0] * 16
         self._chan_msb  = [0] * 16
         self._chan_lsb  = [0] * 16
+        chan_cc   = {cc: [0] * 16 for cc in self._CHASED_CCS}
+        chan_bend = [0] * 16
         found = []
         for t, events in enumerate(tape[:self.NUM_TRACKS]):
             if self._bank_slot_of(t) is None:
@@ -520,19 +529,45 @@ class TrackRouter:
             for seq, ev in enumerate(events):
                 if ev.time > pos:
                     continue
-                if ev.etype == ETYPE_PGM or (ev.etype == ETYPE_CC
-                                             and ev.payload.get("cc_num") in (0, 32)):
+                if ev.etype in (ETYPE_PGM, ETYPE_BEND) or (
+                        ev.etype == ETYPE_CC and ev.payload.get("cc_num")
+                        in (0, 32) + self._CHASED_CCS):
                     found.append((ev.time, t, seq, ev))
         for _, t, _, ev in sorted(found, key=lambda f: f[:3]):
             ch = max(0, min(15, ev.channel))
             if ev.etype == ETYPE_PGM:
                 self._chan_prog[ch] = max(0, min(127, ev.payload.get("program", 0)))
                 self._track_cur_channels[t] = ch
+            elif ev.etype == ETYPE_BEND:
+                chan_bend[self._track_cur_channels[t]] = \
+                    max(-8192, min(8191, ev.payload.get("value", 0)))
             elif ev.payload.get("cc_num") == 0:
                 self._chan_msb[ch] = max(0, min(127, ev.payload.get("value", 0)))
-            else:
+            elif ev.payload.get("cc_num") == 32:
                 self._chan_lsb[ch] = max(0, min(127, ev.payload.get("value", 0)))
+            else:
+                chan_cc[ev.payload["cc_num"]][self._track_cur_channels[t]] = \
+                    max(0, min(127, ev.payload.get("value", 0)))
         self.sync_banks(force=True)
+        engine = self.bank_engine
+        if engine is not None:
+            for ch in range(16):
+                for cc in self._CHASED_CCS:
+                    engine.cc(ch, cc, chan_cc[cc][ch])
+                engine.pitch_bend(ch, chan_bend[ch])
+
+    def on_play_stop(self):
+        """Fin de lecture (arrêt, pause, fin du pattern ou du song) : pédale,
+        Pitch Bend et modulation à zéro sur les 16 canaux du moteur de
+        banque, comme « Zero Controllers When Play Stops » de Sonar (Phase 7
+        étape 18d3, docs/DESIGN.md § 18d2 P2)."""
+        engine = self.bank_engine
+        if engine is None:
+            return
+        for ch in range(16):
+            for cc in self._CHASED_CCS:
+                engine.cc(ch, cc, 0)
+            engine.pitch_bend(ch, 0)
 
     def set_master_pan(self, pan):
         """Pan global, ajouté au CC10 des canaux de banque (D13)."""
@@ -851,6 +886,12 @@ class TrackRouter:
             self.stop_all_synth_voices()
             return
         if cc_num == 64:                           # CC#64 : Sustain Pedal
+            if self._bank_slot_of(track_idx) is not None:
+                # Piste Banque : canal courant de la piste seulement, même
+                # muette (un relâchement ne se perd pas) — 18d3, § 18d2 P1
+                if self.bank_engine is not None:
+                    self.bank_engine.cc(self._track_cur_channels[track_idx], 64, value)
+                return
             self.set_sustain(value >= 64)
             return
         if not self._track_is_audible(track_idx):

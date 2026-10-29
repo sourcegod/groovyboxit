@@ -6214,3 +6214,30 @@ Undo, une pédale restée enfoncée ne survit plus à une relance.
 | **18d3** | Implémentation — P1 à P3. Essayé à l'écoute : Bach arrêté pédale enfoncée, puis Recado, sans relancer l'appli. | `track_router.py`, `player/dp_transport.py`, `player/drum_player.py`, `ui/main_window.py` |
 | **18e1** | Tests — interface de l'import (18d1) et P1 à P3. | `tests/test_midi_import_ui.py` (nouveau), `tests/test_bank_slot.py`, fakes au besoin |
 | **18f1** | Doc — clôture. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 7 étape 18 — Avancement après l'avenant (18d3)
+
+- **18d3** — P1 à P3 conformes à 18d2 : CC64 d'une piste Banque au canal
+  courant de la piste (`on_cc_tape`) ; `TrackRouter.on_play_stop`, appelé
+  par le nouveau rappel `_on_play_stop_cb` du player à l'arrêt, à la
+  pause, et quand la lecture s'arrête d'elle-même (fin d'un pattern sans
+  boucle, du song, des répétitions) ; `chase` étendu à la pédale, au Pitch
+  Bend et à la modulation. Essayé à l'écoute (utilisateur, 2026-10-29) :
+  Recado n'est plus noyé dans la pédale. Trois corrections de plus,
+  trouvées à l'essai :
+  - **Ordre des événements simultanés** (`dp_playback.py`, défaut du
+    rejeu depuis le chantier 4) : `events.sort()` triait aussi sur les
+    données, donc les CC d'un même instant par numéro. À 1.1.1 de
+    `bach_01.mid`, les deux CC121 (Reset All Controllers) passaient après
+    le CC64 = 127 et relâchaient la pédale : première mesure piquée, notes
+    coupées. Tri stable sur (temps, marqueur) : l'ordre de `_tape` est
+    gardé.
+  - **Saut de lecture avec Haut / Bas sur la liste des pistes** :
+    `Pattern.grid_row` cherchait chaque case en parcourant toute la piste
+    (16 × 128 cases × 2715 notes sur la guitare de `survive1.mid`) :
+    321 ms de thread UI par changement de piste, callback audio en retard,
+    9 sous-alimentations en 3 s. Un seul passage par ligne : 2,8 ms,
+    aucune sous-alimentation.
+  - **Dossier de l'import retenu** pour la session (`_import_dir`), sinon
+    EXPORTS ; pas d'une session à l'autre, `config.json` étant en lecture
+    seule.

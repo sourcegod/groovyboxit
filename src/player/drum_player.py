@@ -36,6 +36,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         ]
         self._on_track_play_cb = None  # callback(track_idx, pad_idx, vol, pan)
         self._on_play_start_cb = None  # callback(tape, pos) au début de la lecture et à chaque saut (17d1, 17f1)
+        self._on_play_stop_cb  = None  # callback() à la fin de la lecture : arrêt, pause, fin (18d3)
         self.last_played_pad = None
         self.voice_manager = VoiceManager(self._pattern._num_pads)
         self._update_step_duration()
