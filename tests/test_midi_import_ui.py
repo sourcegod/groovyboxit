@@ -342,6 +342,29 @@ def test_playback_stopped_before_replacing(tmp_path):
     assert win._player.playing is False and stops == [True]
     print("  lecture arrêtée avant le remplacement : OK")
 
+def test_player_goes_back_to_start(tmp_path):
+    """Phase 7 étape 18d5 : arrêté au milieu d'un morceau, le lecteur repart
+    de 1.1.1 avec le fichier importé ; la poursuite part de 1.1.1."""
+    win = _ImportWindow(str(tmp_path))
+    win._player._resume_offset = 37.5
+    chased = []
+    real_chase = win._router.chase
+    win._router.chase = lambda tape, pos=0.0: (chased.append(pos), real_chase(tape, pos))
+    _run(win, _write_mid(str(tmp_path / "a.mid")))
+    assert win._player._resume_offset is None
+    assert win._player._current_offset() == 0.0
+    assert chased == [0.0]
+    print("  lecteur remis au début (1.1.1), poursuite depuis le début : OK")
+
+def test_cancel_keeps_player_position(tmp_path):
+    win = _ImportWindow(str(tmp_path))
+    win._player._resume_offset = 37.5
+    win._player._pattern._tape[0].append(
+        TapeEvent(ETYPE_PATCH, payload={"note": 60, "vel": 1}, time=0))
+    _run(win, _write_mid(str(tmp_path / "a.mid")), answer=wx.ID_NO)
+    assert win._player._resume_offset == 37.5
+    print("  import refusé à la confirmation : position gardée : OK")
+
 def test_status_report(tmp_path):
     win = _ImportWindow(str(tmp_path))
     _run(win, _write_mid(str(tmp_path / "a.mid"), bpm=96, end_bars=1))
