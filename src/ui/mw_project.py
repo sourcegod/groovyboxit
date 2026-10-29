@@ -254,6 +254,7 @@ class ProjectMixin:
 
         self._take_end_if_idle()
         self._player.stop_all()
+        self._player.goto_start()      # nouveau morceau joué depuis 1.1.1 (18d5)
         self._router.stop_all_synth_voices()
         self._add_undo(f"Import MIDI : {base}")
 

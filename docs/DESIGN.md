@@ -6275,3 +6275,9 @@ Essai de `survive1.mid` (dix pistes, karaoké ; utilisateur, 2026-10-29) :
   `grid_row` dans `tests/test_pattern_grid_api.py` ; 6 tests du gain
   adaptés. Chaque correction de 18d3 défaite à l'essai fait échouer au
   moins un test. 2620 verts.
+- **18d5** — Ajout demandé avant la clôture (utilisateur, 2026-10-29) :
+  **l'import place le lecteur au début** (`goto_start` après l'arrêt,
+  avant le chargement du pattern, donc poursuite depuis 1.1.1). Arrêté,
+  le player garde sa position (`_resume_offset`) : `bach_01.mid` importé
+  après `survive1.mid` reprenait au milieu, à la position où ce dernier
+  avait été arrêté.
