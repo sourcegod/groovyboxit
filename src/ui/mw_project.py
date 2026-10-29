@@ -7,6 +7,7 @@ from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
 from midi.midi_export import export_pattern
+from midi.midi_import import import_pattern
 
 
 class ProjectMixin:
@@ -175,6 +176,128 @@ class ProjectMixin:
             names  = ", ".join(f"{labels.get(n, f'Note {n}')} ({n})"
                                for n in sorted(unmapped))
             msg += f" — non converti en GM : {names}"
+        status(msg)
+
+    #--------------------------------------------------------------------------
+    # Import MIDI dans le pattern courant (Phase 7 étape 18d1, docs/DESIGN.md
+    # § 18a1 I1-I3, I5, I11) : midi_import construit le pattern, l'UI choisit
+    # le slot Banque, remplace le pattern courant et pose l'Undo.
+
+    def _import_bank_slot(self):
+        """(slot, emplacement, créé) du slot Banque des pistes importées
+        (I3) : le premier slot Banque du Rack ; sinon un slot à créer dans le
+        premier slot vide, sur l'emplacement qui tient déjà gm_soundfont,
+        sinon le premier emplacement libre, sinon le premier. None : Rack
+        plein sans slot Banque. Ne modifie pas le Rack."""
+        rack  = self._rack
+        slots = [rack.get_slot(i) for i in range(rack.NUM_SLOTS)]
+        for s in slots:
+            if s.type == InstrumentType.BANK:
+                return s.index, s.bank_slot(), False
+        empty = next((s.index for s in slots if s.is_empty), None)
+        if empty is None:
+            return None
+        files = rack.bank_files
+        if self._gm_soundfont in files:
+            bank_slot = files.index(self._gm_soundfont)
+        else:
+            bank_slot = next((i for i, f in enumerate(files) if f is None), 0)
+        return empty, bank_slot, True
+
+    def _import_midi(self, parent=None, status=None):
+        """Alt+Shift+I : importe un .mid dans le pattern courant. parent :
+        fenêtre des dialogs (éditeur MIDI) ; status : où annoncer le
+        résultat. Le fichier est lu avant toute question : une erreur de
+        lecture ne pose ni confirmation ni Undo."""
+        status = status or self._show_status
+        start  = self._exports_dir if os.path.isdir(self._exports_dir) else os.path.expanduser("~")
+        dlg = wx.FileDialog(
+            parent or self, "Importer un fichier MIDI…",
+            defaultDir=start,
+            wildcard="Fichiers MIDI (*.mid;*.midi)|*.mid;*.midi",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        )
+        result = dlg.ShowModal()
+        path   = dlg.GetPath() if result == wx.ID_OK else ""
+        dlg.Destroy()
+        if not path:
+            status("Import MIDI annulé")
+            return
+        base = os.path.basename(path)
+        try:
+            imported, report = import_pattern(path)
+        except Exception as e:
+            status(f"ERREUR import MIDI : {e}")
+            return
+        target = self._import_bank_slot()
+        if target is None:
+            status("Import MIDI refusé : aucun slot Banque, et aucun slot vide dans le Rack")
+            return
+        idx = self._cur_pattern_idx
+        if not self._player._pattern.is_empty():
+            msg = wx.MessageDialog(
+                parent or self,
+                f"Le pattern {idx + 1:02d} n'est pas vide.\nLe remplacer par '{base}' ?",
+                "Importer un fichier MIDI",
+                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+            )
+            answer = msg.ShowModal()
+            msg.Destroy()
+            if answer != wx.ID_YES:
+                status("Import MIDI annulé")
+                return
+
+        self._take_end_if_idle()
+        self._player.stop_all()
+        self._router.stop_all_synth_voices()
+        self._add_undo(f"Import MIDI : {base}")
+
+        slot_idx, bank_slot, created = target
+        if created:
+            name = os.path.splitext(os.path.basename(self._gm_soundfont))[0] \
+                   or f"Banque {bank_slot + 1}"
+            if self._rack.bank_files[bank_slot] is None:
+                self._rack.set_bank_file(bank_slot, self._gm_soundfont)
+            self._rack.set_slot(slot_idx, InstrumentType.BANK, name, {"bank_slot": bank_slot})
+            self._update_slot_list()
+        for t in range(report.num_tracks):
+            imported._track_slots[t] = slot_idx
+
+        # Pattern entièrement remplacé (I2) : le store, puis le player et le
+        # router comme à un changement de pattern ; boucle remise à zéro.
+        stored = self._pattern_list[idx]
+        stored.from_dict(imported.to_dict())
+        self._pattern_cache_dirty.add(idx)
+        self._apply_pattern_from_store(stored)
+        live = self._player._pattern
+        live._loop_start = live._loop_end = None
+        live._loop_count = 0
+        self._player._loop_remaining = 0
+        self._router.sync_banks()
+
+        cur_track = self._player._cur_track
+        self._cur_slot = stored._track_slots[cur_track] \
+                         if cur_track < len(stored._track_slots) else slot_idx
+        self._slot_choice.SetSelection(self._cur_slot)
+        if self._rack.get_slot(self._cur_slot).plays_notes:
+            self._router.load_slot_preview(self._cur_slot)
+        self._player._compute_offsets()
+        self._refresh_pattern_listbox()
+        self._refresh_grid()
+        self._refresh_all_voice_display()
+        self._refresh_track_list()
+        self._refresh_pad_list()
+        self._update_bpm_display()
+
+        n = report.num_tracks
+        msg = (f"Import MIDI : {base} → Pattern {idx + 1:02d}, {n} piste{'s' if n > 1 else ''}, "
+               f"{report.num_bars} mesure{'s' if report.num_bars > 1 else ''}, "
+               f"{report.bpm} BPM, {report.num_steps} pas")
+        if created:
+            msg += f" ; slot {slot_idx + 1:02d} créé : banque {self._rack.get_slot(slot_idx).name}"
+        details = report.details()
+        if details:
+            msg += " ; " + " ; ".join(details)
         status(msg)
 
     def _update_title(self):

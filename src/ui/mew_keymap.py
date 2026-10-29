@@ -263,6 +263,14 @@ class KeymapMixin:
             self._set_lim_right(step)
             return
 
+        # Alt+Shift+I : import MIDI dans le pattern courant (même raccourci que
+        # la fenêtre principale, Phase 7 étape 18d1) ; testé avant Shift+I,
+        # qui ne regarde pas Alt
+        if not ctrl and shift and alt and (ukey in (ord('i'), ord('I')) or key == ord('I')):
+            self._parent._import_midi(parent=self, status=self._set_status)
+            self._refresh()
+            return
+
         # Shift+I : limiteur gauche au début du pattern
         if not ctrl and shift and (ukey == ord('i') or ukey == ord('I')):
             self._set_lim_left(0)

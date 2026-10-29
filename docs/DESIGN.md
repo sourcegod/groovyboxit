@@ -6105,3 +6105,19 @@ et l'UI vont dans `ui/mw_project.py` (`_import_midi`, à côté de
     positions) ; le volume revient exact.
 - **18c1** — `tests/test_midi_import.py` (62 tests), fichiers construits
   avec mido ; `SPECS.md` (arborescence, liste des tests). 2568 verts.
+- **18d1** — `_import_midi` et `_import_bank_slot` (`ui/mw_project.py`),
+  Alt+Shift+I dans les deux fenêtres (dans l'éditeur MIDI, testé avant
+  Shift+I). Conforme à I1-I3, I5, I11.
+  - **Écart : le fichier est lu avant toute question.** Une erreur de
+    lecture ne pose ni confirmation ni Undo (le plan disait : Undo posé,
+    puis retiré). Même résultat, plus simple.
+  - Lecture arrêtée avant le remplacement (`stop_all`), comme Ctrl+N.
+  - Essayé à l'écoute (utilisateur, 2026-10-29) sur `bach_01.mid` et
+    `recado.mid` : toutes les notes et tous les instruments y sont.
+    **Problème de pédale trouvé**, qui ne vient pas de l'import mais du
+    rejeu du CC64 sur une banque (chantier 17) : voir l'avenant 18d2.
+  - Undo d'un import qui avait créé le slot Banque : FluidSynth écrit
+    « No preset found » pour les 16 canaux dans le terminal
+    (`fluid_synth_sfunload` avec remise des presets, dernière soundfont
+    déchargée). Sans effet sur le son ; vrai de tout Undo qui retire la
+    dernière banque.
