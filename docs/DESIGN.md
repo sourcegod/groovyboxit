@@ -6121,3 +6121,96 @@ et l'UI vont dans `ui/mw_project.py` (`_import_midi`, à côté de
     (`fluid_synth_sfunload` avec remise des presets, dernière soundfont
     déchargée). Sans effet sur le son ; vrai de tout Undo qui retire la
     dernière banque.
+
+## Phase 7 étape 18d2 — Avenant : pédale, Pitch Bend et modulation des banques, à l'arrêt et à la poursuite
+
+### Origine
+
+Essai à l'écoute de 18d1 (utilisateur, 2026-10-29) :
+- `bach_01.mid` (une piste de piano, CC64 enfoncé puis relâché à chaque
+  mesure) « saute » ou démarre mal sur la première mesure ;
+- `recado.mid`, importé ensuite **sans relancer l'appli**, est joué
+  avec un « gros problème de pédale sustain », alors qu'il n'enfonce
+  jamais la pédale (trois CC64 à 0, à la toute fin).
+
+L'utilisateur et Claude concluent au même diagnostic : une pédale de Bach
+restée enfoncée, qui brouille le début de Bach à la relance et tout
+Recado. Ce n'est pas l'import : c'est le rejeu du CC64 sur une banque
+(chantier 17), que les vrais `.mid` révèlent.
+
+### État des lieux constaté en code (après 18d1, 2568 tests verts)
+
+- **CC64 rejoué = pédale globale.** `TrackRouter.on_cc_tape` traite le
+  CC64 avant tout autre test (`track_router.py:853`) par
+  `set_sustain(value >= 64)` (`:715`), qui l'envoie aux **16 canaux** de
+  FluidSynth et à tous les synthés WAV. La pédale du piano tient aussi
+  les autres instruments : contraire au modèle « orchestre » (17e3 O1),
+  où chaque canal est un instrument.
+- **Rien ne relâche la pédale à l'arrêt.** `stop_pattern`,
+  `pause_pattern` et `stop_all` (`player/dp_transport.py`) n'appellent pas
+  le routeur ; il n'existe pas de rappel « fin de lecture ». Les notes
+  d'une banque s'arrêtent d'elles-mêmes (durée), et la pédale reste
+  enfoncée dans FluidSynth.
+- **La poursuite ignore la pédale.** `TrackRouter.chase`
+  (`track_router.py:505`) rejoue PGM, CC0 et CC32 jusqu'à la position,
+  rien d'autre. Une pédale enfoncée le reste d'une lecture à l'autre, et
+  d'un pattern à l'autre.
+- Pitch Bend et modulation d'une banque vont déjà au canal courant de la
+  piste (`on_bend_tape`, `on_mod_tape`, `:800`, `:819`), mais ne sont, eux
+  non plus, ni remis à zéro à l'arrêt ni poursuivis.
+- Jeu en direct : `midi_handler_window.py:235` appelle aussi
+  `set_sustain` (pédale du contrôleur sur tous les canaux).
+
+### Comportement de Sonar (vérifié le 2026-10-29)
+
+Vérifié sur les forums de Cakewalk (discuss.cakewalk.com : fils 38483,
+38778, 90109, 44964, 9246) ; aucune page officielle à jour trouvée :
+- **Zero Controllers When Play Stops** (Préférences > Projet > MIDI) : à
+  l'arrêt, pitch wheel, pédale sustain et molette de modulation à zéro
+  sur les 16 canaux. Sans cette option, arrêter avant le retour du CC64 à
+  0 laisse des notes tenues (fil 38778) : notre cas.
+- **MIDI Event Chase on Play** (même page ; « Patch/Controller
+  Searchback » jusqu'à Sonar 4) : au démarrage, renvoie par canal les
+  derniers programme, pitch wheel, pédale et contrôleurs avant la
+  position.
+
+### Décisions validées (utilisateur, 2026-10-29)
+
+**P1 — Le CC64 d'une piste Banque va au canal courant de la piste
+seulement**, comme les autres CC. Il est envoyé même si la piste est
+muette ou hors solo, pour qu'un relâchement ne se perde jamais (comme
+aujourd'hui, où le CC64 passe avant le test de mute). Les pistes sur
+synthé WAV gardent la pédale globale (`set_sustain`).
+
+**P2 — Arrêt = Zero Controllers.** À l'arrêt et à la pause de la
+lecture (Espace, Pause, `stop_pattern`, `pause_pattern`, `stop_all`), le
+routeur met à zéro, sur les 16 canaux du moteur de banque : pédale
+(CC64 = 0), Pitch Bend (centre) et modulation (CC1 = 0). Le player
+reçoit pour cela un rappel `_on_play_stop_cb`, symétrique de
+`_on_play_start_cb` (17f1), appelé seulement si une lecture tournait.
+
+**P3 — Poursuite étendue (Event Chase).** `chase(tape, pos)` reprend
+aussi, pour chaque canal, la **dernière pédale (CC64), le dernier Pitch
+Bend et la dernière modulation (CC1)** des pistes Banque avant la
+position, sinon zéro. Le canal d'un tel événement est le canal courant
+de sa piste à son instant (celui de son dernier Program Change, O3),
+calculé dans la même passe. Comme la poursuite a lieu au démarrage, à
+chaque saut, au changement de pattern, à l'avance du song et après
+Undo, une pédale restée enfoncée ne survit plus à une relance.
+
+### Portée exclue
+
+- Pédale du **contrôleur en direct** (`midi_handler_window.py:235`) :
+  reste globale ; à revoir avec le routage par canal du jeu en direct.
+- Poursuite des autres contrôleurs (CC7 / CC10 sont déjà le mixage de la
+  piste ; CC91, CC93 et autres) et des notes (« Include Note Events »).
+- Synthés WAV : ni remise à zéro à l'arrêt ni poursuite nouvelles.
+
+### Découpage en commits révisé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **18d2** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **18d3** | Implémentation — P1 à P3. Essayé à l'écoute : Bach arrêté pédale enfoncée, puis Recado, sans relancer l'appli. | `track_router.py`, `player/dp_transport.py`, `player/drum_player.py`, `ui/main_window.py` |
+| **18e1** | Tests — interface de l'import (18d1) et P1 à P3. | `tests/test_midi_import_ui.py` (nouveau), `tests/test_bank_slot.py`, fakes au besoin |
+| **18f1** | Doc — clôture. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
