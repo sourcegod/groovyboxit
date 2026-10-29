@@ -79,6 +79,7 @@ class QuantizeMixin:
             num_beats     = pat._num_beats,
             num_steps     = pat._num_steps,
             step_duration = p.step_duration,
+            tempo_map     = p.tempo_map(),          # 19d1
         )
         if dlg.ShowModal() == wx.ID_OK:
             p._go_to_offset(dlg.get_offset())

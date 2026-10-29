@@ -121,14 +121,14 @@ class _MidiEventEditDialog(wx.Dialog):
         num_steps      = pattern._num_steps
         num_beats      = pattern._num_beats
         steps_per_beat = max(1, num_steps // num_beats)
-        bpm            = max(1, pattern._bpm)
 
         bar  = ev["bar"]
         step = ev["step"]
         beat = step // steps_per_beat
         tick = step % steps_per_beat
 
-        ms_per_tick     = (60000.0 / bpm) / steps_per_beat
+        # Tempo en vigueur au début de la note (Phase 7 étape 19d1, T5)
+        ms_per_tick     = pattern.ms_per_step_at(bar * num_steps + step)
         dur_ms          = max(10, ev.get("dur", 500))
         dur_total_ticks = round(dur_ms / ms_per_tick)
         dur_bars        = dur_total_ticks // num_steps

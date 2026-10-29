@@ -134,8 +134,8 @@ class QuantizeManager:
         if not quant_starts and not quant_durations:
             return
         pattern        = p._pattern
-        steps_per_beat = max(1, num_steps // pattern._num_beats)
-        ms_per_step    = 60000.0 / max(1, p.bpm) / steps_per_beat
+        tmap           = p.tempo_map()
+        steps_per_beat = tmap.steps_per_beat
         dur_grid       = [max(1.0, i * step_size)
                           for i in range(1, num_bars * denom + 2)]
         new_events = []
@@ -155,6 +155,8 @@ class QuantizeManager:
                         n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
                 n_dur = ev.dur
                 if quant_durations and ev.dur > 0:
+                    # ms par pas au tempo en vigueur sur la note (19d1, T5)
+                    ms_per_step = 60000.0 / (tmap.bpm_at(ev.time) * steps_per_beat)
                     dur_steps = ev.dur / ms_per_step
                     ng_dur    = _find_target(dur_steps, dur_grid)
                     if _in_window(dur_steps, ng_dur):

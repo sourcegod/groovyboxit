@@ -29,6 +29,8 @@ class PositionMixin:
             self._chase(offset or 0.0)      # instruments de banque (17f1, § 17e3 O4)
         if active:
             self.start_thread()
+        elif self._on_stopped_move_cb:
+            self._on_stopped_move_cb()      # tempo de la position affiché (19d1, T7)
 
     #--------------------------------------------------------------------------
 
@@ -36,13 +38,25 @@ class PositionMixin:
         """Retourne la position courante du playhead en pas flottants."""
         if not (self.playing or self.clicking or self._note_repeat_active):
             return self._resume_offset or 0.0
-        now = time.perf_counter()
-        if self._cur_loop_steps > 0:
-            measure_secs = self._cur_loop_steps * self.step_duration
-        else:
-            measure_secs = self._pattern._num_bars * self._pattern._num_steps * self.step_duration
-        ref = self._measure_start if self._measure_start is not None else now
-        return self._cur_lp_start + ((now - ref) % measure_secs) / self.step_duration
+        return self._position_at(time.perf_counter())
+
+    def _position_at(self, now):
+        """Position (pas flottants) à l'instant now dans la fenêtre en cours de
+        lecture (boucle, sinon le pattern entier), par la carte de tempo
+        (Phase 7 étape 19d1, § 19a1 T4) ; à tempo unique, l'ancien calcul
+        lp_start + ((now − ref) mod durée) / step_duration."""
+        lp_start = self._cur_lp_start
+        n_steps  = self._cur_loop_steps or self._pattern._num_bars * self._pattern._num_steps
+        tm       = self.tempo_map()
+        window   = tm.secs_between(lp_start, lp_start + n_steps)
+        ref      = self._measure_start if self._measure_start is not None else now
+        return tm.steps(tm.secs(lp_start) + ((now - ref) % window))
+
+    def _t_to_offset(self, t_sec):
+        """Position (pas) d'un événement joué t_sec secondes après le début de
+        la fenêtre en cours (19d1)."""
+        tm = self.tempo_map()
+        return tm.steps(tm.secs(self._cur_lp_start) + t_sec)
 
     #--------------------------------------------------------------------------
 
@@ -75,8 +89,9 @@ class PositionMixin:
             return f"{secs}.{msec:03d}"
 
         total_steps = self._pattern._num_bars * self._pattern._num_steps
-        cur   = self._current_offset() * self.step_duration
-        total = total_steps * self.step_duration
+        tm    = self.tempo_map()
+        cur   = tm.secs(self._current_offset())
+        total = tm.secs(total_steps)
         return f"{_fmt(cur)} / {_fmt(total)}"
 
     #--------------------------------------------------------------------------
@@ -98,13 +113,14 @@ class PositionMixin:
         B (seconds<0) : ceil(position courante)  - n secondes.
         Garantit un affichage toujours en valeur entière (0.000, 1.000, 2.000…).
         """
-        cur_secs = round(self._current_offset() * self.step_duration, 9)
+        tm       = self.tempo_map()
+        cur_secs = round(tm.secs(self._current_offset()), 9)
         if seconds >= 0:
             base = math.floor(cur_secs)
         else:
             base = math.ceil(cur_secs)
         new_secs = max(0.0, base + seconds)
-        self._go_to_offset(new_secs / self.step_duration)
+        self._go_to_offset(tm.steps(new_secs))
 
     def move_by_bars(self, bars):
         """Déplace le playhead de ±bars mesures (wrapping cyclique, usage interne)."""

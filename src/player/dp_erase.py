@@ -29,7 +29,7 @@ class EraseMixin:
     def _erase_tape_event(self, track_idx, midi_note, t_sec, etype):
         """Efface un événement tape au passage (appelé par _run_thread en mode Erase)."""
         total_steps = self._pattern._num_bars * self._pattern._num_steps
-        float_off   = t_sec / self.step_duration
+        float_off   = self._t_to_offset(t_sec)            # 19d1
         time_val    = float(round(float_off) % total_steps)
         with self._pattern._lock:
             if track_idx >= len(self._pattern._tape):
@@ -44,9 +44,7 @@ class EraseMixin:
             return None
         now = time.perf_counter()
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
-        ref = self._measure_start if self._measure_start is not None else now
-        current = ((now - ref) % measure_secs) / self.step_duration
+        current = self._position_at(now)                  # 19d1
 
         def circ_dist(a):
             d = abs(a - current) % total_steps
@@ -70,9 +68,7 @@ class EraseMixin:
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
 
         if self._measure_start is not None:
-            measure_secs = total_steps * self.step_duration
-            now     = time.perf_counter()
-            current = ((now - self._measure_start) % measure_secs) / self.step_duration
+            current = self._position_at(time.perf_counter())   # 19d1
         else:
             current = 0.0   # hors lecture : efface le premier événement trouvé
 

@@ -529,6 +529,11 @@ class Pattern:
         return TempoMap(self._bpm if start_bpm is None else start_bpm,
                         self._tempo_changes, self.steps_per_beat())
 
+    def ms_per_step_at(self, pos):
+        """Millisecondes par pas au tempo en vigueur à la position pos
+        (Phase 7 étape 19d1, § 19a1 T5)."""
+        return 60000.0 / (self.tempo_map().bpm_at(pos) * self.steps_per_beat())
+
     def set_tempo_changes(self, changes):
         """Remplace les changements de tempo (normalisés, T2)."""
         self._tempo_changes = normalize_changes(self._bpm, changes)

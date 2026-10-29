@@ -18,15 +18,16 @@ class PlaybackLoopMixin:
     PGM_TAPE_EVENT   = -8   # marqueur interne pour les événements Program Change (etype ETYPE_PGM de _tape)
 
     def _run_thread(self):
-        if self._resume_offset is not None:
-            measure_start = time.perf_counter() - self._resume_offset * self.step_duration
-            self._resume_offset = None
-        else:
-            measure_start = time.perf_counter()
+        # Position de reprise, appliquée dès que la fenêtre est connue (19d1)
+        pending = self._resume_offset
+        self._resume_offset = None
+        measure_start = time.perf_counter()
 
         while (self.playing or self.clicking or self._note_repeat_active) \
                 and not self.stop_event.is_set():
             self._wakeup.clear()
+            if self._resync_offset is not None:       # tempo changé en lecture (19d1)
+                pending, self._resync_offset = self._resync_offset, None
             num_steps = self._pattern._num_steps
             # Pendant le count-in, on boucle par mesure unitaire (1 bar)
             # pour déclencher l'enregistrement exactement après 1 mesure musicale.
@@ -43,8 +44,17 @@ class PlaybackLoopMixin:
                 total_steps, loop_bars = win.total_steps, win.loop_bars
                 self._cur_lp_start   = win.cur_lp_start
                 self._cur_loop_steps = win.cur_loop_steps
-            measure_secs = total_steps * self.step_duration
+            # Durée de la fenêtre par la carte de tempo (Phase 7 étape 19d1)
+            to_sec       = self._measure_clock(lp_start)
+            measure_secs = to_sec(total_steps)
             now = time.perf_counter()
+            if pending is not None:
+                # Hors de la fenêtre : ramenée dedans modulo sa longueur, comme
+                # l'ancien calcul linéaire ; dedans : position exacte
+                if not lp_start <= pending < lp_start + total_steps:
+                    pending = lp_start + pending % total_steps
+                measure_start = now - to_sec(pending - lp_start)
+                pending = None
 
             # Avancer measure_start si la mesure précédente est terminée
             while measure_start + measure_secs <= now:
@@ -82,6 +92,7 @@ class PlaybackLoopMixin:
         # Construire les événements restants dans cette mesure
         # (on exclut ceux déjà passés avec une petite tolérance)
         events = []
+        to_sec = self._measure_clock(lp_start)          # 19d1
         if self.playing:
             # Snapshot atomique sous verrou — immunise contre les modifications
             # concurrentes (record_*, erase_*) pendant l'itération.
@@ -92,7 +103,7 @@ class PlaybackLoopMixin:
                     float_off = ev.time
                     if not (lp_start <= float_off <= lp_end):
                         continue
-                    t_sec = (float_off - lp_start) * self.step_duration
+                    t_sec = to_sec(float_off - lp_start)
                     if t_sec > elapsed - 0.002:
                         if ev.etype == ETYPE_GRID:
                             events.append((t_sec, self.GRID_EVENT,
@@ -118,13 +129,13 @@ class PlaybackLoopMixin:
                                            (t_idx, ev.payload.get("value")), 0))
         events.extend(self._metro.build_events(
             loop_bars, self._pattern._num_steps, self._pattern._num_beats,
-            self.step_duration, elapsed))
+            to_sec, elapsed))
         if self._note_repeat_active:
             denom    = Pattern.QUANT_STEPS[self._nr_quant_idx]
             nr_step  = 0.0
             interval = self._pattern._num_steps / denom   # 1/denom de mesure, en pas (float)
             while nr_step < total_steps:
-                t_sec = nr_step * self.step_duration
+                t_sec = to_sec(nr_step)
                 if t_sec > elapsed - 0.002:
                     events.append((t_sec, self.NR_EVENT, 0, 100))
                 nr_step += interval
@@ -138,13 +149,31 @@ class PlaybackLoopMixin:
 
     #--------------------------------------------------------------------------
 
+    def _measure_clock(self, lp_start):
+        """Fonction pas relatifs → secondes depuis le début de la fenêtre
+        (Phase 7 étape 19d1, § 19a1 T4). Pendant le décompte : un pas dure
+        ce qu'il dure au tempo de la position de reprise."""
+        tm = self.tempo_map()
+        if self._count_in > 0:
+            sec = tm.secs_between(0, 1) if tm.is_constant else \
+                  60.0 / (tm.bpm_at(self._count_in_resume_offset or 0.0) * tm.steps_per_beat)
+            return lambda steps: steps * sec
+        base = tm.secs(lp_start)
+        return lambda steps: tm.secs(lp_start + steps) - base
+
+    def _count_in_offset_secs(self):
+        """Secondes entre le début de la fenêtre et la position de reprise
+        après le décompte (19d1)."""
+        lp_start = self._lm.compute_window(self._pattern).lp_start
+        return self.tempo_map().secs_between(lp_start, self._count_in_resume_offset or 0.0)
+
     def _dispatch_event(self, track_or_type, evt_data, velocity, t_sec):
         """Joue (ou efface, en mode Erase) un événement de la mesure selon son marqueur."""
         if track_or_type == self.GRID_EVENT:
             t_idx, pad_idx, dur_override = evt_data
             if t_idx == self._cur_track \
                     and pad_idx in self._erase_active_pads:
-                self._clear_offset(pad_idx, t_sec / self.step_duration)
+                self._clear_offset(pad_idx, self._t_to_offset(t_sec))
             elif self.voice_manager.is_audible(pad_idx):
                 vol = min(1.0, self.voice_manager.get_volume_factor(pad_idx)
                           * velocity / 100.0)
@@ -157,7 +186,7 @@ class PlaybackLoopMixin:
                 else:
                     self.sound_man.play_sound(pad_idx, vol, pan)
                 if t_idx == self._cur_track and self.replace_recording:
-                    self._clear_offset(pad_idx, t_sec / self.step_duration)
+                    self._clear_offset(pad_idx, self._t_to_offset(t_sec))
         elif track_or_type == self.KIT_TAPE_EVENT:
             t_idx, midi_note, dur = evt_data
             if self.erasing and t_idx == self._cur_track \
@@ -201,7 +230,7 @@ class PlaybackLoopMixin:
                         self._mix_pan(self.voice_manager.get_pan(pad)),
                     )
                 if self.recording:
-                    self._record_nr_hit(pad, t_sec / self.step_duration)
+                    self._record_nr_hit(pad, self._t_to_offset(t_sec))
         elif track_or_type == Metronome.METRO_EVENT:
             self.sound_man.play_metronome(evt_data)
 
@@ -221,7 +250,7 @@ class PlaybackLoopMixin:
         if was_last_count_in:
             self.playing   = True
             self.recording = True
-            offset_secs    = (self._count_in_resume_offset or 0.0) * self.step_duration
+            offset_secs    = self._count_in_offset_secs()
             self._measure_start = next_measure_start - offset_secs
             if self._on_count_in_done_cb:
                 self._on_count_in_done_cb()
@@ -235,7 +264,7 @@ class PlaybackLoopMixin:
         if self._count_in > 0 and not self._wakeup.is_set() and not self.stop_event.is_set():
             self._count_in -= 1
             if self._count_in == 0:
-                offset_secs = (self._count_in_resume_offset or 0.0) * self.step_duration
+                offset_secs = self._count_in_offset_secs()
                 self._count_in_resume_offset = None
                 if was_last_count_in:
                     measure_start = next_measure_start - offset_secs
@@ -265,7 +294,7 @@ class PlaybackLoopMixin:
                     self._pattern.copy_from(next_pat)
                     self._pattern._looping = False
                     # Recalcul même à BPM égal : _num_steps peut changer
-                    self.bpm = next_pat._bpm
+                    self.bpm = self._pattern._bpm = next_pat._bpm
                     self._update_step_duration()
                     self._compute_offsets()
                     measure_start = next_measure_start
@@ -279,7 +308,7 @@ class PlaybackLoopMixin:
                         first_pat = self._pattern_list_ref[first_idx]
                         self._pattern.copy_from(first_pat)
                         self._pattern._looping = False
-                        self.bpm = first_pat._bpm
+                        self.bpm = self._pattern._bpm = first_pat._bpm
                         self._update_step_duration()
                         self._compute_offsets()
                         measure_start = next_measure_start

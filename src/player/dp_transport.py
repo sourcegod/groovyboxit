@@ -88,13 +88,7 @@ class TransportMixin:
         """Arrête la lecture à la position courante (reprise via play_pattern)."""
         if not self.playing:
             return
-        now = time.perf_counter()
-        if self._cur_loop_steps > 0:
-            measure_secs = self._cur_loop_steps * self.step_duration
-        else:
-            measure_secs = self._pattern._num_bars * self._pattern._num_steps * self.step_duration
-        ref = self._measure_start if self._measure_start is not None else now
-        self._resume_offset = self._cur_lp_start + ((now - ref) % measure_secs) / self.step_duration
+        self._resume_offset = self._position_at(time.perf_counter())   # 19d1
         self.playing   = False
         self._count_in = 0
         if not self._note_repeat_active and not self.clicking:
@@ -142,7 +136,18 @@ class TransportMixin:
     #--------------------------------------------------------------------------
 
     def set_bpm(self, bpm):
+        """Tempo de départ. En lecture, la position musicale est gardée
+        (Phase 7 étape 19d1)."""
         if 1 <= bpm <= 600:
+            self._keep_position()
             self.bpm = bpm
+            self._pattern._bpm = bpm      # pattern live à jour (dialogues, 19d1)
             self._update_step_duration()
             self._wakeup.set()
+
+    def _keep_position(self):
+        """Avant un changement de tempo en lecture : note la position
+        courante, sur laquelle le thread se recale (19d1, T8)."""
+        if self.playing or self.clicking or self._note_repeat_active:
+            if self._measure_start is not None:
+                self._resync_offset = self._current_offset()

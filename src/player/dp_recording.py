@@ -83,10 +83,8 @@ class RecordingMixin:
         """
         now          = time.perf_counter()
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
         ref          = self._measure_start if self._measure_start is not None else now
-        float_offset = 0.0 if now < ref else \
-                       ((now - ref) % measure_secs) / self.step_duration
+        float_offset = 0.0 if now < ref else self._position_at(now)    # 19d1
         if self._quant_in_recording and self.quant_idx >= 0:
             quant_size   = self._pattern._num_steps / Pattern.QUANT_STEPS[self.quant_idx]
             float_offset = round(float_offset / quant_size) * quant_size % total_steps
@@ -108,9 +106,8 @@ class RecordingMixin:
         """
         now          = time.perf_counter()
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
-        measure_secs = total_steps * self.step_duration
         ref          = self._measure_start if self._measure_start is not None else now
-        time_val     = 0.0 if now < ref else ((now - ref) % measure_secs) / self.step_duration
+        time_val     = 0.0 if now < ref else self._position_at(now)    # 19d1
         if time_val >= total_steps:
             time_val = 0.0
         return time_val

@@ -41,8 +41,10 @@ class GotoDialog(wx.Dialog):
 
     UNITS = ["Mesures", "Battements", "Ticks", "Temps (s)"]
 
-    def __init__(self, parent, step_idx, num_bars, num_beats, num_steps, step_duration):
+    def __init__(self, parent, step_idx, num_bars, num_beats, num_steps, step_duration,
+                 tempo_map=None):
         super().__init__(parent, title="Aller à")
+        self._tempo_map      = tempo_map      # secondes par la carte de tempo (19d1)
         self._num_bars       = num_bars
         self._num_beats      = num_beats
         self._num_steps      = num_steps
@@ -101,12 +103,22 @@ class GotoDialog(wx.Dialog):
     # Helpers internes
     # ------------------------------------------------------------------
 
+    def _secs(self, step):
+        if self._tempo_map is not None:
+            return self._tempo_map.secs(step)
+        return step * self._step_duration
+
+    def _steps(self, secs):
+        if self._tempo_map is not None:
+            return self._tempo_map.steps(secs)
+        return secs / max(self._step_duration, 1e-9)
+
     def _step_to_spin(self, unit, step):
         """step (0-based) → valeur SpinCtrl pour l'unité."""
         if unit == 0:   return step // self._num_steps + 1
         elif unit == 1: return step // self._steps_per_beat + 1
         elif unit == 2: return step + 1
-        else:           return int(step * self._step_duration)
+        else:           return int(self._secs(step))
 
     def _step_to_text(self, unit, step):
         """step (0-based) → chaîne affichée dans le TextCtrl."""
@@ -116,7 +128,7 @@ class GotoDialog(wx.Dialog):
         beat = rem // self._steps_per_beat
         tick = rem % self._steps_per_beat
         if unit == 3:
-            return f"{step * self._step_duration:.1f}"
+            return f"{self._secs(step):.1f}"
         return f"{bar + 1}:{beat + 1}:{tick + 1}"
 
     def _spin_range(self, unit):
@@ -142,7 +154,7 @@ class GotoDialog(wx.Dialog):
         parts = s.split(":")
         try:
             if unit == 3:
-                off = float(s) / max(self._step_duration, 1e-9)
+                off = self._steps(float(s))
             elif len(parts) == 3:
                 bar, beat, tick = int(parts[0]) - 1, int(parts[1]) - 1, int(parts[2]) - 1
                 off = bar * self._num_steps + beat * self._steps_per_beat + tick
@@ -152,7 +164,7 @@ class GotoDialog(wx.Dialog):
             else:
                 val = int(s)
                 off = self.to_offset(unit, val, self._num_bars, self._num_beats,
-                                     self._num_steps, self._step_duration)
+                                     self._num_steps, self._step_duration, self._tempo_map)
             return int(max(0, off))
         except (ValueError, IndexError):
             return None
@@ -171,7 +183,7 @@ class GotoDialog(wx.Dialog):
     def _on_spin_change(self, event):
         val = self._spin.GetValue()
         off = self.to_offset(self._cur_unit, val, self._num_bars, self._num_beats,
-                             self._num_steps, self._step_duration)
+                             self._num_steps, self._step_duration, self._tempo_map)
         self._cur_step = int(max(0, off))
         self._text.ChangeValue(self._step_to_text(self._cur_unit, self._cur_step))
 
@@ -204,12 +216,16 @@ class GotoDialog(wx.Dialog):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def to_offset(unit_idx, value, num_bars, num_beats, num_steps, step_duration):
-        """Convertit (unité, valeur) → offset flottant 0-based, sans borne supérieure."""
+    def to_offset(unit_idx, value, num_bars, num_beats, num_steps, step_duration,
+                  tempo_map=None):
+        """Convertit (unité, valeur) → offset flottant 0-based, sans borne
+        supérieure ; secondes par la carte de tempo si fournie (19d1)."""
         steps_per_beat = max(1, num_steps // num_beats)
         if unit_idx == 0:    off = (value - 1) * num_steps
         elif unit_idx == 1:  off = (value - 1) * steps_per_beat
         elif unit_idx == 2:  off = value - 1
+        elif tempo_map is not None:
+            off = tempo_map.steps(value)
         else:                off = value / max(step_duration, 1e-9)
         return float(max(0, off))
 

@@ -16,11 +16,14 @@ class NumpadMixin:
         return Pattern.grid_step_size(p._grid_idx, p._pattern._num_steps)
 
     def _grid_value_ms(self):
-        """Taille de la grille courante convertie en ms, via le BPM du pattern."""
-        pat            = self._parent._player._pattern
-        steps_per_beat = max(1, pat._num_steps // pat._num_beats)
-        ms_per_step    = (60000.0 / max(1, pat._bpm)) / steps_per_beat
-        return self._grid_value_steps() * ms_per_step
+        """Taille de la grille courante convertie en ms, au tempo en vigueur à
+        l'événement courant, sinon à la position du lecteur (Phase 7 étape
+        19d1, § 19a1 T5)."""
+        player = self._parent._player
+        pos    = player._current_offset()
+        if self._events:
+            pos = self._events[min(self._midi_editor._cur_idx, len(self._events) - 1)]["offset"]
+        return self._grid_value_steps() * player._pattern.ms_per_step_at(pos)
 
     def _numpad_targets(self):
         """Indices ciblés par une commande numpad : le groupe (accord) si

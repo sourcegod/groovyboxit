@@ -42,6 +42,9 @@ class Metronome:
     def build_events(self, loop_bars, num_steps, num_beats, step_duration, elapsed):
         """Construit la liste d'événements métronome pour la mesure courante.
 
+        step_duration : secondes par pas, ou fonction pas → secondes depuis
+        le début de la fenêtre (carte de tempo, Phase 7 étape 19d1).
+
         Retourne une liste de tuples (t_sec, METRO_EVENT, beat, 0) prêts à
         être insérés dans la liste d'événements de _run_thread.
         """
@@ -49,9 +52,11 @@ class Metronome:
             return []
         events = []
         steps_per_beat = num_steps // num_beats
+        to_sec = step_duration if callable(step_duration) else \
+                 (lambda steps: steps * step_duration)
         for bar_idx in range(loop_bars):
             for beat in range(num_beats):
-                t_sec = (bar_idx * num_steps + beat * steps_per_beat) * step_duration
+                t_sec = to_sec(bar_idx * num_steps + beat * steps_per_beat)
                 if t_sec > elapsed - 0.002:
                     events.append((t_sec, self.METRO_EVENT, beat, 0))
         return events

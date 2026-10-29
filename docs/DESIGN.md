@@ -6529,3 +6529,36 @@ l'avance du song, la carte du pattern suivant remplace la courante.
   changements de tempo » ; un tempo pile à la fin du pattern est écarté).
   Quatre défauts de 19b1 réintroduits à l'essai : chacun fait échouer au
   moins un test. 2664 verts.
+- **19d1** — le player suit la carte (T4) : `DrumPlayer.tempo_map()` (en
+  cache), `_position_at` (position dans la fenêtre en cours, utilisée par
+  la position, la pause, l'enregistrement et l'effacement),
+  `_t_to_offset`, `_measure_clock` (durée de la fenêtre et minutage des
+  événements, du métronome et du Note Repeat ; pendant le décompte, tempo
+  de la position de reprise) ; dialogue Aller à en secondes par la carte ;
+  ms par pas au tempo de la position (quantisation des durées, grille de
+  l'éditeur MIDI, dialogue d'édition de note) ; mode song (carte du pattern
+  suivant). T7 tel que planifié : champ BPM, Tap Tempo et ±5 modifient le
+  tempo en vigueur (`set_tempo_at`), affiché après un déplacement à
+  l'arrêt (`_on_stopped_move_cb`) et à l'arrêt de la lecture.
+  - **Ajout : un changement de tempo en lecture garde la position
+    musicale** (`_keep_position`, le thread se recale) ; avant, changer le
+    BPM en lecture faisait sauter la position.
+  - **Défauts plus anciens corrigés au passage** :
+    - le pattern du player gardait `_bpm = 100` (jamais mis à jour) : le
+      dialogue d'édition de note et la grille de l'éditeur MIDI
+      convertissaient les durées à 100 BPM ; `set_bpm` et l'avance du song
+      le tiennent maintenant à jour ;
+    - avec une boucle qui ne commence pas à 1.1.1, l'enregistrement,
+      l'effacement et le Note Repeat calculaient la position comme si la
+      boucle commençait au début du pattern (d'après le code) ; ils
+      passent par `_position_at` / `_t_to_offset` ;
+    - une reprise à l'intérieur d'une telle boucle repartait décalée ;
+      elle repart exactement à sa position.
+  - Essai sans le son : de la mesure 34 à la fin de `bach_01.mid`, 15,31 s
+    joués pour 15,30 s prévus (7,83 s à 92 BPM constant), notes à moins
+    d'1 ms. **Essayé à l'écoute (utilisateur, 2026-10-29) : le ralenti de
+    Bach s'entend bien.** Mais T7 ne permet pas de ralentir tout le
+    morceau pour l'étudier : voir l'avenant 19d2.
+  - `pytest` rouge : 1 test (`test_bpm_increase_via_key5`, fausse fenêtre
+    sans `tempo_at` / `set_tempo_at`), plus un second qui n'échoue qu'à sa
+    suite (application wx laissée ouverte).

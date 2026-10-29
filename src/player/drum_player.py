@@ -2,6 +2,7 @@ import threading
 
 from metronome import Metronome
 from pattern import Pattern
+from tempo_map import normalize_changes
 from voice_manager import VoiceManager
 from quantize_manager import QuantizeManager
 from loop_manager import LoopManager, LoopWindow
@@ -39,6 +40,10 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._on_play_stop_cb  = None  # callback() à la fin de la lecture : arrêt, pause, fin (18d3)
         self.last_played_pad = None
         self.voice_manager = VoiceManager(self._pattern._num_pads)
+        self._tmap     = None     # carte de tempo du pattern joué (19d1), en cache
+        self._tmap_key = None
+        self._on_stopped_move_cb = None   # callback() : position déplacée à l'arrêt (19d1, T7)
+        self._resync_offset      = None   # position à garder après un changement de tempo (19d1)
         self._update_step_duration()
         self.quant_idx = 7  # défaut: 1/16
         self._grid_idx = Pattern.GRID_DEFAULT_IDX   # grille globale (navigation + quantise)
@@ -161,11 +166,53 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
     #--------------------------------------------------------------------------
 
     def _update_step_duration(self):
-        """Durée d'un pas en secondes : un temps (noire) dure 60/bpm, quelle
-        que soit la résolution _num_steps (Phase 7 étape 10b1). À rappeler
-        dès que bpm, _num_steps ou _num_beats du pattern live changent."""
+        """Durée d'un pas en secondes au tempo de départ : un temps (noire)
+        dure 60/bpm, quelle que soit la résolution _num_steps (Phase 7 étape
+        10b1). Le minutage passe par tempo_map() depuis la Phase 7 étape
+        19d1 ; step_duration reste la durée d'un pas au tempo de départ."""
         pat = self._pattern
         self.step_duration = 60.0 * pat._num_beats / (self.bpm * pat._num_steps)
+
+    #--------------------------------------------------------------------------
+    # Carte de tempo (Phase 7 étape 19d1, docs/DESIGN.md § 19a1 T4, T7)
+
+    def tempo_map(self):
+        """TempoMap du pattern joué, tempo de départ = self.bpm ; reconstruite
+        seulement si le tempo, les changements ou la résolution ont changé."""
+        pat = self._pattern
+        key = (self.bpm, tuple(pat._tempo_changes), pat._num_steps, pat._num_beats)
+        if key != self._tmap_key:
+            self._tmap     = pat.tempo_map(start_bpm=self.bpm)
+            self._tmap_key = key
+        return self._tmap
+
+    def tempo_at(self, pos=None):
+        """Tempo en vigueur à la position pos (défaut : position courante)."""
+        return self.tempo_map().bpm_at(self._current_offset() if pos is None else pos)
+
+    def set_tempo_at(self, bpm, pos=None):
+        """Modifie le tempo en vigueur à la position pos (défaut : position
+        courante) : le tempo de départ avant le premier changement, sinon le
+        changement en vigueur (le « modifier le tempo en vigueur » de Sonar,
+        T7). Retourne le BPM appliqué, ou None hors de 1..600."""
+        if not 1 <= bpm <= 600:
+            return None
+        pos = self._current_offset() if pos is None else pos
+        pat = self._pattern
+        idx = None
+        for i, (at, _old) in enumerate(pat._tempo_changes):
+            if at <= pos:
+                idx = i
+        if idx is None:
+            self.set_bpm(bpm)
+            pat._tempo_changes = normalize_changes(bpm, pat._tempo_changes)
+        else:
+            self._keep_position()
+            changes = list(pat._tempo_changes)
+            changes[idx] = (changes[idx][0], bpm)
+            pat._tempo_changes = normalize_changes(self.bpm, changes)
+            self._wakeup.set()
+        return bpm
 
     #--------------------------------------------------------------------------
 
