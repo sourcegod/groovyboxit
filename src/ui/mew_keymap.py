@@ -263,6 +263,13 @@ class KeymapMixin:
             self._set_lim_right(step)
             return
 
+        # Alt+Shift+T : dialogue Tempo (même raccourci que la fenêtre
+        # principale, Phase 7 étape 19f1) ; la liste est rafraîchie après
+        if not ctrl and shift and alt and (ukey in (ord('t'), ord('T')) or key == ord('T')):
+            self._parent._tempo_dialog(parent=self)
+            self._refresh()
+            return
+
         # Alt+Shift+I : import MIDI dans le pattern courant (même raccourci que
         # la fenêtre principale, Phase 7 étape 18d1) ; testé avant Shift+I,
         # qui ne regarde pas Alt

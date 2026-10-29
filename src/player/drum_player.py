@@ -214,6 +214,76 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self.scale_tempos(bpm / self.tempo_at(pos))
         return self.tempo_at(pos)
 
+    # Liste des tempos (dialogue Tempo, liste des événements — Phase 7 étape
+    # 19f1, § 19a1 T8, T9, § 19d2 R3). Indice -1 = tempo de départ (1.1.1),
+    # 0.. = changements du pattern, dans l'ordre.
+
+    def tempo_items(self):
+        """[(indice, position, bpm)] : départ puis changements."""
+        return [(-1, 0, self.bpm)] + [(i, at, bpm) for i, (at, bpm)
+                                      in enumerate(self._pattern._tempo_changes)]
+
+    def _set_changes(self, changes):
+        self._keep_position()
+        pat = self._pattern
+        pat._tempo_changes = normalize_changes(self.bpm, changes)
+        self._wakeup.set()
+
+    def insert_tempo(self, pos, bpm):
+        """Nouveau tempo à pos (> 0 ; à 1.1.1 : le tempo de départ). Un
+        changement déjà à cette position est remplacé. Retourne True si la
+        carte a changé."""
+        before = (self.bpm, list(self._pattern._tempo_changes))
+        if pos <= 0:
+            self.set_bpm(clamp_bpm(bpm))
+            self._set_changes(self._pattern._tempo_changes)
+        else:
+            self._set_changes(self._pattern._tempo_changes + [(pos, clamp_bpm(bpm))])
+        return (self.bpm, self._pattern._tempo_changes) != before
+
+    # Portée d'une modification (dialogue Tempo, § 19d2 R3, précisée à
+    # l'essai de 19f1)
+    SCOPE_RECENT    = "recent"      # « Changer le tempo le plus récent »
+    SCOPE_SET_ALL   = "set_all"     # « Changer tous les tempos à cette valeur »
+    SCOPE_SCALE_ALL = "scale_all"   # « Changer tous les tempos proportionnellement »
+
+    def modify_tempo(self, idx, pos, bpm, scope=SCOPE_RECENT):
+        """Modifie le tempo idx (-1 = départ) selon scope :
+        SCOPE_RECENT    ce tempo seul, position comprise (pas pour le départ) ;
+        SCOPE_SET_ALL   tous les tempos à bpm : le pattern n'a plus qu'un
+                        tempo ;
+        SCOPE_SCALE_ALL tous les tempos dans la même proportion que celui-ci.
+        Avec les deux derniers, la position n'est pas touchée. Retourne True
+        si la carte a changé."""
+        changes = list(self._pattern._tempo_changes)
+        before  = (self.bpm, list(changes))
+        old_bpm = self.bpm if idx < 0 else changes[idx][1]
+        if scope == self.SCOPE_SCALE_ALL:
+            self.scale_tempos(clamp_bpm(bpm) / old_bpm)
+        elif scope == self.SCOPE_SET_ALL:
+            self.set_bpm(clamp_bpm(bpm))
+            self._set_changes([])
+        elif idx < 0:
+            self.set_bpm(clamp_bpm(bpm))
+            self._set_changes(changes)
+        else:
+            del changes[idx]
+            self._set_changes(changes + [(pos, clamp_bpm(bpm))] if pos > 0 else changes)
+            if pos <= 0:                     # déplacé à 1.1.1 : devient le départ
+                self.set_bpm(clamp_bpm(bpm))
+                self._set_changes(self._pattern._tempo_changes)
+        return (self.bpm, self._pattern._tempo_changes) != before
+
+    def delete_tempo(self, idx):
+        """Supprime le changement idx (le départ ne se supprime pas).
+        Retourne True si supprimé."""
+        changes = list(self._pattern._tempo_changes)
+        if not 0 <= idx < len(changes):
+            return False
+        del changes[idx]
+        self._set_changes(changes)
+        return True
+
     def set_tempo_at(self, bpm, pos=None):
         """Modifie le tempo en vigueur à la position pos (défaut : position
         courante) : le tempo de départ avant le premier changement, sinon le

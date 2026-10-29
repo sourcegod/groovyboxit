@@ -36,6 +36,7 @@ from ui.mw_project     import ProjectMixin
 from ui.mw_tracks      import TrackMixin
 from ui.mw_pads        import PadMixin
 from ui.mw_midi_editor import MidiEditorMixin
+from ui.mw_tempo       import TempoMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -66,7 +67,7 @@ class _LoadingDialog(wx.Dialog):
 
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
-                 MidiEditorMixin, wx.Frame):
+                 MidiEditorMixin, TempoMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]

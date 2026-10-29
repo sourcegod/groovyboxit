@@ -1,4 +1,5 @@
 import wx
+from tempo_map import format_bpm
 
 
 class SelectionMixin:
@@ -143,6 +144,8 @@ class SelectionMixin:
         if e["type"] == "note":
             name = self._event_note_name(e)
             self._set_status(f"({name})  {bbt}{suf}")
+        elif e["type"] == "tempo":                       # 19f1, T9
+            self._set_status(f"Tempo {format_bpm(e['bpm'])} BPM  {bbt}{suf}")
         else:
             self._set_status(f"{e['type'].capitalize()}:{e['value']}  {bbt}{suf}")
 

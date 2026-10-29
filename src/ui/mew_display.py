@@ -2,6 +2,7 @@ from synth_engine import midi_to_note_name
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from midi.midi_parser import describe_cc, describe_program
+from tempo_map import format_bpm
 
 
 class DisplayMixin:
@@ -213,6 +214,10 @@ class DisplayMixin:
             num    = f"{cc_num} ({name})" if name else str(cc_num)
             return (f"{mark}{i+1}: {bbt}, Canal {e.get('channel', 0)}, CC, "
                     f"Numéro {num}, Valeur {e['value']}")
+        elif e["type"] == "tempo":
+            # Piste « Tempo » (Phase 7 étape 19f1, § 19a1 T9) : pas de canal
+            depart = ", départ" if e.get("tempo_idx", -1) < 0 else ""
+            return f"{mark}{i+1}: {bbt}, Tempo, {format_bpm(e['bpm'])} BPM{depart}"
         elif e["type"] == "pgm":
             # Canal 10 (0-indexé 9) = canal percussion standard GM : noms de
             # kits GM2 plutôt que patchs mélodiques GM1.

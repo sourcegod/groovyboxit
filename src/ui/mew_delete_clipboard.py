@@ -6,7 +6,7 @@ class DeleteClipboardMixin:
 
     # Types supprimables depuis l'interface (Phase 7 étape 7b1 : CC, Program
     # Change et Pitch Bend rejoignent les notes).
-    _DELETABLE_TYPES = ("note", "cc", "pgm", "bend")
+    _DELETABLE_TYPES = ("note", "cc", "pgm", "bend", "tempo")     # tempo : 19f1
 
     @staticmethod
     def _deleted_name(e):
@@ -15,6 +15,8 @@ class DeleteClipboardMixin:
             return f"CC#{e.get('cc_num')}"
         if e["type"] == "pgm":
             return "Program Change"
+        if e["type"] == "tempo":
+            return "Tempo"
         return "Pitch Bend"
 
     def _delete_event(self):
@@ -39,6 +41,8 @@ class DeleteClipboardMixin:
             deleted = self._midi_editor.delete_events(pat, targets)
             if deleted:
                 self._parent._player._compute_offsets()
+                if any(e["type"] == "tempo" for e in targets):     # 19f1
+                    self._parent._update_bpm_display()
                 self._clear_selection()
                 self._midi_editor._cur_idx = max(0, cur - deleted)
                 self._refresh()
@@ -51,6 +55,18 @@ class DeleteClipboardMixin:
             return
 
         cur_ev = self._events[min(cur, len(self._events) - 1)]
+        if cur_ev.get("type") == "tempo":
+            # Ligne Tempo (19f1, T9) : Undo et position par la fenêtre
+            # principale ; le départ ne se supprime pas
+            if cur_ev.get("tempo_idx", -1) < 0:
+                wx.Bell()
+                self._set_status("Le tempo de départ ne se supprime pas")
+                return
+            if self._parent._tempo_delete(cur_ev["tempo_idx"]):
+                self._midi_editor._cur_idx = max(0, cur - 1)
+                self._refresh()
+                self._set_status("Tempo supprimé")
+            return
         if cur_ev.get("type") in ("cc", "pgm", "bend"):
             # CC / Program Change / Pitch Bend sous le curseur : cet
             # événement seul (comme Entrée, qui édite la ligne courante)

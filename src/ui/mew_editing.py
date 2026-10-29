@@ -12,6 +12,9 @@ class EditingMixin:
             return
         cur = self._midi_editor._cur_idx
         ev  = self._events[cur]
+        if ev.get("type") == "tempo":
+            self._edit_tempo_dialog(ev)
+            return
         if ev.get("type") in ("bend", "cc", "pgm"):
             self._edit_cc_dialog(ev)
             return
@@ -73,6 +76,27 @@ class EditingMixin:
                 self._set_status("Édition annulée (hors limites)")
         else:
             self._parent._pop_last_undo()
+        dlg.Destroy()
+
+    def _edit_tempo_dialog(self, ev):
+        """Entrée sur une ligne Tempo (Phase 7 étape 19f1, § 19a1 T9, § 19d2
+        R3) : même dialogue que « Modifier » du dialogue Tempo ; l'Undo et
+        l'application passent par la fenêtre principale."""
+        from ui.dialogs_tempo import TempoEditDialog, SCOPE_RECENT
+        pat = self._parent._player._pattern
+        idx = ev.get("tempo_idx", -1)
+        dlg = TempoEditDialog(self, "Modifier le tempo", ev["offset"], ev["bpm"],
+                              pat._num_bars, pat._num_steps, pat.steps_per_beat(),
+                              position_fixed=(idx < 0), with_scope=True)
+        if dlg.ShowModal() == wx.ID_OK:
+            scope   = dlg.get_scope()
+            new_pos = dlg.get_position() if scope == SCOPE_RECENT and idx >= 0 else ev["offset"]
+            self._parent._tempo_modify(idx, new_pos, dlg.get_bpm(), scope)
+            self._refresh()
+            found = next((i for i, e in enumerate(self._events)
+                          if e["type"] == "tempo" and e["offset"] == new_pos), None)
+            if found is not None:
+                self._navigate_to(found)
         dlg.Destroy()
 
     def _edit_cc_dialog(self, ev):
@@ -312,6 +336,8 @@ class EditingMixin:
             return
         pat   = self._parent._player._pattern
         track = cur_ev["track"]
+        if track < 0:                   # ligne Tempo : piste courante (19f1)
+            track = self._parent._player._cur_track
         bar, step  = divmod(mid_offset, pat._num_steps)
         etype, pad = self._insert_target()
         vel = self._insert_last_vel if self._insert_last_vel is not None else 100

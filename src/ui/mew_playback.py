@@ -2,6 +2,7 @@ import threading
 import wx
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_PATCH
+from tempo_map import format_bpm
 
 
 def _tracks_title(kind, tracks):
@@ -153,6 +154,10 @@ class PlaybackMixin:
         if not self._events or idx >= len(self._events):
             return
         e = self._events[idx]
+        if e["type"] == "tempo":                         # 19f1, T9
+            bbt = self._bbt_str(e["bar"], e["step"])
+            self._set_status(f"{bbt}  Tempo {format_bpm(e['bpm'])} BPM")
+            return
         if e["type"] == "note":
             bbt  = self._bbt_str(e["bar"], e["step"])
             name = self._event_note_name(e)

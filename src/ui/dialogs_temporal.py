@@ -600,6 +600,7 @@ _EVT_TYPE_LABELS = [
     "Mod Wheel (CC1)",
     "CC générique",
     "Program Change",
+    "Tempo",
     "(à venir) Poly Aftertouch",
     "(à venir) Channel Pressure",
     "(à venir) SysEx/Meta",
@@ -610,9 +611,10 @@ _TYPE_BEND  = 2
 _TYPE_MOD   = 3
 _TYPE_CC    = 4
 _TYPE_PGM   = 5
-_TYPES_TO_COME = {6, 7, 8}
+_TYPE_TEMPO = 6     # lignes Tempo de la liste des événements (Phase 7 étape 19f1)
+_TYPES_TO_COME = {7, 8, 9}
 _TYPE_KEY = {_TYPE_ALL: "all", _TYPE_NOTE: "note", _TYPE_BEND: "bend", _TYPE_MOD: "mod",
-             _TYPE_CC: "cc", _TYPE_PGM: "pgm"}
+             _TYPE_CC: "cc", _TYPE_PGM: "pgm", _TYPE_TEMPO: "tempo"}
 
 
 class EventFilterDialog(wx.Dialog):
@@ -854,8 +856,8 @@ class EventFilterDialog(wx.Dialog):
     def _apply_state(self, state, default_pos_from, default_pos_to):
         """Positionne les widgets non-SpinCtrl depuis `state` (ou défauts permissifs)."""
         type_idx = {"all": _TYPE_ALL, "note": _TYPE_NOTE, "bend": _TYPE_BEND,
-                    "mod": _TYPE_MOD, "cc": _TYPE_CC,
-                    "pgm": _TYPE_PGM}.get(state.get("etype_filter", "all"), _TYPE_ALL)
+                    "mod": _TYPE_MOD, "cc": _TYPE_CC, "pgm": _TYPE_PGM,
+                    "tempo": _TYPE_TEMPO}.get(state.get("etype_filter", "all"), _TYPE_ALL)
         self._type_lb.SetSelection(type_idx)
         self._last_valid_type = type_idx
 
@@ -917,7 +919,8 @@ class EventFilterDialog(wx.Dialog):
         jamais (il ne liste que les notes GRID/KIT/PATCH)."""
         if idx in _TYPES_TO_COME:
             return True
-        if self._view_mode == 0 and idx in (_TYPE_BEND, _TYPE_MOD, _TYPE_CC, _TYPE_PGM):
+        if self._view_mode == 0 and idx in (_TYPE_BEND, _TYPE_MOD, _TYPE_CC, _TYPE_PGM,
+                                            _TYPE_TEMPO):
             return True
         return False
 
@@ -947,7 +950,8 @@ class EventFilterDialog(wx.Dialog):
             # pour le clavier virtuel, cf. VirtualKeyboardMixin/_vk_move).
             self._type_lb.SetString(self._last_valid_type,
                                     _EVT_TYPE_LABELS[self._last_valid_type])
-            if idx in (_TYPE_BEND, _TYPE_MOD, _TYPE_CC, _TYPE_PGM) and self._view_mode == 0:
+            if idx in (_TYPE_BEND, _TYPE_MOD, _TYPE_CC, _TYPE_PGM, _TYPE_TEMPO) \
+                    and self._view_mode == 0:
                 self._set_status("Type indisponible en mode Notes — Ctrl+2 pour Tous les événements")
             else:
                 self._set_status("Type indisponible pour le moment — sélection inchangée")

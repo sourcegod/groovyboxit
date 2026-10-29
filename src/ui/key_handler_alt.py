@@ -86,6 +86,9 @@ class AltHandler:
         if not ctrl and shift and (ukey in (ord('i'), ord('I')) or key == ord('I')):
             win._import_midi()          # Alt+Shift+I : import MIDI (Phase 7 étape 18d1)
             return True
+        if not ctrl and shift and (ukey in (ord('t'), ord('T')) or key == ord('T')):
+            win._tempo_dialog()         # Alt+Shift+T : tempos (Phase 7 étape 19f1)
+            return True
         if not ctrl and not shift and (ukey == ord('4') or key == ord('4')):
             win._open_midi_editor_window()
             return True

@@ -6657,3 +6657,35 @@ récent » du dialogue (19f1).
   Huit défauts réintroduits à l'essai : chacun fait échouer au moins un
   test (deux trous trouvés ainsi et bouchés : `set_bpm` qui garde la
   position, Note Repeat dans une boucle). 2716 verts.
+- **19f1** — T8 et T9, avec R3 précisé à l'essai :
+  - `DrumPlayer.tempo_items`, `insert_tempo`, `modify_tempo(idx, pos, bpm,
+    scope)`, `delete_tempo` (position gardée en lecture) ; `TempoMixin`
+    (`ui/mw_tempo.py`) : Undo par changement (« Tempo : insérer 70 BPM à
+    21:2:1 »…), champ BPM, statut, éditeur MIDI rafraîchi ;
+    `ui/dialogs_tempo.py` : `TempoDialog` (Alt+Shift+T, deux fenêtres) et
+    `TempoEditDialog` (Mesure, Temps, Pas, BPM en texte « 46,5 », Portée),
+    partagé avec Entrée sur une ligne Tempo de Ctrl+2.
+  - Liste des événements : `MidiEditor.get_tempo_events` (piste −1, en
+    tête de sa position, départ compris), libellé « 1:1:1, Tempo, 92 BPM,
+    départ », annonces, Entrée, Suppr (pas le départ ; sélection
+    multiple comprise), filtre « Tempo » (`EventFilterDialog`, types « à
+    venir » décalés de un).
+  - **Écart : trois portées au lieu de deux.** À l'essai, « Tous les
+    tempos » pouvait vouloir dire « tous à cette valeur » ; le dialogue
+    propose donc « Changer le tempo le plus récent », « Changer tous les
+    tempos à cette valeur » (le pattern n'a plus qu'un tempo) et
+    « Changer tous les tempos proportionnellement » (boutons radio : les
+    choix s'excluent) ; `DrumPlayer.SCOPE_*`.
+  - **Écart : positions « 21:2:1 »** (deux-points, comme le reste de
+    l'appli) au lieu de « 21.2.1 ».
+  - **Ligne du tempo de départ toujours présente dans Ctrl+2**, pour
+    pouvoir la modifier par Entrée : une liste n'est plus jamais vide.
+  - **Correctifs trouvés à l'essai** : (1) le dialogue d'édition ne
+    s'ouvrait pas — `Pattern.steps_per_beat()` rend un float que
+    `wx.SpinCtrl` refuse (TypeError dans le terminal, rien à l'écran ; mes
+    essais passaient un entier) ; (2) `EVT_CHAR_HOOK` du dialogue Tempo
+    (pour Suppr) bloquait Entrée et Espace sur les boutons
+    (cf. `SaveConfirmDialog`) : le dialogue les traite lui-même.
+  - Essayé au lecteur d'écran (utilisateur, 2026-10-29) : ça marche.
+  - `pytest` rouge : 8 tests (ligne de départ en tête de Ctrl+2 :
+    indices décalés, liste jamais vide ; type « Tempo » du filtre).

@@ -160,6 +160,35 @@ class MidiEditor:
                 })
         return events
 
+    TEMPO_TRACK = -1    # pseudo-piste « Tempo » (conductor) des lignes tempo
+
+    def get_tempo_events(self, pattern, lim_left=None, lim_right=None):
+        """Tempos du pattern (Phase 7 étape 19f1, § 19a1 T9) : départ à
+        1.1.1 (tempo_idx -1) puis chaque changement ; type "tempo", piste
+        TEMPO_TRACK, "bpm" (et "value", pour les annonces génériques)."""
+        items = [(-1, 0, pattern._bpm)] + [(i, at, bpm) for i, (at, bpm)
+                                           in enumerate(pattern._tempo_changes)]
+        events = []
+        for idx, offset, bpm in items:
+            if lim_left is not None and offset < lim_left:
+                continue
+            if lim_right is not None and offset >= lim_right + 1:
+                continue
+            b, s = pattern._time_to_bar_step(offset)
+            events.append({
+                "type":      "tempo",
+                "track":     self.TEMPO_TRACK,
+                "bar":       b,
+                "step":      s,
+                "offset":    offset,
+                "bpm":       bpm,
+                "value":     bpm,
+                "channel":   0,
+                "tempo_idx": idx,
+                "event_idx": 0,
+            })
+        return events
+
     def get_all_events(self, pattern, sel_tracks, lim_left=None, lim_right=None):
         """Retourne tous les événements MIDI des pistes sélectionnées.
 
@@ -182,6 +211,10 @@ class MidiEditor:
         # de bloc séparé sur _bend_tape).
         for t in sorted(sel_set):
             events.extend(self.get_cc_pgm_events(pattern, t, lim_left, lim_right))
+
+        # Tempos, quelles que soient les pistes sélectionnées (Phase 7 étape
+        # 19f1, T9) : piste -1, donc en tête à position égale
+        events.extend(self.get_tempo_events(pattern, lim_left, lim_right))
 
         events.sort(key=lambda e: (e["offset"], e["track"]))
         return events
@@ -292,7 +325,21 @@ class MidiEditor:
             return self._delete_tape_event(pattern, ev)
         if kind in ("cc", "pgm", "bend"):
             return self._delete_tape_event(pattern, ev)
+        if kind == "tempo":
+            return self._delete_tempo_event(pattern, ev)
         return False
+
+    @staticmethod
+    def _delete_tempo_event(pattern, ev):
+        """Supprime le changement de tempo à la position de ev ; le tempo de
+        départ ne se supprime pas (Phase 7 étape 19f1, T9)."""
+        if ev.get("tempo_idx", -1) < 0:
+            return False
+        kept = [(at, bpm) for at, bpm in pattern._tempo_changes if at != ev["offset"]]
+        if len(kept) == len(pattern._tempo_changes):
+            return False
+        pattern.set_tempo_changes(kept)
+        return True
 
     def delete_events(self, pattern, evs):
         """Supprime plusieurs événements. Retourne le nombre supprimé.
