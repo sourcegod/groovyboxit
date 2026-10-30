@@ -284,7 +284,8 @@ class PatternPropertiesDialog(wx.Dialog):
 
     def __init__(self, parent, pat_idx, name, start_bar, num_bars, num_steps,
                  looping, max_bars, valid_steps, on_play_toggle=None,
-                 num_beats=4, denominator=4):
+                 num_beats=4, denominator=4, tempo=120, on_tempo_change=None,
+                 on_signature_change=None):
         """valid_steps : résolutions proposées (pas par ronde, 16 … 128) ;
         num_steps : pas par mesure actuels (la résolution s'en déduit avec la
         signature num_beats / denominator)."""
@@ -298,8 +299,8 @@ class PatternPropertiesDialog(wx.Dialog):
         # signature change en plusieurs étapes (6/4 puis 6/8)
         self._total_steps    = num_bars * num_steps
 
-        # Ordre Tab : Nom → Début → Longueur → Temps par mesure → Valeur du
-        # temps → Résolution → Boucler → Actions
+        # Ordre Tab : Nom → Début → Longueur → Tempo → Temps par mesure →
+        # Valeur du temps → Résolution → Boucler → Actions
 
         name_label  = wx.StaticText(self, label="Nom :")
         self._name  = wx.TextCtrl(self, value=name)
@@ -322,6 +323,21 @@ class PatternPropertiesDialog(wx.Dialog):
         )
         self._length.SetSelection(num_bars - 1)
         self._length.Bind(wx.EVT_LISTBOX, self._on_length_change)
+
+        # Tempo de départ, arrondi (Phase 7 étape 20e3, § 20e2 P1) : le
+        # modifier change tous les tempos dans la même proportion
+        tempo_label  = wx.StaticText(self, label="Tempo (BPM) :")
+        self._tempo_initial = int(round(tempo))
+        self._tempo  = wx.SpinCtrl(self, min=1, max=600, initial=self._tempo_initial,
+                                   size=(80, -1))
+        self._tempo.SetName("Tempo (BPM)")
+        # Tempo entendu en direct, click compris (demandé à l'essai de 20e3) ;
+        # on_tempo_change(bpm) — la fenêtre rétablit l'origine si Annuler
+        self._on_tempo_change = on_tempo_change
+        # Signature entendue en direct aussi (demandé à l'essai de 20e3) ;
+        # on_signature_change(num, den)
+        self._on_sig_change   = on_signature_change
+        self._tempo.Bind(wx.EVT_SPINCTRL, self._on_tempo_spin)
 
         beats_label  = wx.StaticText(self, label="Signature, temps par mesure :")
         self._beats  = wx.SpinCtrl(self, min=1, max=16, initial=num_beats, size=(80, -1))
@@ -365,7 +381,7 @@ class PatternPropertiesDialog(wx.Dialog):
         btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
         btn_sizer.Realize()
 
-        grid = wx.FlexGridSizer(rows=8, cols=2, vgap=6, hgap=8)
+        grid = wx.FlexGridSizer(rows=9, cols=2, vgap=6, hgap=8)
         grid.AddGrowableCol(1)
         grid.Add(name_label,   0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self._name,   0, wx.EXPAND)
@@ -373,6 +389,8 @@ class PatternPropertiesDialog(wx.Dialog):
         grid.Add(self._start,  0, wx.EXPAND)
         grid.Add(length_label, 0, wx.ALIGN_TOP | wx.TOP, 2)
         grid.Add(self._length, 0, wx.EXPAND)
+        grid.Add(tempo_label,  0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._tempo,  0)
         grid.Add(beats_label,  0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self._beats,  0)
         grid.Add(den_label,    0, wx.ALIGN_TOP | wx.TOP, 2)
@@ -412,6 +430,8 @@ class PatternPropertiesDialog(wx.Dialog):
             new = Pattern.steps_for(self.get_resolution(), *new_sig)
             self._set_length(max(1, min(self._max_bars, -(-self._total_steps // new))))
             self._sig = new_sig
+            if self._on_sig_change:
+                self._on_sig_change(*new_sig)
         event.Skip()
 
     def _on_key(self, event):
@@ -424,6 +444,17 @@ class PatternPropertiesDialog(wx.Dialog):
     def get_name(self):      return self._name.GetValue().strip()
     def get_start_bar(self): return self._start.GetSelection()          # 0-indexed
     def get_num_bars(self):  return self._length.GetSelection() + 1
+    def _on_tempo_spin(self, event):
+        if self._on_tempo_change:
+            self._on_tempo_change(self._tempo.GetValue())
+        event.Skip()
+
+    def get_tempo(self):
+        """Tempo choisi, ou None s'il n'a pas changé (§ 20e2 P2 : un départ
+        décimal n'est pas arrondi)."""
+        value = self._tempo.GetValue()
+        return None if value == self._tempo_initial else value
+
     def get_num_beats(self):   return self._beats.GetValue()
     def get_denominator(self): return self.DENOMINATORS[max(0, self._den.GetSelection())]
     def get_resolution(self):  return self._resolutions[max(0, self._steps.GetSelection())]

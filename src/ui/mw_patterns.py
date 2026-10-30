@@ -419,8 +419,18 @@ class PatternMixin:
             on_play_toggle=self._play_toggle,
             num_beats=live._num_beats,              # signature (Phase 7 étape 20d1)
             denominator=live._denumerator,
+            tempo=self._player.bpm,                 # tempo de départ (20e3)
+            on_tempo_change=self._preview_properties_tempo,
+            on_signature_change=self._preview_properties_signature,
         )
+        # Tempos d'origine, rétablis avant l'Undo (Ok) ou à l'annulation :
+        # le champ Tempo s'entend en direct (20e3)
+        self._tempo_origin = (self._player.bpm, list(live._tempo_changes))
+        self._sig_origin   = (live._num_beats, live._denumerator,
+                              live._num_steps, live._num_bars)
         result = dlg.ShowModal()
+        self._restore_properties_tempo()
+        self._restore_properties_signature()
         if result == wx.ID_OK:
             name      = dlg.get_name()
             start_bar = dlg.get_start_bar()
@@ -430,6 +440,7 @@ class PatternMixin:
             den       = dlg.get_denominator()
             looping   = dlg.get_looping()
             action    = dlg.get_action()
+            tempo     = dlg.get_tempo()
             sig_label = f"{num_beats}/{den}, résolution 1/{dlg.get_resolution()}"
             pat._name      = name
             pat._start_bar = start_bar
@@ -473,8 +484,64 @@ class PatternMixin:
                 self._resize_live_pattern(num_bars, num_steps)
                 self._refresh_grid()
                 self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour — {sig_label}")
+            if tempo is not None:
+                self._apply_properties_tempo(tempo, action)
             self._refresh_pattern_listbox()
         dlg.Destroy()
+
+    def _preview_properties_tempo(self, tempo):
+        """Champ Tempo modifié, dialogue ouvert : tous les tempos d'origine
+        dans la même proportion, entendus aussitôt (click et lecture)."""
+        start, _changes = self._tempo_origin
+        self._restore_properties_tempo()
+        self._player.scale_tempos(tempo / start)
+
+    def _restore_properties_tempo(self):
+        """Tempos d'origine (avant l'ouverture du dialogue), position gardée."""
+        start, changes = self._tempo_origin
+        player = self._player
+        if (player.bpm, player._pattern._tempo_changes) != (start, changes):
+            player.set_bpm(start)
+            player._pattern._tempo_changes = list(changes)
+
+    def _preview_properties_signature(self, num_beats, denominator):
+        """Signature modifiée, dialogue ouvert : appliquée aussitôt (notes en
+        place, S3) ; le click et la grille suivent. Annuler la rétablit."""
+        self._restore_properties_signature()
+        if self._player._pattern.set_signature(num_beats, denominator):
+            self._after_signature_preview()
+
+    def _restore_properties_signature(self):
+        """Signature, pas par mesure et mesures d'origine, remis tels quels
+        (un aller-retour par set_signature pourrait ajouter une mesure)."""
+        live = self._player._pattern
+        if (live._num_beats, live._denumerator, live._num_steps, live._num_bars) \
+                != self._sig_origin:
+            (live._num_beats, live._denumerator,
+             live._num_steps, live._num_bars) = self._sig_origin
+            self._after_signature_preview()
+
+    def _after_signature_preview(self):
+        self._player._update_step_duration()
+        self._player._compute_offsets()          # réveille le thread de lecture
+        self._refresh_grid()
+
+    def _apply_properties_tempo(self, tempo, action):
+        """Champ Tempo des propriétés (Phase 7 étape 20e3, § 20e2 P1-P3) :
+        « Nouveau » → tempo unique ; sinon tous les tempos dans la même
+        proportion que le départ. Sous l'Undo déjà posé par l'action."""
+        player = self._player
+        if action == "Nouveau":
+            player.set_bpm(tempo)
+        else:
+            player.scale_tempos(tempo / player.bpm)
+        store = self._pattern_list[self._cur_pattern_idx]
+        store._bpm = player.bpm
+        store._tempo_changes = list(player._pattern._tempo_changes)
+        if hasattr(self, "_update_bpm_display"):
+            self._update_bpm_display()
+        self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: tempo {tempo} BPM"
+                          + ("" if action == "Nouveau" else ", tous les tempos en proportion"))
 
     def _resize_live_pattern(self, num_bars, num_steps):
         live = self._player._pattern

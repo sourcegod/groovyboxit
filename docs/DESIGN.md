@@ -7058,3 +7058,28 @@ Action.
 | **20e3** | Implémentation — P1 à P4. Essayé au lecteur d'écran. | `ui/dialogs_properties.py`, `ui/mw_patterns.py` |
 | **20e4** | Tests — 20e3. | `tests/test_signature_ui.py`, `tests/test_pattern_properties_dialog.py` au besoin |
 | **20f1** | Doc — clôture (signatures et champ Tempo). | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 7 étape 20 — Avancement après l'avenant (20e3)
+
+- **20e3** — P1, P3, P4 conformes : champ « Tempo (BPM) » (SpinCtrl
+  1..600) avant la signature, tempo de départ arrondi, tous les tempos en
+  proportion (`scale_tempos`, rapport au départ exact), « Nouveau » = tempo
+  unique, `get_tempo()` = None si inchangé (départ décimal non arrondi) ;
+  `PatternMixin._apply_properties_tempo` met aussi à jour le pattern du
+  store et le champ BPM de la fenêtre principale.
+  - **Écart à P2, demandé à l'essai : tempo en direct.** Le champ
+    s'entend aussitôt (click et lecture) : `on_tempo_change` →
+    `_preview_properties_tempo` (tempos d'origine × nouveau / départ) ;
+    Annuler rétablit les tempos d'origine ; à Ok, l'origine est rétablie
+    **avant** l'Undo de l'action, puis le tempo final appliqué : l'Undo
+    ramène l'état d'avant l'ouverture.
+  - **Écart demandé à l'essai : signature en direct aussi.**
+    `on_signature_change` → `_preview_properties_signature`
+    (`set_signature` depuis l'origine, notes en place, grille et click
+    suivent) ; Annuler (et Ok, avant l'Undo) remet tels quels signature,
+    pas par mesure et mesures d'origine (un aller-retour par
+    `set_signature` pourrait ajouter une mesure). La résolution reste
+    appliquée à Ok (elle déplace les notes). En tapant 6 temps avant la
+    croche, on entend brièvement l'étape 6/4.
+  - Essayé au lecteur d'écran et à l'écoute (utilisateur, 2026-10-30) :
+    ça marche. `pytest` rouge : 8 tests (faux dialogues sans `get_tempo`).
