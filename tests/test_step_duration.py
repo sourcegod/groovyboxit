@@ -180,6 +180,9 @@ def _fake_properties_dialog(action, num_steps, num_bars=1):
         def get_start_bar(self): return 0
         def get_num_bars(self):  return num_bars
         def get_num_steps(self): return num_steps
+        def get_num_beats(self): return 4               # signature (Phase 7 étape 20d1)
+        def get_denominator(self): return 4
+        def get_resolution(self): return num_steps      # 4/4 : pas par mesure = résolution
         def get_looping(self):   return True
         def get_action(self):    return action
         def Destroy(self):       pass

@@ -6998,3 +6998,13 @@ premiers comme aujourd'hui.
     `Prelude_01.mid`.
   - `pytest` rouge : 2 tests (`test_step_duration.py`, faux dialogue sans
     les nouveaux accesseurs).
+- **20e1** — `tests/test_signature_ui.py` (20 tests : dialogue des
+  propriétés — valeurs initiales, libellés, pas par mesure, longueur
+  recalculée, exacte à travers une signature intermédiaire, après une
+  longueur choisie à la main ; application — signature transmise, notes
+  en place, durée du pas et métronome, résolution après signature,
+  Nouveau, Doubler sans signature ; grille — colonnes actives, cases
+  grisées, curseur ramené, 4/4 inchangé, case et flèches bornées) ; faux
+  dialogue de `test_step_duration.py` adapté. Quatre défauts réintroduits
+  à l'essai, dont celui de la longueur trouvé en 20d1, font échouer des
+  tests. 2850 verts.
