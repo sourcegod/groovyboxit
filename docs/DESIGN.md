@@ -6934,3 +6934,32 @@ premiers comme aujourd'hui.
 | **20d1** | Implémentation — S7, S10 : dialogue des propriétés (signature, résolution), grille, affichages. Essayé à l'écoute (menuet en 3/4, un 6/8) et au lecteur d'écran. | `ui/dialogs_properties.py`, `ui/mw_patterns.py`, `ui/main_window.py` |
 | **20e1** | Tests — 20d1. | `tests/test_pattern_properties_dialog.py`, tests de la grille |
 | **20f1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 7 étape 20 — Avancement et écarts constatés
+
+- **20b1** — modèle conforme à S2-S6, S8, S9 :
+  - `Pattern` : `quarters_per_bar()`, `steps_per_quarter()` (tempo :
+    carte, `ms_per_step_at`, `step_duration`), `steps_per_beat()` (temps
+    du dénominateur), `resolution()`, `note_steps(valeur)`,
+    `steps_for(résolution, num, den)`, `set_signature(num, den)` (S3 :
+    positions en pas gardées, mesures recalculées ; refuse un dénominateur
+    hors de 2, 4, 8, 16 ou un numérateur hors de 1..16) ;
+    `VALID_RESOLUTIONS`, `VALID_DENOMINATORS` ; `.gvp` `"num_beats"` /
+    `"denominator"` (absents = 4/4) ; `copy_from` copie la signature.
+  - Valeurs de note (S6) : `grid_step_size(…, resolution)` (« 1 mes. »
+    reste une mesure), Note Repeat, quantisation à l'enregistrement,
+    quantisation. **Écart : grille de quantisation continue** depuis le
+    début du pattern (et non recommencée à chaque mesure) : identique en
+    4/4, juste quand une valeur ne divise pas la mesure (blanche en 3/4).
+  - Import : première signature (ticks par mesure en fraction exacte :
+    7/8, PPQ impair), résolution 1/16 … 1/128, changements de signature
+    comptés, signature refusée lue en 4/4 ; compte rendu « signature
+    3/4 » (au lieu de « lue en 4/4 ») et, au statut, « résolution 1/16 »
+    (au lieu de « 16 pas »). Export : `time_signature` du pattern, ticks
+    par `quarters_per_bar()`.
+  - Essais : `01Minuetto2.mid` en 3/4 (12 pas par mesure, 49 mesures au
+    lieu de 37 en 4/4, notes sur 1:1, 1:2, 1:3…), export 3/4, aller-retour
+    identique ; 4/4 → 6/8 : notes au même instant, 6 clicks de croche par
+    mesure.
+  - `pytest` rouge : 4 tests (textes du compte rendu de l'import, fausse
+    classe `_FakeGridPattern` sans `resolution`).

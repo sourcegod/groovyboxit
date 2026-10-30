@@ -172,7 +172,8 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         10b1). Le minutage passe par tempo_map() depuis la Phase 7 étape
         19d1 ; step_duration reste la durée d'un pas au tempo de départ."""
         pat = self._pattern
-        self.step_duration = 60.0 * pat._num_beats / (self.bpm * pat._num_steps)
+        # un pas = 1 / pas par noire de noire (signature, 20b1 S5)
+        self.step_duration = 60.0 / (self.bpm * pat.steps_per_quarter())
 
     #--------------------------------------------------------------------------
     # Carte de tempo (Phase 7 étape 19d1, docs/DESIGN.md § 19a1 T4, T7)
@@ -181,7 +182,8 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         """TempoMap du pattern joué, tempo de départ = self.bpm ; reconstruite
         seulement si le tempo, les changements ou la résolution ont changé."""
         pat = self._pattern
-        key = (self.bpm, tuple(pat._tempo_changes), pat._num_steps, pat._num_beats)
+        key = (self.bpm, tuple(pat._tempo_changes), pat._num_steps, pat._num_beats,
+               pat._denumerator)
         if key != self._tmap_key:
             self._tmap     = pat.tempo_map(start_bpm=self.bpm)
             self._tmap_key = key

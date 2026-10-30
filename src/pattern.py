@@ -106,7 +106,10 @@ class Track:
 
 
 class Pattern:
-    VALID_NUM_STEPS = (16, 32, 64, 128)
+    VALID_NUM_STEPS = (16, 32, 64, 128)     # pas par mesure en 4/4 = résolutions
+    VALID_RESOLUTIONS = VALID_NUM_STEPS       # pas par ronde : 1/16 … 1/128 (20b1, S2)
+    VALID_DENOMINATORS = (2, 4, 8, 16)        # valeur du temps (20b1, S4)
+    MAX_NUMERATOR      = 16
     QUANT_LIST  = ["1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16",
                    "1/24", "1/32", "1/48", "1/64", "1/96", "1/128"]
     QUANT_STEPS      = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
@@ -139,16 +142,21 @@ class Pattern:
     GRID_DEFAULT_IDX = 10  # 1/16
 
     @staticmethod
-    def grid_step_size(grid_idx, num_steps):
+    def grid_step_size(grid_idx, num_steps, resolution=None):
         """Taille d'un pas de grille en steps (float).
 
-        grid_idx  : index dans GRID_RESOLUTIONS
-        num_steps : steps par mesure du pattern courant
+        grid_idx   : index dans GRID_RESOLUTIONS
+        num_steps  : steps par mesure du pattern courant
+        resolution : pas par ronde (Pattern.resolution()) ; « 1/16 » est une
+                     double croche quelle que soit la signature (Phase 7
+                     étape 20b1, § 20a1 S6) ; None = num_steps (4/4)
         """
         _, kind, val = Pattern.GRID_RESOLUTIONS[grid_idx]
         if kind == "bars":
             return val * num_steps   # ex. 4 mes × 16 steps = 64 steps
-        return num_steps / val       # ex. 16 / 16 = 1.0 step
+        if val == 1:
+            return num_steps         # « 1 mes. » : une mesure
+        return (num_steps if resolution is None else resolution) / val
     MAX_PATTERNS      = 99
     MAX_BARS          = 999
     MAX_TRACKS        = 16
@@ -394,6 +402,8 @@ class Pattern:
         self._num_pads   = other._num_pads
         self._num_bars   = other._num_bars
         self._num_steps  = other._num_steps
+        self._num_beats   = other._num_beats                   # signature (20b1, S8)
+        self._denumerator = other._denumerator
         self._tempo_changes = list(other._tempo_changes)       # 19b1, T2
         with self._lock:
             self._tape = [list(track_list) for track_list in other._tape]
@@ -520,19 +530,63 @@ class Pattern:
     #--------------------------------------------------------------------------
     # Carte de tempo (Phase 7 étape 19b1, docs/DESIGN.md § 19a1 T2, T4)
 
+    # Signature (Phase 7 étape 20b1, docs/DESIGN.md § 20a1 S2-S5) : le
+    # temps est le dénominateur (position affichée, métronome) ; le tempo
+    # se compte en noires.
+
     def steps_per_beat(self):
+        """Pas par temps de la signature (la croche en 6/8)."""
         return self._num_steps / self._num_beats
+
+    def quarters_per_bar(self):
+        return 4.0 * self._num_beats / self._denumerator
+
+    def steps_per_quarter(self):
+        """Pas par noire (tempo)."""
+        return self._num_steps / self.quarters_per_bar()
+
+    def resolution(self):
+        """Pas par ronde : 16 = « 1/16 » (S2)."""
+        return self._num_steps * self._denumerator / self._num_beats
+
+    def note_steps(self, value):
+        """Pas d'une valeur de note 1/value (S6) : 1/16 = une double croche."""
+        return self.resolution() / value
+
+    @staticmethod
+    def steps_for(resolution, num_beats, denominator):
+        """Pas par mesure d'une résolution et d'une signature (S2), ou None
+        si ce n'est pas un nombre entier."""
+        steps = resolution * num_beats / denominator
+        return int(steps) if steps == int(steps) and steps >= 1 else None
+
+    def set_signature(self, num_beats, denominator):
+        """Change la signature en gardant les notes à leur place dans le
+        temps (S3) : à résolution égale, les positions en pas ne bougent
+        pas ; seuls les pas par mesure changent, et le nombre de mesures est
+        recalculé pour garder la longueur (mesure supérieure). Retourne
+        False si la signature est refusée."""
+        if denominator not in self.VALID_DENOMINATORS \
+                or not 1 <= num_beats <= self.MAX_NUMERATOR:
+            return False
+        steps = self.steps_for(self.resolution(), num_beats, denominator)
+        if steps is None:
+            return False
+        total = self._num_bars * self._num_steps
+        self._num_beats, self._denumerator, self._num_steps = num_beats, denominator, steps
+        self._num_bars = max(1, min(self.MAX_BARS, -(-total // steps)))
+        return True
 
     def tempo_map(self, start_bpm=None):
         """TempoMap du pattern ; start_bpm remplace le tempo de départ
         (celui du player, qui peut avoir changé depuis le dernier flush)."""
         return TempoMap(self._bpm if start_bpm is None else start_bpm,
-                        self._tempo_changes, self.steps_per_beat())
+                        self._tempo_changes, self.steps_per_quarter())
 
     def ms_per_step_at(self, pos):
         """Millisecondes par pas au tempo en vigueur à la position pos
         (Phase 7 étape 19d1, § 19a1 T5)."""
-        return 60000.0 / (self.tempo_map().bpm_at(pos) * self.steps_per_beat())
+        return 60000.0 / (self.tempo_map().bpm_at(pos) * self.steps_per_quarter())
 
     def set_tempo_changes(self, changes):
         """Remplace les changements de tempo (normalisés, T2)."""
@@ -590,6 +644,8 @@ class Pattern:
             "name":          self._name,
             "bpm":           self._bpm,
             "tempo_changes": [[pos, bpm] for pos, bpm in self._tempo_changes],
+            "num_beats":     self._num_beats,                  # signature (20b1, S8)
+            "denominator":   self._denumerator,
             "num_bars":      self._num_bars,
             "num_steps":     self._num_steps,
             "num_tracks":    self._num_tracks,
@@ -657,6 +713,9 @@ class Pattern:
             self._bpm, [tuple(c) for c in d.get("tempo_changes") or []])
         self._num_bars   = d.get("num_bars", 1)
         self._num_steps  = d.get("num_steps", 16)
+        # Signature (Phase 7 étape 20b1, S8) : absente = 4/4
+        self._num_beats   = d.get("num_beats", 4)
+        self._denumerator = d.get("denominator", 4)
         self._start_bar  = d.get("start_bar", 0)
         self._looping    = d.get("looping", True)
         self._loop_start = d.get("loop_start", None)

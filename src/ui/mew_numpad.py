@@ -13,7 +13,8 @@ class NumpadMixin:
         """Taille de la grille courante, en steps (float)."""
         from pattern import Pattern
         p = self._parent._player
-        return Pattern.grid_step_size(p._grid_idx, p._pattern._num_steps)
+        return Pattern.grid_step_size(p._grid_idx, p._pattern._num_steps,
+                                      p._pattern.resolution())             # 20b1, S6
 
     def _grid_value_ms(self):
         """Taille de la grille courante convertie en ms, au tempo en vigueur à

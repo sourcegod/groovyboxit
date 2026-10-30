@@ -86,7 +86,7 @@ class RecordingMixin:
         ref          = self._measure_start if self._measure_start is not None else now
         float_offset = 0.0 if now < ref else self._position_at(now)    # 19d1
         if self._quant_in_recording and self.quant_idx >= 0:
-            quant_size   = self._pattern._num_steps / Pattern.QUANT_STEPS[self.quant_idx]
+            quant_size   = self._pattern.note_steps(Pattern.QUANT_STEPS[self.quant_idx])   # S6
             float_offset = round(float_offset / quant_size) * quant_size % total_steps
         if round(float_offset) >= total_steps:
             float_offset = 0.0

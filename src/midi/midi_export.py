@@ -136,8 +136,10 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     with pattern._lock:
         tape = [list(track_list) for track_list in pattern._tape]
 
+    quarters = pattern.quarters_per_bar()          # signature (Phase 7 étape 20b1, S9)
+
     def tick(time_steps):
-        return round(time_steps * PPQ * num_beats / num_steps)
+        return round(time_steps * PPQ * quarters / num_steps)
 
     tmap = pattern.tempo_map(start_bpm=bpm)
 
@@ -165,7 +167,7 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     conductor.append(mido.MetaMessage("track_name", name=name, time=0))
     conductor.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(tmap.start_bpm), time=0))
     conductor.append(mido.MetaMessage("time_signature", numerator=num_beats,
-                                      denominator=4, time=0))
+                                      denominator=pattern._denumerator, time=0))
     now = 0
     for pos, change_bpm in tmap.changes:        # carte de tempo (T6)
         at = tick(pos)

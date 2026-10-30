@@ -144,7 +144,7 @@ class PlaybackLoopMixin:
         if self._note_repeat_active:
             denom    = Pattern.QUANT_STEPS[self._nr_quant_idx]
             nr_step  = 0.0
-            interval = self._pattern._num_steps / denom   # 1/denom de mesure, en pas (float)
+            interval = self._pattern.note_steps(denom)    # valeur de note 1/denom, en pas (20b1, S6)
             while nr_step < total_steps:
                 t_sec = to_sec(nr_step)
                 if t_sec > elapsed - 0.002:

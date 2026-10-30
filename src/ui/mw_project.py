@@ -299,7 +299,7 @@ class ProjectMixin:
         n = report.num_tracks
         msg = (f"Import MIDI : {base} → Pattern {idx + 1:02d}, {n} piste{'s' if n > 1 else ''}, "
                f"{report.num_bars} mesure{'s' if report.num_bars > 1 else ''}, "
-               f"{format_bpm(report.bpm)} BPM, {report.num_steps} pas")
+               f"{format_bpm(report.bpm)} BPM, résolution 1/{report.resolution}")
         if created:
             msg += f" ; slot {slot_idx + 1:02d} créé : banque {self._rack.get_slot(slot_idx).name}"
         details = report.details()

@@ -15,6 +15,7 @@
 """
 import os
 from collections import deque
+from fractions import Fraction
 
 import mido
 
@@ -22,7 +23,6 @@ from pattern import (Pattern, TapeEvent, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM,
                      ETYPE_BEND)
 from tempo_map import clamp_bpm
 
-BEATS_PER_BAR = 4       # une mesure = 4 noires (_num_beats n'est pas sauvé, I10)
 DEFAULT_BPM   = 120     # tempo MIDI par défaut, sans set_tempo (I10)
 
 # Métas lus par l'import ; les autres sont ignorés et comptés (I9)
@@ -43,12 +43,16 @@ class ImportReport:
     num_tracks      : pistes Groovebox remplies
     num_bars        : mesures du pattern
     num_steps       : pas par mesure retenus (I4)
+    resolution      : pas par ronde retenus, 16 = « 1/16 » (Phase 7 étape 20b1)
     bpm             : tempo du pattern
     moved_notes     : notes déplacées par l'arrondi au pas (I4)
     tempo_changes   : changements de tempo gardés dans la carte du pattern
                       (Phase 7 étape 19b1, § 19a1 T6 ; ignorés avant)
-    time_signature  : (numérateur, dénominateur) de la première signature
-                      si elle n'est pas 4/4, sinon None (I10)
+    time_signature  : (numérateur, dénominateur) de la signature du pattern
+                      (la première du fichier, Phase 7 étape 20b1, § 20a1 S9)
+    unsupported_signature : signature du fichier refusée (dénominateur hors
+                      de 2, 4, 8, 16 ou numérateur hors de 1..16), lue en 4/4
+    signature_changes : changements de signature suivants, ignorés (S1)
     merged          : vrai si les pistes d'un même canal ont été fusionnées,
                       faute de place pour plus de 16 pistes (I6)
     lost_events     : événements au-delà de 999 mesures (I10)
@@ -60,10 +64,13 @@ class ImportReport:
         self.num_tracks     = 0
         self.num_bars       = 1
         self.num_steps      = Pattern.VALID_NUM_STEPS[0]
+        self.resolution     = Pattern.VALID_RESOLUTIONS[0]
+        self.unsupported_signature = None
+        self.signature_changes     = 0
         self.bpm            = DEFAULT_BPM
         self.moved_notes    = 0
         self.tempo_changes  = 0
-        self.time_signature = None
+        self.time_signature = (4, 4)
         self.merged         = False
         self.lost_events    = 0
         self.ignored        = {}
@@ -80,9 +87,16 @@ class ImportReport:
         if self.tempo_changes:
             out.append(f"{self.tempo_changes} changement{'s' if self.tempo_changes > 1 else ''}"
                        f" de tempo")
-        if self.time_signature:
+        if self.time_signature != (4, 4):
             num, den = self.time_signature
-            out.append(f"signature {num}/{den} lue en 4/4")
+            out.append(f"signature {num}/{den}")
+        if self.unsupported_signature:
+            num, den = self.unsupported_signature
+            out.append(f"signature {num}/{den} non prise en charge, lue en 4/4")
+        if self.signature_changes:
+            n = self.signature_changes
+            out.append(f"{n} changement{'s' if n > 1 else ''} de signature "
+                       f"ignoré{'s' if n > 1 else ''}")
         if self.lost_events:
             out.append(f"{self.lost_events} événement{'s' if self.lost_events > 1 else ''}"
                        f" au-delà de {Pattern.MAX_BARS} mesures")
@@ -192,13 +206,15 @@ def _merge_by_channel(groups):
     return list(merged.values())
 
 
-def _choose_num_steps(groups, bar_ticks):
-    """Plus petit nombre de pas par mesure qui place toutes les notes
-    exactement ; sinon le plus fin (I4)."""
-    for num_steps in Pattern.VALID_NUM_STEPS:
+def _choose_num_steps(groups, bar_ticks, num_beats, denominator):
+    """Pas par mesure de la plus petite résolution (1/16 … 1/128) qui place
+    toutes les notes exactement ; sinon la plus fine (I4, signature 20b1)."""
+    choices = [Pattern.steps_for(res, num_beats, denominator)
+               for res in Pattern.VALID_RESOLUTIONS]
+    for num_steps in choices:
         if all((n[0] * num_steps) % bar_ticks == 0 for g in groups for n in g.notes):
             return num_steps
-    return Pattern.VALID_NUM_STEPS[-1]
+    return choices[-1]
 
 
 def _header_kind(msg):
@@ -220,7 +236,6 @@ def build_pattern_from_midi(mid, *, name=""):
         raise ValueError("fichier MIDI de type 2 non pris en charge")
     report = ImportReport()
     ppq       = mid.ticks_per_beat
-    bar_ticks = ppq * BEATS_PER_BAR
 
     groups, tempos, sigs, end, conductor_name = _read_tracks(mid, report)
     if len(groups) > Pattern.MAX_TRACKS:
@@ -234,26 +249,40 @@ def build_pattern_from_midi(mid, *, name=""):
     start = [tp for tick, tp in tempos if tick == 0]
     bpm   = clamp_bpm(mido.tempo2bpm(          # exact à 0,01 (19d3, § 19d2 R1)
         start[-1] if start else mido.bpm2tempo(DEFAULT_BPM)))
+    # Signature (Phase 7 étape 20b1, § 20a1 S1, S9) : la première du
+    # fichier ; les suivantes, différentes, sont comptées et ignorées
+    num_beats, denominator = 4, 4
     if sigs:
-        _tick, num, den = min(sigs, key=lambda s: s[0])
-        if (num, den) != (BEATS_PER_BAR, 4):
-            report.time_signature = (num, den)
+        sigs.sort(key=lambda s: s[0])
+        _tick, num, den = sigs[0]
+        if den in Pattern.VALID_DENOMINATORS and 1 <= num <= Pattern.MAX_NUMERATOR:
+            num_beats, denominator = num, den
+        else:
+            report.unsupported_signature = (num, den)
+        cur = (num, den)
+        for _tick, num, den in sigs[1:]:
+            if (num, den) != cur:
+                report.signature_changes += 1
+                cur = (num, den)
+    report.time_signature = (num_beats, denominator)
+    bar_ticks = Fraction(ppq * 4 * num_beats, denominator)   # exact (7/8, PPQ impair…)
 
     # Longueur (I10) : arrondie à la mesure supérieure, 1..999
-    num_bars = max(1, min(Pattern.MAX_BARS, -(-end // bar_ticks)))
+    num_bars = max(1, min(Pattern.MAX_BARS, int(-(-end // bar_ticks))))
     max_tick = num_bars * bar_ticks       # premier tick hors du pattern
-    num_steps = _choose_num_steps(groups, bar_ticks)
+    num_steps = _choose_num_steps(groups, bar_ticks, num_beats, denominator)
     total_steps = num_bars * num_steps
 
     def exact_time(tick):
         q, r = divmod(tick * num_steps, bar_ticks)
-        return q if r == 0 else tick * num_steps / bar_ticks
+        return int(q) if r == 0 else float(tick * num_steps / bar_ticks)
 
     pat = Pattern()
     pat._name      = conductor_name or name
     pat._bpm       = bpm
     pat._num_steps = num_steps
     pat._num_bars  = num_bars
+    pat._num_beats, pat._denumerator = num_beats, denominator
     pat.set_tempo_changes([(exact_time(tick), mido.tempo2bpm(tp))
                            for tick, tp in tempos if 0 < tick < max_tick])
     report.tempo_changes = len(pat._tempo_changes)
@@ -261,8 +290,8 @@ def build_pattern_from_midi(mid, *, name=""):
 
     def ms(start_tick, stop_tick):
         # Durée au tempo en vigueur sur la note (T5)
-        secs = tmap.secs_between(start_tick * num_steps / bar_ticks,
-                                 stop_tick * num_steps / bar_ticks)
+        secs = tmap.secs_between(float(start_tick * num_steps / bar_ticks),
+                                 float(stop_tick * num_steps / bar_ticks))
         return max(1, round(secs * 1000.0))
 
     for t, g in enumerate(groups):
@@ -312,7 +341,7 @@ def build_pattern_from_midi(mid, *, name=""):
             if start >= max_tick:
                 report.lost_events += 1
                 continue
-            exact = start * num_steps / bar_ticks
+            exact = float(start * num_steps / bar_ticks)
             step  = min(int(exact + 0.5), total_steps - 1)
             if step != exact:
                 report.moved_notes += 1
@@ -330,6 +359,7 @@ def build_pattern_from_midi(mid, *, name=""):
     report.num_tracks = len(groups)
     report.num_bars   = num_bars
     report.num_steps  = num_steps
+    report.resolution = int(pat.resolution())
     report.bpm        = bpm
     return pat, report
 

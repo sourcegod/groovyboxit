@@ -45,7 +45,9 @@ class QuantizeManager:
         p = self._p
         denom     = Pattern.QUANT_STEPS[quant_idx]
         num_steps = p._pattern._num_steps
-        grid      = [i * num_steps / denom for i in range(denom)]
+        # Valeur de note 1/denom (Phase 7 étape 20b1, S6) : points de la mesure 1
+        size      = p._pattern.note_steps(denom)
+        grid      = [i * size for i in range(int(-(-num_steps // size)))]
         row_vals  = [0] * num_steps
         for fp in grid:
             c = min(num_steps - 1, round(fp))
@@ -79,15 +81,18 @@ class QuantizeManager:
         denom     = Pattern.QUANT_STEPS[quant_idx]
         num_steps = p._pattern._num_steps
         num_bars  = p._pattern._num_bars
-        step_size = num_steps / denom
+        # Valeur de note 1/denom (Phase 7 étape 20b1, S6) ; grille continue
+        # depuis le début (identique à la grille par mesure en 4/4)
+        step_size = p._pattern.note_steps(denom)
         half_step = step_size / 2.0
 
         # Grille avec swing : temps impairs (i % 2 == 1) décalés
         swing_shift = swing_pct / 100.0 * step_size / 2.0
+        total     = num_bars * num_steps
         full_grid = [
-            bar * num_steps + i * step_size + (swing_shift if i % 2 == 1 else 0.0)
-            for bar in range(num_bars)
-            for i in range(denom)
+            i * step_size + (swing_shift if i % 2 == 1 else 0.0)
+            for i in range(int(-(-total // step_size)) + 1)
+            if i * step_size < total
         ]
 
         def _find_target(pos, grid):
