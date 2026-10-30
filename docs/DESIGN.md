@@ -7008,3 +7008,53 @@ premiers comme aujourd'hui.
   dialogue de `test_step_duration.py` adapté. Quatre défauts réintroduits
   à l'essai, dont celui de la longueur trouvé en 20d1, font échouer des
   tests. 2850 verts.
+
+## Phase 7 étape 20e2 — Avenant : champ Tempo dans les propriétés du pattern
+
+### Origine
+
+Demande de l'utilisateur (2026-10-30), après 20e1 : ajouter un champ
+Tempo (SpinCtrl) dans le dialogue des propriétés du pattern, juste avant
+la signature, « car généralement ça va ensemble ».
+
+### État des lieux
+
+- `PatternPropertiesDialog` (`ui/dialogs_properties.py`) n'a pas de champ
+  de tempo (la ligne « nom, BPM, mesures, pas » de `SPECS.md` était
+  fausse, corrigée en 19h1).
+- Le tempo se règle aujourd'hui par le champ BPM de la fenêtre principale
+  (`set_tempo_scaled` : tous les tempos dans la même proportion, § 19d2
+  R2), Tap Tempo, ±5 et le dialogue Tempo (Alt+Shift+T).
+- Le tempo de départ peut être décimal (`Pattern._bpm`, à 0,01 près,
+  19d3) ; un SpinCtrl est entier.
+
+### Décisions validées (utilisateur, 2026-10-30)
+
+**P1 — Le champ se comporte comme le champ BPM de la fenêtre principale**
+(choix a) : « Tempo (BPM) », SpinCtrl 1..600, placé juste avant
+« Signature, temps par mesure » ; il affiche le **tempo de départ**
+arrondi à l'unité ; le modifier change **tous les tempos dans la même
+proportion** (`scale_tempos`, rapport *nouveau / tempo de départ exact*),
+ralenti compris. La référence est le départ (1:1:1), et non la position
+courante : on règle le pattern entier.
+
+**P2 — Appliqué à Ok**, comme les autres champs, sous l'Undo du dialogue ;
+**rien si le champ n'a pas changé** (un départ à 93,75, affiché 94, n'est
+pas arrondi).
+
+**P3 — « Nouveau »** : le pattern neuf a ce tempo, unique (la carte est
+vidée par `new_pattern`). « Doubler » et « Diviser » appliquent aussi le
+tempo s'il a changé (le doublement garde déjà la carte, 19b1).
+
+**P4 — Ordre Tab** : Nom → Début → Longueur → **Tempo** → Signature,
+temps par mesure → Signature, valeur du temps → Résolution → Boucler →
+Action.
+
+### Découpage en commits révisé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **20e2** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **20e3** | Implémentation — P1 à P4. Essayé au lecteur d'écran. | `ui/dialogs_properties.py`, `ui/mw_patterns.py` |
+| **20e4** | Tests — 20e3. | `tests/test_signature_ui.py`, `tests/test_pattern_properties_dialog.py` au besoin |
+| **20f1** | Doc — clôture (signatures et champ Tempo). | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
