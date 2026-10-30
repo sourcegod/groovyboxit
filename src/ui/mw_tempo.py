@@ -71,6 +71,25 @@ class TempoMixin:
         self._tempo_changed(title)
         return True
 
+    def _tempo_tap(self, idx):
+        """Une frappe du bouton « Tap Tempo » du dialogue (Phase 7 étape
+        19i1) : mécanique de H (Metronome.tap : 4 frappes au moins, pause de
+        plus de 2 s = nouvelle série, un Undo par série) ; le tempo idx
+        prend la valeur tapée et tous les autres suivent dans la même
+        proportion. Retourne le BPM appliqué, ou None (pas encore assez de
+        frappes)."""
+        player = self._player
+        metro  = player._metro
+        _i, pos, old = player.tempo_items()[idx + 1]
+        if metro.is_fresh_sequence():
+            self._add_undo(f"Tap Tempo (BPM: {format_bpm(old)})")
+        bpm = metro.tap()
+        if bpm is None:
+            return None
+        player.modify_tempo(idx, pos, bpm, player.SCOPE_SCALE_ALL)
+        self._tempo_changed(f"Tap Tempo: {format_bpm(bpm)} BPM")
+        return bpm
+
     def _tempo_delete(self, idx):
         _i, pos, bpm = self._player.tempo_items()[idx + 1]
         title = f"Tempo : supprimer {format_bpm(bpm)} BPM à {self._tempo_pos_str(pos)}"

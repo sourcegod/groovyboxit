@@ -160,16 +160,21 @@ class TempoDialog(wx.Dialog):
         insert_btn = wx.Button(self, label="&Insérer…")
         modify_btn = wx.Button(self, label="&Modifier…")
         delete_btn = wx.Button(self, label="&Supprimer")
+        # Tap Tempo (Phase 7 étape 19i1) : Entrée ou Espace = une frappe
+        self._tap_btn = tap_btn = wx.Button(self, label="&Tap Tempo")
+        # Click du métronome, pour taper en mesure (19i1) : comme la touche C
+        self._click_cb = wx.CheckBox(self, label="&Click (métronome)")
+        self._click_cb.SetValue(bool(owner._player.clicking))
         close_btn  = wx.Button(self, wx.ID_CANCEL, "&Fermer")
         self.SetEscapeId(wx.ID_CANCEL)
         # Action de chaque bouton, pour Entrée / Espace (voir _on_char_hook)
         self._actions = {insert_btn: self.insert, modify_btn: self.modify,
-                         delete_btn: self.delete,
+                         delete_btn: self.delete, tap_btn: self.tap,
                          close_btn: lambda: self.EndModal(wx.ID_CANCEL)}
 
         btns = wx.BoxSizer(wx.HORIZONTAL)
-        for b in (insert_btn, modify_btn, delete_btn, close_btn):
-            btns.Add(b, 0, wx.RIGHT, 6)
+        for b in (insert_btn, modify_btn, delete_btn, tap_btn, self._click_cb, close_btn):
+            btns.Add(b, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 6)
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(label,      0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
         vbox.Add(self._list, 1, wx.EXPAND | wx.ALL, 8)
@@ -180,6 +185,8 @@ class TempoDialog(wx.Dialog):
         insert_btn.Bind(wx.EVT_BUTTON, lambda e: self.insert())
         modify_btn.Bind(wx.EVT_BUTTON, lambda e: self.modify())
         delete_btn.Bind(wx.EVT_BUTTON, lambda e: self.delete())
+        tap_btn.Bind(wx.EVT_BUTTON, lambda e: self.tap())
+        self._click_cb.Bind(wx.EVT_CHECKBOX, lambda e: self.toggle_click())
         # GTK garde Entrée pour la ListBox : elle arrive en double-clic
         # (cf. feedback_gtk_listbox_enter)
         self._list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.modify())
@@ -198,6 +205,11 @@ class TempoDialog(wx.Dialog):
         focus = wx.Window.FindFocus()
         if key == wx.WXK_DELETE and focus is self._list:
             self.delete()
+            return
+        if key == wx.WXK_SPACE and focus is self._click_cb:
+            # Même piège que les boutons : la case est cochée ici
+            self._click_cb.SetValue(not self._click_cb.GetValue())
+            self.toggle_click()
             return
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE):
             if focus in self._actions:
@@ -260,6 +272,30 @@ class TempoDialog(wx.Dialog):
                 self.refresh(select_idx=idx)          # disparu (à cette valeur) : départ
         dlg.Destroy()
         self._list.SetFocus()
+
+    def tap(self):
+        """Une frappe : le tempo sélectionné prend la valeur tapée, tous les
+        autres suivent en proportion (comme H). Le libellé du bouton, qui
+        garde le focus, dit le tempo obtenu ; la ligne de la liste suit."""
+        idx = self._selected()[0]
+        bpm = self._owner._tempo_tap(idx)
+        if bpm is None:
+            return
+        self.refresh(select_idx=idx)
+        self._tap_btn.SetLabel(f"&Tap Tempo : {format_bpm(bpm)} BPM")
+
+    def toggle_click(self):
+        """Case « Click (métronome) » : active ou coupe le click, comme la
+        touche C de la fenêtre principale (19i1)."""
+        player = self._owner._player
+        if self._click_cb.GetValue():
+            if not player.clicking:
+                player.play_click()
+            self._owner._show_status("Click: On")
+        else:
+            if player.clicking:
+                player.stop_click()
+            self._owner._show_status("Click: Off")
 
     def delete(self):
         idx, pos, _bpm = self._selected()

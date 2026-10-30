@@ -6756,3 +6756,21 @@ sur une ligne Tempo.
 - rampes de tempo ; tempo dans le piano roll (Ctrl+1) ;
 - Undo du champ BPM et de ±5 ;
 - notes en temps flottant (reportées, non urgentes).
+
+### Phase 7 étape 19i1 — Ajout après la clôture : Tap Tempo et Click dans le dialogue Tempo
+
+Demandé par l'utilisateur (2026-10-30), avant d'attaquer les signatures :
+- **Bouton « Tap Tempo »** : Entrée ou Espace = une frappe, mécanique de
+  H (`Metronome.tap` : 4 frappes au moins, pause de plus de 2 s = nouvelle
+  série, un Undo par série « Tap Tempo (BPM: 92) ») ; **le tempo
+  sélectionné prend la valeur tapée et tous les autres suivent dans la
+  même proportion** (choix 1a, comme H). `TempoMixin._tempo_tap`,
+  `TempoDialog.tap` ; le bouton garde le focus et son libellé dit le tempo
+  obtenu (« Tap Tempo : 120 BPM »), la ligne de la liste et le champ BPM
+  suivent.
+- **Case « Click (métronome) »** (demandée à l'essai du Tap Tempo) :
+  active ou coupe le click comme la touche C ; cochée à l'ouverture si le
+  click tourne ; garde son état à la fermeture. Espace sur la case est
+  traité par le dialogue (même piège `EVT_CHAR_HOOK` que les boutons).
+- Essayé au lecteur d'écran (utilisateur) : ça marche. `pytest` rouge :
+  1 test (`test_enter_and_space_activate_focused_button` attend 4 boutons).
