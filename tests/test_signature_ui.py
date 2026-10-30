@@ -7,7 +7,8 @@
     direct sur une durée exacte), application au pattern (signature d'abord,
     notes en place ; Nouveau ; Doubler sans toucher la signature ; statut,
     Undo), grille de la fenêtre principale (colonnes de la mesure, cases hors
-    mesure refusées, curseur borné).
+    mesure refusées, curseur borné). Champ Tempo, tempo et signature en
+    direct, Annuler et Undo (Phase 7 étape 20e4, avenant § 20e2, 20e3).
     Date: Fri, 30/10/2026
     Author: Coolbrother
 """
@@ -131,6 +132,7 @@ class _Silent:
 
 
 class _Win(PatternMixin):
+    """Fenêtre factice ; chaque Undo note l'état du player à cet instant."""
     def __init__(self, num_bars=4):
         self._cur_pattern_idx = 0
         self._pattern_list    = [Pattern() for _ in range(2)]
@@ -141,18 +143,29 @@ class _Win(PatternMixin):
             self._player._pattern._tape[0].append(
                 TapeEvent(ETYPE_PATCH, dur=100, payload={"note": 60, "vel": 90}, time=t))
         self._pattern_list[0].copy_from(self._player._pattern)
-        self.calls = []
-    def _add_undo(self, title):          self.calls.append(("undo", title))
+        self.calls, self.undo_states = [], []
+    def _add_undo(self, title):
+        live = self._player._pattern
+        self.calls.append(("undo", title))
+        self.undo_states.append((self._player.bpm, list(live._tempo_changes),
+                                 live._num_beats, live._denumerator, live._num_bars))
     def _refresh_grid(self):             self.calls.append("grille")
     def _refresh_pattern_listbox(self):  pass
     def _show_status(self, msg):         self.calls.append(("statut", msg))
     def _play_toggle(self):              pass
 
 
-def _fake_dialog(action, num_beats, den, res=16, num_bars=None):
+def _fake_dialog(action, num_beats, den, res=16, num_bars=None, tempo=None,
+                 during=None, result=wx.ID_OK):
+    """Faux dialogue ; during(kwargs) simule l'utilisateur pendant
+    ShowModal (rappels en direct, Phase 7 étape 20e3)."""
     class FakeDlg:
         def __init__(self, *a, **kw):  FakeDlg.kwargs = kw
-        def ShowModal(self):           return wx.ID_OK
+        def ShowModal(self):
+            if during:
+                during(FakeDlg.kwargs)
+            return result
+        def get_tempo(self):           return tempo
         def get_name(self):            return ""
         def get_start_bar(self):       return 0
         def get_num_bars(self):        return num_bars
@@ -315,3 +328,135 @@ def test_move_stops_at_last_column_of_bar(monkeypatch):
     win._cur_col = 11
     win._move(0, 1)
     assert bells == [True] and win._cells[0][11].focused
+
+
+# ---------------------------------------------------------------------------
+# Champ Tempo (avenant § 20e2, 20e3)
+# ---------------------------------------------------------------------------
+
+def test_dialog_tempo_field(frame):
+    dlg = PatternPropertiesDialog(frame, 0, "P", 0, 4, 16, True, 99, RES, tempo=93.75)
+    assert dlg._tempo.GetValue() == 94 and dlg.get_tempo() is None    # départ décimal gardé
+    assert (dlg._tempo.GetMin(), dlg._tempo.GetMax()) == (1, 600)
+    assert dlg._tempo.GetName() == "Tempo (BPM)"
+    dlg._tempo.SetValue(46)
+    assert dlg.get_tempo() == 46
+
+
+def test_dialog_tab_order_tempo_before_signature(frame):
+    dlg = PatternPropertiesDialog(frame, 0, "P", 0, 4, 16, True, 99, RES)
+    order = [c for c in dlg.GetChildren() if c.AcceptsFocus()]
+    i = order.index(dlg._tempo)
+    assert order[i - 1] is dlg._length and order[i + 1] is dlg._beats
+
+
+def test_dialog_tempo_and_signature_callbacks(frame):
+    got = []
+    dlg = PatternPropertiesDialog(frame, 0, "P", 0, 4, 16, True, 99, RES,
+                                  on_tempo_change=lambda b: got.append(("tempo", b)),
+                                  on_signature_change=lambda n, d: got.append(("sig", n, d)))
+    dlg._tempo.SetValue(80)
+    dlg._on_tempo_spin(wx.CommandEvent())
+    _sig(dlg, 3, 4)
+    _sig(dlg, 3, 4)                                   # inchangée : pas de rappel
+    assert got == [("tempo", 80), ("sig", 3, 4)]
+
+
+def _win_with_map():
+    win = _Win(num_bars=4)
+    win._player.set_bpm(92)
+    win._player._pattern.set_tempo_changes([(16, 94), (48, 40)])
+    win._pattern_list[0].copy_from(win._player._pattern)
+    win._pattern_list[0]._bpm = 92
+    return win
+
+
+def test_tempo_ok_scales_all_and_updates_store():
+    win = _win_with_map()
+    _apply(win, _fake_dialog("Courant", 4, 4, num_bars=4, tempo=46))
+    assert win._player.bpm == 46
+    assert win._player._pattern._tempo_changes == [(16, 47), (48, 20)]
+    store = win._pattern_list[0]
+    assert store._bpm == 46 and store._tempo_changes == [(16, 47), (48, 20)]
+    assert ("statut", "Pattern 01: tempo 46 BPM, tous les tempos en proportion") in win.calls
+
+
+def test_tempo_unchanged_keeps_decimal_map():
+    win = _win_with_map()
+    win._player.set_bpm(93.75)
+    _apply(win, _fake_dialog("Courant", 4, 4, num_bars=4, tempo=None))
+    assert win._player.bpm == 93.75
+    assert win._player._pattern._tempo_changes == [(16, 94), (48, 40)]
+
+
+def test_tempo_nouveau_single_tempo():
+    win = _win_with_map()
+    _apply(win, _fake_dialog("Nouveau", 4, 4, num_bars=2, tempo=100))
+    assert win._player.bpm == 100 and win._player._pattern._tempo_changes == []
+
+
+def test_tempo_live_then_cancel_restores():
+    win = _win_with_map()
+    seen = []
+    def user(kw):
+        kw["on_tempo_change"](46)
+        seen.append((win._player.bpm, list(win._player._pattern._tempo_changes)))
+        kw["on_tempo_change"](60)
+        seen.append(win._player.bpm)
+    _apply(win, _fake_dialog("Courant", 4, 4, num_bars=4, during=user, result=wx.ID_CANCEL))
+    assert seen == [(46, [(16, 47), (48, 20)]), 60]              # entendu en direct
+    assert win._player.bpm == 92
+    assert win._player._pattern._tempo_changes == [(16, 94), (48, 40)]
+    assert win.undo_states == []
+
+
+def test_tempo_live_then_ok_undo_captures_origin():
+    win = _win_with_map()
+    _apply(win, _fake_dialog("Courant", 4, 4, num_bars=4, tempo=46,
+                             during=lambda kw: kw["on_tempo_change"](46)))
+    assert win.undo_states[0][:2] == (92, [(16, 94), (48, 40)])  # état d'avant le dialogue
+    assert win._player.bpm == 46
+
+
+def test_signature_live_then_cancel_restores_exactly():
+    win = _Win(num_bars=49)
+    win._player._pattern.set_signature(3, 4)
+    win._player._pattern._num_bars = 49
+    seen = []
+    def user(kw):
+        kw["on_signature_change"](6, 4)
+        kw["on_signature_change"](6, 8)
+        live = win._player._pattern
+        seen.append((live._num_beats, live._denumerator, live._num_steps, live._num_bars))
+    _apply(win, _fake_dialog("Courant", 3, 4, num_bars=49, during=user, result=wx.ID_CANCEL))
+    assert seen == [(6, 8, 12, 49)]
+    live = win._player._pattern
+    assert (live._num_beats, live._denumerator, live._num_steps, live._num_bars) == (3, 4, 12, 49)
+    assert "grille" in win.calls
+
+
+def test_signature_live_metronome_follows():
+    win = _Win()
+    beats = []
+    def user(kw):
+        kw["on_signature_change"](3, 4)
+        win._player.clicking = True
+        beats.append([e[2] for e in win._player._build_measure_events(0, 11, 12, 1, 0.0)
+                      if e[1] == Metronome.METRO_EVENT])
+    _apply(win, _fake_dialog("Courant", 4, 4, num_bars=4, during=user, result=wx.ID_CANCEL))
+    assert beats == [[0, 1, 2]]
+
+
+def test_signature_live_then_ok_undo_captures_origin():
+    win = _Win(num_bars=4)
+    _apply(win, _fake_dialog("Courant", 6, 8, num_bars=6,
+                             during=lambda kw: kw["on_signature_change"](6, 8)))
+    assert win.undo_states[0][2:] == (4, 4, 4)                   # 4/4, 4 mesures
+    live = win._player._pattern
+    assert (live._num_beats, live._denumerator, live._num_bars) == (6, 8, 6)
+
+
+def test_restore_without_change_does_nothing():
+    win = _Win()
+    _apply(win, _fake_dialog("Courant", 4, 4, num_bars=4, result=wx.ID_CANCEL))
+    assert "grille" not in win.calls and win.undo_states == []

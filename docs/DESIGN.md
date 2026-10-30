@@ -7083,3 +7083,12 @@ Action.
     croche, on entend brièvement l'étape 6/4.
   - Essayé au lecteur d'écran et à l'écoute (utilisateur, 2026-10-30) :
     ça marche. `pytest` rouge : 8 tests (faux dialogues sans `get_tempo`).
+- **20e4** — 12 tests de plus dans `tests/test_signature_ui.py` (champ
+  Tempo : affichage arrondi, départ décimal gardé, ordre Tab ; rappels
+  en direct ; Ok : tous les tempos en proportion et store à jour ;
+  inchangé : carte intacte ; Nouveau : tempo unique ; direct puis
+  Annuler : tempos et signature d'origine, sans Undo ; direct puis Ok :
+  Undo pris sur l'état d'avant le dialogue ; click qui suit la signature
+  en direct ; aucun rafraîchissement sans changement) ; faux dialogues
+  adaptés (`get_tempo`). Quatre défauts réintroduits à l'essai font
+  échouer des tests. 2862 verts.

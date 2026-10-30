@@ -1785,7 +1785,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_sound_cache.py` | sound_cache : init, load, save_async, hash (21 tests) |
 | `test_sound_device_driver.py` | SoundDeviceDriver : play, mix, polyphonie |
 | `test_signature.py` | Signatures rythmiques : unités (temps du dénominateur, noire du tempo, résolution), pas par mesure, changement de signature qui garde les notes en place, sauvegarde, valeurs de note, minutage, métronome, position, décompte, import et export (3/4, 6/8, 5/4, 7/8, 2/2) |
-| `test_signature_ui.py` | Interface des signatures : dialogue des propriétés (signature, résolution, longueur recalculée), application au pattern (notes en place, Nouveau, Doubler), grille limitée à la mesure |
+| `test_signature_ui.py` | Interface des signatures : dialogue des propriétés (champ Tempo, signature, résolution, longueur recalculée ; tempo et signature en direct, Annuler, Undo), application au pattern (notes en place, Nouveau, Doubler), grille limitée à la mesure |
 | `test_sound_manager.py` | SoundManager : load_kit, mute_groups, play_note |
 | `test_step_duration.py` | Durée du pas indépendante de la résolution : set_bpm, load_pattern, song, métronome, Note Repeat |
 | `test_synth_engine.py` | SynthEngine : chargement patch, pré-calcul, lecture |
