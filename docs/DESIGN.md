@@ -6782,3 +6782,155 @@ Demandé par l'utilisateur (2026-10-30), avant d'attaquer les signatures :
   test des boutons adapté (cinq boutons) ; `SPECS.md` (dialogue Tempo,
   tableau des dialogues), `shortcuts.md` (Alt+Shift+T). Trois défauts
   réintroduits à l'essai font échouer des tests. 2774 verts.
+
+## Phase 7 étape 20a1 — Signatures rythmiques : une signature par pattern
+
+### Numérotation des commits de ce chantier
+
+`20a1` = ce plan (doc seule). Le code commence à `20b1`. Une paire impl →
+tests par sous-chantier ; `20a2`, `20b2`… pour un commit imprévu.
+
+### Origine du besoin
+
+- Import MIDI (Phase 7 étape 18) : `01Minuetto2.mid` (3/4) est lu en 4/4,
+  « signature 3/4 lue en 4/4 » au compte rendu ; l'export écrit toujours
+  4/4.
+- Carte de tempo (étape 19) : les signatures, laissées hors périmètre (T1),
+  sont demandées comme chantier suivant (utilisateur, 2026-10-30).
+
+### Comportement de Cakewalk / Sonar (vérifié le 2026-10-30)
+
+- **Documentation officielle** (legacy.cakewalk.com, « Setting the Meter
+  and Key signatures ») : la signature donne le nombre de temps par mesure
+  et la valeur du temps (le dénominateur) ; « 6/8 : six temps par mesure,
+  chaque croche reçoit un temps » ; elle place les accents du métronome et
+  règle l'affichage de la position (Measure:Beat:Tick).
+- Un message de forum (discuss.cakewalk.com, fil 11135, 2020) dit qu'un
+  temps est toujours une noire : contredit par la documentation, écarté.
+- Forums : changer la signature décale les barres de mesure dans le
+  temps ; le BPM reste compté en noires (comme dans un fichier MIDI).
+
+### État des lieux constaté en code (2026-10-30, 2774 tests verts)
+
+- `Pattern._num_beats = 4` et `_denumerator = 4` (`pattern.py:174`,
+  `:181`) : **ni sauvés ni modifiables**. Une mesure fait toujours 4
+  noires.
+- **Positions** : `TapeEvent.time = mesure × _num_steps + pas` ; toutes les
+  mesures ont `_num_steps` pas. `VALID_NUM_STEPS = (16, 32, 64, 128)` pas
+  par mesure (`pattern.py:109`), choisis dans le dialogue des propriétés du
+  pattern (champ « Pas », `dialogs_properties.py:308`, `mw_patterns.py:411`).
+- **Position affichée (mesure:temps:pas)** : partout
+  `steps_per_beat = _num_steps // _num_beats` (`dp_position.py:68`,
+  `mew_display.py:91`, `midi_editor_dialogs.py:123`, `:333`,
+  `track_editor.py:136`, `key_handler_chars.py:374`…, `mew_keymap.py:359`,
+  `mew_delete_clipboard.py:117`, dialogues temporels) : juste pour toute
+  signature si `_num_beats` est le numérateur et `_num_steps` les pas de
+  la mesure (le temps = le dénominateur).
+- **Tempo** : `Pattern.steps_per_beat()` (`pattern.py:523`) sert de **pas
+  par noire** à la carte de tempo (`tempo_map()`, `ms_per_step_at`), à
+  `step_duration` (`drum_player.py:175`), au décompte (`dp_playback.py:170`),
+  à la quantisation des durées (`quantize_manager.py:138`) et aux
+  dialogues de tempo (`dialogs_tempo.py`, `mw_tempo.py:29`, qui s'en
+  servent aussi pour la position affichée). En 6/8, pas par temps (la
+  croche) et pas par noire diffèrent : il faut les séparer.
+- **Valeurs de note supposant mesure = ronde** : grille (`grid_step_size`,
+  `pattern.py:142` : « 1/16 » = `_num_steps / 16`), quantisation
+  (`quantize_manager.py:46`, `:79`), quantisation à l'enregistrement
+  (`dp_recording.py:89`), Note Repeat (`dp_playback.py:147`). En 3/4 à 12
+  pas, « 1/16 » vaudrait 0,75 pas au lieu d'un.
+- **Métronome** (`metronome.py:42`) : `num_beats` clicks par mesure,
+  `num_steps // num_beats` pas entre deux : juste pour toute signature
+  (un click par temps du dénominateur, accent sur le 1).
+- **Grille** : 16 colonnes (`MainWindow.COLS`), les 16 premiers pas de la
+  mesure 1 (`mw_patterns.py:19`).
+- **Import** : `BEATS_PER_BAR = 4`, `bar_ticks = PPQ × 4`
+  (`midi_import.py:25`), signature lue mais remplacée par 4/4 ; **export** :
+  `time_signature` = `_num_beats`/4, `tick = pas × PPQ × _num_beats /
+  _num_steps` (`midi_export.py:135`).
+- `copy_from` ne copie pas la signature ; `resize(num_bars, num_steps)`
+  (changement de « Pas ») garde mesure:pas de chaque événement (un
+  événement au pas 4 sur 16 reste au pas 4 sur 32 : il change de place
+  dans le temps).
+
+### Décisions validées (utilisateur, 2026-10-30)
+
+**S1 — Une signature par pattern** (choix a). Numérateur et dénominateur
+propres à chaque pattern ; chaque pattern d'un song garde la sienne. Les
+changements de signature à l'intérieur d'un pattern : chantier suivant
+(tout le codage des positions suppose des mesures égales).
+
+**S2 — « Pas » devient « Résolution »** (choix a) : 1/16, 1/32, 1/64,
+1/128, quelle que soit la signature ; les pas de la mesure s'en déduisent :
+`pas par mesure = résolution × numérateur / dénominateur` (3/4 en 1/16 :
+12 ; 6/8 : 12 ; 5/4 : 20 ; 7/8 : 14 ; 4/4 : 16, comme aujourd'hui).
+
+**S3 — Changer la signature d'un pattern : les notes gardent leur place
+dans le temps** (choix a). À résolution égale, un pas dure toujours la
+même fraction de noire : les positions en pas ne bougent pas, seuls
+`_num_steps` (pas par mesure) et donc les barres de mesure changent ; le
+nombre de mesures est recalculé pour garder la longueur (arrondi à la
+mesure supérieure). Changements de tempo et boucle (positions en pas)
+inchangés. Un Undo.
+
+**S4 — Le temps est le dénominateur** (choix a, documentation de
+Cakewalk) : en 6/8, 6 temps de croche par mesure, positions 1:1:1 à
+1:6:x, un click par croche avec accent sur le 1. Le BPM reste compté en
+noires.
+
+### Choix de conception proposés
+
+**S5 — Deux unités séparées dans `Pattern`** : `steps_per_beat()` = pas
+par temps (le dénominateur : position affichée, métronome) ;
+`steps_per_quarter()` = pas par noire (tempo : carte, `step_duration`,
+décompte, ms par pas) = `résolution / 4`. `quarters_per_bar()` =
+`4 × numérateur / dénominateur`. Les usages « tempo » de
+`steps_per_beat()` passent à `steps_per_quarter()`.
+
+**S6 — Valeurs de note = valeurs de note.** « 1/16 » de la grille, de la
+quantisation, de l'enregistrement et du Note Repeat est une double croche
+quelle que soit la signature : `pas = résolution / valeur` (au lieu de
+`_num_steps / valeur`). Identique en 4/4. « 1 mes. » (et 2, 3, 4 mesures)
+de la grille reste une mesure.
+
+**S7 — Réglage** dans le dialogue des propriétés du pattern (Alt+Entrée) :
+« Signature » = numérateur (SpinCtrl 1..16) et dénominateur (liste 2, 4,
+8, 16), puis « Résolution » (liste 1/16 … 1/128). Signature et résolution
+changées ensemble : signature d'abord (S3), puis résolution (comportement
+actuel de `resize`, inchangé).
+
+**S8 — Sauvegarde** : `.gvp` (`"num_beats"`, `"denominator"`, absents =
+4/4) et donc Undo ; `copy_from` copie la signature (mode song : chaque
+pattern la sienne).
+
+**S9 — Import et export.** Import : première signature du fichier
+(`bar_ticks = PPQ × 4 × num / den`, résolution choisie comme aujourd'hui
+mais parmi 1/16 … 1/128) ; les changements de signature suivants sont
+comptés au compte rendu (« N changements de signature ignorés ») ; le
+compte rendu ne dit plus « lue en 4/4 ». Export : `time_signature` du
+pattern, ticks par `quarters_per_bar()`.
+
+**S10 — Grille de la fenêtre principale** : seules les colonnes de la
+mesure sont actives (12 en 3/4 à 1/16) ; au-delà de 16 pas, les 16
+premiers comme aujourd'hui.
+
+### Portée explicitement exclue de ce chantier
+
+- **Changements de signature à l'intérieur d'un pattern** (carte des
+  signatures) : chantier suivant ;
+- signatures irrégulières groupées (7/8 = 2+2+3) et métronome groupé
+  (6/8 en 2 noires pointées) ;
+- changement de résolution qui garde les notes en place dans le temps
+  (`resize` garde mesure:pas, comportement actuel inchangé) ;
+- tonalité (« Key ») ; signature dans le piano roll au-delà de la
+  position affichée.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **20a1** | Doc — ce plan. | `docs/DESIGN.md` |
+| **20b1** | Implémentation — S5, S6, S8, S3 (modèle) : signature du pattern (`.gvp`, `copy_from`, `set_signature`), unités séparées, valeurs de note, tempo par noire ; import et export (S9). | `pattern.py`, `tempo_map.py` (au besoin), `player/*.py`, `quantize_manager.py`, `midi/midi_import.py`, `midi/midi_export.py`, appels de `steps_per_beat()` côté tempo |
+| **20c1** | Tests — 20b1 (3/4, 6/8, 5/4, 7/8 : positions, tempo, métronome, quantisation, import / export, aller-retour). | `tests/test_signature.py` (nouveau), tests existants au besoin, `docs/SPECS.md` |
+| **20d1** | Implémentation — S7, S10 : dialogue des propriétés (signature, résolution), grille, affichages. Essayé à l'écoute (menuet en 3/4, un 6/8) et au lecteur d'écran. | `ui/dialogs_properties.py`, `ui/mw_patterns.py`, `ui/main_window.py` |
+| **20e1** | Tests — 20d1. | `tests/test_pattern_properties_dialog.py`, tests de la grille |
+| **20f1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
