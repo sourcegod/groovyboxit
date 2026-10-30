@@ -906,7 +906,12 @@ l'instrument de son canal, où passe la piste ; voir « Banques de sons ».
 - **Dialogue Tempo (Alt+Shift+T, fenêtre principale et éditeur MIDI)** :
   liste « 1:1:1, 92 BPM, départ », « 21:2:1, 70 BPM »… ; Insérer (à la
   position courante, modifiable), Modifier, Supprimer (pas le départ),
-  Fermer ; Entrée = Modifier, Suppr = Supprimer, Échap = Fermer. Le
+  **Tap Tempo**, case **Click (métronome)**, Fermer ; Entrée = Modifier,
+  Suppr = Supprimer, Échap = Fermer. Tap Tempo (Phase 7 étape 19i1) :
+  Entrée ou Espace = une frappe, mécanique de H ; le tempo sélectionné
+  prend la valeur tapée et tous les autres suivent en proportion ; le
+  bouton garde le focus et dit le tempo obtenu (« Tap Tempo : 120 BPM »).
+  La case Click active ou coupe le click comme la touche C. Le
   dialogue d'édition : Mesure, Temps, Pas, BPM (texte, « 46,5 ») et, pour
   Modifier, la portée : « Changer le tempo le plus récent », « Changer
   tous les tempos à cette valeur » (un seul tempo reste), « Changer tous
@@ -1606,7 +1611,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo ; sur une banque : programme du canal, banque MSB / LSB, en direct) |
 | `TrackSelectDialog` | dialogs_properties | Ctrl+Entrée (liste pistes) | Sélection de pistes + plage BBT |
 | `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, début, longueur, pas) |
-| `TempoDialog` | dialogs_tempo | Alt+Shift+T | Liste des tempos du pattern : insérer, modifier, supprimer (Phase 7 étape 19f1) |
+| `TempoDialog` | dialogs_tempo | Alt+Shift+T | Liste des tempos du pattern : insérer, modifier, supprimer (Phase 7 étape 19f1) ; Tap Tempo et case Click (19i1) |
 | `TempoEditDialog` | dialogs_tempo | Insérer / Modifier, Entrée sur une ligne Tempo | Position, BPM et portée d'un tempo |
 | `PadPropertiesDialog` | dialogs_properties | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée, mute_group) |
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
@@ -1783,7 +1788,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_synth_utils.py` | Utilitaires : scale_midi_notes, midi_to_note_name |
 | `test_tap_tempo.py` | Tap Tempo : BPM, TAP_MIN_TAPS, timeout (20 tests) |
 | `test_tape.py` | _tape (TapeEvent G/K/P) : enregistrement, sérialisation |
-| `test_tempo_dialog.py` | Liste des tempos : insérer, modifier (tempo le plus récent, tous à cette valeur, tous proportionnellement), supprimer, Undo, dialogue Tempo et dialogue d'édition par le chemin de l'appli, Entrée / Espace / Suppr, lignes Tempo de Ctrl+2, filtre, Alt+Shift+T |
+| `test_tempo_dialog.py` | Liste des tempos : insérer, modifier (tempo le plus récent, tous à cette valeur, tous proportionnellement), supprimer, Undo, dialogue Tempo et dialogue d'édition par le chemin de l'appli, Entrée / Espace / Suppr, lignes Tempo de Ctrl+2, filtre, Alt+Shift+T ; Tap Tempo et case Click du dialogue |
 | `test_tempo_map.py` | Carte de tempo : TempoMap (pas ↔ secondes par morceaux, tempo en vigueur), changements de tempo du pattern (.gvp, copie, redimensionner, doubler, diviser), import et export de la carte, durées au tempo local, aller-retour |
 | `test_tempo_playback.py` | Player sur la carte de tempo : tempo en vigueur, tempo changé à la position ou partout en proportion, position dans la fenêtre, minutage (événements, métronome, Note Repeat, décompte), tempos franchis signalés, pause, position gardée, song, ms par pas, Aller à en secondes, champ BPM, lecture chronométrée |
 | `test_track_channels.py` | Canal MIDI par piste : défauts, migration, règle du kit, Ctrl+T et propriétés de piste (Undo) |

@@ -9,6 +9,7 @@
     wx.SpinCtrl refusait), Entrée / Espace / Suppr, lignes Tempo de la liste
     des événements (affichage, ordre, suppression, filtre, Entrée), raccourcis
     Alt+Shift+T.
+    Tap Tempo et case Click du dialogue (Phase 7 étape 19j1, ajout 19i1).
     Date: Thu, 29/10/2026
     Author: Coolbrother
 """
@@ -399,7 +400,8 @@ def test_enter_and_space_activate_focused_button(app, monkeypatch):
             e = _Key(key)
             dlg._on_char_hook(e)
             assert not e.skipped
-    assert calls == [lbl for lbl in ("&Insérer…", "&Modifier…", "&Supprimer", "&Fermer")
+    assert calls == [lbl for lbl in ("&Insérer…", "&Modifier…", "&Supprimer",
+                                     "&Tap Tempo", "&Fermer")      # Tap Tempo : 19i1
                      for _ in range(3)]
 
 
@@ -601,3 +603,135 @@ def test_alt_shift_t_midi_editor():
         def _refresh(self):         calls.append("refresh")
     Ed()._on_key(_KeyEv(ord('T'), shift=True, alt=True))
     assert calls == [("tempo", True), "refresh"]
+
+
+# ---------------------------------------------------------------------------
+# Tap Tempo et Click du dialogue (Phase 7 étape 19i1)
+# ---------------------------------------------------------------------------
+
+import metronome
+
+
+class _Clock:
+    """Horloge monotone factice du Tap Tempo."""
+    def __init__(self):  self.now = 1000.0
+    def __call__(self):  return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    c = _Clock()
+    monkeypatch.setattr(metronome._time, "monotonic", c)
+    return c
+
+
+def _taps(win_or_dlg, clock, n, interval=0.5, idx=None):
+    out = []
+    for _ in range(n):
+        clock.now += interval
+        out.append(win_or_dlg.tap() if idx is None else win_or_dlg._tempo_tap(idx))
+    return out
+
+
+def test_mixin_tap_needs_four_taps_then_scales_all(clock):
+    win = _Win()
+    got = _taps(win, clock, 4, 0.5, idx=-1)               # 120 BPM
+    assert got == [None, None, None, 120]
+    assert win._player.tempo_items() == [(-1, 0, 120), (0, 16, 122.61), (1, 32, 52.17)]
+    assert win.statuses[-1] == "Tap Tempo: 120 BPM"
+    assert "bpm" in win.calls and "editeur" in win.calls
+
+
+def test_mixin_tap_selected_tempo_takes_tapped_value(clock):
+    win = _Win()
+    _taps(win, clock, 4, 1.0, idx=1)                      # 40 → 60 BPM
+    assert win._player.tempo_items() == [(-1, 0, 138), (0, 16, 141), (1, 32, 60)]
+
+
+def test_mixin_tap_one_undo_per_series(clock):
+    win = _Win()
+    _taps(win, clock, 6, 0.5, idx=-1)
+    assert win.undos == ["Tap Tempo (BPM: 92)"]
+    clock.now += 3.0                                       # pause > 2 s : nouvelle série
+    _taps(win, clock, 4, 0.6, idx=-1)
+    assert win.undos == ["Tap Tempo (BPM: 92)", "Tap Tempo (BPM: 120)"]
+    assert win._player.bpm == 100
+
+
+def test_dialog_tap_button_label_and_list(app, clock):
+    dlg = _tempo_dlg(app)
+    dlg._list.SetSelection(0)
+    _taps(dlg, clock, 3)
+    assert dlg._tap_btn.GetLabel() == "&Tap Tempo"
+    _taps(dlg, clock, 1)
+    assert dlg._tap_btn.GetLabel() == "&Tap Tempo : 120 BPM"
+    assert dlg._list.GetString(0) == "1:1:1, 120 BPM, départ"
+    assert dlg._list.GetSelection() == 0
+
+
+def test_dialog_tap_by_enter_or_space_on_button(app, clock, monkeypatch):
+    dlg = _tempo_dlg(app)
+    _focus(monkeypatch, dlg._tap_btn)
+    for key in (wx.WXK_RETURN, wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_SPACE):
+        clock.now += 0.5
+        e = _Key(key)
+        dlg._on_char_hook(e)
+        assert not e.skipped
+    assert dlg._owner._player.bpm == 120
+
+
+class _ClickPlayer:
+    """Remplace play_click / stop_click du vrai player (pas de thread)."""
+    @staticmethod
+    def patch(monkeypatch, pl, calls):
+        def play():
+            calls.append("on"); pl._metro.active = True
+        def stop():
+            calls.append("off"); pl._metro.active = False
+        monkeypatch.setattr(pl, "play_click", play)
+        monkeypatch.setattr(pl, "stop_click", stop)
+
+
+def test_click_checkbox_reflects_state_at_opening(app):
+    pl = _player()
+    assert not _tempo_dlg(app, pl)._click_cb.GetValue()
+    pl._metro.active = True
+    assert _tempo_dlg(app, pl)._click_cb.GetValue()
+
+
+def test_click_checkbox_toggles_like_c(app, monkeypatch):
+    pl, calls = _player(), []
+    _ClickPlayer.patch(monkeypatch, pl, calls)
+    dlg = _tempo_dlg(app, pl)
+    dlg._click_cb.SetValue(True)
+    dlg.toggle_click()
+    dlg._click_cb.SetValue(False)
+    dlg.toggle_click()
+    assert calls == ["on", "off"]
+    assert dlg._owner.statuses[-2:] == ["Click: On", "Click: Off"]
+
+
+def test_click_space_on_checkbox_handled_by_dialog(app, monkeypatch):
+    """Même piège EVT_CHAR_HOOK que les boutons : Espace traité ici."""
+    pl, calls = _player(), []
+    _ClickPlayer.patch(monkeypatch, pl, calls)
+    dlg = _tempo_dlg(app, pl)
+    _focus(monkeypatch, dlg._click_cb)
+    for _ in range(2):
+        e = _Key(wx.WXK_SPACE)
+        dlg._on_char_hook(e)
+        assert not e.skipped
+    assert calls == ["on", "off"] and not dlg._click_cb.GetValue()
+    e = _Key(wx.WXK_RETURN)
+    dlg._on_char_hook(e)
+    assert e.skipped and calls == ["on", "off"]
+
+
+def test_click_state_kept_when_dialog_closes(app, monkeypatch):
+    pl, calls = _player(), []
+    _ClickPlayer.patch(monkeypatch, pl, calls)
+    dlg = _tempo_dlg(app, pl)
+    dlg._click_cb.SetValue(True)
+    dlg.toggle_click()
+    dlg.Destroy()
+    assert pl.clicking and calls == ["on"]

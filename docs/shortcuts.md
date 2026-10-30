@@ -14,7 +14,8 @@ Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), dossier EXPORTS
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace)
-Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer (dialogue Tempo)
+Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer, Tap Tempo, Click
+                 (dialogue Tempo ; Entrée ou Espace sur « Tap Tempo » = une frappe)
 Ctrl+P           Charger le pattern de démonstration
 Shift+P          Générer un pattern aléatoire
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)

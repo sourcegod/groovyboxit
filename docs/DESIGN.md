@@ -6774,3 +6774,11 @@ Demandé par l'utilisateur (2026-10-30), avant d'attaquer les signatures :
   traité par le dialogue (même piège `EVT_CHAR_HOOK` que les boutons).
 - Essayé au lecteur d'écran (utilisateur) : ça marche. `pytest` rouge :
   1 test (`test_enter_and_space_activate_focused_button` attend 4 boutons).
+- **19j1** — tests de 19i1 dans `tests/test_tempo_dialog.py` (9 tests :
+  4 frappes au moins, tempo sélectionné et tous les autres en proportion,
+  un Undo par série, libellé du bouton, frappe par Entrée / Espace, case
+  Click : état à l'ouverture, bascule comme C, Espace traité par le
+  dialogue, état gardé à la fermeture ; horloge du Tap Tempo factice) ;
+  test des boutons adapté (cinq boutons) ; `SPECS.md` (dialogue Tempo,
+  tableau des dialogues), `shortcuts.md` (Alt+Shift+T). Trois défauts
+  réintroduits à l'essai font échouer des tests. 2774 verts.
