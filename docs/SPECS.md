@@ -16,7 +16,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 4 | SoundDeviceDriver, AudioSampler, Transport avancé, MIDI CC/Pitch Bend/Mod Wheel | ✓ |
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | en cours |
-| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM) | en cours |
+| Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | en cours |
 
 ---
 
@@ -589,7 +589,9 @@ Pattern
   ├── _bpm           float (tempo de départ, à 0,01 près)
   ├── _tempo_changes [(position en pas, bpm)]  changements de tempo (Phase 7 étape 19)
   ├── _num_bars      int (1–999)
-  ├── _num_steps     int (16, 32, 64, 128 — pas par mesure)
+  ├── _num_steps     int (pas par mesure = résolution × num / den ; en 4/4 : 16, 32, 64, 128)
+  ├── _num_beats     int (numérateur de la signature, 1..16 — Phase 7 étape 20)
+  ├── _denumerator   int (dénominateur : 2, 4, 8, 16 — valeur du temps)
   ├── _start_bar     int (première mesure jouée)
   ├── _looping       bool
   ├── _loop_start    int | None (step de début de boucle ; None = début du pattern)
@@ -925,6 +927,42 @@ l'instrument de son canal, où passe la piste ; voir « Banques de sons ».
 
 ---
 
+## Signatures rythmiques
+
+Phase 7 étape 20 (docs/DESIGN.md § 20a1, 20e2) :
+
+- **Une signature par pattern** (numérateur 1..16, dénominateur 2, 4, 8,
+  16), sauvée dans le `.gvp` (`"num_beats"`, `"denominator"`, absents =
+  4/4) ; chaque pattern d'un song garde la sienne. Pas de changement de
+  signature à l'intérieur d'un pattern.
+- **Le temps est le dénominateur** (comme la documentation de Cakewalk) :
+  en 6/8, 6 temps de croche, positions 1:1:1 à 1:6:x, un click par croche
+  avec accent sur le 1. **Le BPM reste compté en noires.**
+- **Résolution** (remplace « Pas ») : 1/16, 1/32, 1/64, 1/128 ; pas par
+  mesure = résolution × numérateur / dénominateur (3/4 en 1/16 : 12 ;
+  6/8 : 12 ; 5/4 : 20 ; 7/8 : 14 ; 4/4 : 16 comme avant).
+- **Valeurs de note** : « 1/16 » de la grille, de la quantisation, de
+  l'enregistrement et du Note Repeat est une double croche quelle que soit
+  la signature (« 1 mes. » reste une mesure) ; grille de quantisation
+  continue depuis le début du pattern.
+- **Changer la signature garde les notes en place dans le temps** : seules
+  les barres de mesure bougent, le nombre de mesures est recalculé pour
+  garder la longueur ; tempos et boucle inchangés.
+- **Propriétés du pattern (Alt+Entrée)** : Nom, Début, Longueur, **Tempo
+  (BPM)**, **Signature, temps par mesure**, **Signature, valeur du temps**,
+  **Résolution**, Boucler, Action. Le Tempo (tempo de départ, arrondi)
+  change tous les tempos dans la même proportion ; **tempo et signature
+  s'appliquent en direct** (click et lecture suivent), Annuler les
+  rétablit, Ok les garde (l'Undo ramène l'état d'avant le dialogue) ;
+  longueur et résolution s'appliquent à Ok (la résolution garde
+  mesure:pas des notes). « Nouveau » : pattern neuf dans la signature et
+  au tempo choisis.
+- **Grille de la fenêtre principale** : seules les colonnes de la mesure
+  sont actives (12 en 3/4 à 1/16) ; curseur et flèches bornés, case hors
+  mesure refusée.
+
+---
+
 ## Pitch Shifting (`pyrubberband`)
 
 - Algorithme : Rubber Band (C++), bindings Python via `pyrubberband`
@@ -964,7 +1002,8 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
 
 - SMF de type 1, 480 ticks par noire ; piste conductor : nom, tempo
   (un temps = 60/BPM, quel que soit le nombre de pas), un `set_tempo` par
-  changement de la carte de tempo (Phase 7 étape 19b1), signature 4/4 ;
+  changement de la carte de tempo (Phase 7 étape 19b1), signature du
+  pattern (Phase 7 étape 20b1) ;
   fins de notes calculées au tempo en vigueur sur la note
 - Une piste SMF par piste non vide et audible, nommée d'après son slot, sur
   le canal de la piste ; en tête : Program Change du slot, volume (CC7,
@@ -1035,15 +1074,17 @@ pattern (pan à ±1 près).
   piste) ; CC, Pitch Bend, Program Change à leur position exacte (temps
   flottant), sur leur canal. Ignorés et comptés : aftertouch, SysEx,
   métas autres que nom, tempo, signature, fin de piste.
-- **Temps** : notes **arrondies au pas** : le plus petit nombre de pas
-  par mesure (16, 32, 64, 128) qui les place toutes exactement, sinon 128
-  et arrondi. Une mesure = 4 noires (autre signature lue en 4/4). Tempo
+- **Temps** : notes **arrondies au pas** : la plus petite résolution
+  (1/16 … 1/128) qui les place toutes exactement, sinon 1/128 et arrondi.
+  Signature : la première du fichier (Phase 7 étape 20b1) ; les
+  changements suivants sont comptés et ignorés ; une signature non prise
+  en charge (dénominateur hors de 2, 4, 8, 16) est lue en 4/4. Tempo
   de départ = dernier tempo au tick 0 (120 sans tempo) ; chaque tempo
   suivant devient un changement de la carte, à 0,01 près (Phase 7
   étape 19). Longueur
   = fin la plus tardive, arrondie à la mesure, 1 à 999 mesures. Une
   mesure vide au début est gardée (TiMidity, lui, la saute par défaut).
-- **Compte rendu** au statut : pistes, mesures, BPM, pas, slot créé, notes
+- **Compte rendu** au statut : pistes, mesures, BPM, résolution, signature, slot créé, notes
   déplacées, changements de tempo, signature, fusion, événements perdus,
   messages ignorés.
 - Pas encore : notes en temps flottant (chantier reporté, non urgent ;
@@ -1243,6 +1284,8 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
       "tempo_changes": [[32, 80], [40.5, 46.5]],
       "num_bars": 1,
       "num_steps": 16,
+      "num_beats": 4,
+      "denominator": 4,
       "start_bar": 0,
       "looping": true,
       "loop_start": null,
@@ -1612,7 +1655,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `RenameDialog` | dialogs_simple | F2 | Renommer piste, pattern ou song |
 | `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo ; sur une banque : programme du canal, banque MSB / LSB, en direct) |
 | `TrackSelectDialog` | dialogs_properties | Ctrl+Entrée (liste pistes) | Sélection de pistes + plage BBT |
-| `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, début, longueur, pas) |
+| `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, début, longueur, tempo, signature, résolution ; tempo et signature en direct, Phase 7 étape 20) |
 | `TempoDialog` | dialogs_tempo | Alt+Shift+T | Liste des tempos du pattern : insérer, modifier, supprimer (Phase 7 étape 19f1) ; Tap Tempo et case Click (19i1) |
 | `TempoEditDialog` | dialogs_tempo | Insérer / Modifier, Entrée sur une ligne Tempo | Position, BPM et portée d'un tempo |
 | `PadPropertiesDialog` | dialogs_properties | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée, mute_group) |
@@ -1772,7 +1815,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_pattern.py` | Pattern : création, reset, resize, double/halve, random |
 | `test_pattern_grid_api.py` | API grille de Pattern (get_cell, set_cell, iter_grid, copy_from…) au-dessus de _tape ; grid_row en un passage |
 | `test_pattern_properties_bug.py` | Non-régression : Doubler/Diviser/Redimensionner gardent grille et _tape synchronisées |
-| `test_pattern_properties_dialog.py` | PatternPropertiesDialog : BPM, mesures, pas |
+| `test_pattern_properties_dialog.py` | PatternPropertiesDialog : nom, début, mesures, résolution, actions, Ctrl+P |
 | `test_pattern_serialization.py` | to_dict / from_dict (round-trip) |
 | `test_playback_loop.py` | Boucle de lecture : _build_measure_events (ordre de _tape à temps égal), _dispatch_event, _on_measure_end (rappel de fin de lecture) |
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |

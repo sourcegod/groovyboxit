@@ -157,7 +157,10 @@ Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banq
   NumPad / *     Changer de gamme
 
 --- Patterns (focus liste des patterns) ---
-Alt+Entrée       Ouvrir les propriétés du pattern sélectionné
+Alt+Entrée       Ouvrir les propriétés du pattern sélectionné : nom, début, longueur,
+                 tempo (tous les tempos en proportion), signature (temps par mesure,
+                 valeur du temps), résolution, boucle, action ; tempo et signature
+                 s'entendent en direct, Annuler les rétablit
 Double-clic      Ouvrir les propriétés du pattern (liste des patterns)
 Ctrl+P           Lecture / Pause (depuis la boite de dialogue des propriétés)
 

@@ -7092,3 +7092,47 @@ Action.
   en direct ; aucun rafraîchissement sans changement) ; faux dialogues
   adaptés (`get_tempo`). Quatre défauts réintroduits à l'essai font
   échouer des tests. 2862 verts.
+
+### Clôture (20f1)
+
+**20a1-20e4 FAITS** (commits `0ef15b5` à `75907b9`, et ce commit de
+clôture, 2862 tests verts) : **chantier Phase 7 étape 20 complet**. Un
+pattern a sa signature : le menuet se lit en 3/4, un 6/8 se bat en six
+croches, et tempo et signature se règlent ensemble, en direct, dans les
+propriétés du pattern.
+
+**Ce que le chantier a livré** :
+- **Modèle** : signature par pattern (`.gvp`, copie, song), temps du
+  dénominateur et tempo en noires (`steps_per_beat` / `steps_per_quarter`),
+  résolution 1/16 … 1/128, `set_signature` qui garde les notes en place,
+  vraies valeurs de note (grille, quantisation, enregistrement, Note
+  Repeat).
+- **Import et export** de la signature (première du fichier, changements
+  comptés, ticks par mesure exacts).
+- **Propriétés du pattern** : Tempo (tous les tempos en proportion),
+  signature et résolution ; tempo et signature en direct, Annuler,
+  Undo de l'état d'avant le dialogue.
+- **Grille** limitée aux colonnes de la mesure.
+
+**Écarts au plan** : grille de quantisation continue (20b1) ; longueur
+gardée exacte à travers une signature intermédiaire (trouvé à l'essai de
+20d1) ; avenant 20e2 (champ Tempo), puis tempo et signature en direct
+(demandés à l'essai de 20e3) ; voir plus haut.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 7, structure Pattern et
+format `.gvp`, nouvelle section « Signatures rythmiques », import
+(résolution, signature), export (signature du pattern), compte rendu,
+boîtes de dialogue, tests ; `docs/shortcuts.md` : Alt+Entrée sur un
+pattern.
+
+**Fichiers d'essai, hors du dépôt** (copyright de la transcription de
+Bach) : `/home/com/groovybox/media/midis/Minueto_02.mid` (3/4),
+`Prelude_01.mid`.
+
+**Laissé hors périmètre, pour la suite** :
+- **changements de signature à l'intérieur d'un pattern** (carte des
+  signatures : le codage des positions suppose des mesures égales) ;
+- mesures irrégulières groupées (7/8 = 2+2+3), métronome groupé (6/8 en
+  deux noires pointées) ;
+- changement de résolution qui garde les notes en place dans le temps ;
+- tonalité.
