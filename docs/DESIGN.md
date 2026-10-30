@@ -6963,3 +6963,13 @@ premiers comme aujourd'hui.
     mesure.
   - `pytest` rouge : 4 tests (textes du compte rendu de l'import, fausse
     classe `_FakeGridPattern` sans `resolution`).
+- **20c1** — `tests/test_signature.py` (56 tests : unités et pas par
+  mesure en 3/4, 6/8, 5/4, 7/8, 2/2 ; `set_signature` qui garde notes,
+  tempos et boucle en place, recalcul des mesures, refus ; `.gvp`,
+  `copy_from` ; grille, Note Repeat, quantisation à l'enregistrement,
+  rangée et quantisation continue en valeurs de note, 4/4 inchangé ;
+  durée de la mesure, métronome, position affichée, décompte en 6/8,
+  avance du song ; import 6/8, 7/8 à PPQ impair, signature refusée,
+  changements comptés, résolution choisie ; export, aller-retour) ; 4
+  tests adaptés. Cinq défauts réintroduits à l'essai font échouer des
+  tests. 2830 verts.

@@ -812,6 +812,9 @@ class _FakeGridPattern:
         self._num_beats = num_beats
         self._bpm       = bpm
 
+    def resolution(self):                  # pas par ronde (Phase 7 étape 20b1)
+        return self._num_steps * 4 / self._num_beats
+
 
 class _FakeGridPlayer:
     def __init__(self, grid_idx):

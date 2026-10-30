@@ -369,7 +369,7 @@ def test_status_report(tmp_path):
     win = _ImportWindow(str(tmp_path))
     _run(win, _write_mid(str(tmp_path / "a.mid"), bpm=96, end_bars=1))
     assert win.statuses[-1] == ("Import MIDI : a.mid → Pattern 02, 2 pistes, 1 mesure, "
-                                "96 BPM, 16 pas ; slot 01 créé : banque FluidR3_GM")
+                                "96 BPM, résolution 1/16 ; slot 01 créé : banque FluidR3_GM")
     print("  compte rendu dans la barre d'état : OK")
 
 def test_status_report_includes_details(tmp_path):

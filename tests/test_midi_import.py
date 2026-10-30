@@ -145,13 +145,17 @@ class TestFile:
         assert pat._tempo_changes == [(32, 120), (48, 90)]   # 100 répété : retiré
         assert rep.tempo_changes == 2
 
-    def test_time_signature_reported_if_not_4_4(self):
+    def test_time_signature_read(self):
+        # Gardée depuis la Phase 7 étape 20b1 (§ 20a1 S9), plus lue en 4/4
         sig = mido.MetaMessage("time_signature", numerator=3, denominator=4)
-        _, rep = _import(_track(_note(0, 100)), conductor=[sig])
+        pat, rep = _import(_track(_note(0, 100)), conductor=[sig])
         assert rep.time_signature == (3, 4)
+        assert (pat._num_beats, pat._denumerator, pat._num_steps) == (3, 4, 12)
+        assert "signature 3/4" in rep.details()
         sig = mido.MetaMessage("time_signature", numerator=4, denominator=4)
         _, rep = _import(_track(_note(0, 100)), conductor=[sig])
-        assert rep.time_signature is None
+        assert rep.time_signature == (4, 4)
+        assert not any("signature" in d for d in rep.details())
 
     def test_ppq_of_file_used(self):
         # PPQ 96 : un temps = 96 ticks ; note au 2e temps = pas 4 sur 16
@@ -461,7 +465,7 @@ class TestReport:
         assert rep.details() == [
             "12 notes déplacées",
             "1 changement de tempo",
-            "signature 3/4 lue en 4/4",
+            "signature 3/4",
             "2 événements au-delà de 999 mesures",
             "ignorés : 40 aftertouch, 2 SysEx",
         ]
