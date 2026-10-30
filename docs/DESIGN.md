@@ -6973,3 +6973,28 @@ premiers comme aujourd'hui.
   changements comptés, résolution choisie ; export, aller-retour) ; 4
   tests adaptés. Cinq défauts réintroduits à l'essai font échouer des
   tests. 2830 verts.
+- **20d1** — S7 et S10 :
+  - `PatternPropertiesDialog` : « Signature, temps par mesure » (SpinCtrl
+    1..16), « Signature, valeur du temps » (2 blanche, 4 noire, 8 croche,
+    16 double croche), « Résolution » (1/16 double croche … 1/128) au lieu
+    de « Pas » ; la longueur se recalcule en direct quand la signature
+    change (durée gardée exacte en pas : un passage par 6/4 avant 6/8
+    ajoutait une mesure, trouvé à l'essai) ; `get_num_beats`,
+    `get_denominator`, `get_resolution`, `get_num_steps` (déduit). Action
+    « Courant » : `set_signature` d'abord (notes en place), puis
+    longueur et résolution (`resize` inchangé) ; « Nouveau » : pattern
+    neuf dans la signature choisie ; Doubler / Diviser n'y touchent pas.
+    Statut « mis à jour — 6/8, résolution 1/16 ».
+  - Grille : colonnes au-delà des pas de la mesure vides et grisées
+    (`_active_cols`), curseur et flèches bornés à la mesure, case hors
+    mesure refusée — sans quoi `_refresh_grid` plantait sur un pattern en
+    3/4 (ligne de 12 pas, 16 colonnes lues).
+  - Essayé à l'écoute et au lecteur d'écran (utilisateur, 2026-10-30) :
+    menuet en 3/4 importé, click qui suit la signature (accent et nombre
+    de temps), dialogue : ça marche. `bach_01.mid` est bien en 4/4 (6/4
+    seulement à la dernière mesure, ignoré).
+  - Fichiers d'essai copiés hors du dépôt (copyright de la transcription
+    de Bach) : `/home/com/groovybox/media/midis/Minueto_02.mid` (3/4) et
+    `Prelude_01.mid`.
+  - `pytest` rouge : 2 tests (`test_step_duration.py`, faux dialogue sans
+    les nouveaux accesseurs).

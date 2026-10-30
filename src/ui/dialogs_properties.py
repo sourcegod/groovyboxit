@@ -1,6 +1,7 @@
 import wx
 
 from midi.midi_constants import GM_PATCH_NAMES, GM2_DRUMKITS
+from pattern import Pattern
 
 
 class TrackPropertiesDialog(wx.Dialog):
@@ -274,14 +275,31 @@ class PatternPropertiesDialog(wx.Dialog):
     _LIST_H  = 90   # hauteur fixe des ListBox à contenu long
     _ACTIONS = ["Courant", "Nouveau", "Doubler", "Diviser par 2"]
 
+    # Signature et résolution (Phase 7 étape 20d1, docs/DESIGN.md § 20a1 S2,
+    # S4, S7) : valeur du temps = dénominateur ; résolution = pas par ronde
+    DENOMINATORS     = (2, 4, 8, 16)
+    DENOMINATOR_NAMES = {2: "blanche", 4: "noire", 8: "croche", 16: "double croche"}
+    RESOLUTION_NAMES  = {16: "double croche", 32: "triple croche",
+                         64: "quadruple croche", 128: "quintuple croche"}
+
     def __init__(self, parent, pat_idx, name, start_bar, num_bars, num_steps,
-                 looping, max_bars, valid_steps, on_play_toggle=None):
+                 looping, max_bars, valid_steps, on_play_toggle=None,
+                 num_beats=4, denominator=4):
+        """valid_steps : résolutions proposées (pas par ronde, 16 … 128) ;
+        num_steps : pas par mesure actuels (la résolution s'en déduit avec la
+        signature num_beats / denominator)."""
         super().__init__(parent, title=f"Propriétés — Pattern {pat_idx + 1:02d}")
 
         self._on_play_toggle = on_play_toggle
         self._max_bars       = max_bars
+        self._resolutions    = list(valid_steps)
+        self._sig            = (num_beats, denominator)   # signature affichée
+        # Durée en pas (à la résolution d'ouverture), gardée exacte quand la
+        # signature change en plusieurs étapes (6/4 puis 6/8)
+        self._total_steps    = num_bars * num_steps
 
-        # Ordre Tab : Nom → Début → Longueur → Pas → Boucler → Actions
+        # Ordre Tab : Nom → Début → Longueur → Temps par mesure → Valeur du
+        # temps → Résolution → Boucler → Actions
 
         name_label  = wx.StaticText(self, label="Nom :")
         self._name  = wx.TextCtrl(self, value=name)
@@ -305,13 +323,28 @@ class PatternPropertiesDialog(wx.Dialog):
         self._length.SetSelection(num_bars - 1)
         self._length.Bind(wx.EVT_LISTBOX, self._on_length_change)
 
-        steps_label  = wx.StaticText(self, label="Pas :")
-        self._steps  = wx.ListBox(
+        beats_label  = wx.StaticText(self, label="Signature, temps par mesure :")
+        self._beats  = wx.SpinCtrl(self, min=1, max=16, initial=num_beats, size=(80, -1))
+        self._beats.SetName("Signature, temps par mesure")
+        den_label    = wx.StaticText(self, label="Signature, valeur du temps :")
+        self._den    = wx.ListBox(
             self,
-            choices=[str(n) for n in valid_steps],
+            choices=[f"{d} ({self.DENOMINATOR_NAMES[d]})" for d in self.DENOMINATORS],
             style=wx.LB_SINGLE,
         )
-        self._steps.SetSelection(list(valid_steps).index(num_steps))
+        self._den.SetSelection(self.DENOMINATORS.index(denominator))
+
+        steps_label  = wx.StaticText(self, label="Résolution :")
+        self._steps  = wx.ListBox(
+            self,
+            choices=[f"1/{r} ({self.RESOLUTION_NAMES.get(r, '')})" for r in self._resolutions],
+            style=wx.LB_SINGLE,
+        )
+        resolution = round(num_steps * denominator / num_beats)
+        self._steps.SetSelection(self._resolutions.index(resolution)
+                                 if resolution in self._resolutions else 0)
+        self._beats.Bind(wx.EVT_SPINCTRL, self._on_signature_change)
+        self._den.Bind(wx.EVT_LISTBOX, self._on_signature_change)
 
         self._loop = wx.CheckBox(self, label="Boucler")
         self._loop.SetValue(looping)
@@ -332,7 +365,7 @@ class PatternPropertiesDialog(wx.Dialog):
         btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
         btn_sizer.Realize()
 
-        grid = wx.FlexGridSizer(rows=6, cols=2, vgap=6, hgap=8)
+        grid = wx.FlexGridSizer(rows=8, cols=2, vgap=6, hgap=8)
         grid.AddGrowableCol(1)
         grid.Add(name_label,   0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self._name,   0, wx.EXPAND)
@@ -340,6 +373,10 @@ class PatternPropertiesDialog(wx.Dialog):
         grid.Add(self._start,  0, wx.EXPAND)
         grid.Add(length_label, 0, wx.ALIGN_TOP | wx.TOP, 2)
         grid.Add(self._length, 0, wx.EXPAND)
+        grid.Add(beats_label,  0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._beats,  0)
+        grid.Add(den_label,    0, wx.ALIGN_TOP | wx.TOP, 2)
+        grid.Add(self._den,    0, wx.EXPAND)
         grid.Add(steps_label,  0, wx.ALIGN_TOP | wx.TOP, 2)
         grid.Add(self._steps,  0, wx.EXPAND)
         grid.Add(wx.StaticText(self, label=""), 0)
@@ -357,10 +394,25 @@ class PatternPropertiesDialog(wx.Dialog):
         self._name.SetFocus()
 
     def _on_length_change(self, event):
-        new_bars  = event.GetSelection() + 1
+        self._set_length(event.GetSelection() + 1)
+        self._total_steps = self.get_num_bars() * Pattern.steps_for(
+            self.get_resolution(), *self._sig)
+
+    def _set_length(self, new_bars):
         old_start = self._start.GetSelection()
+        self._length.SetSelection(new_bars - 1)
         self._start.Set([f"Mesure {i + 1}" for i in range(new_bars)])
         self._start.SetSelection(min(old_start, new_bars - 1))
+
+    def _on_signature_change(self, event):
+        """Nouvelle signature : la longueur est recalculée pour garder la
+        même durée (S3, comme Pattern.set_signature)."""
+        new_sig = (self.get_num_beats(), self.get_denominator())
+        if new_sig != self._sig:
+            new = Pattern.steps_for(self.get_resolution(), *new_sig)
+            self._set_length(max(1, min(self._max_bars, -(-self._total_steps // new))))
+            self._sig = new_sig
+        event.Skip()
 
     def _on_key(self, event):
         if event.ControlDown() and event.GetKeyCode() == ord('P'):
@@ -372,7 +424,13 @@ class PatternPropertiesDialog(wx.Dialog):
     def get_name(self):      return self._name.GetValue().strip()
     def get_start_bar(self): return self._start.GetSelection()          # 0-indexed
     def get_num_bars(self):  return self._length.GetSelection() + 1
-    def get_num_steps(self): return int(self._steps.GetStringSelection())
+    def get_num_beats(self):   return self._beats.GetValue()
+    def get_denominator(self): return self.DENOMINATORS[max(0, self._den.GetSelection())]
+    def get_resolution(self):  return self._resolutions[max(0, self._steps.GetSelection())]
+    def get_num_steps(self):
+        """Pas par mesure de la résolution et de la signature choisies."""
+        return Pattern.steps_for(self.get_resolution(), self.get_num_beats(),
+                                 self.get_denominator())
     def get_looping(self):   return self._loop.GetValue()
     def get_action(self):
         sel = self._actions.GetSelection()

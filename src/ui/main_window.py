@@ -423,24 +423,35 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._cur_col = col
         self._pad_list.SetSelection(row)
 
+    def _active_cols(self):
+        """Colonnes de la grille dans la mesure 1 : les pas de la mesure, 16
+        au plus (Phase 7 étape 20d1, § 20a1 S10 : 12 en 3/4 à 1/16)."""
+        return min(self.COLS, self._player._pattern._num_steps)
+
     def _set_cell(self, row, col, value):
+        if col >= self._active_cols():         # hors de la mesure (20d1)
+            wx.Bell()
+            return
         self._cells[row][col].SetValue(bool(value))
         self._player._pattern.set_cell(
             self._player._cur_track, row, 0, col, 100 if value else 0
         )
         self._player.float_offsets[row] = [
-            float(c) for c in range(self.COLS)
+            float(c) for c in range(self._active_cols())
             if self._player._pattern.get_cell(self._player._cur_track, row, 0, c)
         ]
 
     def _on_checkbox(self, row, col):
+        if col >= self._active_cols():         # hors de la mesure (20d1)
+            self._cells[row][col].SetValue(False)
+            return
         self._add_undo(f"Cellule {row + 1}/{col + 1}")
         self._player._pattern.set_cell(
             self._player._cur_track, row, 0, col,
             100 if self._cells[row][col].GetValue() else 0,
         )
         self._player.float_offsets[row] = [
-            float(c) for c in range(self.COLS)
+            float(c) for c in range(self._active_cols())
             if self._player._pattern.get_cell(self._player._cur_track, row, 0, c)
         ]
 
@@ -539,7 +550,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _move(self, dr, dc):
         r = max(0, min(self.ROWS - 1, self._cur_row + dr))
-        c = max(0, min(self.COLS - 1, self._cur_col + dc))
+        c = max(0, min(self._active_cols() - 1, self._cur_col + dc))     # mesure (20d1)
         if r == self._cur_row and c == self._cur_col:
             wx.Bell()
         else:

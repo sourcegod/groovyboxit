@@ -17,11 +17,18 @@ class PatternMixin:
     """Méthodes MainWindow relatives aux patterns : grille, sauvegarde, dialogs."""
 
     def _refresh_grid(self):
+        """Grille de la mesure 1 ; les colonnes au-delà des pas de la mesure
+        (3/4 à 1/16 : 12) sont vides et grisées (Phase 7 étape 20d1, S10)."""
         cur_track = self._player._cur_track
+        active    = min(self.COLS, self._player._pattern._num_steps)
         for r in range(self.ROWS):
             row = self._player._pattern.grid_row(cur_track, r, 0)
             for c in range(self.COLS):
-                self._cells[r][c].SetValue(bool(row[c]))
+                cell = self._cells[r][c]
+                cell.Enable(c < active)
+                cell.SetValue(bool(row[c]) if c < active else False)
+        if getattr(self, "_cur_col", 0) >= active:     # curseur ramené dans la mesure
+            self._cur_col = active - 1
         self._player._compute_offsets()
 
     def _on_pattern_select(self, event):
@@ -408,8 +415,10 @@ class PatternMixin:
             live._num_steps,
             pat._looping,
             Pattern.MAX_BARS,
-            Pattern.VALID_NUM_STEPS,
+            Pattern.VALID_RESOLUTIONS,
             on_play_toggle=self._play_toggle,
+            num_beats=live._num_beats,              # signature (Phase 7 étape 20d1)
+            denominator=live._denumerator,
         )
         result = dlg.ShowModal()
         if result == wx.ID_OK:
@@ -417,20 +426,24 @@ class PatternMixin:
             start_bar = dlg.get_start_bar()
             num_bars  = dlg.get_num_bars()
             num_steps = dlg.get_num_steps()
+            num_beats = dlg.get_num_beats()
+            den       = dlg.get_denominator()
             looping   = dlg.get_looping()
             action    = dlg.get_action()
+            sig_label = f"{num_beats}/{den}, résolution 1/{dlg.get_resolution()}"
             pat._name      = name
             pat._start_bar = start_bar
             pat._looping   = looping
             live._looping  = looping
             if action == "Nouveau":
                 self._add_undo(f"Nouveau pattern {self._cur_pattern_idx + 1:02d}")
-                pat.new_pattern(num_bars, num_steps)
-                live.new_pattern(num_bars, num_steps)
+                for p_ in (pat, live):              # pattern neuf dans la signature choisie
+                    p_._num_beats, p_._denumerator = num_beats, den
+                    p_.new_pattern(num_bars, num_steps)
                 self._player._update_step_duration()
                 self._player._compute_offsets()
                 self._refresh_grid()
-                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: nouveau")
+                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: nouveau — {sig_label}")
             elif action == "Doubler":
                 self._add_undo(f"Doubler pattern {self._cur_pattern_idx + 1:02d}")
                 if self._player.double_pattern():
@@ -453,9 +466,13 @@ class PatternMixin:
                     self._show_status("Impossible de diviser (1 mesure minimum)")
             else:
                 self._add_undo(f"Redimensionner pattern {self._cur_pattern_idx + 1:02d}")
+                # Signature d'abord, notes gardées en place (S3, S7), puis
+                # longueur et résolution (resize, comportement inchangé)
+                if (num_beats, den) != (live._num_beats, live._denumerator):
+                    live.set_signature(num_beats, den)
                 self._resize_live_pattern(num_bars, num_steps)
                 self._refresh_grid()
-                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour")
+                self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour — {sig_label}")
             self._refresh_pattern_listbox()
         dlg.Destroy()
 
