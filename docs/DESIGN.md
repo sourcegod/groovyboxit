@@ -7379,3 +7379,55 @@ Ce chantier en tient compte de trois façons :
   constatée : le LFO d'une voix one-shot est constant sur un bloc ; avec
   vibrato, le découpage en blocs change donc un peu le son. Le rendu
   gardera des blocs de 512 au plus, comme à l'écoute (W7).
+
+## Phase 8 étape 1d2 — Avenant : passage à blanc avant le rendu
+
+### Origine
+
+À la fin de 1d1, une limite est apparue. Un Program Change sur une piste
+qui n'est pas en Banque peut assigner un slot synthé pas encore chargé
+(`assign_slot` → `_ensure_slot_synth`). Le patch se charge alors en tâche
+de fond. À l'écoute, on ne l'entend qu'au passage suivant de la boucle ;
+dans l'export, il manquerait. L'utilisateur (2026-10-31) : « c'est
+gênant, car le rendu ne serait pas fidèle à l'écoute » ; il faut
+parcourir le pattern deux fois de suite, pour inclure les sons chargés à
+la volée, comme Sonar et, sans doute, Reaper.
+
+### Comportement de Reaper et de Sonar (vérifié le 2026-10-31)
+
+- **Reaper, « 2nd pass render »** (ajouté en 6.20) : Reaper joue la zone à
+  rendre une première fois, puis la rend au second passage. La résonance
+  de la fin se retrouve ainsi au début, pour des boucles sans couture.
+  C'est notre W2 (régime établi).
+- **Reaper, « Dry run »** : un rendu sans fichier écrit.
+- **Sonar** : rien trouvé sur un rendu en deux passes. Son export propose
+  le « Fast Bounce » (hors temps réel) ou le rendu en temps réel. Les
+  forums conseillent le temps réel pour les instruments qui rendent mal
+  en Fast Bounce.
+
+### Décision
+
+**W9 — Passage à blanc, puis attente des chargements, puis rendu.**
+- Avant le rendu, et dans les deux fins (W1), tous les événements du
+  pattern sont joués une fois sur la copie du routeur. C'est un
+  « passage à blanc » : le mixeur n'est pas rendu, rien n'est écrit. Tout
+  ce qui se charge à la volée est ainsi demandé : patchs des slots
+  assignés par Program Change, sons transposés calculés à la demande.
+- Le rendu attend ensuite la fin des chargements (`wait_loaded` de la
+  copie). Les voix du passage à blanc sont coupées.
+- Le rendu repart d'une copie neuve du routeur de l'écoute (état du
+  début du pattern), qui reprend les moteurs chargés pendant le passage à
+  blanc, puis `chase(tape, 0)`.
+- Écartée : enchaîner simplement deux passages rendus. Le rendu va plus
+  vite que le temps réel, et un patch lancé au premier passage peut ne
+  pas être prêt au second. Attendre explicitement rend l'export
+  déterministe.
+- Le rendu correspond alors à ce qu'on entend une fois la boucle
+  installée, quand tout est chargé.
+- W2 est inchangé : les passages du régime établi viennent après le
+  passage à blanc.
+
+### Découpage
+
+W9 entre dans **1f1** (boucle de rendu) et ses tests dans **1g1**. Les
+étapes suivantes gardent leurs numéros.
