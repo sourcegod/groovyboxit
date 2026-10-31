@@ -316,11 +316,15 @@ class ProjectMixin:
             self._router.stop_all_synth_voices()
         return True
 
-    def _audio_export_flow(self, parent, status, title, suffix, job=None):
+    def _audio_export_flow(self, parent, status, title, suffix, job=None,
+                           song_idx=None):
         """Parcours commun des exports audio : dialogue du fichier (nom
         Pat_NN[_nom]suffix.wav), puis paramètres (ordre standard, 1h2),
         puis rendu de job (None : le pattern courant, voir
-        _start_audio_export)."""
+        _start_audio_export). song_idx : export du song (Phase 8 étape
+        2j1, § 2a E2, E15) : nom Song_NN[_nom].wav, fin proposée d'après la
+        boucle du song (la fin choisie n'est pas gardée pour les patterns),
+        segments pris après les dialogues."""
         # Dossier : le dernier choisi dans la session, sinon EXPORTS
         start = self._audio_export_dir or self._exports_dir
         if start == self._exports_dir:
@@ -331,7 +335,8 @@ class ProjectMixin:
         fdlg = wx.FileDialog(
             parent or self, title,
             defaultDir=start,
-            defaultFile=self._midi_export_filename(f"{suffix}.wav"),
+            defaultFile=(self._midi_export_filename(f"{suffix}.wav") if song_idx is None
+                         else self._song_export_filename(song_idx, ".wav")),
             wildcard="Fichiers WAV (*.wav)|*.wav",
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         )
@@ -344,9 +349,15 @@ class ProjectMixin:
         if not path.lower().endswith(".wav"):
             path += ".wav"
         self._audio_export_dir = os.path.dirname(path)
-        dlg = AudioExportDialog(parent or self, *self._audio_export_opts,
+        init = self._audio_export_opts
+        extra = {}
+        if song_idx is not None:
+            looping = self._song_list[song_idx]._looping
+            init = (0 if looping else 1,) + tuple(init[1:])          # E2
+            extra = dict(unit="Song")
+        dlg = AudioExportDialog(parent or self, *init,
                                 level_min=audio_export.LEVEL_MIN_DB,
-                                level_max=audio_export.LEVEL_MAX_DB)
+                                level_max=audio_export.LEVEL_MAX_DB, **extra)
         ok = dlg.ShowModal() == wx.ID_OK
         opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize(),
                 dlg.get_measure_idx(), dlg.get_level_db())
@@ -354,8 +365,29 @@ class ProjectMixin:
         if not ok:
             status("Export audio annulé")
             return
-        self._audio_export_opts = opts
+        if song_idx is None:
+            self._audio_export_opts = opts
+        else:
+            # Fin du song non gardée : les patterns gardent la leur
+            self._audio_export_opts = (self._audio_export_opts[0],) + tuple(opts[1:])
+            segments = self._song_segments(song_idx)
+            n = len(segments)
+            job = dict(segments=segments, label=f"Song {song_idx + 1:02d}", verb="exporté",
+                       unit="song",
+                       detail=f"{n} pattern{'s' if n > 1 else ''}")
         self._start_audio_export(path, opts, status, job)
+
+    def _export_song_audio(self, song_idx, parent=None, status=None):
+        """Alt+Shift+W dans la fenêtre Songs : exporte le song song_idx en
+        .wav (Phase 8 étape 2j1, docs/DESIGN.md § 2a E2, E11, E15). parent :
+        fenêtre des dialogs ; status : où annoncer avancement et résultat."""
+        status = status or self._show_status
+        if not self._song_list[song_idx]._sequence:
+            status("Song vide — ajoutez des patterns dans la fenêtre Songs")
+            return
+        if self._audio_export_ready(status):
+            self._audio_export_flow(parent, status, "Exporter le song en WAV…", "",
+                                    song_idx=song_idx)
 
     # Source du dialogue de la sélection gardée pour la session (W21)
     _audio_sel_source = 0
@@ -446,13 +478,20 @@ class ProjectMixin:
                        tracks=None, label=f"Pattern {self._cur_pattern_idx + 1:02d}",
                        verb="exporté")
         params = dict(
-            pattern=job["pattern"], tempo_map=job["tempo_map"], router=self._router,
+            router=self._router,
             voice_manager=player.voice_manager, end=self._AUDIO_ENDS[end_idx],
             master_pan=player.pan, master_volume=player.volume,
-            window=job["window"], tracks=job["tracks"],
         )
+        if "segments" in job:                       # song (2j1)
+            render = audio_export.render_song
+            params["segments"] = job["segments"]
+        else:
+            render = audio_export.render_pattern
+            params.update(pattern=job["pattern"], tempo_map=job["tempo_map"],
+                          window=job["window"], tracks=job["tracks"])
         subtype = audio_export.SUBTYPES[format_idx]
         label, verb = job["label"], job["verb"]
+        unit, detail = job.get("unit", "pattern"), job.get("detail")
 
         def say(msg):                               # fil de l'UI ; fenêtre fermée : ignoré
             try:
@@ -463,7 +502,7 @@ class ProjectMixin:
         def run():
             notes = []
             try:
-                res = audio_export.render_pattern(
+                res = render(
                     **params,
                     progress=lambda f: wx.CallAfter(say, f"Export audio : {round(f * 100)} %"),
                     status_cb=notes.append)
@@ -476,26 +515,30 @@ class ProjectMixin:
             norm = (measure_idx, level_db) if normalize else None
             wx.CallAfter(say, self._audio_export_report(
                 label, path, res, end_idx, format_idx, gain_db, limit_db, notes, norm,
-                verb))
+                verb, unit=unit, detail=detail))
 
         status("Export audio : 0 %")
         self._audio_export_thread = threading.Thread(target=run, daemon=True)
         self._audio_export_thread.start()
 
     def _audio_export_report(self, label, path, res, end_idx, format_idx,
-                             gain_db, limit_db, notes, norm=None, verb="exporté"):
+                             gain_db, limit_db, notes, norm=None, verb="exporté",
+                             unit="pattern", detail=None):
         """Compte rendu de l'export audio (W8) : fichier, durée, fin, format,
         normalisation (norm = (mesure, niveau visé) ou None, W11), réduction
-        du limiteur (W10), résonance coupée, messages du passage à blanc."""
+        du limiteur (W10), résonance coupée, messages du passage à blanc.
+        unit : ce que suit la résonance (« song + résonance ») ; detail :
+        précision après le fichier (« 3 patterns »), 2j1."""
         def num(x):
             return f"{x:.2f}".replace(".", ",")
         if end_idx == 0:
             fin = "boucle exacte"
         elif res.tail_samples == 0:
-            fin = "pattern + résonance (aucune)"
+            fin = f"{unit} + résonance (aucune)"
         else:
-            fin = f"pattern + résonance ({num(res.tail_samples / res.samplerate)} s)"
-        parts = [f"{label} {verb} en WAV : {os.path.basename(path)}",
+            fin = f"{unit} + résonance ({num(res.tail_samples / res.samplerate)} s)"
+        name = os.path.basename(path) + (f" ({detail})" if detail else "")
+        parts = [f"{label} {verb} en WAV : {name}",
                  f"{num(res.seconds)} s, {fin}, {self._AUDIO_FORMAT_NAMES[format_idx]}"]
         if norm is not None:
             measure_idx, level_db = norm

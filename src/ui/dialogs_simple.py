@@ -235,9 +235,13 @@ class AudioExportDialog(wx.Dialog):
     MEASURE_LABELS = ["Mesure : Crête", "Mesure : RMS", "Mesure : LUFS-I"]
 
     def __init__(self, parent, end_idx=0, format_idx=0, normalize=False,
-                 measure_idx=2, level_db=-14, level_min=-24, level_max=0):
+                 measure_idx=2, level_db=-14, level_min=-24, level_max=0,
+                 unit="Pattern"):
+        # unit : ce que suit la résonance (« Song + résonance » pour un
+        # song, Phase 8 étape 2j1, docs/DESIGN.md § 2a E2)
         super().__init__(parent, title="Export audio")
-        self._end_lb = wx.ListBox(self, choices=self.END_LABELS, style=wx.LB_SINGLE)
+        end_labels = [self.END_LABELS[0], f"Fin : {unit} + résonance"]
+        self._end_lb = wx.ListBox(self, choices=end_labels, style=wx.LB_SINGLE)
         self._end_lb.SetSelection(max(0, min(end_idx, len(self.END_LABELS) - 1)))
         self._format_lb = wx.ListBox(self, choices=self.FORMAT_LABELS, style=wx.LB_SINGLE)
         self._format_lb.SetSelection(max(0, min(format_idx, len(self.FORMAT_LABELS) - 1)))

@@ -298,6 +298,12 @@ class SongWindow(wx.Frame):
             self._parent._export_song_midi(self._cur_song_idx, parent=self,
                                            status=self._set_status)
             return
+        # Alt+Shift+W : export audio du song courant (Phase 8 étape 2j1)
+        if not ctrl and shift and evt.AltDown() \
+                and (ukey in (ord('w'), ord('W')) or key == ord('W')):
+            self._parent._export_song_audio(self._cur_song_idx, parent=self,
+                                            status=self._set_status)
+            return
 
         if ctrl and shift and key == ord('W'):
             self._parent._save_song_as()
