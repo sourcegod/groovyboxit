@@ -8491,3 +8491,25 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
     un silence.
   - **Fin par défaut** : `render_song` prend END_TAIL ; l'interface (2j1)
     choisira END_LOOP si le song est en mode boucle (E2).
+
+### Phase 8 étape 2 — Avancement (2j1, 2k1)
+
+- **2j1** (`5573e2a`) : Alt+Shift+W dans la fenêtre Songs exporte en WAV
+  le song courant (`_export_song_audio`). Le parcours est celui d'un
+  pattern (`_audio_export_flow`, `_start_audio_export`), avec un travail
+  « song » rendu par `render_song`.
+- **2k1** : 19 tests dans `tests/test_song_export_ui.py`, dont un rendu
+  réel jusqu'au fichier.
+- **Précisions par rapport au plan** :
+  - **Fin proposée (E2)** : boucle exacte si le song boucle, sinon « Song
+    + résonance ». La fin choisie pour un song n'est pas gardée pour les
+    patterns ; le format et la normalisation, eux, sont gardés pour tous
+    les exports.
+  - **Dialogue** : `AudioExportDialog(unit="Song")` affiche « Fin : Song +
+    résonance ». Rien ne change pour un pattern.
+  - **Segments** : ils sont pris après les deux dialogues. Une annulation
+    ne range donc pas le pattern courant.
+  - **Compte rendu** : « Song 01 exporté en WAV : Song_01.wav (2
+    patterns) — 6,00 s, song + résonance (aucune), 32 bits flottant ».
+- **À essayer dans l'appli** : Alt+Shift+E et Alt+Shift+W dans la
+  fenêtre Songs, à l'écoute et avec Orca.
