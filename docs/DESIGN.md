@@ -8465,3 +8465,29 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
     Songs, avec le nombre de patterns (« 1 pattern », « 2 patterns »).
 - **À essayer dans l'appli** : Alt+Shift+E dans la fenêtre Songs, à
   l'écoute du fichier et avec Orca.
+
+### Phase 8 étape 2 — Avancement (2h1, 2i1)
+
+- **2h1** (`df845d3`) : `render_song` dans `audio_export.py` (E11).
+  - L'état d'un pattern (`_PatternState`) entre dans la file des
+    événements à sa frontière, entre les fins de note et les notes.
+  - Les voix des pads de chaque segment partent de celles de l'écoute,
+    réglées d'après le pattern (`_segment_voices`).
+  - `render_pattern` et `render_song` partagent `_render` et une ligne de
+    temps. Les 43 rendus de pattern de la suite ont été comparés avant et
+    après, par empreinte : identiques.
+- **2i1** : 17 tests du song dans `tests/test_audio_export.py`.
+- **Précisions par rapport au plan** :
+  - **Passage à blanc** : seul lui demande le chargement des slots de
+    synthé du song. Les sessions de rendu reprennent les moteurs chargés,
+    sans relancer de chargement en cours de rendu.
+  - **Démarrage** : aucune poursuite avec l'état de l'écoute ; l'état du
+    premier pattern est appliqué à l'échantillon 0.
+  - **Groupes de mute** : ils viennent du kit (`SoundManager`), communs à
+    tout le song. Une charleston fermée au début d'un pattern coupe
+    l'ouverte du pattern précédent.
+  - **Slot vide** : une piste sur un slot sans instrument joue les sons du
+    kit, au rendu comme à la lecture (`TrackRouter.on_play`). Ce n'est pas
+    un silence.
+  - **Fin par défaut** : `render_song` prend END_TAIL ; l'interface (2j1)
+    choisira END_LOOP si le song est en mode boucle (E2).

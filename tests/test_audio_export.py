@@ -7,7 +7,12 @@
     repli, charleston coupée à la jonction), fin de la résonance et
     plafond, fins de note avant les notes au même échantillon, passage à
     blanc et chargements à la volée, messages, progression et annulation,
-    écoute intacte, gain, dither et formats.
+    écoute intacte, gain, dither et formats. Song (Phase 8 étape 2i1,
+    docs/DESIGN.md § 2a E1, E2, E11) : longueur et positions, tempo et
+    signature par pattern, voix qui continuent, état appliqué à la
+    frontière (mix, mute, solo, voix des pads, slot, patch chargé au
+    passage à blanc), charleston coupée à la frontière, deux fins, état du
+    premier pattern rétabli à la reprise, écoute intacte.
     Le rendu est un prototype, cible C/C++ : ces tests fixent le contenu
     des tampons, référence de la version native.
     Date: Sat, 31/10/2026
@@ -38,6 +43,7 @@ from sound_device_driver import Mixer
 from sound_manager import SoundManager
 from synth_engine import SynthEngine
 from voice_manager import VoiceManager
+from song import Song, song_segments
 
 SR = 44100
 
@@ -1293,3 +1299,268 @@ def test_render_event_clipboard(tmp_path):
     res = _render(cp, live, end=ax.END_LOOP)
     assert len(res.data) == round(16 * STEP)
     assert _onsets(res.data) == [round(2 * STEP), round(14 * STEP)]
+
+
+# ---------------------------------------------------------------------------
+# Song (Phase 8 étape 2i1, docs/DESIGN.md § 2a E1, E2, E11)
+# ---------------------------------------------------------------------------
+
+def _segments(patterns, sequence=None):
+    song = Song()
+    song._sequence = list(range(len(patterns))) if sequence is None else list(sequence)
+    return song_segments(song, patterns)
+
+def _render_song(patterns, live, end=ax.END_TAIL, sequence=None, **kw):
+    return ax.render_song(_segments(patterns, sequence), live.router, live.vm, end=end, **kw)
+
+def _waltz(bpm=60):
+    """3/4, 12 pas : 4 pas par temps (une noire), 3 noires par mesure."""
+    pat = _pattern(bpm)
+    pat._num_beats, pat._num_steps = 3, 12
+    return pat
+
+def _flat_pads(tmp_path, seconds=0.05, value=0.5, prefix="f"):
+    return [_const(tmp_path, f"{prefix}{i}.wav", seconds, value) for i in range(16)]
+
+
+def test_song_length_and_positions(tmp_path):
+    live = Live(tmp_path)
+    a, b = _pattern(120), _waltz(60)          # 2 s, puis 3 s
+    _grid(a, 0, 1, 0)
+    _grid(a, 0, 1, 8)
+    _grid(b, 0, 1, 0)
+    _grid(b, 0, 1, 4)                          # 2e temps de la valse : 1 s
+    res = _render_song([a, b], live)
+    assert res.pattern_samples == round(5.0 * SR)
+    assert _onsets(res.data) == [0, SR, 2 * SR, 3 * SR]
+
+
+def test_song_repeated_pattern(tmp_path):
+    live = Live(tmp_path)
+    a, b = _pattern(120), _pattern(60)         # 2 s, 4 s
+    _grid(a, 0, 1, 4)
+    _grid(b, 0, 1, 4)
+    res = _render_song([a, b], live, sequence=[0, 1, 0])
+    assert res.pattern_samples == round(8.0 * SR)
+    assert _onsets(res.data) == [round(0.5 * SR), round(3.0 * SR), round(6.5 * SR)]
+
+
+def test_song_tempo_map_of_each_pattern(tmp_path):
+    live = Live(tmp_path)
+    a, b = _pattern(120), _pattern(120)
+    a.set_tempo_changes([(8, 60)])             # a : 1 s puis 2 s
+    _grid(a, 0, 1, 12)
+    _grid(b, 0, 1, 4)
+    res = _render_song([a, b], live)
+    assert _onsets(res.data) == [round(2.0 * SR), round(3.5 * SR)]
+    assert res.pattern_samples == round(5.0 * SR)
+
+
+def test_song_voices_continue_across_boundary(tmp_path):
+    """E1 : un son lancé à la fin de a sonne encore dans b, et s'ajoute
+    pile à la frontière à la première note de b."""
+    pads = _flat_pads(tmp_path, 0.05)
+    pads[1] = _const(tmp_path, "long.wav", 0.5, 0.2)
+    live = Live(tmp_path, pads)
+    a, b = _pattern(120), _pattern(120)
+    _grid(a, 0, 1, 15)                          # 1,875 s, 0,5 s
+    _grid(b, 0, 2, 0)
+    res = _render_song([a, b], live)
+    n = 2 * SR
+    assert res.data[n - 1, 0] == pytest.approx(0.2, abs=1e-4)
+    assert res.data[n, 0] == pytest.approx(0.2 + 0.5, abs=1e-4)
+    assert res.data[int(2.3 * SR), 0] == pytest.approx(0.2, abs=1e-4)
+
+
+def test_song_state_applied_at_boundary(tmp_path):
+    """Volume de piste propre à chaque pattern, appliqué à l'échantillon de
+    la frontière ; le premier pattern prend le sien, pas celui de
+    l'écoute."""
+    live = Live(tmp_path, _flat_pads(tmp_path))
+    live.router.set_track_volume(0, 30)        # écoute : ignoré par le song
+    a, b = _pattern(120), _pattern(120)
+    b._track_volumes[0] = 50
+    _grid(a, 0, 0, 0)
+    _grid(b, 0, 0, 0)
+    res = _render_song([a, b], live)
+    assert res.data[100, 0] == pytest.approx(0.5, abs=1e-4)
+    assert res.data[2 * SR, 0] == pytest.approx(0.5 * 0.25, abs=1e-4)   # gm_gain(0,5) = 0,25
+    assert live.router._track_volumes[0] == 30
+
+
+def test_song_mute_and_solo_of_each_pattern(tmp_path):
+    live = Live(tmp_path, _flat_pads(tmp_path))
+    a, b = _pattern(120), _pattern(120)
+    for pat in (a, b):
+        _grid(pat, 0, 0, 0)
+        _grid(pat, 1, 0, 8)
+    a._track_solos[1] = True                   # a : piste 0 hors solo
+    b._track_mutes[1] = True                   # b : piste 1 muette
+    res = _render_song([a, b], live)
+    assert not res.data[:SR].any()
+    assert res.data[SR + 100].any()
+    assert res.data[2 * SR + 100].any()
+    assert not res.data[3 * SR:].any()
+
+
+def test_song_segment_sounds_like_its_pattern_alone(tmp_path):
+    """Un segment du song sonne comme son pattern rendu seul avec le même
+    état (volume, pan, voix des pads)."""
+    live = Live(tmp_path, _flat_pads(tmp_path, 0.1, 0.4))
+    a, b = _pattern(120), _pattern(100)
+    _grid(a, 0, 3, 0)
+    b._track_volumes[0], b._track_pans[0] = 70, -40
+    b._voices[2].update(volume=60, pan=50)
+    for t in (0, 3.5, 9, 14):
+        _grid(b, 0, 2, t)
+    song = _render_song([a, b], live)
+    alone_live = Live(tmp_path, _flat_pads(tmp_path, 0.1, 0.4, "g"))
+    alone_live.router.set_track_volume(0, 70)
+    alone_live.router.set_track_pan(0, -40)
+    alone_live.vm.from_list(b._voices)
+    alone = _render(b, alone_live)
+    start, n = 2 * SR, alone.pattern_samples
+    assert np.allclose(song.data[start:start + n], alone.data[:n], atol=1e-6)
+
+
+def test_song_one_pattern_equals_pattern_render(tmp_path):
+    """Un song d'un pattern, état de l'écoute égal à celui du pattern : le
+    rendu du pattern, pour les deux fins."""
+    pads = _flat_pads(tmp_path, 0.3, 0.3)
+    live = Live(tmp_path, pads)
+    pat = _pattern(110)
+    for t in (0, 5, 10.5, 15):
+        _grid(pat, int(t) % 2, int(t) % 4, t)
+    for end in (ax.END_TAIL, ax.END_LOOP):
+        song, alone = _render_song([pat], live, end=end), _render(pat, live, end=end)
+        assert np.array_equal(song.data, alone.data)
+        assert (song.pattern_samples, song.tail_samples, song.passes, song.looped) == \
+            (alone.pattern_samples, alone.tail_samples, alone.passes, alone.looped)
+
+
+def test_song_pad_voices_of_each_pattern(tmp_path):
+    live = Live(tmp_path, _flat_pads(tmp_path))
+    a, b = _pattern(120), _pattern(120)
+    b._voices[0]["mute"] = True
+    _grid(a, 0, 0, 0)
+    _grid(b, 0, 0, 0)
+    _grid(b, 0, 1, 8)
+    res = _render_song([a, b], live)
+    assert res.data[100].any()
+    assert not res.data[2 * SR:3 * SR].any()   # pad 0 muet dans b
+    assert res.data[3 * SR + 100].any()
+    assert live.vm.get_voice(0).mute is False  # voix de l'écoute intactes
+
+
+def test_song_slot_change_at_boundary(tmp_path):
+    """Piste 0 sur le kit dans a (une note de synthé y est muette, comme à
+    la lecture), sur un slot de synthé dans b : la même note sonne dans b."""
+    rack = Rack()
+    rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    rack.set_slot(1, InstrumentType.SYNTH, "Synth", {"patch": "s"})
+    live = Live(tmp_path, rack=rack)
+    eng = SynthEngine(str(tmp_path), driver=live.driver)
+    eng.load_single_sample(_const(tmp_path, "synth.wav", 1.0, 0.3), root_midi=60)
+    live.router._slot_synths[1] = eng
+    a, b = _pattern(120), _pattern(120)
+    b._track_slots[0] = 1
+    for pat in (a, b):
+        pat._tape[0].append(TapeEvent(ETYPE_PATCH, dur=400,
+                                      payload={"note": 60, "vel": 127}, time=0))
+    res = _render_song([a, b], live)
+    assert not res.data[:2 * SR].any()
+    assert res.data[2 * SR + 1000].any()
+    assert live.router._track_slots[0] == 0
+
+
+def test_song_patch_of_later_pattern_loaded_by_dry_pass(tmp_path, slow_synth):
+    """Un slot de synthé que seul b utilise est chargé au passage à blanc :
+    la note sonne dès le rendu ; l'écoute ne le charge pas."""
+    rack = Rack()
+    rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    rack.set_slot(3, InstrumentType.SYNTH, "Slow", {"patch": "slow"})
+    live = Live(tmp_path, rack=rack)
+    a, b = _pattern(120), _pattern(120)
+    b._track_slots[0] = 3
+    b._tape[0].append(TapeEvent(ETYPE_PATCH, dur=400, payload={"note": 60, "vel": 127}, time=0))
+    res = _render_song([a, b], live)
+    assert not res.data[:2 * SR].any()
+    assert res.data[2 * SR + 1000].any()
+    assert slow_synth.loads == ["slow"]
+    assert 3 not in live.router._slot_synths
+
+
+def test_song_mute_group_cuts_at_boundary(tmp_path):
+    """Charleston ouverte à la fin de a, fermée au début de b, même groupe :
+    la fermée coupe l'ouverte à la frontière."""
+    pads = [_const(tmp_path, f"h{i}.wav", 0.1 if i == 0 else 1.5, 0.2) for i in range(16)]
+    live = Live(tmp_path, pads)
+    live.snd.set_pad_mute_group(0, 1)
+    live.snd.set_pad_mute_group(1, 1)
+    a, b = _pattern(120), _pattern(120)
+    _grid(a, 0, 1, 12)                          # 1,5 s : dépasserait de 1 s
+    _grid(b, 0, 0, 0)
+    res = _render_song([a, b], live)
+    assert not res.data[int(2.2 * SR):int(2.4 * SR)].any()
+
+
+def test_song_tail_after_last_pattern(tmp_path):
+    pads = _flat_pads(tmp_path)
+    pads[1] = _const(tmp_path, "long.wav", 0.5, 0.2)
+    live = Live(tmp_path, pads)
+    a, b = _pattern(120), _pattern(120)
+    _grid(a, 0, 0, 0)
+    _grid(b, 0, 1, 15)
+    res = _render_song([a, b], live)
+    assert res.pattern_samples == 4 * SR
+    assert len(res.data) == _sound_end(round(3.875 * SR), int(0.5 * SR))
+    assert res.tail_samples == len(res.data) - 4 * SR > 0
+    assert not res.looped
+
+
+def test_song_loop_folds_tail_onto_start(tmp_path):
+    """E2 : boucle exacte du song, la queue de b repliée sur le début de a."""
+    pads = _flat_pads(tmp_path)
+    pads[1] = _const(tmp_path, "long.wav", 0.5, 0.2)
+    live = Live(tmp_path, pads)
+    a, b = _pattern(120), _pattern(120)
+    _grid(a, 0, 0, 4)
+    _grid(b, 0, 1, 15)
+    loop = _render_song([a, b], live, end=ax.END_LOOP)
+    tail = _render_song([a, b], live, end=ax.END_TAIL)
+    assert loop.looped and len(loop.data) == loop.pattern_samples == 4 * SR
+    assert np.allclose(loop.data, _fold(tail), atol=1e-6)
+    assert loop.data[100, 0] == pytest.approx(0.2, abs=1e-4)      # queue de b au début
+
+
+def test_song_loop_restores_first_pattern_state(tmp_path):
+    """À la reprise, l'état du premier pattern est rétabli (comme le song
+    en boucle à la lecture) : la piste n'y reste pas à 50."""
+    live = Live(tmp_path, _flat_pads(tmp_path))
+    a, b = _pattern(120), _pattern(120)
+    b._track_volumes[0] = 50
+    _grid(a, 0, 0, 0)
+    _grid(b, 0, 0, 0)
+    loop = _render_song([a, b], live, end=ax.END_LOOP)
+    assert loop.passes >= 2
+    assert loop.data[100, 0] == pytest.approx(0.5, abs=1e-4)
+    assert loop.data[2 * SR + 100, 0] == pytest.approx(0.125, abs=1e-4)
+
+
+def test_song_live_untouched(tmp_path):
+    live = Live(tmp_path, _flat_pads(tmp_path))
+    a, b = _pattern(120), _pattern(120)
+    b._track_slots[0], b._track_mutes[2], b._track_channels[0] = 7, True, 5
+    b._kb_scale = "minor"
+    _grid(a, 0, 0, 0)
+    before = (list(live.router._track_slots), list(live.router._track_mutes),
+              list(live.router._track_channels), list(live.router._kb_notes_play))
+    _render_song([a, b], live, end=ax.END_LOOP)
+    assert live.driver.voice_count() == 0
+    assert (list(live.router._track_slots), list(live.router._track_mutes),
+            list(live.router._track_channels), list(live.router._kb_notes_play)) == before
+
+
+def test_song_empty_raises(tmp_path):
+    with pytest.raises(ValueError):
+        ax.render_song([], Live(tmp_path).router, VoiceManager())
