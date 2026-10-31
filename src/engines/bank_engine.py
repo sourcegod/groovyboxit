@@ -87,6 +87,12 @@ class BankEngine:
     def reset_controllers(self):
         raise NotImplementedError
 
+    def active_voices(self):
+        """Nombre de voix qui sonnent encore (notes tenues ou en release) :
+        la résonance du rendu de l'export WAV s'arrête à zéro (Phase 8
+        étape 1f1, docs/DESIGN.md § Phase 8 étape 1a, W7)."""
+        raise NotImplementedError
+
     # -- rendu -----------------------------------------------------------
 
     def render(self, out):

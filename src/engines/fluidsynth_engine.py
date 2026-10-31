@@ -59,6 +59,7 @@ def _declare(lib):
         "fluid_synth_all_sounds_off":    ([vp, c_int], c_int),
         "fluid_synth_write_float":       ([vp, c_int, vp, c_int, c_int,
                                            vp, c_int, c_int], c_int),
+        "fluid_synth_get_active_voice_count": ([vp], c_int),
     }
     for name, (args, res) in sigs.items():
         fn = getattr(lib, name)
@@ -206,6 +207,9 @@ class FluidSynthEngine(BankEngine):
     def reset_controllers(self):
         for ch in range(self.NUM_CHANNELS):
             self._lib.fluid_synth_cc(self._synth, ch, 121, 0)
+
+    def active_voices(self):
+        return max(0, self._lib.fluid_synth_get_active_voice_count(self._synth))
 
     # -- rendu -----------------------------------------------------------
 
