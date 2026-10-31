@@ -355,6 +355,9 @@ class ProjectMixin:
         self._audio_export_dir = os.path.dirname(path)
         init = self._audio_export_opts
         extra = {}
+        if job is not None and job.get("unit"):
+            # « Sélection + résonance », « Presse-papier + résonance » (2o2)
+            extra = dict(unit=job["unit"].capitalize())
         if song_idx is not None:
             looping = self._song_list[song_idx]._looping
             init = (0 if looping else 1,) + tuple(init[1:])          # E2
@@ -460,7 +463,7 @@ class ProjectMixin:
                     window=audio_export.selection_window(left, right),
                     tracks=None if tracks is None else set(tracks),
                     label=f"Sélection ({which} ; {bbt(left)} à {bbt(right)})",
-                    verb="exportée")
+                    verb="exportée", unit="sélection")
 
     def _clipboard_job(self, editor):
         """Rendu du presse-papier de la fenêtre (W13) : notes (éditeur MIDI)
@@ -481,7 +484,8 @@ class ProjectMixin:
         bars = f"{pattern._num_bars} mesure" + ("s" if pattern._num_bars > 1 else "")
         return dict(pattern=pattern, tempo_map=pattern.tempo_map(start_bpm=player.bpm),
                     window=None, tracks=None,
-                    label=f"Presse-papier ({tracks}, {bars})", verb="exporté")
+                    label=f"Presse-papier ({tracks}, {bars})", verb="exporté",
+                    unit="presse-papier")
 
     def _start_audio_export(self, path, opts, status, job=None, output=0):
         """Lance le rendu de path dans un fil. job : pattern, tempo_map,
