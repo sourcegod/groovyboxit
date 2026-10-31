@@ -153,18 +153,106 @@ def _snapshot(pattern):
         return [list(track) for track in pattern._tape]
 
 
-def _pattern_events(tape, pattern, tempo_map, samplerate):
-    """Événements de tout le pattern, triés, en (échantillon, événement) :
-    même fenêtre que la lecture (positions 0 à total - 1)."""
-    total = pattern._num_bars * pattern._num_steps
-    evs = te.sort_events(te.tape_events(tape, 0, total - 1, tempo_map.secs))
-    return [(round(ev[0] * samplerate), ev) for ev in evs]
+def _pattern_events(tape, pattern, tempo_map, samplerate, window=None):
+    """Événements triés, en (échantillon, événement). Sans fenêtre : tout le
+    pattern, avec la fenêtre de la lecture (positions 0 à total - 1). Avec
+    window = (début, fin) en pas : temps début ≤ t < fin, en secondes depuis
+    début (W17, § 1h11)."""
+    if window is None:
+        total = pattern._num_bars * pattern._num_steps
+        evs = te.tape_events(tape, 0, total - 1, tempo_map.secs)
+    else:
+        start, end = window
+        base = tempo_map.secs(start)
+        end_sec = tempo_map.secs(end) - base
+        evs = [ev for ev in te.tape_events(tape, start, end,
+                                           lambda rel: tempo_map.secs(start + rel) - base)
+               if ev[0] < end_sec]
+    return [(round(ev[0] * samplerate), ev) for ev in te.sort_events(evs)]
 
 
-def _dry_pass(session, tape, events, voice_manager, master_pan):
+def selection_window(lim_left, lim_right):
+    """Fenêtre [G, D + 1) de la sélection (W18) : le pas D compris en
+    entier, comme l'effacement par plage (§ 6g2)."""
+    return (lim_left, lim_right + 1)
+
+
+def _bucket_time(bar, step, ev, num_steps):
+    """Temps d'un événement de presse-papier à partir de sa clé (mesure
+    relative, pas) et de la fraction de pas de ev.time, comme le collage
+    (TrackEditor.paste) : le temps absolu n'est pas gardé dans un
+    presse-papier relu d'un .gvp."""
+    return bar * num_steps + step + (ev.time - int(ev.time))
+
+
+def _render_copy_of(pattern):
+    """Pattern neuf aux réglages de pattern (tempo, signature, résolution),
+    sans événement."""
+    from pattern import Pattern
+    pat = Pattern()
+    pat.copy_from(pattern)
+    pat._tape = [[] for _ in range(max(pattern._num_tracks, len(pattern._tape)))]
+    return pat
+
+
+def clipboard_pattern(clipboard, pattern):
+    """Pattern de rendu du presse-papier des pistes (W19, W14) : réglages
+    du pattern courant, num_bars mesures à partir de 0, chaque événement sur
+    sa piste d'origine (clipboard.tracks), temps mis à l'échelle si les
+    résolutions diffèrent. Les événements sont copiés, pas partagés."""
+    from pattern import TapeEvent
+    pat = _render_copy_of(pattern)
+    pat._num_bars = max(1, clipboard.num_bars)
+    scale = pattern._num_steps / clipboard.num_steps
+    for (rel, bar, step), events in clipboard.tape.items():
+        if rel >= len(clipboard.tracks):
+            continue
+        track = clipboard.tracks[rel]
+        pat._ensure_track_count(track + 1)
+        for ev in events:
+            t = _bucket_time(bar, step, ev, clipboard.num_steps) * scale
+            pat._tape[track].append(TapeEvent(ev.etype, dur=ev.dur, channel=ev.channel,
+                                              payload=dict(ev.payload or {}), time=t))
+    for track in pat._tape:
+        track.sort(key=lambda e: e.time)
+    return pat
+
+
+def event_clipboard_pattern(events, pattern):
+    """Pattern de rendu du presse-papier des notes de l'éditeur MIDI (W20) :
+    réglages du pattern courant, du début de la mesure de la première note
+    à la fin de celle de la dernière ; chaque note sur sa piste d'origine,
+    à sa place dans la mesure. Notes seulement : pas de CC ni de Pitch
+    Bend. None si events est vide."""
+    from pattern import TapeEvent, ETYPE_GRID
+    notes = [e for e in events if e.get("type", "note") == "note"]
+    if not notes:
+        return None
+    ns = pattern._num_steps
+    first_bar = int(min(e["offset"] for e in notes) // ns)
+    last_bar  = int(max(e["offset"] for e in notes) // ns)
+    pat = _render_copy_of(pattern)
+    pat._num_bars = last_bar - first_bar + 1
+    for e in notes:
+        track = e["track"]
+        pat._ensure_track_count(track + 1)
+        t = e["offset"] - first_bar * ns
+        if e["etype"] == ETYPE_GRID:
+            ev = TapeEvent(ETYPE_GRID, dur=e.get("dur_override", 0), channel=e.get("channel", 0),
+                           payload={"pad": e["pad"], "vel": e["vel"]}, time=t)
+        else:
+            ev = TapeEvent(e["etype"], dur=e.get("dur", 0), channel=e.get("channel", 0),
+                           payload={"note": e["pad"], "vel": e["vel"]}, time=t)
+        pat._tape[track].append(ev)
+    for track in pat._tape:
+        track.sort(key=lambda e: e.time)
+    return pat
+
+
+def _dry_pass(session, tape, events, voice_manager, master_pan, chase_pos=0.0):
     """Passage à blanc (W9) : tous les événements joués, rien de mixé ;
     déclenche les chargements à la volée, puis les attend."""
-    session.router.chase(tape, 0.0)
+    session.router.chase(tape, chase_pos)
     for at, ev in events:
         session.now = at
         session.push_event(at, ev, voice_manager, master_pan)
@@ -176,16 +264,17 @@ def _dry_pass(session, tape, events, voice_manager, master_pan):
 
 
 def _run(session, tape, events, voice_manager, master_pan, length, passes,
-         tail, progress, cancelled, prog_from, prog_span):
+         tail, progress, cancelled, prog_from, prog_span, chase_pos=0.0):
     """Rend passes passages de length échantillons enchaînés (chaque passage
     à un multiple entier de length : identiques à l'échantillon près),
     puis, si tail, la résonance jusqu'au silence (TAIL_MAX_S au plus).
+    chase_pos : position (en pas) dont l'état des banques est poursuivi.
     Retourne (tampon, échantillons après les passages, coupé au plafond)."""
     sr      = session.sr
     total   = length * passes
     tail_mx = int(TAIL_MAX_S * sr) if tail else 0
     out     = np.zeros((total + tail_mx, 2), dtype=np.float32)
-    session.router.chase(tape, 0.0)
+    session.router.chase(tape, chase_pos)
     for p in range(passes):
         for at, ev in events:
             session.push_event(p * length + at, ev, voice_manager, master_pan)
@@ -222,9 +311,13 @@ def _run(session, tape, events, voice_manager, master_pan, length, passes,
 
 def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
                    master_pan=0, master_volume=1.0, samplerate=Mixer.SAMPLERATE,
-                   progress=None, cancelled=None, status_cb=None):
+                   progress=None, cancelled=None, status_cb=None,
+                   window=None, tracks=None):
     """Rend le pattern entier (W5) avec les moteurs de router (TrackRouter
-    de l'écoute, non modifié). tempo_map : carte de tempo jouée (celle du
+    de l'écoute, non modifié). window = (début, fin) en pas : seulement
+    cette fenêtre, état des banques poursuivi à début, notes commencées
+    avant ignorées (W15, W17) ; tracks : pistes rendues (les autres sont
+    vidées), None = toutes. tempo_map : carte de tempo jouée (celle du
     player) ; voice_manager : volume, pan, durée, mute et solo des pads ;
     master_pan, master_volume (0..100 ou 0..1) : pan et volume globaux.
     progress(fraction 0..1) et cancelled() -> bool sont appelés au plus une
@@ -233,18 +326,27 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
     écrêté."""
     router.wait_loaded()                       # patchs de l'écoute en chargement
     tape   = _snapshot(pattern)
-    events = _pattern_events(tape, pattern, tempo_map, samplerate)
-    length = max(1, round(tempo_map.secs(pattern._num_bars * pattern._num_steps) * samplerate))
+    if tracks is not None:
+        tape = [lst if i in tracks else [] for i, lst in enumerate(tape)]
+    events = _pattern_events(tape, pattern, tempo_map, samplerate, window)
+    if window is None:
+        chase_pos = 0.0
+        secs = tempo_map.secs(pattern._num_bars * pattern._num_steps)
+    else:
+        chase_pos = float(window[0])
+        secs = tempo_map.secs(window[1]) - tempo_map.secs(window[0])
+    length = max(1, round(secs * samplerate))
 
     dry = _Session(router, samplerate, master_volume, status_cb=status_cb)
     try:
-        _dry_pass(dry, tape, events, voice_manager, master_pan)
+        _dry_pass(dry, tape, events, voice_manager, master_pan, chase_pos)
         # Passage simple + résonance : fichier END_TAIL, mesure de T (W2)
         single = _Session(router, samplerate, master_volume, engines_from=dry)
         try:
             span = 1.0 if end == END_TAIL else 1.0 / 3.0
             data, tail, cut = _run(single, tape, events, voice_manager, master_pan,
-                                   length, 1, True, progress, cancelled, 0.0, span)
+                                   length, 1, True, progress, cancelled, 0.0, span,
+                                   chase_pos)
         finally:
             single.close()
         if end == END_TAIL:
@@ -255,7 +357,7 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
             try:
                 data, _, _ = _run(loop, tape, events, voice_manager, master_pan,
                                   length, passes, False, progress, cancelled,
-                                  span, 1.0 - span)
+                                  span, 1.0 - span, chase_pos)
             finally:
                 loop.close()
             result = RenderResult(np.ascontiguousarray(data[(passes - 1) * length:]),

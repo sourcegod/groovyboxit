@@ -703,6 +703,7 @@ class ProjectMixin:
             "num_bars":   cb.num_bars,
             "num_steps":  cb.num_steps,
             "tape":       tape_list,
+            "tracks":     list(cb.tracks),     # pistes d'origine (Phase 8 étape 1h12)
         }
 
     def _clipboard_from_dict(self, d):
@@ -771,6 +772,7 @@ class ProjectMixin:
             num_bars   = d["num_bars"],
             num_steps  = d["num_steps"],
             tape       = tape,
+            tracks     = d.get("tracks"),     # absent avant la Phase 8 étape 1h12
         )
 
     def _restore_state(self, state):

@@ -11,11 +11,15 @@ from pattern import TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 
 class _ClipboardData:
     """Données copiées depuis une sélection de pistes."""
-    def __init__(self, num_tracks, num_bars, num_steps, tape):
+    def __init__(self, num_tracks, num_bars, num_steps, tape, tracks=None):
         self.num_tracks = num_tracks   # nombre de pistes copiées
         self.num_bars   = num_bars     # mesures dans la source
         self.num_steps  = num_steps    # pas par mesure dans la source
         self.tape       = tape         # {(rel_track, bar, step): [TapeEvent]} — incl. etype ETYPE_GRID
+        # Pistes d'origine (rel_track → piste), pour l'export audio du
+        # presse-papier avec leurs instruments (Phase 8 étape 1h12, § 1h11
+        # W14) ; None (presse-papier d'avant) : 0..num_tracks-1
+        self.tracks     = list(tracks) if tracks is not None else list(range(num_tracks))
 
 
 class _EventClipboard:
@@ -385,6 +389,7 @@ class TrackEditor:
             num_bars   = num_bars,
             num_steps  = ns,
             tape       = tape,
+            tracks     = tracks,
         )
 
     def _erase_tracks(self, pattern, tracks):
