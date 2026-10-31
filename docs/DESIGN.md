@@ -7136,3 +7136,206 @@ Bach) : `/home/com/groovybox/media/midis/Minueto_02.mid` (3/4),
   deux noires pointées) ;
 - changement de résolution qui garde les notes en place dans le temps ;
 - tonalité.
+
+---
+
+## Phase 8 étape 1a — Export audio WAV du pattern courant
+
+### Numérotation des commits de ce chantier
+
+`1a` = ce plan (doc seule). Le code commence à `1b1`. Une paire impl →
+tests par sous-chantier ; `1a2`, `1b2`… pour un commit imprévu.
+
+### Origine du besoin
+
+- Demandé le 2026-10-24, à la clôture de la Phase 7 étape 12 : « il faut
+  noter l'export Audio en Wav comme un autre chantier ».
+- Pour vérifier la boucle de `Pat_01.mid`, un rendu TiMidity
+  (`-Ow -EFreverb=d -EFchorus=d`) a été coupé à 9,600 s (4 mesures à
+  100 BPM). La résonance au-delà a été additionnée au début, puis le tout
+  normalisé. Jugé « excellent, ça boucle très précisément ».
+- Choisi comme premier chantier de la Phase 8 le 2026-10-30.
+- Demande de l'utilisateur (2026-10-31) : une option pour replier ou non
+  la résonance. Le fichier contient soit exactement les mesures du
+  pattern, soit le pattern suivi de la fin de la résonance des instruments.
+
+### État des lieux constaté en code (2026-10-31, 2862 tests verts)
+
+- **Mixage** : `SoundDeviceDriver._callback` (`sound_device_driver.py:187`)
+  mélange les voix one-shot (`_Voice`), les voix bouclantes
+  (`_LoopVoice`, release de 80 ms) et les sources externes
+  (`add_render_source` : FluidSynth). Il applique ensuite le volume global
+  et écrête (`np.clip`, `:212`). Le mixage et le flux PortAudio sont dans
+  la même classe : rien ne permet aujourd'hui de mixer sans carte son.
+- **Sons** : `SdSound` (données float32, fréquence, points de boucle) est
+  une donnée pure, indépendante du flux. `SoundManager` et `SynthEngine`
+  gardent une référence `_driver` et appellent `driver.play` / `stop_*` ;
+  `SynthEngine` lit aussi `driver.LFO_DEPTH_MAX`.
+- **FluidSynth** : `FluidSynthEngine.render(out)`
+  (`engines/fluidsynth_engine.py:210`) ajoute un bloc à `out`. Réglages :
+  gain 0,4, sans réverbération ni chorus. La soundfont est lue à la
+  demande (FluidR3 : 0,1 s).
+- **Fins de note** : `TrackRouter` coupe les notes par
+  `threading.Timer` sur l'horloge murale (`track_router.py:430` banque,
+  `:795` grille sur synthé, `:833` patch). Le rejeu dépend aussi de l'état
+  du routeur : slots, mute et solo, volume et pan de piste, canal courant,
+  pan global, gamme de lecture, état des canaux de banque (`chase`).
+- **Événements** : `DrumPlayer._build_measure_events`
+  (`player/dp_playback.py:90`) lit `_tape` et convertit les positions en
+  secondes par la carte de tempo (`_measure_clock` → `TempoMap.secs`,
+  signature comprise). Ces événements sont mêlés au métronome et au Note
+  Repeat. `_dispatch_event` (`:181`) mêle le jeu (volume, pan et durée du
+  pad via `voice_manager`, `_mix_pan`) à l'effacement et à
+  l'enregistrement. La lecture attend chaque événement par
+  `time.sleep` : la précision est d'environ 5 ms, elle n'est pas à
+  l'échantillon près.
+- **Boucle en lecture** : à la reprise de la boucle, rien n'est
+  réinitialisé (pas de `chase`). Une note tenue au-delà de la fin continue
+  dans le passage suivant ; une charleston fermée au début coupe
+  l'ouverte de la fin (groupes de mute, `SoundManager._apply_mute_group`).
+- **Export MIDI** (Alt+Shift+E, `mw_project.py:143`) : dialogue de
+  fichier dans `EXPORTS`, nom `Pat_NN[_nom]`, compte rendu au statut.
+- **Écriture** : `soundfile` est déjà une dépendance (`requirements.txt`).
+- **Raccourci** : Alt+Shift+W est libre (fenêtre principale et éditeur
+  MIDI).
+
+### Décisions validées (utilisateur, 2026-10-31)
+
+**W1 — Deux fins au choix** dans le dialogue d'export :
+- **« Boucle exacte »** : le fichier dure exactement les mesures du
+  pattern (`TempoMap.secs(mesures × pas par mesure)`), et la résonance qui
+  dépasse est repliée sur le début ;
+- **« Pattern + résonance »** : le pattern, puis la fin de la résonance
+  des instruments, jusqu'au silence.
+
+**W2 — Repli en régime établi** (choix 1a). Le pattern est rendu
+plusieurs fois de suite, et seul le dernier passage est gardé. Son début
+contient la fin du passage précédent, comme en lecture en boucle :
+charleston coupée par son groupe, notes tenues, pédale, polyphonie.
+- Nombre de passages : `K = 1 + max(1, ceil(T / L))`, où `L` est la
+  longueur du pattern et `T` la durée de la résonance mesurée par un
+  premier rendu « Pattern + résonance ». Dans le cas courant (`T ≤ L`), on
+  a deux passages.
+- Chaque passage commence à un multiple entier de `L` échantillons : les
+  passages sont identiques à l'échantillon près.
+- Écartée : l'addition simple de la résonance sur le début (la méthode
+  TiMidity). Elle est plus rapide, mais à la jonction elle ne joue pas les
+  coupures de groupe de mute.
+
+**W3 — Écrêtage : atténuer si besoin, case « Normaliser »** (choix 2c).
+Par défaut, le niveau est celui de l'écoute. Si la crête dépasse
+−0,3 dBFS, tout le fichier est baissé pour l'y ramener. Case
+« Normaliser » (décochée par défaut) : la crête est toujours amenée à
+−0,3 dBFS. Le compte rendu donne le gain appliqué (« atténué de 2,4 dB »,
+« normalisé : +3,1 dB »). Le mixage se fait en flottant, sans `np.clip` :
+rien n'est écrêté avant ce gain.
+
+**W4 — Format : liste « 16 bits » (défaut), « 24 bits », « 32 bits
+flottant »**. Stéréo, 44 100 Hz, la fréquence du moteur. Proposé : un
+dither TPDF de ±1 LSB en 16 bits seulement. C'est l'usage pour réduire à
+16 bits, et c'est inaudible.
+
+**W5 — Portée : le pattern entier** (choix 3a), comme l'export MIDI.
+
+### Choix de conception proposés
+
+**W6 — Ce qui est rendu : ce qu'on entend en lecture**, sans le
+métronome ni le Note Repeat. Le rendu suit :
+- la carte de tempo et la signature ;
+- les slots (kit, synthé, banque FluidSynth) ;
+- le mute et le solo des pistes et des pads ;
+- le volume et le pan des pads et des pistes ;
+- le volume et le pan globaux ;
+- la courbe GM (`gm_gain`) et l'état des canaux de banque, poursuivi
+  depuis le début (`chase(tape, 0)`).
+
+**W7 — Rendu hors temps réel, à l'échantillon près, avec les moteurs de
+l'appli.** Pas de capture de la sortie pendant une lecture : elle
+prendrait le temps réel, et ses instants dépendent de `time.sleep`.
+- **Mixeur** : le mélange des voix de `SoundDeviceDriver` est extrait dans
+  une classe `Mixer` (`play`, `stop_*`, `mix(out)` sans écrêtage, volume
+  global). `SoundDeviceDriver(Mixer)` ajoute le flux PortAudio, et son
+  callback devient `mix` suivi de `np.clip`. L'API du driver ne change pas.
+- **Moteurs du rendu** : ce sont des copies, branchées sur un `Mixer` hors
+  ligne, qui ne touchent pas aux moteurs de l'écoute. Les pads restent
+  jouables pendant l'export.
+  - `TrackRouter.render_copy(mixer, bank_engine, schedule)` recopie
+    l'état du routeur.
+  - `SoundManager` est copié superficiellement avec `_driver = mixer` :
+    les sons sont partagés, pas rechargés.
+  - Chaque `SynthEngine` des slots est copié avec `_driver = mixer` et un
+    état neuf (voix, bend, pédale) ; les caches sont partagés.
+  - Un second `FluidSynthEngine` (même gain, même mode de banque) charge
+    les fichiers du Rack.
+- **Fins de note** : `TrackRouter` reçoit un ordonnanceur
+  `schedule(delay_ms, fn, *args)`. Par défaut, c'est `threading.Timer`,
+  comme aujourd'hui. Pour le rendu, il pose l'appel dans la file des
+  événements, à l'échantillon voulu.
+- **Événements** : la partie « tape » de `_build_measure_events` devient
+  une fonction pure (pattern, fenêtre, horloge → événements triés), avec
+  le même tri qu'aujourd'hui (§ 18d2). Le jeu de `_dispatch_event`, sans
+  l'effacement ni l'enregistrement, devient une fonction partagée. La
+  lecture et le rendu ont ainsi les mêmes règles.
+- **Boucle de rendu** (`src/audio_export.py`, sans wx) : file d'événements
+  à l'échantillon `round(secs × sr)`. On mixe jusqu'à l'événement suivant
+  par blocs de 512 échantillons au plus (le bloc de l'écoute : le LFO
+  reste le même), puis on joue l'événement. Le mixeur et FluidSynth sont
+  rendus dans le même tampon.
+- **Fin de la résonance** : la résonance s'arrête quand le mixeur n'a
+  plus de voix et que FluidSynth n'a plus de voix active
+  (`fluid_synth_get_active_voice_count`, à déclarer). Plafond de 30 s
+  (`TAIL_MAX_S`) : au-delà, la résonance est coupée et le compte rendu le
+  dit.
+- **Prototype, cible C/C++** (moteur audio) : interfaces étroites, sans
+  wx ni objets propres à Python, transposables telles quelles :
+  `mix(out)` sur un tampon float32 (frames, 2) ; événements à un indice
+  d'échantillon ; moteurs appelés par canal, note, vélocité.
+
+**W8 — Interface.** Alt+Shift+W (fenêtre principale et éditeur MIDI, comme
+Alt+Shift+E) :
+1. La lecture est arrêtée, si elle tourne.
+2. Le dialogue « Export audio » s'ouvre :
+   - liste « Fin » (« Boucle exacte (résonance repliée) », « Pattern +
+     résonance ») ;
+   - liste « Format » (16 bits par défaut) ;
+   - case « Normaliser » ;
+   - Ok et Annuler.
+
+   Ce sont des ListBox, navigables au lecteur d'écran comme dans les
+   propriétés du pattern. Les choix sont gardés pour la session.
+3. Le dialogue de fichier s'ouvre dans `EXPORTS`, avec le nom
+   `Pat_NN[_nom].wav`.
+4. Le rendu tourne dans un fil, et le statut l'annonce (« Export audio :
+   40 % », via `wx.CallAfter`).
+5. Le compte rendu donne le fichier, la durée, la fin choisie et le gain
+   appliqué.
+
+Si un synthé est encore en chargement, le rendu l'attend
+(`wait_loaded`). Sans libfluidsynth, les pistes Banque sont muettes,
+comme à l'écoute.
+
+### Portée explicitement exclue de ce chantier
+
+- l'export de la fenêtre de boucle (points In/Out), d'un song ou du
+  projet ;
+- l'export piste par piste (stems) ;
+- les autres fréquences (48 kHz…), le mono, et les formats compressés
+  (FLAC, OGG, MP3) ;
+- la réverbération et le chorus de FluidSynth (laissés à 0, comme à
+  l'écoute) ;
+- le métronome et le Note Repeat dans le fichier.
+
+### Découpage en commits proposé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **1a** | Doc — ce plan ; tableau d'avancement de SPECS (Phase 7 ✓, ligne Phase 8). | `docs/DESIGN.md`, `docs/SPECS.md` |
+| **1b1** | Implémentation — `Mixer` extrait de `SoundDeviceDriver` (W7), sans changement de comportement. | `sound_device_driver.py` |
+| **1c1** | Tests — 1b1 (mix hors flux, sans écrêtage, volume global, callback inchangé). | `tests/test_mixer.py` (nouveau), `docs/SPECS.md` |
+| **1d1** | Implémentation — ordonnanceur injecté dans `TrackRouter`, `render_copy`, fonctions pures des événements et du jeu, partagées avec la lecture (W6, W7). | `track_router.py`, `player/dp_playback.py`, `sound_manager.py`, `synth_engine.py`, `engines/fluidsynth_engine.py` |
+| **1e1** | Tests — 1d1 (lecture inchangée, copie indépendante des moteurs de l'écoute). | tests existants, `tests/test_render_copy.py` (nouveau) |
+| **1f1** | Implémentation — `audio_export.py` : boucle de rendu, deux fins, régime établi, fin de résonance, gain, dither, écriture (W1-W4, W7). | `src/audio_export.py` (nouveau) |
+| **1g1** | Tests — 1f1 (positions à l'échantillon, carte de tempo, longueur exacte, passages identiques, repli, charleston coupée à la jonction, plafond, gain, formats). | `tests/test_audio_export.py` (nouveau), `docs/SPECS.md` |
+| **1h1** | Implémentation — Alt+Shift+W, dialogue, fil de rendu, statut (W8). Essayé à l'écoute et au lecteur d'écran. | `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py`, `ui/dialogs_simple.py` |
+| **1i1** | Tests — 1h1. | `tests/test_audio_export_ui.py` (nouveau) |
+| **1j1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
