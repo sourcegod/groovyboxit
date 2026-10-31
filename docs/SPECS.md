@@ -61,7 +61,7 @@ groovyboxit/
 │   ├── pygame_driver.py  # PygameDriver : backend audio pygame.mixer
 │   ├── quantize_manager.py # QuantizeManager : quantisation grille/tape, double/halve
 │   ├── rack.py           # Rack 16 slots + InstrumentType
-│   ├── song.py           # Données Song : séquence ordonnée de patterns
+│   ├── song.py           # Données Song : séquence ordonnée de patterns ; segments figés pour l'export (Phase 8 étape 2b1)
 │   ├── sound_cache.py    # Cache disque sons pré-calculés (.npz sha256)
 │   ├── sound_device_driver.py # Mixer (mélange sans carte son) et SoundDeviceDriver (Mixer + PortAudio)
 │   ├── sound_manager.py  # Lecture WAV : kits, note_map, pad_sound
@@ -187,6 +187,7 @@ groovyboxit/
     ├── test_save_confirm_dialog.py
     ├── test_sixteen_tracks.py
     ├── test_song.py
+    ├── test_song_segments.py
     ├── test_song_serialization.py
     ├── test_sound_cache.py
     ├── test_sound_device_driver.py
@@ -1925,6 +1926,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
 | `test_sixteen_tracks.py` | 16 pistes par pattern : défauts, migration des presets à 8 pistes, sérialisation |
 | `test_song.py` | Song : création, séquence, label |
+| `test_song_segments.py` | Segments d'un song pour l'export, Phase 8 étape 2c1 : début en secondes et en noires, tempo, carte de tempo et signature par pattern, pattern répété, indices hors du store, copie figée de l'état du pattern (pistes, voix, gamme), boucle ignorée, rangement du pattern courant avant l'export (18 tests) |
 | `test_song_serialization.py` | to_dict / from_dict Song (16 tests) |
 | `test_sound_cache.py` | sound_cache : init, load, save_async, hash (21 tests) |
 | `test_sound_device_driver.py` | SoundDeviceDriver : play, mix, polyphonie |

@@ -8401,3 +8401,20 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
 | **2n1** | Implémentation — choix Pistes (« Pistes sélectionnées » / « Toutes les pistes ») dans le dialogue d'Alt+Shift+S, fenêtre principale et éditeur MIDI ; compte rendu (E16). Essayé avec Orca. | `ui/dialogs_temporal.py`, `ui/mw_project.py` |
 | **2o1** | Tests — 2n1 (toutes les pistes entre G et D, mix et stems ; choix retenu ; pistes vides ou muettes omises ; ordre de tabulation du dialogue). | `tests/test_audio_export_ui.py` |
 | **2p1** | Doc — clôture (SPECS : Export MIDI, Export audio, fenêtre Songs, dialogues ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 2 — Avancement (2b1, 2c1)
+
+- **2b1** (`d0f6135`) : `src/song.py` reçoit `frozen_pattern`,
+  `SongSegment`, `song_segments` et `song_secs` (E5, E6). `ui/mw_songs.py`
+  reçoit `_store_current_pattern`, désormais commun à `_play_song` et à
+  `_song_load_pattern`, et `_song_segments(song_idx)` pour les exports.
+- **2c1** : `tests/test_song_segments.py`, 18 tests ; 3053 tests verts.
+- **Précisions par rapport au plan** :
+  - un indice de la séquence hors du store est ignoré, sans laisser de
+    trou dans le temps ;
+  - la copie figée met la boucle du pattern à « non » et efface ses
+    points de boucle : chaque pattern est joué une fois en entier, comme
+    en song. Le store n'est pas touché.
+  - les événements de la tape sont partagés avec le store, comme dans
+    `copy_from` et le `_snapshot` de l'export audio ; seules les listes
+    sont copiées.
