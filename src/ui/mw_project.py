@@ -7,7 +7,10 @@ from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE
 from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
-from midi.midi_export import export_pattern
+from midi.midi_export import export_pattern, export_song, SongPart
+from synth_engine import scale_midi_notes
+from track_router import TrackRouter
+from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 import audio_export
 from .dialogs import AudioExportDialog, SelectionExportDialog
@@ -105,35 +108,75 @@ class ProjectMixin:
 
     def _midi_export_params(self):
         """Arguments de build_pattern_midi pour le pattern courant."""
-        r     = self._router
-        slots = [self._rack.get_slot(s) for s in r._track_slots]
-        idx   = self._cur_pattern_idx
-        vm    = self._player.voice_manager
+        r   = self._router
+        idx = self._cur_pattern_idx
+        return self._midi_params(
+            name        = self._pattern_list[idx]._name or f"Pat_{idx + 1:02d}",
+            bpm         = self._player.bpm,
+            track_slots = r._track_slots,
+            channels    = r._track_channels,
+            volumes     = r._track_volumes,
+            pans        = r._track_pans,
+            audible     = [r._track_is_audible(t) for t in range(len(r._track_slots))],  # 12a3 D7
+            vm          = self._player.voice_manager,
+            kb_notes    = r._kb_notes_play,
+            preset_name = r.bank_preset_name)
+
+    def _song_midi_params(self, seg):
+        """Arguments de build_pattern_midi pour un segment du song (Phase 8
+        étape 2f1, docs/DESIGN.md § 2a E9) : d'après l'état figé de son
+        pattern (slots, mix, canaux, voix des pads, gamme), comme
+        MainWindow._on_song_advance le rétablit à la lecture. Le Rack et le
+        kit sont ceux du projet. Une piste en Banque prend le nom de son
+        slot : le preset joué dépend de la position."""
+        p  = seg.pattern
+        vm = VoiceManager(Pattern.NUM_PADS)
+        vm.from_list(p._voices)
+        return self._midi_params(
+            name        = seg.label,
+            bpm         = p._bpm,
+            track_slots = p._track_slots,
+            channels    = p._track_channels,
+            volumes     = p._track_volumes,
+            pans        = p._track_pans,
+            audible     = [TrackRouter.track_audible(p._track_mutes, p._track_solos, t)
+                           for t in range(len(p._track_slots))],
+            vm          = vm,
+            kb_notes    = scale_midi_notes(p._kb_scale, p._kb_root_midi,
+                                           TrackRouter.KB_NUMPAD_NOTES),
+            preset_name = lambda t: None)
+
+    def _midi_params(self, *, name, bpm, track_slots, channels, volumes, pans,
+                     audible, vm, kb_notes, preset_name):
+        """Arguments de build_pattern_midi d'après un état : slots, canaux,
+        volumes, pans, pistes audibles, voix des pads (VoiceManager), notes
+        de lecture de la gamme, nom du preset d'une piste en Banque."""
+        slots = [self._rack.get_slot(s) for s in track_slots]
         is_bank = [s.type == InstrumentType.BANK for s in slots]
         # Piste sur slot Banque (17f1, § 17e3 O8) : banque et programme
         # viennent des événements de _tape ; nom = preset de son canal.
-        preset_names = [r.bank_preset_name(t) if is_bank[t] else None
+        preset_names = [preset_name(t) if is_bank[t] else None
                         for t in range(len(slots))]
         return dict(
-            name             = self._pattern_list[idx]._name or f"Pat_{idx + 1:02d}",
-            bpm              = self._player.bpm,
-            track_channels   = list(r._track_channels),
+            name             = name,
+            bpm              = bpm,
+            track_channels   = list(channels),
             track_is_synth   = [s.type == InstrumentType.SYNTH for s in slots],
             track_is_bank    = is_bank,
             track_names      = [preset_names[t] or s.name        # nom du slot (10h2 D12)
                                 for t, s in enumerate(slots)],
             kit_pad_notes    = list(self._snd.pad_notes),        # 11a1 D1
             kit_gm_map       = dict(self._snd.gm_note_map),      # 11a1 D2
-            synth_grid_notes = list(r._kb_notes_play),
+            synth_grid_notes = list(kb_notes),
             voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
             pad_volumes      = [vm.get_voice(i).volume for i in range(Pattern.NUM_PADS)],  # 12a1 D2
             track_programs   = [s.gm_program() for s in slots],  # None pour une banque
             track_transposes = [s.gm_transpose() for s in slots],      # 12a2 D4
             track_gain_db    = [s.gm_gain_db() for s in slots],        # 12a2 D5
-            track_audible    = [r._track_is_audible(t) for t in range(len(r._track_slots))],  # 12a3 D7
+            track_audible    = list(audible),
             pad_audible      = [vm.is_audible(i) for i in range(Pattern.NUM_PADS)],
-            track_volumes    = list(r._track_volumes),
-            track_pans       = list(r._track_pans),
+            track_volumes    = list(volumes),
+            track_pans       = list(pans),
         )
 
     def _midi_export_filename(self, ext=".mid"):
@@ -174,13 +217,70 @@ class ProjectMixin:
             status(f"ERREUR export MIDI : {e}")
             return
         msg = f"Pattern {self._cur_pattern_idx + 1:02d} exporté : {os.path.basename(path)}"
-        if unmapped:
-            # Sons de kit sans équivalent GM, écrits tels quels (11a1 D4)
-            labels = self._snd.note_labels
-            names  = ", ".join(f"{labels.get(n, f'Note {n}')} ({n})"
-                               for n in sorted(unmapped))
-            msg += f" — non converti en GM : {names}"
-        status(msg)
+        status(msg + self._unmapped_msg(unmapped))
+
+    def _unmapped_msg(self, unmapped):
+        """Fin du compte rendu : sons de kit sans équivalent GM, écrits tels
+        quels (11a1 D4) ; "" s'il n'y en a pas."""
+        if not unmapped:
+            return ""
+        labels = self._snd.note_labels
+        names  = ", ".join(f"{labels.get(n, f'Note {n}')} ({n})"
+                           for n in sorted(unmapped))
+        return f" — non converti en GM : {names}"
+
+    #--------------------------------------------------------------------------
+    # Export MIDI d'un song (Phase 8 étape 2f1, docs/DESIGN.md § 2a E15) :
+    # depuis la fenêtre Songs ; un SongPart par pattern du song, d'après son
+    # état figé.
+
+    def _song_export_filename(self, song_idx, ext=".mid"):
+        """Nom de fichier proposé : Song_NN[_nom].mid (ou ext), nom nettoyé."""
+        base = f"Song_{song_idx + 1:02d}"
+        name = re.sub(r"[^\w\-]+", "_", self._song_list[song_idx]._name).strip("_")
+        return f"{base}_{name}{ext}" if name else f"{base}{ext}"
+
+    def _export_song_midi(self, song_idx, parent=None, status=None):
+        """Alt+Shift+E dans la fenêtre Songs : exporte le song song_idx en
+        .mid. parent : fenêtre du dialog ; status : où annoncer le résultat."""
+        status = status or self._show_status
+        song = self._song_list[song_idx]
+        if not song._sequence:
+            status("Song vide — ajoutez des patterns dans la fenêtre Songs")
+            return
+        try:
+            os.makedirs(self._exports_dir, exist_ok=True)
+        except OSError:
+            pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
+        dlg = wx.FileDialog(
+            parent or self, "Exporter le song en MIDI…",
+            defaultDir=self._exports_dir,
+            defaultFile=self._song_export_filename(song_idx),
+            wildcard="Fichiers MIDI (*.mid)|*.mid",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        result = dlg.ShowModal()
+        path   = dlg.GetPath() if result == wx.ID_OK else ""
+        dlg.Destroy()
+        if not path:
+            status("Export MIDI annulé")
+            return
+        if not path.lower().endswith(".mid"):
+            path += ".mid"
+        unmapped = set()
+        try:
+            segments = self._song_segments(song_idx)
+            parts = [SongPart(seg.pattern, seg.label, self._song_midi_params(seg))
+                     for seg in segments]
+            export_song(path, parts, name=song._name or f"Song_{song_idx + 1:02d}",
+                        unmapped=unmapped)
+        except Exception as e:
+            status(f"ERREUR export MIDI : {e}")
+            return
+        n = len(segments)
+        msg = (f"Song {song_idx + 1:02d} exporté : {os.path.basename(path)} "
+               f"({n} pattern{'s' if n > 1 else ''})")
+        status(msg + self._unmapped_msg(unmapped))
 
     #--------------------------------------------------------------------------
     # Export audio WAV du pattern courant (Phase 8 étape 1h1, docs/DESIGN.md

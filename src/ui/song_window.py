@@ -292,6 +292,13 @@ class SongWindow(wx.Frame):
             self.Close()
             return
 
+        # Alt+Shift+E : export MIDI du song courant (Phase 8 étape 2f1, § 2a E15)
+        if not ctrl and shift and evt.AltDown() \
+                and (ukey in (ord('e'), ord('E')) or key == ord('E')):
+            self._parent._export_song_midi(self._cur_song_idx, parent=self,
+                                           status=self._set_status)
+            return
+
         if ctrl and shift and key == ord('W'):
             self._parent._save_song_as()
             return

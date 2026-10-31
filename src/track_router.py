@@ -682,10 +682,16 @@ class TrackRouter:
 
     def _track_is_audible(self, track_idx):
         """Vrai si la piste doit être entendue (solo / mute pris en compte)."""
-        if self._track_mutes[track_idx]:
+        return self.track_audible(self._track_mutes, self._track_solos, track_idx)
+
+    @staticmethod
+    def track_audible(mutes, solos, track_idx):
+        """Règle de _track_is_audible sur des listes mute / solo données,
+        par exemple celles d'un pattern figé du song (Phase 8 étape 2f1)."""
+        if mutes[track_idx]:
             return False
-        if any(self._track_solos):
-            return self._track_solos[track_idx]
+        if any(solos):
+            return solos[track_idx]
         return True
 
     # ------------------------------------------------------------------
