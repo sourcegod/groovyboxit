@@ -17,12 +17,18 @@
     brickwall à anticipation au-dessus de PEAK_DB, circulaire en boucle
     (W10, § 1h3) ; 16 bits avec dither TPDF (W4).
 
+    Song (Phase 8 étape 2h1, docs/DESIGN.md § 2a E1, E2, E11) : rendu
+    continu des patterns du song, chacun à sa place, l'état de son pattern
+    (slots, mix, canaux, gamme, voix, banques) appliqué à sa frontière à
+    l'échantillon près ; les voix en cours continuent. Mêmes deux fins.
+
     Prototype, cible C/C++ (moteur audio) : aucune dépendance à wx ;
     événements à un indice d'échantillon, rendu par blocs dans un tampon
     float32 (frames, 2) par Mixer.mix.
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
+import copy
 import heapq
 import math
 import itertools
@@ -33,6 +39,7 @@ import soundfile as sf
 
 from sound_device_driver import Mixer
 from player import tape_events as te
+from rack import InstrumentType
 
 END_LOOP   = "loop"     # boucle exacte, résonance repliée (W1, W2)
 END_TAIL   = "tail"     # pattern + résonance jusqu'au silence (W1)
@@ -51,9 +58,11 @@ LEVEL_DEFAULT = -14
 BLOCK      = Mixer.BLOCKSIZE   # bloc de rendu maximal : celui de l'écoute (LFO identique)
 
 # Ordre à échantillon égal : fins de note avant les événements du pattern
-# (comme l'export MIDI, D7), puis l'ordre de sort_events.
+# (comme l'export MIDI, D7), puis l'ordre de sort_events. À une frontière
+# du song, l'état du pattern suivant entre les deux (E11).
 _ORDER_SCHEDULED = 0
-_ORDER_EVENT     = 1
+_ORDER_STATE     = 1
+_ORDER_EVENT     = 2
 
 
 class RenderCancelled(Exception):
@@ -124,6 +133,20 @@ class _Session:
                                     (self.router, voice_manager, master_pan,
                                      marker, data, vel)))
 
+    def push_state(self, at, state, load=False):
+        """État d'un pattern du song à appliquer à l'échantillon at (E11)."""
+        heapq.heappush(self.queue, (at, _ORDER_STATE, next(self._seq), state.apply,
+                                    (self.router, load)))
+
+    def push(self, at, item, master_pan, load=False):
+        """Un élément de la ligne de temps : (événement, voice_manager) ou
+        _PatternState."""
+        if isinstance(item, _PatternState):
+            self.push_state(at, item, load)
+        else:
+            event, voice_manager = item
+            self.push_event(at, event, voice_manager, master_pan)
+
     def fire_due(self):
         """Exécute les appels dont l'échantillon est atteint."""
         while self.queue and self.queue[0][0] <= self.now:
@@ -151,6 +174,45 @@ class _Session:
 def _snapshot(pattern):
     with pattern._lock:
         return [list(track) for track in pattern._tape]
+
+
+class _PatternState:
+    """État d'un pattern du song (copie figée : song.frozen_pattern),
+    appliqué au routeur du rendu à sa frontière (E11), comme
+    MainWindow._on_song_advance à la lecture : slots, mute, solo, volume,
+    pan et canal des pistes, gamme de lecture, poursuite des banques au
+    début du pattern. load (passage à blanc seulement) : demande aussi le
+    moteur des slots de synthé pas encore chargés ; les sessions de rendu
+    reprennent ensuite les moteurs chargés (W9)."""
+
+    def __init__(self, pattern, tape):
+        self.pattern = pattern
+        self.tape    = tape
+
+    def apply(self, router, load=False):
+        p = self.pattern
+        router._track_slots[:]    = p._track_slots
+        router._track_mutes[:]    = p._track_mutes
+        router._track_solos[:]    = p._track_solos
+        router._track_volumes[:]  = p._track_volumes
+        router._track_pans[:]     = p._track_pans
+        router._track_channels[:] = p._track_channels
+        router.set_playback_kb(p._kb_scale, p._kb_root_midi)
+        if load:
+            for slot_idx in sorted(set(p._track_slots)):
+                if slot_idx not in router._slot_synths and \
+                        router._rack.get_slot(slot_idx).type == InstrumentType.SYNTH:
+                    router._ensure_slot_synth(slot_idx)
+        router.chase(self.tape, 0.0)
+
+
+def _segment_voices(voice_manager, pattern):
+    """Voix des pads d'un pattern du song : celles du voice_manager de
+    l'écoute (groupes de mute du kit compris), réglées d'après le pattern
+    (from_list, comme MainWindow._on_song_advance)."""
+    vm = copy.deepcopy(voice_manager)
+    vm.from_list(pattern._voices)
+    return vm
 
 
 def _pattern_events(tape, pattern, tempo_map, samplerate, window=None):
@@ -251,13 +313,15 @@ def event_clipboard_pattern(events, pattern):
     return pat
 
 
-def _dry_pass(session, tape, events, voice_manager, master_pan, chase_pos=0.0):
+def _dry_pass(session, start, timeline, master_pan):
     """Passage à blanc (W9) : tous les événements joués, rien de mixé ;
-    déclenche les chargements à la volée, puis les attend."""
-    session.router.chase(tape, chase_pos)
-    for at, ev in events:
+    déclenche les chargements à la volée, puis les attend. start() prépare
+    le routeur (poursuite des banques) ; timeline : [(échantillon,
+    élément)], voir _Session.push."""
+    start()
+    for at, item in timeline:
         session.now = at
-        session.push_event(at, ev, voice_manager, master_pan)
+        session.push(at, item, master_pan, load=True)
         session.fire_due()
     while session.queue:                       # fins de note restantes
         session.now = session.queue[0][0]
@@ -265,21 +329,21 @@ def _dry_pass(session, tape, events, voice_manager, master_pan, chase_pos=0.0):
     session.router.wait_loaded()
 
 
-def _run(session, tape, events, voice_manager, master_pan, length, passes,
-         tail, progress, cancelled, prog_from, prog_span, chase_pos=0.0):
+def _run(session, start, timeline, master_pan, length, passes,
+         tail, progress, cancelled, prog_from, prog_span):
     """Rend passes passages de length échantillons enchaînés (chaque passage
     à un multiple entier de length : identiques à l'échantillon près),
     puis, si tail, la résonance jusqu'au silence (TAIL_MAX_S au plus).
-    chase_pos : position (en pas) dont l'état des banques est poursuivi.
+    start() prépare le routeur ; timeline : voir _dry_pass.
     Retourne (tampon, échantillons après les passages, coupé au plafond)."""
     sr      = session.sr
     total   = length * passes
     tail_mx = int(TAIL_MAX_S * sr) if tail else 0
     out     = np.zeros((total + tail_mx, 2), dtype=np.float32)
-    session.router.chase(tape, chase_pos)
+    start()
     for p in range(passes):
-        for at, ev in events:
-            session.push_event(p * length + at, ev, voice_manager, master_pan)
+        for at, item in timeline:
+            session.push(p * length + at, item, master_pan)
     pos, next_report = 0, 0
     session.now = 0
     session.fire_due()
@@ -331,6 +395,7 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
     if tracks is not None:
         tape = [lst if i in tracks else [] for i, lst in enumerate(tape)]
     events = _pattern_events(tape, pattern, tempo_map, samplerate, window)
+    timeline = [(at, (ev, voice_manager)) for at, ev in events]
     if window is None:
         chase_pos = 0.0
         secs = tempo_map.secs(pattern._num_bars * pattern._num_steps)
@@ -338,17 +403,65 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
         chase_pos = float(window[0])
         secs = tempo_map.secs(window[1]) - tempo_map.secs(window[0])
     length = max(1, round(secs * samplerate))
+    return _render(router, lambda r: r.chase(tape, chase_pos), timeline, length,
+                   end=end, master_pan=master_pan, master_volume=master_volume,
+                   samplerate=samplerate, progress=progress, cancelled=cancelled,
+                   status_cb=status_cb)
 
+
+def render_song(segments, router, voice_manager, *, end=END_TAIL,
+                master_pan=0, master_volume=1.0, samplerate=Mixer.SAMPLERATE,
+                progress=None, cancelled=None, status_cb=None):
+    """Rend un song (Phase 8 étape 2h1, docs/DESIGN.md § 2a E1, E2, E11) :
+    segments = song.song_segments(…), chacun joué une fois en entier, à
+    sa place, par la carte de tempo de son pattern. À chaque frontière, à
+    l'échantillon près (après les fins de note, avant les événements),
+    l'état du pattern est appliqué à la copie du routeur (_PatternState) ;
+    les voix en cours continuent (E1). Les voix des pads de chaque segment
+    partent de voice_manager (groupes de mute du kit), réglées d'après son
+    pattern. Le passage à blanc parcourt tout le song et charge tous les
+    patchs. Deux fins (E2) : END_LOOP, boucle exacte du song, l'état du
+    premier pattern rétabli à chaque reprise (comme le song en boucle à la
+    lecture) ; END_TAIL, song + résonance. Le router de l'écoute n'est pas
+    modifié. Autres paramètres : voir render_pattern."""
+    if not segments:
+        raise ValueError("song vide")
+    router.wait_loaded()                       # patchs de l'écoute en chargement
+    timeline = []
+    for seg in segments:
+        pat   = seg.pattern
+        tape  = _snapshot(pat)
+        base  = seg.start_secs
+        vm    = _segment_voices(voice_manager, pat)
+        timeline.append((round(base * samplerate), _PatternState(pat, tape)))
+        evs = te.tape_events(tape, 0, seg.total_steps - 1, seg.tempo_map().secs)
+        timeline.extend((round((base + ev[0]) * samplerate), (ev, vm))
+                        for ev in te.sort_events(evs))
+    length = max(1, round(segments[-1].end_secs * samplerate))
+    # Les états entrent dans la file : rien à préparer avant (pas de
+    # poursuite avec l'état de l'écoute)
+    return _render(router, lambda r: None, timeline, length,
+                   end=end, master_pan=master_pan, master_volume=master_volume,
+                   samplerate=samplerate, progress=progress, cancelled=cancelled,
+                   status_cb=status_cb)
+
+
+def _render(router, start, timeline, length, *, end, master_pan, master_volume,
+            samplerate, progress, cancelled, status_cb):
+    """Passage à blanc, puis passage simple + résonance (END_TAIL, et
+    mesure de T), puis au besoin les passages du régime établi (END_LOOP,
+    W2). start(routeur) prépare chaque copie du routeur ; timeline :
+    [(échantillon, élément)], voir _Session.push."""
     dry = _Session(router, samplerate, master_volume, status_cb=status_cb)
     try:
-        _dry_pass(dry, tape, events, voice_manager, master_pan, chase_pos)
+        _dry_pass(dry, lambda: start(dry.router), timeline, master_pan)
         # Passage simple + résonance : fichier END_TAIL, mesure de T (W2)
         single = _Session(router, samplerate, master_volume, engines_from=dry)
         try:
             span = 1.0 if end == END_TAIL else 1.0 / 3.0
-            data, tail, cut = _run(single, tape, events, voice_manager, master_pan,
-                                   length, 1, True, progress, cancelled, 0.0, span,
-                                   chase_pos)
+            data, tail, cut = _run(single, lambda: start(single.router), timeline,
+                                   master_pan, length, 1, True, progress, cancelled,
+                                   0.0, span)
         finally:
             single.close()
         if end == END_TAIL:
@@ -357,9 +470,9 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
             passes = 1 + max(1, math.ceil(tail / length))
             loop = _Session(router, samplerate, master_volume, engines_from=dry)
             try:
-                data, _, _ = _run(loop, tape, events, voice_manager, master_pan,
-                                  length, passes, False, progress, cancelled,
-                                  span, 1.0 - span, chase_pos)
+                data, _, _ = _run(loop, lambda: start(loop.router), timeline,
+                                  master_pan, length, passes, False, progress, cancelled,
+                                  span, 1.0 - span)
             finally:
                 loop.close()
             result = RenderResult(np.ascontiguousarray(data[(passes - 1) * length:]),

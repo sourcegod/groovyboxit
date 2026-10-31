@@ -235,8 +235,9 @@ def test_passes_are_identical(tmp_path):
     events = ax._pattern_events(tape, pat, tm, SR)
     s = ax._Session(live.router, SR, 1.0)
     try:
-        data, _, _ = ax._run(s, tape, events, live.vm, 0, L, 3, False,
-                             None, None, 0.0, 1.0)
+        timeline = [(at, (ev, live.vm)) for at, ev in events]
+        data, _, _ = ax._run(s, lambda: s.router.chase(tape, 0.0), timeline, 0, L, 3,
+                             False, None, None, 0.0, 1.0)
     finally:
         s.close()
     assert np.array_equal(data[L:2 * L], data[2 * L:3 * L])
