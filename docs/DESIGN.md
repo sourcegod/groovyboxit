@@ -8444,3 +8444,24 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
   - **Nom de piste** : celui du premier pattern où elle joue.
   - **Conductor** : le marqueur précède le tempo et la signature au même
     tick.
+
+### Phase 8 étape 2 — Avancement (2f1, 2g1)
+
+- **2f1** (`13fa3fa`) : Alt+Shift+E dans la fenêtre Songs exporte en MIDI
+  le song courant (`_export_song_midi`). Les réglages de chaque pattern
+  sont calculés d'après son état figé (`_song_midi_params`), par le même
+  cœur que ceux du pattern courant (`_midi_params`). La règle mute / solo
+  d'une piste est devenue `TrackRouter.track_audible`. Le fichier MIDI
+  d'un pattern reste identique à l'octet : les 115 fichiers de référence
+  ont été comparés de nouveau.
+- **2g1** : `tests/test_song_export_ui.py`, 19 tests.
+- **Précisions par rapport au plan** :
+  - **Piste en Banque dans un song** : elle prend le nom de son slot. Le
+    preset joué dépend de la position dans le song et n'est pas connu
+    avant le rendu. L'export d'un pattern garde le nom du preset.
+  - **Annulation** : le pattern courant n'est rangé qu'après le dialogue
+    du fichier. Annuler ne touche donc pas au store.
+  - **Compte rendu** : il s'affiche dans la ligne d'état de la fenêtre
+    Songs, avec le nombre de patterns (« 1 pattern », « 2 patterns »).
+- **À essayer dans l'appli** : Alt+Shift+E dans la fenêtre Songs, à
+  l'écoute du fichier et avec Orca.

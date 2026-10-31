@@ -187,6 +187,7 @@ groovyboxit/
     ├── test_save_confirm_dialog.py
     ├── test_sixteen_tracks.py
     ├── test_song.py
+    ├── test_song_export_ui.py
     ├── test_song_segments.py
     ├── test_song_serialization.py
     ├── test_sound_cache.py
@@ -1926,6 +1927,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
 | `test_sixteen_tracks.py` | 16 pistes par pattern : défauts, migration des presets à 8 pistes, sérialisation |
 | `test_song.py` | Song : création, séquence, label |
+| `test_song_export_ui.py` | Interface de l'export d'un song, Phase 8 étape 2g1 : nom proposé, réglages de chaque pattern d'après son état figé et cohérence avec le pattern courant, Alt+Shift+E de la fenêtre Songs (Ok, Annuler, extension, erreur, song vide, dossier créé, compte rendu, notes de kit non converties), modifications non rangées du pattern courant, état propre à chaque pattern dans le fichier (19 tests) |
 | `test_song_segments.py` | Segments d'un song pour l'export, Phase 8 étape 2c1 : début en secondes et en noires, tempo, carte de tempo et signature par pattern, pattern répété, indices hors du store, copie figée de l'état du pattern (pistes, voix, gamme), boucle ignorée, rangement du pattern courant avant l'export (18 tests) |
 | `test_song_serialization.py` | to_dict / from_dict Song (16 tests) |
 | `test_sound_cache.py` | sound_cache : init, load, save_async, hash (21 tests) |
