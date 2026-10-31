@@ -12,8 +12,9 @@
     repliée en régime établi (W2 : K passages enchaînés, le dernier gardé) ;
     END_TAIL, le pattern puis la résonance jusqu'au silence. Avant le
     rendu, un passage à blanc demande tout ce qui se charge à la volée, et
-    le rendu attend la fin des chargements (W9). Gain : atténuer si la
-    crête dépasse PEAK_DB, ou normaliser (W3) ; 16 bits avec dither TPDF
+    le rendu attend la fin des chargements (W9). Gain : limiteur brickwall
+    à anticipation au-dessus de PEAK_DB, circulaire en boucle (W10, § 1h3),
+    normalisation des mixages faibles (W3) ; 16 bits avec dither TPDF
     (W4).
 
     Prototype, cible C/C++ (moteur audio) : aucune dépendance à wx ;
@@ -38,7 +39,9 @@ END_TAIL   = "tail"     # pattern + résonance jusqu'au silence (W1)
 
 SUBTYPES   = ("PCM_16", "PCM_24", "FLOAT")   # 16 bits (défaut), 24 bits, 32 bits flottant (W4)
 TAIL_MAX_S = 30.0       # plafond de la résonance (W7)
-PEAK_DB    = -0.3       # crête visée par l'atténuation ou la normalisation (W3)
+PEAK_DB    = -0.3       # seuil du limiteur et crête de la normalisation (W3, W10)
+LOOKAHEAD_S = 0.005     # anticipation du limiteur (W10)
+RELEASE_S   = 0.05      # constante de temps du retour du limiteur (W10)
 BLOCK      = Mixer.BLOCKSIZE   # bloc de rendu maximal : celui de l'écoute (LFO identique)
 
 # Ordre à échantillon égal : fins de note avant les événements du pattern
@@ -59,6 +62,7 @@ class RenderResult:
     tail_samples:    int          # résonance après le pattern (mesurée au passage simple)
     tail_cut:        bool         # résonance coupée au plafond TAIL_MAX_S
     passes:          int          # passages rendus pour le fichier (END_LOOP : K)
+    looped:          bool = False # fichier en boucle (END_LOOP) : limiteur circulaire (W10)
 
     @property
     def seconds(self):
@@ -249,7 +253,7 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
             finally:
                 loop.close()
             result = RenderResult(np.ascontiguousarray(data[(passes - 1) * length:]),
-                                  samplerate, length, tail, cut, passes)
+                                  samplerate, length, tail, cut, passes, looped=True)
     finally:
         dry.close()
     if progress is not None:
@@ -261,15 +265,80 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
 # Gain, dither, écriture
 # ---------------------------------------------------------------------------
 
-def apply_gain(data, normalize=False, peak_db=PEAK_DB):
-    """Gain du fichier (W3) : la crête est ramenée à peak_db si elle le
-    dépasse, ou toujours si normalize. Retourne (données, gain en dB)."""
+def _sliding_min_forward(a, w):
+    """out[n] = min(a[n:n + w]), en O(n) (blocs de w : minimum préfixe et
+    suffixe, van Herk / Gil-Werman) ; a est complété par des 1."""
+    n = len(a)
+    nb = -(-(n + w) // w)
+    pad = np.ones(nb * w, dtype=np.float64)
+    pad[:n] = a
+    blocks = pad.reshape(nb, w)
+    prefix = np.minimum.accumulate(blocks, axis=1).ravel()
+    suffix = np.minimum.accumulate(blocks[:, ::-1], axis=1)[:, ::-1].ravel()
+    idx = np.arange(n)
+    return np.minimum(suffix[idx], prefix[idx + w - 1])
+
+
+def _release(g, tau):
+    """g'[n] = min(g[n], 1 - (1 - g'[n-1]) · c), c = exp(-1/tau) : retour
+    exponentiel vers 1. Vectorisé : z = 1 - g' vérifie z[n] = max(d[n],
+    c · z[n-1]) avec d = 1 - g, soit z[n] = max sur k ≤ n de d[k] · c^(n-k),
+    un maximum cumulé en logarithmes."""
+    d = 1.0 - g
+    with np.errstate(divide="ignore"):
+        logd = np.log(np.maximum(d, 0.0))
+    k = np.arange(len(g), dtype=np.float64) / tau          # -k · log c
+    z = np.exp(np.maximum.accumulate(logd + k) - k)
+    return 1.0 - z
+
+
+def limit_peaks(data, threshold, samplerate, loop=False):
+    """Limiteur brickwall à anticipation (W10) : aucun échantillon ne dépasse
+    threshold (amplitude) ; gain à 1 hors des crêtes, même gain sur les deux
+    canaux. loop : le fichier est une boucle (sa fin précède son début).
+    Retourne (données, plus forte réduction en dB, ≤ 0)."""
+    n = len(data)
+    peak = np.max(np.abs(data), axis=1).astype(np.float64)
+    if n == 0 or peak.max() <= threshold:
+        return data, 0.0
+    a = max(1, round(LOOKAHEAD_S * samplerate))
+    tau = RELEASE_S * samplerate
+    before = a + int(5 * tau) if loop else 0           # passé : retour presque complet
+    idx = np.arange(-before, n + a)
+    if loop:
+        ext = peak[idx % n]
+    else:
+        ext = np.zeros(len(idx))
+        ext[before:before + n] = peak
+    with np.errstate(divide="ignore"):
+        req = np.minimum(1.0, threshold / ext)
+    g = _sliding_min_forward(req, a + 1)               # crêtes des a prochains échantillons
+    g = _release(g, tau)
+    c = np.concatenate([np.zeros(1), np.cumsum(g)])    # moyenne sur [n - a + 1, n]
+    lo = np.maximum(np.arange(len(g)) - a + 1, 0)
+    avg = (c[np.arange(1, len(g) + 1)] - c[lo]) / (np.arange(len(g)) + 1 - lo)
+    gain = np.minimum(avg, 1.0)[before:before + n]
+    out = (data * gain[:, None]).astype(np.float32)
+    return out, 20.0 * math.log10(float(gain.min()))
+
+
+def apply_gain(data, normalize=False, peak_db=PEAK_DB, samplerate=Mixer.SAMPLERATE,
+               loop=False):
+    """Gain du fichier (W3, W10) : crête au-dessus de peak_db → limiteur
+    (limit_peaks) ; en dessous, normalize la monte à peak_db. Retourne
+    (données, gain de normalisation en dB ≥ 0, réduction du limiteur en
+    dB ≤ 0)."""
     peak = float(np.max(np.abs(data))) if len(data) else 0.0
     target = 10.0 ** (peak_db / 20.0)
-    if peak == 0.0 or (not normalize and peak <= target):
-        return data, 0.0
-    gain = target / peak
-    return (data * gain).astype(np.float32), 20.0 * math.log10(gain)
+    if peak == 0.0:
+        return data, 0.0, 0.0
+    if peak > target:
+        out, reduction = limit_peaks(data, target, samplerate, loop)
+        return out, 0.0, reduction
+    if normalize and peak < target:
+        gain = target / peak
+        return (data * gain).astype(np.float32), 20.0 * math.log10(gain), 0.0
+    return data, 0.0, 0.0
 
 
 def dither_tpdf(data, bits=16, rng=None):
@@ -281,15 +350,19 @@ def dither_tpdf(data, bits=16, rng=None):
 
 
 def write_wav(path, result, subtype="PCM_16", normalize=False, rng=None):
-    """Écrit result (RenderResult) en WAV stéréo à sa fréquence : gain
-    (apply_gain), dither en 16 bits, écrêtage final à ±1 pour les formats
-    entiers. Retourne le gain appliqué en dB."""
+    """Écrit result (RenderResult) en WAV stéréo à sa fréquence : limiteur
+    ou normalisation (apply_gain ; limiteur circulaire si result.looped),
+    dither en 16 bits, écrêtage final de sécurité à ±1 pour les formats
+    entiers. Retourne (gain de normalisation en dB, réduction du limiteur
+    en dB)."""
     if subtype not in SUBTYPES:
         raise ValueError(f"format inconnu : {subtype}")
-    data, gain_db = apply_gain(result.data, normalize)
+    data, gain_db, limit_db = apply_gain(result.data, normalize,
+                                         samplerate=result.samplerate,
+                                         loop=result.looped)
     if subtype == "PCM_16":
         data = dither_tpdf(data, 16, rng)
     if subtype != "FLOAT":
         data = np.clip(data, -1.0, 1.0)
     sf.write(path, data, result.samplerate, subtype=subtype, format="WAV")
-    return gain_db
+    return gain_db, limit_db

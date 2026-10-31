@@ -268,21 +268,22 @@ class ProjectMixin:
                     **params,
                     progress=lambda f: wx.CallAfter(say, f"Export audio : {round(f * 100)} %"),
                     status_cb=notes.append)
-                gain_db = audio_export.write_wav(path, res, subtype, normalize)
+                gain_db, limit_db = audio_export.write_wav(path, res, subtype, normalize)
             except Exception as e:
                 wx.CallAfter(say, f"ERREUR export audio : {e}")
                 return
             wx.CallAfter(say, self._audio_export_report(
-                label, path, res, end_idx, format_idx, normalize, gain_db, notes))
+                label, path, res, end_idx, format_idx, gain_db, limit_db, notes))
 
         status("Export audio : 0 %")
         self._audio_export_thread = threading.Thread(target=run, daemon=True)
         self._audio_export_thread.start()
 
     def _audio_export_report(self, label, path, res, end_idx, format_idx,
-                             normalize, gain_db, notes):
+                             gain_db, limit_db, notes):
         """Compte rendu de l'export audio (W8) : fichier, durée, fin, format,
-        gain appliqué, résonance coupée, messages du passage à blanc."""
+        réduction du limiteur ou gain de normalisation (W10), résonance
+        coupée, messages du passage à blanc."""
         def num(x):
             return f"{x:.2f}".replace(".", ",")
         if end_idx == 0:
@@ -293,9 +294,9 @@ class ProjectMixin:
             fin = f"pattern + résonance ({num(res.tail_samples / res.samplerate)} s)"
         parts = [f"{label} exporté en WAV : {os.path.basename(path)}",
                  f"{num(res.seconds)} s, {fin}, {self._AUDIO_FORMAT_NAMES[format_idx]}"]
-        if gain_db < 0:
-            parts.append(f"atténué de {num(-gain_db)} dB")
-        elif normalize and gain_db > 0:
+        if limit_db < 0:
+            parts.append(f"limiteur : −{num(-limit_db)} dB au plus")
+        elif gain_db > 0:
             parts.append(f"normalisé : +{num(gain_db)} dB")
         if res.tail_cut:
             parts.append(f"résonance coupée à {num(audio_export.TAIL_MAX_S)} s")
