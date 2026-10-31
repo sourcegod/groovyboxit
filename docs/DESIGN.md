@@ -7520,3 +7520,90 @@ W9 entre dans **1f1** (boucle de rendu) et ses tests dans **1g1**. Les
   fins de note, passage à blanc retiré, premier passage gardé, toujours
   deux passages, coupe au dernier échantillon retirée, blocs non coupés
   aux événements.
+
+## Phase 8 étape 1h3 — Avenant : limiteur au lieu de l'atténuation globale
+
+### Origine
+
+Essai de 1h1 par l'utilisateur (2026-10-31) : « même en choisissant le
+param "Normaliser", le fichier final est moins fort qu'à l'écoute ».
+
+Mesures sur `EXPORTS/Pat_01.wav` (4 mesures, « Normaliser » cochée) :
+- crête à −0,3 dBFS, donc la normalisation a fonctionné ;
+- RMS à −18,8 dBFS. La boucle TiMidity validée le 2026-10-24
+  (`Pat_01_boucle.wav`), à crête égale, est à −13,7 dBFS : 5 dB plus
+  forte ;
+- 3 échantillons sur 9,6 s dépassent −0,9 dBFS, et 30 dépassent
+  −1,9 dBFS.
+
+Cause probable : le mixage brut dépasse 0 dBFS sur quelques
+transitoires.
+- À l'écoute, le callback les écrête (`np.clip`). C'est inaudible sur si
+  peu d'échantillons, et le reste garde tout son niveau.
+- Dans l'export, W3 ramène cette crête à −0,3 dBFS en baissant tout le
+  fichier de plusieurs dB.
+
+### Comportement de Reaper (vérifié le 2026-10-31)
+
+Le dialogue de rendu de Reaper a une section « Normalize/Limit ». On y
+normalise à une crête (crête d'échantillon ou true peak) ou à une
+loudness (RMS, LUFS), et on peut ajouter un limiteur brickwall. Les forums
+conseillent −0,3 dB TP pour un fichier final.
+
+### Décision (utilisateur, 2026-10-31)
+
+**W10 — Un limiteur brickwall à anticipation remplace l'atténuation
+globale de W3.**
+- **Seuil** : −0,3 dBFS (`PEAK_DB`), en crête d'échantillon. Le gain est
+  le même sur les deux canaux (stéréo liée) : l'image ne bouge pas.
+- **Gain demandé** par échantillon : `min(1, seuil / crête des deux
+  canaux)`.
+- **Anticipation** de 5 ms (`A` échantillons). Un minimum glissant sur
+  `[n, n + A]`, puis une moyenne glissante sur `A` échantillons, donnent
+  une enveloppe qui descend en douceur avant la crête. Elle ne dépasse
+  jamais le gain demandé sur la crête : aucun échantillon ne passe le
+  seuil.
+- **Retour** exponentiel vers 1, en 50 ms environ, après le minimum
+  glissant et avant la moyenne.
+- **Ailleurs, le gain reste à 1** : le fichier a le niveau de l'écoute,
+  sans la distorsion de l'écrêtage.
+- **Boucle exacte** : le limiteur traite le fichier comme une boucle. On
+  lui donne la fin du fichier avant le début, et le début après la fin,
+  sur la longueur de l'anticipation et du retour ; seule la partie
+  centrale est gardée. La jonction reste sans couture : un limiteur
+  appliqué au fichier seul verrait un début sans passé.
+- **« Normaliser »** ne sert plus qu'à monter un mixage dont la crête
+  est sous le seuil, jusqu'à −0,3 dBFS. Au-dessus du seuil, c'est le
+  limiteur qui agit, case cochée ou non.
+- **Compte rendu** : « limiteur : −3,2 dB au plus » (la plus forte
+  réduction) à la place de « atténué de … dB » ; « normalisé :
+  +3,1 dB » ne change pas.
+- **Ordre à l'écriture** : limiteur ou normalisation, puis dither en
+  16 bits, puis écrêtage final de sécurité à ±1 pour les formats
+  entiers. Le dither ajoute ±1 LSB, bien en dessous de la marge de
+  0,3 dB.
+- **Prototype, cible C/C++** : le retour exponentiel est une récurrence
+  par échantillon. En Python, elle ne tourne que sur les zones où le gain
+  demandé est sous 1, prolongées du retour. Le reste est vectorisé.
+- **Écartés** :
+  - écrêter comme à l'écoute : identique à ce qu'on entend, mais avec la
+    distorsion des crêtes ;
+  - garder l'atténuation globale : c'est l'écart constaté ;
+  - normaliser en loudness (LUFS) : hors du besoin.
+
+### Portée exclue
+
+- true peak (crêtes entre échantillons, par suréchantillonnage) ;
+- réglages du limiteur dans le dialogue (seuil, anticipation, retour) ;
+- limiteur à l'écoute : le callback garde son `np.clip`.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **1h3** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **1h4** | Implémentation — limiteur (`limit_peaks`, boucle circulaire), `write_wav` (limiteur, normalisation, dither) et compte rendu. | `src/audio_export.py`, `src/ui/mw_project.py` |
+| **1h5** | Tests — limiteur (aucun échantillon au-dessus du seuil, gain à 1 hors des crêtes, anticipation, retour, stéréo liée, jonction de boucle continue, normalisation des mixages faibles, compte rendu) ; tests de gain de 1g1 adaptés. | `tests/test_audio_export.py` |
+
+Les étapes 1i1 (tests de l'interface) et 1j1 (clôture) gardent leurs
+numéros.
