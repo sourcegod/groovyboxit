@@ -187,12 +187,14 @@ class ProjectMixin:
     # § Phase 8 étape 1a, W8) : fichier, options, rendu dans un fil
     # (audio_export, sans wx), avancement et compte rendu au statut.
 
-    # Choix du dialogue gardés pour la session : fin, format, normaliser
-    _audio_export_opts   = (0, 0, False)
+    # Choix du dialogue gardés pour la session : fin, format, normaliser,
+    # mesure, niveau visé (W11, § 1h6)
+    _audio_export_opts   = (0, 0, False, 2, audio_export.LEVEL_DEFAULT)
     _audio_export_dir    = None     # dernier dossier choisi (session, 1h2)
     _audio_export_thread = None
     _AUDIO_ENDS          = (audio_export.END_LOOP, audio_export.END_TAIL)
     _AUDIO_FORMAT_NAMES  = ("16 bits", "24 bits", "32 bits flottant")
+    _AUDIO_MEASURE_UNITS = ("dBFS crête", "dBFS RMS", "LUFS-I")   # ordre de audio_export.MEASURES
 
     def _export_audio(self, parent=None, status=None):
         """Alt+Shift+W : exporte le pattern courant en .wav. parent : fenêtre
@@ -230,9 +232,12 @@ class ProjectMixin:
         if not path.lower().endswith(".wav"):
             path += ".wav"
         self._audio_export_dir = os.path.dirname(path)
-        dlg = AudioExportDialog(parent or self, *self._audio_export_opts)
+        dlg = AudioExportDialog(parent or self, *self._audio_export_opts,
+                                level_min=audio_export.LEVEL_MIN_DB,
+                                level_max=audio_export.LEVEL_MAX_DB)
         ok = dlg.ShowModal() == wx.ID_OK
-        opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize())
+        opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize(),
+                dlg.get_measure_idx(), dlg.get_level_db())
         dlg.Destroy()
         if not ok:
             status("Export audio annulé")
@@ -243,7 +248,7 @@ class ProjectMixin:
     def _start_audio_export(self, path, opts, status):
         """Lance le rendu de path dans un fil ; le pattern est copié dans le
         fil de l'UI (les modifications pendant le rendu ne l'atteignent pas)."""
-        end_idx, format_idx, normalize = opts
+        end_idx, format_idx, normalize, measure_idx, level_db = opts
         player  = self._player
         pattern = Pattern()
         pattern.copy_from(player._pattern)
@@ -268,22 +273,25 @@ class ProjectMixin:
                     **params,
                     progress=lambda f: wx.CallAfter(say, f"Export audio : {round(f * 100)} %"),
                     status_cb=notes.append)
-                gain_db, limit_db = audio_export.write_wav(path, res, subtype, normalize)
+                gain_db, limit_db = audio_export.write_wav(
+                    path, res, subtype, normalize,
+                    audio_export.MEASURES[measure_idx], level_db)
             except Exception as e:
                 wx.CallAfter(say, f"ERREUR export audio : {e}")
                 return
+            norm = (measure_idx, level_db) if normalize else None
             wx.CallAfter(say, self._audio_export_report(
-                label, path, res, end_idx, format_idx, gain_db, limit_db, notes))
+                label, path, res, end_idx, format_idx, gain_db, limit_db, notes, norm))
 
         status("Export audio : 0 %")
         self._audio_export_thread = threading.Thread(target=run, daemon=True)
         self._audio_export_thread.start()
 
     def _audio_export_report(self, label, path, res, end_idx, format_idx,
-                             gain_db, limit_db, notes):
+                             gain_db, limit_db, notes, norm=None):
         """Compte rendu de l'export audio (W8) : fichier, durée, fin, format,
-        réduction du limiteur ou gain de normalisation (W10), résonance
-        coupée, messages du passage à blanc."""
+        normalisation (norm = (mesure, niveau visé) ou None, W11), réduction
+        du limiteur (W10), résonance coupée, messages du passage à blanc."""
         def num(x):
             return f"{x:.2f}".replace(".", ",")
         if end_idx == 0:
@@ -294,10 +302,14 @@ class ProjectMixin:
             fin = f"pattern + résonance ({num(res.tail_samples / res.samplerate)} s)"
         parts = [f"{label} exporté en WAV : {os.path.basename(path)}",
                  f"{num(res.seconds)} s, {fin}, {self._AUDIO_FORMAT_NAMES[format_idx]}"]
+        if norm is not None:
+            measure_idx, level_db = norm
+            level = f"{'−' if level_db < 0 else ''}{abs(level_db)}"
+            gain  = f"{'−' if gain_db < 0 else '+'}{num(abs(gain_db))}"
+            parts.append(f"normalisé à {level} {self._AUDIO_MEASURE_UNITS[measure_idx]} : "
+                         f"{gain} dB")
         if limit_db < 0:
             parts.append(f"limiteur : −{num(-limit_db)} dB au plus")
-        elif gain_db > 0:
-            parts.append(f"normalisé : +{num(gain_db)} dB")
         if res.tail_cut:
             parts.append(f"résonance coupée à {num(audio_export.TAIL_MAX_S)} s")
         parts.extend(notes)

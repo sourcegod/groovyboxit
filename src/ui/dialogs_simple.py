@@ -222,25 +222,36 @@ class QuantizeDialog(wx.Dialog):
 
 class AudioExportDialog(wx.Dialog):
     """Options de l'export audio WAV (Alt+Shift+W, Phase 8 étape 1h1,
-    docs/DESIGN.md § Phase 8 étape 1a, W1, W3, W4, W8) : fin du fichier,
-    format, normalisation. Listes navigables au lecteur d'écran, chaque
-    choix préfixé de son champ (comme QuantizeDialog) ; Entrée sur une
-    liste valide (GTK : EVT_LISTBOX_DCLICK)."""
+    docs/DESIGN.md § Phase 8 étape 1a, W1, W4, W8, et § 1h6, W11) : fin du
+    fichier, format, normalisation à un niveau visé (mesure, niveau).
+    Listes navigables au lecteur d'écran, chaque choix préfixé de son champ
+    (comme QuantizeDialog) ; Entrée sur une liste valide (GTK :
+    EVT_LISTBOX_DCLICK). Mesure et niveau ne sont actifs que si
+    « Normaliser » est cochée."""
 
-    END_LABELS    = ["Fin : Boucle exacte (résonance repliée)",
-                     "Fin : Pattern + résonance"]
-    FORMAT_LABELS = ["Format : 16 bits", "Format : 24 bits", "Format : 32 bits flottant"]
+    END_LABELS     = ["Fin : Boucle exacte (résonance repliée)",
+                      "Fin : Pattern + résonance"]
+    FORMAT_LABELS  = ["Format : 16 bits", "Format : 24 bits", "Format : 32 bits flottant"]
+    MEASURE_LABELS = ["Mesure : Crête", "Mesure : RMS", "Mesure : LUFS-I"]
 
-    def __init__(self, parent, end_idx=0, format_idx=0, normalize=False):
+    def __init__(self, parent, end_idx=0, format_idx=0, normalize=False,
+                 measure_idx=2, level_db=-14, level_min=-24, level_max=-6):
         super().__init__(parent, title="Export audio")
         self._end_lb = wx.ListBox(self, choices=self.END_LABELS, style=wx.LB_SINGLE)
         self._end_lb.SetSelection(max(0, min(end_idx, len(self.END_LABELS) - 1)))
         self._format_lb = wx.ListBox(self, choices=self.FORMAT_LABELS, style=wx.LB_SINGLE)
         self._format_lb.SetSelection(max(0, min(format_idx, len(self.FORMAT_LABELS) - 1)))
-        self._normalize_cb = wx.CheckBox(self, label="Normaliser (crête à −0,3 dBFS)")
+        self._normalize_cb = wx.CheckBox(self, label="Normaliser")
         self._normalize_cb.SetValue(normalize)
-        for lb in (self._end_lb, self._format_lb):
+        self._measure_lb = wx.ListBox(self, choices=self.MEASURE_LABELS, style=wx.LB_SINGLE)
+        self._measure_lb.SetSelection(max(0, min(measure_idx, len(self.MEASURE_LABELS) - 1)))
+        level_label = wx.StaticText(self, label="Niveau visé (dB) :")
+        self._level = wx.SpinCtrl(self, min=level_min, max=level_max,
+                                  initial=max(level_min, min(level_max, int(level_db))))
+        self._level.SetName("Niveau visé (dB)")
+        for lb in (self._end_lb, self._format_lb, self._measure_lb):
             lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+        self._normalize_cb.Bind(wx.EVT_CHECKBOX, lambda e: self._update_enabled())
 
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
@@ -250,14 +261,25 @@ class AudioExportDialog(wx.Dialog):
         btn_sizer.AddButton(cancel_btn)
         btn_sizer.Realize()
 
+        level_row = wx.BoxSizer(wx.HORIZONTAL)
+        level_row.Add(level_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        level_row.Add(self._level, 0)
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(self._end_lb,       0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._format_lb,    0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._normalize_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._measure_lb,   0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(level_row,          0, wx.ALL, 6)
         vbox.Add(btn_sizer,          0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
+        self._update_enabled()
         self._end_lb.SetFocus()
+
+    def _update_enabled(self):
+        on = self._normalize_cb.GetValue()
+        self._measure_lb.Enable(on)
+        self._level.Enable(on)
 
     def get_end_idx(self):
         sel = self._end_lb.GetSelection()
@@ -269,6 +291,13 @@ class AudioExportDialog(wx.Dialog):
 
     def get_normalize(self):
         return self._normalize_cb.GetValue()
+
+    def get_measure_idx(self):
+        sel = self._measure_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 2
+
+    def get_level_db(self):
+        return self._level.GetValue()
 
 
 class SaveSongDialog(wx.Dialog):

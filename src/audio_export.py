@@ -12,10 +12,10 @@
     repliée en régime établi (W2 : K passages enchaînés, le dernier gardé) ;
     END_TAIL, le pattern puis la résonance jusqu'au silence. Avant le
     rendu, un passage à blanc demande tout ce qui se charge à la volée, et
-    le rendu attend la fin des chargements (W9). Gain : limiteur brickwall
-    à anticipation au-dessus de PEAK_DB, circulaire en boucle (W10, § 1h3),
-    normalisation des mixages faibles (W3) ; 16 bits avec dither TPDF
-    (W4).
+    le rendu attend la fin des chargements (W9). Gain : normalisation à un
+    niveau visé en crête, RMS ou LUFS-I (W11, § 1h6), puis limiteur
+    brickwall à anticipation au-dessus de PEAK_DB, circulaire en boucle
+    (W10, § 1h3) ; 16 bits avec dither TPDF (W4).
 
     Prototype, cible C/C++ (moteur audio) : aucune dépendance à wx ;
     événements à un indice d'échantillon, rendu par blocs dans un tampon
@@ -42,6 +42,12 @@ TAIL_MAX_S = 30.0       # plafond de la résonance (W7)
 PEAK_DB    = -0.3       # seuil du limiteur et crête de la normalisation (W3, W10)
 LOOKAHEAD_S = 0.005     # anticipation du limiteur (W10)
 RELEASE_S   = 0.05      # constante de temps du retour du limiteur (W10)
+
+# Normalisation à un niveau visé (W11, § Phase 8 étape 1h6)
+MEASURES      = ("peak", "rms", "lufs")   # Crête, RMS, LUFS-I
+LEVEL_MIN_DB  = -24
+LEVEL_MAX_DB  = -6
+LEVEL_DEFAULT = -14
 BLOCK      = Mixer.BLOCKSIZE   # bloc de rendu maximal : celui de l'écoute (LFO identique)
 
 # Ordre à échantillon égal : fins de note avant les événements du pattern
@@ -322,23 +328,115 @@ def limit_peaks(data, threshold, samplerate, loop=False):
     return out, 20.0 * math.log10(float(gain.min()))
 
 
-def apply_gain(data, normalize=False, peak_db=PEAK_DB, samplerate=Mixer.SAMPLERATE,
-               loop=False):
-    """Gain du fichier (W3, W10) : crête au-dessus de peak_db → limiteur
-    (limit_peaks) ; en dessous, normalize la monte à peak_db. Retourne
-    (données, gain de normalisation en dB ≥ 0, réduction du limiteur en
-    dB ≤ 0)."""
+def _biquad_response(b, a, w):
+    """Réponse en fréquence d'un biquad (b0, b1, b2) / (1, a1, a2) aux
+    pulsations w (radians par échantillon)."""
+    z1, z2 = np.exp(-1j * w), np.exp(-2j * w)
+    return (b[0] + b[1] * z1 + b[2] * z2) / (1.0 + a[0] * z1 + a[1] * z2)
+
+
+def k_weighting(samplerate):
+    """Coefficients des deux biquads de la pondération K (UIT-R BS.1770-4) à
+    samplerate : filtre en plateau, puis passe-haut RLB. Formules de
+    libebur128, exactes à 48 kHz. Retourne ((b, a), (b, a)), a = (a1, a2)."""
+    f0, g, q = 1681.974450955533, 3.999843853973347, 0.7071752369554196
+    k = math.tan(math.pi * f0 / samplerate)
+    vh = 10.0 ** (g / 20.0)
+    vb = vh ** 0.4996667741545416
+    a0 = 1.0 + k / q + k * k
+    shelf = ((( vh + vb * k / q + k * k) / a0, 2.0 * (k * k - vh) / a0,
+              (vh - vb * k / q + k * k) / a0),
+             (2.0 * (k * k - 1.0) / a0, (1.0 - k / q + k * k) / a0))
+    f0, q = 38.13547087602444, 0.5003270373238773
+    k = math.tan(math.pi * f0 / samplerate)
+    a0 = 1.0 + k / q + k * k
+    highpass = ((1.0, -2.0, 1.0),
+                (2.0 * (k * k - 1.0) / a0, (1.0 - k / q + k * k) / a0))
+    return shelf, highpass
+
+
+def _k_filter(x, samplerate, chunk=1 << 18):
+    """Signal x (1-D) filtré par la pondération K, par FFT avec
+    recouvrement-addition (la réponse impulsionnelle est tronquée à chunk
+    échantillons : 6 s à 44,1 kHz, bien après son extinction). Sans scipy :
+    la FFT évite une boucle Python par échantillon."""
+    n = len(x)
+    nfft = 2 * chunk
+    w = 2.0 * math.pi * np.arange(nfft // 2 + 1) / nfft
+    (b1, a1), (b2, a2) = k_weighting(samplerate)
+    h = _biquad_response(b1, a1, w) * _biquad_response(b2, a2, w)
+    y = np.zeros(n + nfft, dtype=np.float64)
+    for start in range(0, n, chunk):
+        seg = x[start:start + chunk].astype(np.float64)
+        y[start:start + nfft] += np.fft.irfft(np.fft.rfft(seg, nfft) * h, nfft)
+    return y[:n]
+
+
+def loudness_lufs(data, samplerate):
+    """Loudness intégrée (LUFS-I, UIT-R BS.1770-4) de data (frames, 2) :
+    pondération K, blocs de 400 ms recouverts à 75 %, porte absolue à
+    −70 LUFS puis porte relative à −10 LU. Un fichier plus court qu'un bloc
+    compte pour un seul bloc. None : rien au-dessus de la porte absolue."""
+    n = len(data)
+    if n == 0:
+        return None
+    size = int(round(0.4 * samplerate))
+    step = int(round(0.1 * samplerate))
+    power = np.zeros(n, dtype=np.float64)
+    for ch in range(data.shape[1]):               # G = 1 pour la gauche et la droite
+        power += _k_filter(data[:, ch], samplerate) ** 2
+    if n <= size:
+        z = np.array([power.mean()])
+    else:
+        c = np.concatenate([np.zeros(1), np.cumsum(power)])
+        starts = np.arange(0, n - size + 1, step)
+        z = (c[starts + size] - c[starts]) / size
+    with np.errstate(divide="ignore"):
+        lj = -0.691 + 10.0 * np.log10(z)
+    z = z[lj > -70.0]
+    if len(z) == 0:
+        return None
+    rel = -0.691 + 10.0 * math.log10(z.mean()) - 10.0
+    z = z[-0.691 + 10.0 * np.log10(z) > rel]
+    return -0.691 + 10.0 * math.log10(z.mean())
+
+
+def measure_level(data, measure, samplerate):
+    """Niveau de data en dB selon measure : "peak" (dBFS crête), "rms"
+    (dBFS, moyenne de x² sur les deux canaux) ou "lufs" (LUFS-I). None
+    pour un silence."""
+    if len(data) == 0:
+        return None
+    if measure == "peak":
+        peak = float(np.max(np.abs(data)))
+        return 20.0 * math.log10(peak) if peak > 0 else None
+    if measure == "rms":
+        ms = float(np.mean(data.astype(np.float64) ** 2))
+        return 10.0 * math.log10(ms) if ms > 0 else None
+    if measure == "lufs":
+        return loudness_lufs(data, samplerate)
+    raise ValueError(f"mesure inconnue : {measure}")
+
+
+def apply_gain(data, normalize=False, measure="lufs", level_db=LEVEL_DEFAULT,
+               peak_db=PEAK_DB, samplerate=Mixer.SAMPLERATE, loop=False):
+    """Gain du fichier (W10, W11) : si normalize, le niveau mesuré (measure)
+    est amené à level_db, vers le haut ou vers le bas ; puis, toujours, le
+    limiteur tient les crêtes à peak_db (limit_peaks, circulaire si loop).
+    Retourne (données, gain de normalisation en dB, réduction du limiteur
+    en dB ≤ 0)."""
+    gain_db = 0.0
+    if normalize:
+        level = measure_level(data, measure, samplerate)
+        if level is not None:
+            gain_db = level_db - level
+            data = (data * 10.0 ** (gain_db / 20.0)).astype(np.float32)
     peak = float(np.max(np.abs(data))) if len(data) else 0.0
     target = 10.0 ** (peak_db / 20.0)
-    if peak == 0.0:
-        return data, 0.0, 0.0
     if peak > target:
-        out, reduction = limit_peaks(data, target, samplerate, loop)
-        return out, 0.0, reduction
-    if normalize and peak < target:
-        gain = target / peak
-        return (data * gain).astype(np.float32), 20.0 * math.log10(gain), 0.0
-    return data, 0.0, 0.0
+        data, reduction = limit_peaks(data, target, samplerate, loop)
+        return data, gain_db, reduction
+    return data, gain_db, 0.0
 
 
 def dither_tpdf(data, bits=16, rng=None):
@@ -349,15 +447,16 @@ def dither_tpdf(data, bits=16, rng=None):
     return (data + noise).astype(np.float32)
 
 
-def write_wav(path, result, subtype="PCM_16", normalize=False, rng=None):
-    """Écrit result (RenderResult) en WAV stéréo à sa fréquence : limiteur
-    ou normalisation (apply_gain ; limiteur circulaire si result.looped),
-    dither en 16 bits, écrêtage final de sécurité à ±1 pour les formats
-    entiers. Retourne (gain de normalisation en dB, réduction du limiteur
-    en dB)."""
+def write_wav(path, result, subtype="PCM_16", normalize=False, measure="lufs",
+              level_db=LEVEL_DEFAULT, rng=None):
+    """Écrit result (RenderResult) en WAV stéréo à sa fréquence :
+    normalisation au niveau visé si normalize, puis limiteur (apply_gain ;
+    limiteur circulaire si result.looped), dither en 16 bits, écrêtage
+    final de sécurité à ±1 pour les formats entiers. Retourne (gain de
+    normalisation en dB, réduction du limiteur en dB)."""
     if subtype not in SUBTYPES:
         raise ValueError(f"format inconnu : {subtype}")
-    data, gain_db, limit_db = apply_gain(result.data, normalize,
+    data, gain_db, limit_db = apply_gain(result.data, normalize, measure, level_db,
                                          samplerate=result.samplerate,
                                          loop=result.looped)
     if subtype == "PCM_16":
