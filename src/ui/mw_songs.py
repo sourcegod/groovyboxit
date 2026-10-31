@@ -1,4 +1,5 @@
 import wx
+from song import song_segments
 from .dialogs import SaveSongDialog
 
 
@@ -31,6 +32,20 @@ class SongMixin:
         p.goto_start()
         self._show_status(f"Mode Song quitté → Pat_{pre+1:02d}")
 
+    def _store_current_pattern(self):
+        """Range le pattern courant (player, routeur, voix des pads) dans
+        _pattern_list, comme avant de lancer un song."""
+        cur = self._pattern_list[self._cur_pattern_idx]
+        cur._voices = self._player.voice_manager.to_list()
+        self._flush_pattern_to_store(cur)
+
+    def _song_segments(self, song_idx):
+        """Segments du song song_idx pour un export, après le rangement du
+        pattern courant (Phase 8 étape 2b1, docs/DESIGN.md § 2a E5). Liste
+        vide pour un song vide."""
+        self._store_current_pattern()
+        return song_segments(self._song_list[song_idx], self._pattern_list)
+
     def _play_song(self, song_idx):
         song = self._song_list[song_idx]
         if not song._sequence:
@@ -39,9 +54,7 @@ class SongMixin:
         if self._player.playing:
             self._player.stop_pattern()
         first_idx = song._sequence[0]
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = self._player.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
+        self._store_current_pattern()
         self._cur_pattern_idx = first_idx
         new = self._pattern_list[first_idx]
         self._apply_pattern_from_store(new)
@@ -115,9 +128,7 @@ class SongMixin:
 
     def _song_load_pattern(self, song, pat_idx, song_pos):
         p   = self._player
-        cur = self._pattern_list[self._cur_pattern_idx]
-        cur._voices = p.voice_manager.to_list()
-        self._flush_pattern_to_store(cur)
+        self._store_current_pattern()
         self._cur_pattern_idx = pat_idx
         new = self._pattern_list[pat_idx]
         self._apply_pattern_from_store(new)
