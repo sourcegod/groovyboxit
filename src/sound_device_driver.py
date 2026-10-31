@@ -3,6 +3,9 @@
     File: src/sound_device_driver.py
     Moteur de playback audio polyphonique via sounddevice (PortAudio).
     Driver audio principal de l'application (remplace pygame.mixer).
+    Le mélange des voix est dans Mixer, utilisable sans carte son (rendu
+    hors temps réel, Phase 8 étape 1b1) ; SoundDeviceDriver y ajoute le
+    flux PortAudio.
 
     Deux types de voix :
       _Voice     : lecture one-shot d'un buffer pré-rendu
@@ -114,20 +117,15 @@ class _LoopVoice:
 
 
 # ---------------------------------------------------------------------------
-# SoundDeviceDriver
+# Mixer — mélange des voix, sans carte son
 # ---------------------------------------------------------------------------
 
-class SoundDeviceDriver:
+class Mixer:
     """
-    Moteur de playback polyphonique via sounddevice.
-
-    Usage minimal
-    -------------
-    drv = SoundDeviceDriver()
-    snd = drv.load("kick.wav")
-    drv.play(snd, vol=0.9, pan=-20)
-    drv.stop_all()
-    drv.close()
+    Mélange polyphonique des voix, sans flux audio (Phase 8 étape 1b1,
+    docs/DESIGN.md § Phase 8 étape 1a, W7) : sert tel quel au rendu hors
+    temps réel de l'export WAV ; SoundDeviceDriver l'envoie à la carte son.
+    Prototype, cible C/C++ : mix(out) remplit un tampon float32 (frames, 2).
 
     Paramètres audio
     ----------------
@@ -147,8 +145,8 @@ class SoundDeviceDriver:
     stop_sound(sound)
     set_master_volume(vol)
     add_render_source(fn) / remove_render_source(fn)
+    mix(out)                          → mélange de frames, sans écrêtage
     voice_count()
-    close()
     """
 
     SAMPLERATE    = 44100
@@ -159,33 +157,26 @@ class SoundDeviceDriver:
     RELEASE_MS    = 80    # durée du release des voix bouclantes après stop() (ms)
     LFO_DEPTH_MAX = 2.0 ** (2.0 / 12.0) - 1.0  # ±2 semitones à mod_wheel=127
 
-    def __init__(self, samplerate: int = SAMPLERATE, blocksize: int = BLOCKSIZE):
+    def __init__(self, samplerate: int = SAMPLERATE):
         self._sr          = samplerate
-        self._blocksize   = blocksize
         self._voices: list[_Voice]     = []
         self._loop_voices: list[_LoopVoice] = []
         self._lock        = threading.Lock()
         self._master_vol  = 1.0
         # Sources de rendu externes (moteur de banque FluidSynth, Phase 7
         # étape 17b1) : fn(mix) ajoute ses échantillons au mixage. Liste
-        # remplacée en bloc (copie), lue sans verrou par le callback.
+        # remplacée en bloc (copie), lue sans verrou par mix().
         self._render_sources = ()
 
-        self._stream = sd.OutputStream(
-            samplerate = self._sr,
-            blocksize  = self._blocksize,
-            channels   = self.CHANNELS,
-            dtype      = self.DTYPE,
-            callback   = self._callback,
-        )
-        self._stream.start()
-
     # ------------------------------------------------------------------
-    # Callback audio (thread PortAudio)
+    # Mélange
     # ------------------------------------------------------------------
 
-    def _callback(self, outdata: np.ndarray, frames: int, time_info, status):
-        """Mélange toutes les voix actives dans outdata (float32, shape (frames, 2))."""
+    def mix(self, out: np.ndarray):
+        """Remplit out (float32, shape (frames, 2)) du mélange de toutes les
+        voix actives et des sources externes, volume global appliqué, sans
+        écrêtage. Les voix avancent de frames échantillons."""
+        frames = len(out)
         mix = np.zeros((frames, 2), dtype=np.float32)
 
         with self._lock:
@@ -209,7 +200,7 @@ class SoundDeviceDriver:
         for fn in self._render_sources:
             fn(mix)
 
-        np.clip(mix * self._master_vol, -1.0, 1.0, out=outdata)
+        np.multiply(mix, self._master_vol, out=out)
 
     def _mix_voice(self, v: _Voice, mix: np.ndarray, frames: int):
         """Mélange une _Voice dans mix (vectorisé, interp linéaire, phase_incr variable)."""
@@ -494,6 +485,53 @@ class SoundDeviceDriver:
         """Nombre de voix bouclantes actives (utile pour les tests)."""
         with self._lock:
             return len(self._loop_voices)
+
+
+# ---------------------------------------------------------------------------
+# SoundDeviceDriver
+# ---------------------------------------------------------------------------
+
+class SoundDeviceDriver(Mixer):
+    """
+    Moteur de playback polyphonique via sounddevice : le Mixer, envoyé à la
+    carte son par un flux PortAudio.
+
+    Usage minimal
+    -------------
+    drv = SoundDeviceDriver()
+    snd = drv.load("kick.wav")
+    drv.play(snd, vol=0.9, pan=-20)
+    drv.stop_all()
+    drv.close()
+
+    Méthodes en plus de Mixer
+    -------------------------
+    close()
+    """
+
+    def __init__(self, samplerate: int = Mixer.SAMPLERATE,
+                 blocksize: int = Mixer.BLOCKSIZE):
+        super().__init__(samplerate)
+        self._blocksize = blocksize
+
+        self._stream = sd.OutputStream(
+            samplerate = self._sr,
+            blocksize  = self._blocksize,
+            channels   = self.CHANNELS,
+            dtype      = self.DTYPE,
+            callback   = self._callback,
+        )
+        self._stream.start()
+
+    # ------------------------------------------------------------------
+    # Callback audio (thread PortAudio)
+    # ------------------------------------------------------------------
+
+    def _callback(self, outdata: np.ndarray, frames: int, time_info, status):
+        """Mélange toutes les voix actives dans outdata (float32, shape (frames, 2)),
+        écrêté à ±1."""
+        self.mix(outdata)
+        np.clip(outdata, -1.0, 1.0, out=outdata)
 
     def close(self):
         """Ferme le flux PortAudio."""
