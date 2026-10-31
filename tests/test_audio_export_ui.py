@@ -95,7 +95,7 @@ class Dialogs:
 
     def __init__(self, file_ok=True, path="/tmp/x/out", opts_ok=True,
                  opts=(1, 2, True, 1, -10), sel_ok=True, source=0, window=(16, 31),
-                 output=0):
+                 output=0, tracks=0):
         self.order, self.file_kw, self.opts_args, self.sel_args = [], {}, None, None
         d = self
 
@@ -122,12 +122,14 @@ class Dialogs:
 
         class SelDlg:
             SOURCE_SELECTION = SelectionExportDialog.SOURCE_SELECTION
+            TRACKS_ALL       = SelectionExportDialog.TRACKS_ALL
             def __init__(self, parent, *args):
                 d.order.append("source")
                 d.sel_args = (parent, args)
             def ShowModal(self): return wx.ID_OK if sel_ok else wx.ID_CANCEL
             def get_source_idx(self): return source
             def get_window(self):     return window
+            def get_tracks_idx(self): return tracks          # Pistes (2n1)
             def Destroy(self): pass
 
         self.FileDlg, self.OptsDlg, self.SelDlg = FileDlg, OptsDlg, SelDlg
@@ -340,7 +342,7 @@ def test_selection_dialog_then_file_then_options(tmp_path, env):
     assert d.order == ["source", "fichier", "paramètres"]
     parent, args = d.sel_args
     pat = win._player._pattern
-    assert args == (pat._num_bars, pat._num_beats, pat._num_steps, 16, 31, 0)
+    assert args == (pat._num_bars, pat._num_beats, pat._num_steps, 16, 31, 0, 0)
     assert d.file_kw["defaultFile"] == "Pat_02_Intro_A_selection.wav"
     assert d.file_kw["title"] == "Exporter la sélection en WAV…"
     kw = env.rendered[0]
@@ -398,7 +400,7 @@ def test_track_clipboard_main_window(tmp_path, env):
     assert kw["window"] is None and kw["tracks"] is None
     assert win.statuses[-1].startswith("Presse-papier (1 piste, 1 mesure) exporté en WAV : c.wav")
     win._export_audio_selection()                           # source gardée pour la session
-    assert d.sel_args[1][-1] == 1
+    assert d.sel_args[1][-2] == 1                         # source (puis Pistes, 2n1)
 
 
 def test_note_clipboard_in_midi_editor(tmp_path, env):

@@ -396,8 +396,10 @@ class ProjectMixin:
             self._audio_export_flow(parent, status, "Exporter le song en WAV…", "",
                                     song_idx=song_idx)
 
-    # Source du dialogue de la sélection gardée pour la session (W21)
+    # Source du dialogue de la sélection gardée pour la session (W21), et
+    # son choix Pistes : sélectionnées ou toutes (Phase 8 étape 2n1, E16)
     _audio_sel_source = 0
+    _audio_sel_tracks = 0
 
     def _export_audio_selection(self, parent=None, status=None, editor=False):
         """Alt+Shift+S : exporte en .wav la sélection (pistes sélectionnées,
@@ -411,17 +413,20 @@ class ProjectMixin:
         pat = player._pattern
         dlg = SelectionExportDialog(parent or self, pat._num_bars, pat._num_beats,
                                     pat._num_steps, te._lim_left, te._lim_right,
-                                    self._audio_sel_source)
+                                    self._audio_sel_source, self._audio_sel_tracks)
         ok     = dlg.ShowModal() == wx.ID_OK
         source = dlg.get_source_idx()
         window = dlg.get_window()
+        which  = dlg.get_tracks_idx()
         dlg.Destroy()
         if not ok:
             status("Export audio annulé")
             return
         self._audio_sel_source = source
         if source == SelectionExportDialog.SOURCE_SELECTION:
-            job = self._selection_job(window)
+            self._audio_sel_tracks = which
+            job = self._selection_job(
+                window, all_tracks=(which == SelectionExportDialog.TRACKS_ALL))
             title, suffix = "Exporter la sélection en WAV…", "_selection"
         else:
             job = self._clipboard_job(editor)
@@ -431,22 +436,29 @@ class ProjectMixin:
             title, suffix = "Exporter le presse-papier en WAV…", "_presse-papier"
         self._audio_export_flow(parent, status, title, suffix, job)
 
-    def _selection_job(self, window):
+    def _selection_job(self, window, all_tracks=False):
         """Rendu de la sélection : copie du pattern courant, pistes de la
-        sélection, fenêtre [G, D + 1) (W18)."""
+        sélection, fenêtre [G, D + 1) (W18). all_tracks : toutes les pistes
+        entre les limiteurs (2n1, E16) ; les muettes ou hors solo restent
+        silencieuses, comme à l'écoute."""
         player = self._player
         pat = player._pattern
         left, right = window
-        tracks = self._track_editor.get_effective_tracks(player._cur_track)
+        tracks = None if all_tracks else \
+            self._track_editor.get_effective_tracks(player._cur_track)
         pattern = Pattern()
         pattern.copy_from(pat)
         spb = max(1, pat._num_steps // pat._num_beats)
         total = pat._num_bars * pat._num_steps
         bbt = lambda step: self._track_editor.fmt_bbt(step, pat._num_steps, spb, total)
-        names = ", ".join(str(t + 1) for t in tracks)
-        which = f"piste {names}" if len(tracks) == 1 else f"pistes {names}"
+        if tracks is None:
+            which = "toutes les pistes"
+        else:
+            names = ", ".join(str(t + 1) for t in tracks)
+            which = f"piste {names}" if len(tracks) == 1 else f"pistes {names}"
         return dict(pattern=pattern, tempo_map=player.tempo_map(),
-                    window=audio_export.selection_window(left, right), tracks=set(tracks),
+                    window=audio_export.selection_window(left, right),
+                    tracks=None if tracks is None else set(tracks),
                     label=f"Sélection ({which} ; {bbt(left)} à {bbt(right)})",
                     verb="exportée")
 

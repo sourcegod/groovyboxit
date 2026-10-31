@@ -1069,14 +1069,20 @@ class SelectionExportDialog(wx.Dialog):
     limiteurs gauche et droit en mesure:temps:pas, préremplis, pour
     l'export seul (les limiteurs ne bougent pas). Ok valide les champs :
     invalides ou droit avant gauche → message, le dialogue reste ouvert.
-    Entrée sur la liste valide (GTK : EVT_LISTBOX_DCLICK)."""
+    Entrée sur une liste valide (GTK : EVT_LISTBOX_DCLICK). Pour la
+    sélection, liste Pistes (Phase 8 étape 2n1, § 2a E16) : les pistes
+    sélectionnées (ou la piste courante), ou toutes les pistes entre les
+    limiteurs."""
 
     SOURCE_LABELS = ["Source : Sélection", "Source : Presse-papier"]
     SOURCE_SELECTION = 0
     SOURCE_CLIPBOARD = 1
+    TRACKS_LABELS = ["Pistes : Sélectionnées", "Pistes : Toutes"]
+    TRACKS_SELECTED = 0
+    TRACKS_ALL      = 1
 
     def __init__(self, parent, num_bars, num_beats, num_steps,
-                 lim_left=None, lim_right=None, source_idx=0):
+                 lim_left=None, lim_right=None, source_idx=0, tracks_idx=0):
         super().__init__(parent, title="Exporter la sélection ou le presse-papier")
         total = num_bars * num_steps
         self._bbt = BBTHelper(num_steps, max(1, num_steps // num_beats), total)
@@ -1085,6 +1091,9 @@ class SelectionExportDialog(wx.Dialog):
 
         self._source_lb = wx.ListBox(self, choices=self.SOURCE_LABELS, style=wx.LB_SINGLE)
         self._source_lb.SetSelection(max(0, min(source_idx, len(self.SOURCE_LABELS) - 1)))
+        self._tracks_lb = wx.ListBox(self, choices=self.TRACKS_LABELS, style=wx.LB_SINGLE)
+        self._tracks_lb.SetSelection(max(0, min(tracks_idx, len(self.TRACKS_LABELS) - 1)))
+        self._tracks_lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._on_ok(None))
         left_label  = wx.StaticText(self, label="Limiteur gauche (mesure:temps:pas) :")
         self._left  = wx.TextCtrl(self, value=self._bbt.fmt(left), size=(140, -1))
         self._left.SetName("Limiteur gauche")
@@ -1110,6 +1119,7 @@ class SelectionExportDialog(wx.Dialog):
         grid.Add(self._right, 0)
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(self._source_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._tracks_lb, 0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(grid,            0, wx.ALL, 6)
         vbox.Add(btn_sizer,       0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
@@ -1119,6 +1129,7 @@ class SelectionExportDialog(wx.Dialog):
 
     def _update_enabled(self):
         on = self.get_source_idx() == self.SOURCE_SELECTION
+        self._tracks_lb.Enable(on)
         self._left.Enable(on)
         self._right.Enable(on)
 
@@ -1143,6 +1154,10 @@ class SelectionExportDialog(wx.Dialog):
 
     def get_source_idx(self):
         sel = self._source_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
+
+    def get_tracks_idx(self):
+        sel = self._tracks_lb.GetSelection()
         return sel if sel != wx.NOT_FOUND else 0
 
     def get_window(self):
