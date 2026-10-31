@@ -220,6 +220,57 @@ class QuantizeDialog(wx.Dialog):
         return sel if sel != wx.NOT_FOUND else 0
 
 
+class AudioExportDialog(wx.Dialog):
+    """Options de l'export audio WAV (Alt+Shift+W, Phase 8 étape 1h1,
+    docs/DESIGN.md § Phase 8 étape 1a, W1, W3, W4, W8) : fin du fichier,
+    format, normalisation. Listes navigables au lecteur d'écran, chaque
+    choix préfixé de son champ (comme QuantizeDialog) ; Entrée sur une
+    liste valide (GTK : EVT_LISTBOX_DCLICK)."""
+
+    END_LABELS    = ["Fin : Boucle exacte (résonance repliée)",
+                     "Fin : Pattern + résonance"]
+    FORMAT_LABELS = ["Format : 16 bits", "Format : 24 bits", "Format : 32 bits flottant"]
+
+    def __init__(self, parent, end_idx=0, format_idx=0, normalize=False):
+        super().__init__(parent, title="Export audio")
+        self._end_lb = wx.ListBox(self, choices=self.END_LABELS, style=wx.LB_SINGLE)
+        self._end_lb.SetSelection(max(0, min(end_idx, len(self.END_LABELS) - 1)))
+        self._format_lb = wx.ListBox(self, choices=self.FORMAT_LABELS, style=wx.LB_SINGLE)
+        self._format_lb.SetSelection(max(0, min(format_idx, len(self.FORMAT_LABELS) - 1)))
+        self._normalize_cb = wx.CheckBox(self, label="Normaliser (crête à −0,3 dBFS)")
+        self._normalize_cb.SetValue(normalize)
+        for lb in (self._end_lb, self._format_lb):
+            lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._end_lb,       0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._format_lb,    0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._normalize_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(btn_sizer,          0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._end_lb.SetFocus()
+
+    def get_end_idx(self):
+        sel = self._end_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
+
+    def get_format_idx(self):
+        sel = self._format_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
+
+    def get_normalize(self):
+        return self._normalize_cb.GetValue()
+
+
 class SaveSongDialog(wx.Dialog):
     def __init__(self, parent, cur_idx, cur_name=""):
         super().__init__(parent, title="Enregistrer le song")

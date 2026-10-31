@@ -351,6 +351,12 @@ class KeymapMixin:
             self._parent._export_midi(parent=self, status=self._set_status)
             return
 
+        # Alt+Shift+W : export audio WAV du pattern (même raccourci que la
+        # fenêtre principale, Phase 8 étape 1h1) ; dialogs et statut ici
+        if not ctrl and shift and alt and (ukey in (ord('w'), ord('W')) or key == ord('W')):
+            self._parent._export_audio(parent=self, status=self._set_status)
+            return
+
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
         if self._parent._key_manager.handle_transport(evt):
             pat   = self._parent._player._pattern

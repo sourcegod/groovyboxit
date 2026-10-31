@@ -83,6 +83,9 @@ class AltHandler:
         if not ctrl and shift and (ukey in (ord('e'), ord('E')) or key == ord('E')):
             win._export_midi()          # Alt+Shift+E : export MIDI (Phase 7 étape 10j1)
             return True
+        if not ctrl and shift and (ukey in (ord('w'), ord('W')) or key == ord('W')):
+            win._export_audio()         # Alt+Shift+W : export audio WAV (Phase 8 étape 1h1)
+            return True
         if not ctrl and shift and (ukey in (ord('i'), ord('I')) or key == ord('I')):
             win._import_midi()          # Alt+Shift+I : import MIDI (Phase 7 étape 18d1)
             return True

@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import threading
 import wx
 from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from song import Song
@@ -8,6 +9,8 @@ from rack import InstrumentType
 from project_manager import ProjectManager
 from midi.midi_export import export_pattern
 from midi.midi_import import import_pattern
+import audio_export
+from .dialogs import AudioExportDialog
 from tempo_map import format_bpm
 
 
@@ -133,12 +136,12 @@ class ProjectMixin:
             track_pans       = list(r._track_pans),
         )
 
-    def _midi_export_filename(self):
-        """Nom de fichier proposé : Pat_NN[_nom].mid, nom nettoyé."""
+    def _midi_export_filename(self, ext=".mid"):
+        """Nom de fichier proposé : Pat_NN[_nom].mid (ou ext), nom nettoyé."""
         idx  = self._cur_pattern_idx
         base = f"Pat_{idx + 1:02d}"
         name = re.sub(r"[^\w\-]+", "_", self._pattern_list[idx]._name).strip("_")
-        return f"{base}_{name}.mid" if name else f"{base}.mid"
+        return f"{base}_{name}{ext}" if name else f"{base}{ext}"
 
     def _export_midi(self, parent=None, status=None):
         """Alt+Shift+E : exporte le pattern courant en .mid. parent : fenêtre
@@ -178,6 +181,120 @@ class ProjectMixin:
                                for n in sorted(unmapped))
             msg += f" — non converti en GM : {names}"
         status(msg)
+
+    #--------------------------------------------------------------------------
+    # Export audio WAV du pattern courant (Phase 8 étape 1h1, docs/DESIGN.md
+    # § Phase 8 étape 1a, W8) : options, fichier, rendu dans un fil
+    # (audio_export, sans wx), avancement et compte rendu au statut.
+
+    # Choix du dialogue gardés pour la session : fin, format, normaliser
+    _audio_export_opts   = (0, 0, False)
+    _audio_export_thread = None
+    _AUDIO_ENDS          = (audio_export.END_LOOP, audio_export.END_TAIL)
+    _AUDIO_FORMAT_NAMES  = ("16 bits", "24 bits", "32 bits flottant")
+
+    def _export_audio(self, parent=None, status=None):
+        """Alt+Shift+W : exporte le pattern courant en .wav. parent : fenêtre
+        des dialogs (éditeur MIDI) ; status : où annoncer avancement et
+        résultat (appelé dans le fil de l'UI)."""
+        status = status or self._show_status
+        thread = self._audio_export_thread
+        if thread is not None and thread.is_alive():
+            status("Export audio déjà en cours")
+            return
+        if self._player.playing:                    # W8 : lecture arrêtée, position gardée
+            self._player.pause_pattern()
+            self._router.stop_all_synth_voices()
+        dlg = AudioExportDialog(parent or self, *self._audio_export_opts)
+        ok = dlg.ShowModal() == wx.ID_OK
+        opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize())
+        dlg.Destroy()
+        if not ok:
+            status("Export audio annulé")
+            return
+        self._audio_export_opts = opts
+        try:
+            os.makedirs(self._exports_dir, exist_ok=True)
+        except OSError:
+            pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
+        fdlg = wx.FileDialog(
+            parent or self, "Exporter le pattern en WAV…",
+            defaultDir=self._exports_dir,
+            defaultFile=self._midi_export_filename(".wav"),
+            wildcard="Fichiers WAV (*.wav)|*.wav",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        result = fdlg.ShowModal()
+        path   = fdlg.GetPath() if result == wx.ID_OK else ""
+        fdlg.Destroy()
+        if not path:
+            status("Export audio annulé")
+            return
+        if not path.lower().endswith(".wav"):
+            path += ".wav"
+        self._start_audio_export(path, opts, status)
+
+    def _start_audio_export(self, path, opts, status):
+        """Lance le rendu de path dans un fil ; le pattern est copié dans le
+        fil de l'UI (les modifications pendant le rendu ne l'atteignent pas)."""
+        end_idx, format_idx, normalize = opts
+        player  = self._player
+        pattern = Pattern()
+        pattern.copy_from(player._pattern)
+        params = dict(
+            pattern=pattern, tempo_map=player.tempo_map(), router=self._router,
+            voice_manager=player.voice_manager, end=self._AUDIO_ENDS[end_idx],
+            master_pan=player.pan, master_volume=player.volume,
+        )
+        subtype = audio_export.SUBTYPES[format_idx]
+        label   = f"Pattern {self._cur_pattern_idx + 1:02d}"
+
+        def say(msg):                               # fil de l'UI ; fenêtre fermée : ignoré
+            try:
+                status(msg)
+            except RuntimeError:
+                pass
+
+        def run():
+            notes = []
+            try:
+                res = audio_export.render_pattern(
+                    **params,
+                    progress=lambda f: wx.CallAfter(say, f"Export audio : {round(f * 100)} %"),
+                    status_cb=notes.append)
+                gain_db = audio_export.write_wav(path, res, subtype, normalize)
+            except Exception as e:
+                wx.CallAfter(say, f"ERREUR export audio : {e}")
+                return
+            wx.CallAfter(say, self._audio_export_report(
+                label, path, res, end_idx, format_idx, normalize, gain_db, notes))
+
+        status("Export audio : 0 %")
+        self._audio_export_thread = threading.Thread(target=run, daemon=True)
+        self._audio_export_thread.start()
+
+    def _audio_export_report(self, label, path, res, end_idx, format_idx,
+                             normalize, gain_db, notes):
+        """Compte rendu de l'export audio (W8) : fichier, durée, fin, format,
+        gain appliqué, résonance coupée, messages du passage à blanc."""
+        def num(x):
+            return f"{x:.2f}".replace(".", ",")
+        if end_idx == 0:
+            fin = "boucle exacte"
+        elif res.tail_samples == 0:
+            fin = "pattern + résonance (aucune)"
+        else:
+            fin = f"pattern + résonance ({num(res.tail_samples / res.samplerate)} s)"
+        parts = [f"{label} exporté en WAV : {os.path.basename(path)}",
+                 f"{num(res.seconds)} s, {fin}, {self._AUDIO_FORMAT_NAMES[format_idx]}"]
+        if gain_db < 0:
+            parts.append(f"atténué de {num(-gain_db)} dB")
+        elif normalize and gain_db > 0:
+            parts.append(f"normalisé : +{num(gain_db)} dB")
+        if res.tail_cut:
+            parts.append(f"résonance coupée à {num(audio_export.TAIL_MAX_S)} s")
+        parts.extend(notes)
+        return " — ".join(parts)
 
     #--------------------------------------------------------------------------
     # Import MIDI dans le pattern courant (Phase 7 étape 18d1, docs/DESIGN.md
