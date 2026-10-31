@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) | en cours |
 
 ---
 
@@ -45,7 +45,7 @@ groovyboxit/
 ├── requirements.txt      # Dépendances (pip3 install -r requirements.txt --break-system-packages)
 ├── src/
 │   ├── app_config.py     # Chargement data/config.json, chemins configurables
-│   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1)
+│   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1) ; song et stems (étape 2)
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
 │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
 │   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
@@ -74,7 +74,7 @@ groovyboxit/
 │   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10, import en Phase 7 étape 18)
 │   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
 │   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
-│   │   ├── midi_export.py    # Export du pattern en fichier .mid (mido, SMF type 1)
+│   │   ├── midi_export.py    # Export du pattern ou d'un song en fichier .mid (mido, SMF type 1)
 │   │   ├── midi_import.py    # Import d'un fichier .mid en pattern (Phase 7 étape 18b1)
 │   │   ├── midi_manager.py   # Connexion ports MIDI in/out
 │   │   └── midi_parser.py    # Décodage des messages MIDI temps réel
@@ -1052,27 +1052,53 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   Change ; chaque événement sur le canal courant de la piste ; nom de
   piste = nom du preset ; notes KIT non converties
 
+**Export d'un song** (Phase 8 étape 2, docs/DESIGN.md § 2a E5-E10, E15) :
+Alt+Shift+E dans la fenêtre Songs exporte le song courant. Le dialogue
+propose `Song_NN[_nom].mid` dans `exports_dir`. Le pattern en cours
+d'édition est rangé d'abord ; un song vide est refusé.
+- Chaque pattern est écrit une fois, en entier, comme en lecture (ses
+  points de boucle sont ignorés), avec son tempo, sa carte de tempo, sa
+  signature et son propre état : slots, mix, mute et solo, canaux, voix
+  des pads, gamme. Le Rack et le kit sont ceux du projet.
+- Piste conductor : nom du song ; à chaque pattern, un marqueur à son
+  libellé, puis le tempo et la signature s'ils changent.
+- État des pistes : complet au premier pattern joué sur un canal
+  (programme, CC7, CC10, CC91, CC93) ; ensuite, seulement ce qui diffère
+  de l'état laissé sur ce canal, événements enregistrés compris.
+- Une note qui déborde sur le pattern suivant garde sa durée, au tempo de
+  ce pattern ; elle n'est coupée qu'à la fin du song.
+- Une piste n'est omise que si elle est vide, muette ou hors solo dans
+  tous les patterns. Son nom est celui de son slot au premier pattern où
+  elle joue ; une piste en Banque prend le nom de son slot.
+- Le fichier d'un pattern seul est inchangé : un pattern est un song d'un
+  seul segment, sans marqueur.
+- Compte rendu : « Song 01 exporté : Song_01.mid (3 patterns) ».
+
 ---
 
 ## Export audio (Alt+Shift+W, Alt+Shift+S)
 
 Rendu du pattern courant, de la sélection ou du presse-papier en fichier
 WAV (`src/audio_export.py`, Phase 8 étape 1), depuis la fenêtre principale
-ou l'éditeur MIDI. Le plan et ses avenants sont dans `docs/DESIGN.md`
-(§ Phase 8 étape 1a, 1d2, 1h3, 1h6, 1h8, 1h11).
+ou l'éditeur MIDI ; rendu d'un song depuis la fenêtre Songs, et pistes
+séparées (Phase 8 étape 2). Les plans et leurs avenants sont dans
+`docs/DESIGN.md` (§ Phase 8 étape 1a, 1d2, 1h3, 1h6, 1h8, 1h11, 2a).
 
 **Parcours** :
 1. La lecture est mise en pause, position gardée. Un second export pendant
    un rendu est refusé (« Export audio déjà en cours »).
 2. Alt+Shift+S seulement : dialogue de la source (voir plus bas).
-3. Dialogue du fichier : `Pat_NN[_nom].wav`, `…_selection.wav` ou
-   `…_presse-papier.wav`. Le dossier proposé est le dernier choisi dans la
-   session, sinon `exports_dir`.
+3. Dialogue du fichier : `Pat_NN[_nom].wav`, `…_selection.wav`,
+   `…_presse-papier.wav` ou `Song_NN[_nom].wav`. Le dossier proposé est le
+   dernier choisi dans la session, sinon `exports_dir`.
 4. Dialogue « Export audio » :
    - **Fin** : « Boucle exacte (résonance repliée) » (défaut) ou
-     « Pattern + résonance » ;
+     « Pattern + résonance » (« Sélection », « Presse-papier » ou « Song +
+     résonance » selon ce qui est exporté) ;
    - **Format** : 16 bits (défaut, avec dither TPDF), 24 bits, 32 bits
      flottant ; stéréo, 44,1 kHz ;
+   - **Sortie** : « Mix » (défaut), « Pistes séparées » ou « Mix +
+     pistes » (voir plus bas) ;
    - **Normaliser** (décochée) ; si cochée, **Mesure** (Crête, RMS, LUFS-I
      par défaut) et **Niveau visé** de −24 à 0 dB (−14 par défaut).
 
@@ -1110,7 +1136,8 @@ l'appli. Ce sont des copies (sons, synthés, FluidSynth) branchées sur un
   fichier garde le niveau du mixage.
 
 **Alt+Shift+S, dialogue « Exporter la sélection ou le presse-papier »** :
-- **Source : Sélection** : les pistes sélectionnées (ou la piste courante),
+- **Source : Sélection** : selon la liste **Pistes** (Phase 8 étape 2n1),
+  les pistes sélectionnées (ou la piste courante), ou toutes les pistes ;
   entre les champs « Limiteur gauche » et « Limiteur droit »
   (mesure:temps:pas, préremplis avec les limiteurs ou tout le pattern ;
   les modifier ne déplace pas les limiteurs). Le pas droit est compris en
@@ -1124,11 +1151,43 @@ l'appli. Ce sont des copies (sons, synthés, FluidSynth) branchées sur un
   - Éditeur MIDI, presse-papier des notes : du début de la mesure de la
     première note à la fin de celle de la dernière ; notes seulement.
   - Presse-papier vide : « Presse-papier vide ».
-- La source est gardée pour la session.
+- La source et le choix Pistes sont gardés pour la session. La liste
+  Pistes n'est active que pour la source Sélection. Ordre de tabulation :
+  Source, Pistes, limiteur gauche, limiteur droit.
 
-**Non exportés** : morceaux (songs), pistes séparées (stems), autres
-fréquences et formats compressés, réverbération et chorus de FluidSynth,
-true peak.
+**Song, Alt+Shift+W dans la fenêtre Songs** (Phase 8 étape 2, § 2a E1,
+E2, E11, E15) :
+- Rendu continu : chaque pattern une fois, en entier, à sa place, par sa
+  carte de tempo. À chaque frontière, à l'échantillon près, l'état du
+  pattern est appliqué (slots, mix, mute et solo, canaux, gamme, voix des
+  pads, banques), comme en lecture ; les voix en cours continuent, et une
+  charleston fermée coupe l'ouverte du pattern précédent.
+- Le passage à blanc parcourt tout le song et charge aussi les patchs des
+  patterns suivants.
+- Fin proposée : boucle exacte si le song est en mode boucle (l'état du
+  premier pattern est rétabli à la reprise), sinon « Song + résonance ».
+  Ce choix n'est pas gardé pour les patterns.
+- Pattern en cours d'édition rangé d'abord ; song vide refusé. Compte
+  rendu : « Song 01 exporté en WAV : Song_01.wav (2 patterns) — … ».
+
+**Pistes séparées (stems)** (Phase 8 étape 2l1, § 2a E3, E4, E12-E14) :
+- Un rendu par piste non vide (du pattern, de la sélection, du
+  presse-papier ou d'au moins un pattern du song), ramené à la longueur du
+  mix. Une piste muette ou hors solo donne un rendu silencieux, qui n'est
+  pas écrit.
+- **Gain commun** : normalisation et limiteur calculés sur le mix, puis
+  appliqués tels quels à chaque piste. La somme des stems redonne le mix
+  (vérifié à 1e-6 près en flottant), sauf un groupe de mute partagé entre
+  deux pistes, ou deux pistes sur un même canal de banque.
+- Fichiers dans un sous-dossier du nom du fichier :
+  `Song_01/Song_01_03_Piano_1.wav` (numéro de piste, nom du slot, ou
+  `Track_NN`). Avec « Mix + pistes », le mix est écrit à côté du dossier.
+- Avancement sur le mix puis chaque piste. Compte rendu : « … : Song_01.wav
+  + 4 pistes séparées dans Song_01/ — … ».
+
+**Non exportés** : autres fréquences et formats compressés, réverbération
+et chorus de FluidSynth, true peak, stems en MIDI (le SMF de type 1
+sépare déjà les pistes), sélection temporelle dans un song.
 
 ---
 
@@ -1211,10 +1270,16 @@ Fenêtre dédiée à la composition de songs :
 - **Liste Songs** : 16 songs (sélection du song courant)
 - Transport Song-aware : Play/Pause, Goto Start/End, navigate_bar inter-patterns
 - Persistance du song courant (`cur_song`) dans le projet
+- **Alt+Shift+E** : export MIDI du song courant ; **Alt+Shift+W** : export
+  audio du song courant (Phase 8 étape 2, voir Export MIDI et Export
+  audio). Compte rendu dans la ligne d'état de la fenêtre.
 
 ### Lecture Song
 
-- Le player enchaîne les patterns dans l'ordre de la séquence
+- Le player enchaîne les patterns dans l'ordre de la séquence ; chacun est
+  joué une fois, en entier, avec son propre état (slots, mix, voix des
+  pads, gamme), rétabli à son passage. Pour l'export, `song_segments`
+  (`src/song.py`) fige chaque pattern du song (`SongSegment`)
 - `navigate_bar` fonctionne en mode song : si en fin de pattern, passe au pattern suivant/précédent
 - PageDown/PageUp naviguent mesure par mesure entre les patterns
 - La boucle (`l`) s'applique au song entier
@@ -1759,8 +1824,8 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |
 | `BankSlotDialog` | dialogs_bank | Alt+X → Banque | Emplacement (1 à 4) et fichier SF2/SF3 du slot courant |
-| `AudioExportDialog` | dialogs_simple | Alt+Shift+W, Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, Normaliser, mesure, niveau visé (Phase 8 étape 1) |
-| `SelectionExportDialog` | dialogs_temporal | Alt+Shift+S | Source de l'export audio : sélection (limiteurs mesure:temps:pas) ou presse-papier |
+| `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1 et 2) |
+| `SelectionExportDialog` | dialogs_temporal | Alt+Shift+S | Source de l'export audio : sélection (pistes sélectionnées ou toutes, limiteurs mesure:temps:pas) ou presse-papier |
 
 ### ExplorerDialog (Alt+X)
 

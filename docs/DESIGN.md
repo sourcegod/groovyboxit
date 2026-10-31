@@ -8575,3 +8575,68 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
   paramètres (« Fin : Sélection + résonance », « Fin : Presse-papier +
   résonance »). Rien ne change pour un pattern.
 - **2o3** : 5 tests dans `test_audio_export_ui.py`.
+
+### Clôture (2p1)
+
+**2a-2o3 FAITS** (commits `137b202` à `44e9480`, 17 commits, et ce commit
+de clôture ; 3171 tests verts) : **chantier Phase 8 étape 2 complet**.
+GroovyboxIt exporte un song en MIDI et en WAV, et n'importe quel export
+audio en pistes séparées.
+
+**Ce que le chantier a livré** :
+- **Song figé** (`song.py`) : `frozen_pattern`, `SongSegment`,
+  `song_segments` ; le pattern en cours d'édition est rangé avant chaque
+  export (`_store_current_pattern`).
+- **Export MIDI du song** (`midi_export.py`) : `build_song_midi` ;
+  marqueurs, tempo et signature au changement, état des pistes par canal,
+  notes qui débordent au tempo suivant. Le fichier d'un pattern est
+  identique à l'octet (115 fichiers comparés par empreinte).
+- **Rendu audio du song** (`audio_export.py`) : `render_song`, état de
+  chaque pattern appliqué à sa frontière à l'échantillon près, deux fins.
+  Les rendus de pattern sont identiques (43 rendus comparés).
+- **Pistes séparées** : un rendu par piste, gain et enveloppe du limiteur
+  du mix appliqués à chaque piste (`Gain`), sous-dossier ; la somme des
+  stems redonne le mix.
+- **Interface** :
+  - fenêtre Songs : Alt+Shift+E et Alt+Shift+W ;
+  - dialogue des paramètres : Sortie (mix, pistes séparées, les deux) ;
+  - Alt+Shift+S : liste Pistes (sélectionnées ou toutes), ajout de
+    l'utilisateur (E16) ;
+  - mot juste au compte rendu et au dialogue : « Sélection »,
+    « Presse-papier », « Song + résonance » (2o2, point de forme de 1j1).
+
+**Décisions prises en cours de route** (voir les avancements) :
+- E9 : état des pistes comparé par canal, événements de `_tape` compris ;
+- piste en Banque d'un song nommée d'après son slot ;
+- Sortie gardée à part du tuple des options ;
+- stems silencieux omis plutôt qu'un filtre d'audibilité ;
+- slot vide = sons du kit, au rendu comme à la lecture (constaté en 2i1).
+
+**Défauts et pièges rencontrés** :
+- `test_midi_export_ui.py` détruit la `wx.App` de session : un fichier
+  qui passe après lui la recrée, gardée dans une variable du module (2k1).
+  Le correctif de fond (`make_km` / `teardown`) n'est pas fait.
+
+**`docs/SPECS.md` mis à jour** : ligne Phase 8, arborescence
+(`audio_export.py`, `midi_export.py`, `song.py`), Export MIDI (song),
+Export audio (Sortie, choix Pistes, song, stems, non exportés), Mode Song
+(raccourcis, lecture), boîtes de dialogue, tests (`test_song_segments.py`,
+`test_song_export_ui.py`, compléments de `test_midi_export.py`,
+`test_audio_export.py`, `test_audio_export_ui.py`).
+
+`docs/shortcuts.md` : Alt+Shift+W (sortie), Alt+Shift+S (liste Pistes),
+fenêtre Songs (Alt+Shift+E, Alt+Shift+W). L'aide F1 le lit directement.
+
+**À essayer dans l'appli par l'utilisateur** : Alt+Shift+E et Alt+Shift+W
+dans la fenêtre Songs, la Sortie et la liste Pistes, à l'écoute et avec
+Orca. Le comportement de Reaper et de Sonar cité au plan (gain commun des
+stems) a été écrit de mémoire et reste à confirmer.
+
+**Laissé hors périmètre, pour la suite** :
+- niveau à l'écoute (point ouvert de 1j1) ;
+- export du song depuis la fenêtre principale ou l'éditeur MIDI ;
+  sélection temporelle dans un song ;
+- mixeur à bus par piste (stems en un seul rendu), avec le moteur C/C++ ;
+- autres fréquences, formats compressés, true peak ;
+- Program Change avant G sur les pistes hors Banque ; dossier d'export
+  retenu d'un lancement à l'autre (`config.json`).

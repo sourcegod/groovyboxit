@@ -15,11 +15,14 @@ Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), dossier EXPORTS
 Alt+Shift+W      Exporter le pattern courant en audio (.wav) : fichier, puis paramètres
                  (fin : boucle exacte ou pattern + résonance ; format 16, 24 ou 32 bits
-                 flottant ; Normaliser : mesure Crête, RMS ou LUFS-I, niveau visé
-                 de -24 à 0 dB ; limiteur à -0,3 dBFS toujours actif)
+                 flottant ; sortie : mix, pistes séparées ou mix + pistes, les pistes
+                 dans un sous-dossier du nom du fichier ; Normaliser : mesure Crête,
+                 RMS ou LUFS-I, niveau visé de -24 à 0 dB ; limiteur à -0,3 dBFS
+                 toujours actif)
 Alt+Shift+S      Exporter en audio la sélection ou le presse-papier : source, puis
                  fichier, puis paramètres comme Alt+Shift+W. Sélection = pistes
-                 sélectionnées (ou piste courante) entre les limiteurs gauche et droit
+                 sélectionnées (ou piste courante), ou toutes les pistes (liste
+                 Pistes), entre les limiteurs gauche et droit
                  (champs mesure:temps:pas, préremplis) ; presse-papier des pistes
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace)
 Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer, Tap Tempo, Click
@@ -347,6 +350,10 @@ g                Aller au début du song (Goto Start)
 Shift+G          Aller à la fin du song (Goto End)
 Ctrl+W           Enregistrer le projet (avec le song courant)
 Ctrl+Shift+W     Enregistrer le projet sous... (avec le song courant)
+Alt+Shift+E      Exporter le song courant en fichier MIDI (.mid), dossier EXPORTS
+Alt+Shift+W      Exporter le song courant en audio (.wav) : fichier, puis paramètres
+                 comme dans la fenêtre principale (fin proposée : boucle exacte si
+                 le song boucle, sinon song + résonance ; sortie mix ou pistes)
 Échap            Fermer la fenêtre Songs
 Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
       fonctionnent aussi depuis la fenêtre Songs
