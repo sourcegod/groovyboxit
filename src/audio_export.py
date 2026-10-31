@@ -184,7 +184,13 @@ def _run(session, tape, events, voice_manager, master_pan, length, passes,
     session.fire_due()
     while True:
         if pos >= total:
-            if not tail or (not session.queue and session.voices() == 0):
+            if not tail:
+                break
+            if not session.queue and session.voices() == 0:
+                # Les voix s'éteignent en cours de bloc : la résonance finit
+                # au dernier échantillon non nul, pas à la fin du bloc
+                rest = np.flatnonzero(np.any(out[total:pos] != 0.0, axis=1))
+                pos = total + (int(rest[-1]) + 1 if len(rest) else 0)
                 break
             if pos >= total + tail_mx:
                 return out[:pos], pos - total, True
