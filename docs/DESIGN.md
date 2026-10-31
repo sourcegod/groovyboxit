@@ -7666,3 +7666,93 @@ volume de mpv pour retrouver le niveau de l'appli.
 Au passage, la boucle TiMidity de référence, écrasée par un export du même
 nom, a été refaite sous `EXPORTS/Pat_01_boucle_timidity.wav`, avec des
 mesures identiques à l'originale.
+
+## Phase 8 étape 1h6 — Avenant : normalisation à un niveau visé (crête, RMS, LUFS-I)
+
+### Origine
+
+Le point ouvert de 1h5 : l'export sonne moins fort qu'à l'écoute.
+L'utilisateur (2026-10-31) se souvient que Reaper propose une case de
+normalisation, et un champ à partir de −24 dB pour choisir jusqu'à quel
+niveau monter le rendu : « un très bon compromis, qui permet de résoudre
+le problème du niveau final ».
+
+### Comportement de Reaper (vérifié le 2026-10-31)
+
+Dans la section « Normalize/Limit » du dialogue de rendu :
+- une case « Normalize » ;
+- un niveau visé en dB ;
+- un type de mesure : Peak, True Peak, RMS-I, LUFS-I, LUFS-M max,
+  LUFS-S max ;
+- à part, une case « Brickwall limit », avec son plafond.
+
+Réglage courant pour un fichier final : −14 LUFS-I avec un limiteur à
+−1 dB. Normaliser à une crête ne peut pas monter le volume au-delà de ce
+que permet la plus haute crête. Normaliser à un niveau moyen (RMS ou
+LUFS) le peut : le limiteur rattrape ensuite les crêtes qui dépassent.
+
+### Décisions validées (utilisateur, 2026-10-31)
+
+**W11 — Normalisation à un niveau visé**, qui remplace la normalisation à
+−0,3 dBFS de W3 et W10.
+- **Dialogue « Export audio »** :
+  - la case « Normaliser », décochée par défaut ;
+  - la liste « Mesure : Crête », « Mesure : RMS », « Mesure : LUFS-I »
+    (choix 1c), LUFS-I par défaut ;
+  - le champ « Niveau visé (dB) » : SpinCtrl de −24 à −6, au pas de 1 dB
+    (choix 2a), −14 par défaut (choix 3a). C'est le widget qu'Orca
+    annonce en temps réel.
+
+  La liste et le champ ne sont actifs que si la case est cochée. Les
+  cinq choix sont gardés pour la session.
+- **Gain** = niveau visé − niveau mesuré sur le mixage rendu, vers le
+  haut comme vers le bas. Le **limiteur** de W10 (−0,3 dBFS, circulaire
+  en boucle exacte) agit **ensuite, toujours** : un niveau visé élevé
+  monte le morceau, et le limiteur tient les crêtes. Comme dans Reaper,
+  la loudness finale peut être un peu sous la cible quand le limiteur a
+  beaucoup travaillé. Le compte rendu le montre.
+- **Mesures** (sur les deux canaux) :
+  - **Crête** : `20·log10(max |x|)`, en dBFS ;
+  - **RMS** : `10·log10(moyenne de x²)` sur tous les échantillons des
+    deux canaux, en dBFS (un sinus à pleine échelle mesure −3 dBFS) ;
+  - **LUFS-I** : loudness intégrée selon l'UIT-R BS.1770-4 :
+    - pondération K, c'est-à-dire un filtre en plateau suivi d'un
+      passe-haut RLB, avec des coefficients calculés pour la fréquence du
+      rendu ;
+    - blocs de 400 ms, recouvrement de 75 % ;
+    - `−0,691 + 10·log10(Σ canaux)` ;
+    - porte absolue à −70 LUFS, puis porte relative à −10 LU.
+
+    Sans scipy, la pondération K est appliquée par FFT (réponse en
+    fréquence des deux biquads, par blocs avec recouvrement-addition).
+- **Mixage silencieux** (crête nulle, ou aucun bloc au-dessus de la porte
+  absolue) : pas de gain.
+- **Sans « Normaliser »** : comme aujourd'hui, le limiteur seul.
+- **Compte rendu** : par exemple « normalisé à −14 LUFS-I : +3,2 dB —
+  limiteur : −4,1 dB au plus ».
+- **Prototype, cible C/C++** : la pondération K deviendra deux biquads en
+  temps réel ; la FFT n'est qu'un moyen d'éviter une boucle Python par
+  échantillon.
+
+### Conséquence de la plage (choix 2a)
+
+« Crête » va au plus à −6 dBFS : la normalisation de crête à −0,3 dBFS
+(W3) n'est plus proposée. Sans « Normaliser », le limiteur garde le
+niveau de l'écoute, et les crêtes au-dessus de −0,3 dBFS restent tenues.
+
+### Portée exclue
+
+- True Peak, LUFS-M max, LUFS-S max ;
+- plafond du limiteur réglable ;
+- normalisation « seulement si trop fort » (une option de Reaper).
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **1h6** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **1h7** | Implémentation — mesures (crête, RMS, LUFS-I), normalisation au niveau visé, puis limiteur ; dialogue (case, liste, champ) ; options de session ; compte rendu. | `src/audio_export.py`, `src/ui/dialogs_simple.py`, `src/ui/mw_project.py` |
+| **1h8** | Tests — étalonnage LUFS-I (sinus de 997 Hz à pleine échelle sur un canal : −3,01 LUFS ; portes absolue et relative), RMS et crête, gain vers le haut et vers le bas, limiteur après la normalisation, silence, dialogue, compte rendu ; tests de 1h5 adaptés. | `tests/test_audio_export.py` |
+
+Les étapes 1i1 (tests de l'interface) et 1j1 (clôture) gardent leurs
+numéros.
