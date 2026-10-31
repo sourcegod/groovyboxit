@@ -179,6 +179,7 @@ groovyboxit/
     ├── test_pygame_driver.py
     ├── test_quantize.py
     ├── test_rename.py
+    ├── test_render_copy.py
     ├── test_save_confirm_dialog.py
     ├── test_sixteen_tracks.py
     ├── test_song.py
@@ -1824,6 +1825,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
 | `test_rename.py` | Renommage F2 : piste, pattern, song (18 tests) |
+| `test_render_copy.py` | Rendu hors temps réel, Phase 8 étape 1e1 : ordonnanceur des fins de note injecté dans TrackRouter, copies des moteurs (routeur, sons, synthés, FluidSynth) indépendantes de l'écoute, événements de _tape et jeu partagés par la lecture et le rendu (30 tests) |
 | `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
 | `test_sixteen_tracks.py` | 16 pistes par pattern : défauts, migration des presets à 8 pistes, sérialisation |
 | `test_song.py` | Song : création, séquence, label |

@@ -7431,3 +7431,40 @@ la volée, comme Sonar et, sans doute, Reaper.
 
 W9 entre dans **1f1** (boucle de rendu) et ses tests dans **1g1**. Les
 étapes suivantes gardent leurs numéros.
+
+### Phase 8 étape 1 — Avancement après l'avenant (1e1)
+
+- **1d1** — conforme à W6 et W7 :
+  - `TrackRouter(schedule=)` remplace les trois `threading.Timer` (banque,
+    grille sur synthé, patch) ; par défaut `_timer_schedule`, l'horloge
+    murale ;
+  - `render_copy(driver, bank_engine, schedule, status_cb)` sur
+    `TrackRouter`, `SoundManager` et `SynthEngine`. Un moteur partagé par
+    deux slots n'est copié qu'une fois. Les messages de la copie sont
+    ignorés par défaut ;
+  - `BankEngine.render_copy()` : pour FluidSynth, un moteur neuf aux mêmes
+    fréquence, gain et Bank Select, sans banque chargée ;
+  - `src/player/tape_events.py` : `tape_events`, `sort_events`, `grid_hit`,
+    `play_event` et les marqueurs. `dp_playback.py` s'en sert.
+
+  **Écart** : les tables de `SoundManager` et les caches de `SynthEngine`
+  sont copiés, et non partagés comme le prévoyait W7. Sans cela,
+  `stop_all_voices` (qui vide `_loop_cache`) ou un kit chargé pendant
+  l'export auraient touché l'écoute. Les sons eux-mêmes restent partagés.
+  Limite trouvée : les synthés chargés à la volée ; elle a mené à l'avenant
+  1d2 (W9).
+- **1e1** — 30 tests dans `tests/test_render_copy.py` :
+  - ordonnanceur : minuterie murale par défaut, ordonnanceur injecté pour
+    les trois coupures, note tenue non ordonnancée ;
+  - copie du routeur : état recopié et indépendant, mute et solo,
+    moteurs sur le mixeur du rendu, rien joué sur l'écoute, banque chargée
+    au `chase` sans toucher au moteur de l'écoute ;
+  - copies de `SoundManager` (sons partagés, tables indépendantes, groupe
+    de mute), de `SynthEngine` (même patch, état neuf, caches
+    indépendants) et de FluidSynth (mêmes réglages) ;
+  - `tape_events` (fenêtre, conversion, `min_sec`), tri stable,
+    `grid_hit`, `play_event`. Le player et `play_event` donnent les mêmes
+    volume, pan et durée pour une même case.
+
+  Trois défauts réintroduits à l'essai font échouer des tests : minuterie
+  remise dans `on_patch_tape`, cache partagé, volumes partagés.
