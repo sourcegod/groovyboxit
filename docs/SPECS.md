@@ -166,6 +166,7 @@ groovyboxit/
     ├── test_midi_parser.py
     ├── test_midi_virtual_keyboard.py
     ├── test_mix_undo.py
+    ├── test_mixer.py
     ├── test_multitrack.py
     ├── test_mute_groups.py
     ├── test_pad_properties_dialog.py
@@ -1810,6 +1811,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_parser.py` | midi_parser en isolation : decode_message, describe_note/cc/program |
 | `test_midi_virtual_keyboard.py` | VirtualKeyboardMixin : clavier virtuel de l'éditeur MIDI |
 | `test_mix_undo.py` | Undo du mute, du solo et du volume : regroupement < 1 s, chaque chemin, dialogue du pad (40 tests) |
+| `test_mixer.py` | Mixer (Phase 8 étape 1c1) : mélange sans carte son ni écrêtage, volume global, pan, sources externes, voix qui avancent d'un appel à l'autre, découpage en blocs sans effet, release, callback du driver = mix puis écrêtage |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
 | `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |

@@ -7339,3 +7339,43 @@ comme à l'écoute.
 | **1h1** | Implémentation — Alt+Shift+W, dialogue, fil de rendu, statut (W8). Essayé à l'écoute et au lecteur d'écran. | `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py`, `ui/dialogs_simple.py` |
 | **1i1** | Tests — 1h1. | `tests/test_audio_export_ui.py` (nouveau) |
 | **1j1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 1 — Avancement et écarts constatés
+
+**Rappel de l'utilisateur (2026-10-31)** : tout le moteur audio est un
+prototype Python, destiné à être réécrit en C/C++ pour la performance,
+l'optimisation et la fluidité. Ce moteur comprend :
+- les sons (`SdSound`) et les voix ;
+- le `Mixer` ;
+- le driver audio et son callback PortAudio ;
+- les moteurs (sampler, synthé, FluidSynth) ;
+- le rendu de l'export.
+
+Ce chantier en tient compte de trois façons :
+- les interfaces restent étroites (`mix(out)` sur un tampon float32,
+  événements à un indice d'échantillon, moteurs appelés par canal, note
+  et vélocité) ;
+- rien de wx ni de propre à Python dans le chemin audio ;
+- les tests fixent le comportement observable (contenu des tampons,
+  découpage en blocs), qui servira de référence à la version native.
+
+- **1b1** — conforme à W7. `Mixer` reprend le mélange, les voix, le
+  chargement des sons, le volume global et les sources externes.
+  `mix(out)` remplit le tampon, volume global appliqué, sans écrêtage.
+  `SoundDeviceDriver(Mixer)` ajoute le flux et `close()` ; son callback
+  fait `mix`, puis `np.clip`. Comportement inchangé, 2862 verts.
+- **1c1** — 21 tests dans `tests/test_mixer.py` :
+  - aucun flux ouvert, constantes ;
+  - mélange non écrêté, en positif et en négatif ;
+  - volume global, pan, sources externes avant le volume global ;
+  - voix consommées d'un appel à l'autre ;
+  - découpage en blocs quelconques identique à un seul bloc, pour les voix
+    one-shot (avec `phase_incr`) et bouclantes. C'est ce qui permettra de
+    rendre jusqu'à chaque événement ;
+  - release, jeu depuis un autre fil ;
+  - callback du driver = `mix`, puis écrêtage.
+
+  L'écrêtage remis dans `mix` à l'essai fait échouer trois tests. Limite
+  constatée : le LFO d'une voix one-shot est constant sur un bloc ; avec
+  vibrato, le découpage en blocs change donc un peu le son. Le rendu
+  gardera des blocs de 512 au plus, comme à l'écoute (W7).
