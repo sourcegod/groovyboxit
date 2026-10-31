@@ -13,6 +13,14 @@ Ctrl+Shift+Z     Afficher l'historique des annulations
 Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), dossier EXPORTS
+Alt+Shift+W      Exporter le pattern courant en audio (.wav) : fichier, puis paramètres
+                 (fin : boucle exacte ou pattern + résonance ; format 16, 24 ou 32 bits
+                 flottant ; Normaliser : mesure Crête, RMS ou LUFS-I, niveau visé
+                 de -24 à 0 dB ; limiteur à -0,3 dBFS toujours actif)
+Alt+Shift+S      Exporter en audio la sélection ou le presse-papier : source, puis
+                 fichier, puis paramètres comme Alt+Shift+W. Sélection = pistes
+                 sélectionnées (ou piste courante) entre les limiteurs gauche et droit
+                 (champs mesure:temps:pas, préremplis) ; presse-papier des pistes
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace)
 Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer, Tap Tempo, Click
                  (dialogue Tempo ; Entrée ou Espace sur « Tap Tempo » = une frappe)
@@ -231,6 +239,8 @@ Double-clic      Connecter le port MIDI sélectionné (liste des ports)
 Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
 Échap            Fermer la fenêtre
 Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), comme la fenêtre principale
+Alt+Shift+W      Exporter le pattern courant en audio (.wav), comme la fenêtre principale
+Alt+Shift+S      Exporter en audio la sélection ou le presse-papier des notes de l'éditeur
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant, comme la fenêtre principale
 Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
 
