@@ -7468,3 +7468,55 @@ W9 entre dans **1f1** (boucle de rendu) et ses tests dans **1g1**. Les
 
   Trois défauts réintroduits à l'essai font échouer des tests : minuterie
   remise dans `on_patch_tape`, cache partagé, volumes partagés.
+- **1f1** — `src/audio_export.py`, conforme à W1-W7 et W9 :
+  - `render_pattern(...)` rend dans un `RenderResult` non écrêté ;
+    `apply_gain`, `dither_tpdf` et `write_wav` écrivent le fichier ;
+  - `_Session` réunit la copie du routeur, son `Mixer`, la banque copiée
+    et une file triée à l'échantillon. À échantillon égal, les fins de
+    note passent avant les notes, comme dans l'export MIDI (D7) ; sans
+    cela, une note rejouée sur la même touche serait coupée ;
+  - `BankEngine.active_voices()` (FluidSynth :
+    `fluid_synth_get_active_voice_count`).
+
+  **Écarts** :
+  - `render_pattern` attend aussi les chargements de l'écoute
+    (`router.wait_loaded()`) avant de copier ;
+  - `status_cb` fait remonter les messages du passage à blanc. Trouvé à
+    l'essai : une erreur de patch passait sous silence et l'export aurait
+    été muet sans prévenir ;
+  - pas de rendu à blanc du mixeur : le passage à blanc joue seulement
+    les événements.
+
+  **Essais** :
+  - kit seul : le régime établi est identique au repli additif (écart
+    0,0) ;
+  - avec FluidSynth : écart de 0,167, voulu (la note rejouée sur la même
+    touche est relâchée) ;
+  - W9 vérifié avec `PATCHS/piano_01.json`.
+- **1f2** — trouvé en 1g1 : la résonance finissait à la fin du bloc (511
+  échantillons de silence au plus), ce qui pouvait ajouter un passage au
+  régime établi. Elle finit maintenant au dernier échantillon non nul.
+- **1g1** — 38 tests dans `tests/test_audio_export.py` :
+  - positions à l'échantillon près ; carte de tempo ; signature et
+    mesures ; longueur exacte ; pattern vide ; fenêtre de la lecture ;
+  - régime établi : identique au repli additif sans interactions, plus de
+    passages quand la résonance dépasse le pattern, passages identiques,
+    charleston coupée à la jonction ;
+  - fin de la résonance au dernier échantillon, plafond, note tenue
+    attendue, release de la banque ;
+  - fin de note avant la note rejouée au même échantillon ; aucune
+    minuterie murale ;
+  - passage à blanc : synthé chargé à la volée rendu dès le premier
+    passage, écoute intacte, erreur annoncée, chargement de l'écoute
+    attendu ;
+  - banques copiées fermées, mixage (mute, volume de piste, volume et pan
+    globaux, pan du pad) ; FluidSynth réel si présent ;
+  - progression croissante jusqu'à 1, annulation qui ferme les moteurs ;
+  - gain (atténuer, normaliser, silence), dither (±1 LSB, centré,
+    reproductible), trois formats relus, 16 bits par défaut, format
+    inconnu.
+
+  Six défauts réintroduits à l'essai font échouer des tests : ordre des
+  fins de note, passage à blanc retiré, premier passage gardé, toujours
+  deux passages, coupe au dernier échantillon retirée, blocs non coupés
+  aux événements.
