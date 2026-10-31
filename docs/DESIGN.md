@@ -7756,3 +7756,45 @@ niveau de l'écoute, et les crêtes au-dessus de −0,3 dBFS restent tenues.
 
 Les étapes 1i1 (tests de l'interface) et 1j1 (clôture) gardent leurs
 numéros.
+
+## Phase 8 étape 1h8 — Avenant : niveau visé jusqu'à 0 dB
+
+### Origine
+
+À l'essai de 1h7 (utilisateur, 2026-10-31), « ça marche avec une
+normalisation de −6 dB, on atteint le même niveau que l'écoute ».
+L'utilisateur propose d'étendre la plage jusqu'à +6 dB, pour les audios
+très faibles.
+
+Le niveau visé n'est pas un gain : c'est le niveau final. Un audio à
+−40 LUFS normalisé à −6 est déjà monté de +34 dB. Au-dessus de −6, le
+limiteur prend chaque dB de plus : transitoires aplatis, son qui pompe
+et sature. Avec la mesure « Crête », une valeur au-dessus de −0,3 dBFS ne
+peut pas être atteinte.
+
+### Décision (utilisateur, 2026-10-31)
+
+**W12 — Plage du niveau visé : de −24 à 0 dB** (au pas de 1 dB, −14 par
+défaut). Reaper accepte de même toute valeur. L'utilisateur accepte que le
+rendu sature au-delà d'environ −6. Ce choix remplace le choix 2a de W11
+(−24 à −6).
+
+### Piste pour le point ouvert sur le niveau
+
+L'écoute sonne comme un fichier à −6 LUFS-I, alors que l'export limité de
+`Pat_01` mesure −10,2 LUFS-I. Si le mixage brut dépasse 0 dBFS bien plus
+souvent que sur ses quelques crêtes, le callback de lecture écrête
+(`np.clip`) : le niveau perçu monte, au prix d'une distorsion.
+
+À vérifier plus tard : compter les échantillons écrêtés en lecture, puis
+revoir au besoin le gain de FluidSynth (0,4, § 18d4) ou le volume global.
+
+### Découpage révisé
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **1h8** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **1h9** | Implémentation — `LEVEL_MAX_DB = 0`. | `src/audio_export.py` |
+| **1h10** | Tests — ceux prévus en 1h8 par l'avenant 1h6, plus la plage de −24 à 0. | `tests/test_audio_export.py` |
+
+1i1 et 1j1 gardent leurs numéros.
