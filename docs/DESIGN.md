@@ -7607,3 +7607,62 @@ globale de W3.**
 
 Les étapes 1i1 (tests de l'interface) et 1j1 (clôture) gardent leurs
 numéros.
+
+### Phase 8 étape 1 — Avancement après l'avenant 1h3 (1h5)
+
+- **1h1** — dialogue « Export audio », Alt+Shift+W dans les deux
+  fenêtres, rendu dans un fil, avancement et compte rendu au statut.
+- **1h2** — retours de l'utilisateur à l'essai : le dialogue du fichier
+  passe avant celui des paramètres (ordre standard) ; le dernier dossier
+  choisi est retenu pour la session, comme celui de l'import MIDI. D'un
+  lancement à l'autre, il faudra écrire `config.json` (chantier
+  « Dialogue de config.json »).
+- **1h4** — limiteur conforme à W10 :
+  - `limit_peaks(data, seuil, sr, loop)` ;
+  - `apply_gain` rend (données, gain de normalisation, réduction du
+    limiteur) ; `write_wav` rend (gain, réduction) ;
+  - `RenderResult.looped` choisit le limiteur circulaire ;
+  - compte rendu « limiteur : −X dB au plus ».
+
+  **Écart** : W10 prévoyait une récurrence par échantillon limitée aux
+  zones réduites. Tout est vectorisé :
+  - minimum glissant par blocs (van Herk / Gil-Werman) ;
+  - retour exponentiel par un maximum cumulé en logarithmes
+    (`z[n] = max_k d[k]·c^(n-k)`) ;
+  - moyenne glissante par somme cumulée.
+
+  10 s de son sont limitées en 0,06 s. Une borne finale `min(moyenne, g)`,
+  qui aurait supprimé la rampe d'anticipation, a été retirée avant
+  l'essai.
+- **1h5** — 55 tests dans `tests/test_audio_export.py` : 17 de plus, et
+  les 7 tests de gain de 1g1 adaptés.
+  - **Limiteur** : aucun échantillon au-dessus du seuil ; crête pile au
+    seuil ; gain à 1 avant l'anticipation et après le retour ; rampe de A
+    échantillons sans saut ; retour exponentiel ; stéréo liée ; signal
+    sous le seuil intact ; boucle circulaire (fin réduite, jonction
+    continue, identique au passage du milieu de trois copies) ; une
+    minute en moins de 10 s.
+  - **Gain** : mixage chaud au limiteur, « Normaliser » coché ou non ;
+    normalisation des mixages faibles ; niveau gardé hors des crêtes dans
+    les trois formats ; `looped` du rendu en boucle exacte.
+  - **Compte rendu** : limiteur, normalisation, fin, format, résonance
+    coupée, messages.
+
+  Six défauts réintroduits à l'essai font échouer des tests : sans
+  anticipation, sans retour, boucle non circulaire, sans moyenne,
+  atténuation globale, `write_wav` sans boucle.
+
+**Point ouvert — niveau (utilisateur, 2026-10-31)** : après le limiteur,
+l'export de `Pat_01` est à −0,3 dBFS de crête et −13,4 dBFS RMS, au
+niveau de la boucle TiMidity (−13,7 dBFS). L'utilisateur l'entend
+pourtant moins fort qu'à l'écoute dans GroovyboxIt : il doit monter le
+volume de mpv pour retrouver le niveau de l'appli.
+- Déjà vérifié : pas de volume mpv mémorisé ni réglé ; volumes par
+  application de PipeWire à 1,0.
+- À vérifier plus tard : le volume global de l'appli au moment de
+  l'export ; une mesure de la sortie son (moniteur PipeWire), appli puis
+  mpv.
+
+Au passage, la boucle TiMidity de référence, écrasée par un export du même
+nom, a été refaite sous `EXPORTS/Pat_01_boucle_timidity.wav`, avec des
+mesures identiques à l'originale.

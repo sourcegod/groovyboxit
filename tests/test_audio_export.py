@@ -604,33 +604,170 @@ def test_cancel_raises_and_closes_engines(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Gain, dither, écriture (W3, W4)
+# Limiteur (W10, § Phase 8 étape 1h3)
 # ---------------------------------------------------------------------------
 
 TARGET = 10 ** (ax.PEAK_DB / 20)
+A      = round(ax.LOOKAHEAD_S * SR)            # anticipation, en échantillons
+TAU    = ax.RELEASE_S * SR
 
 
-def test_gain_attenuates_only_above_target():
-    data = np.array([[2.0, -1.0], [0.5, 0.0]], dtype=np.float32)
-    out, db = ax.apply_gain(data)
-    assert np.abs(out).max() == pytest.approx(TARGET)
-    assert db == pytest.approx(20 * math.log10(TARGET / 2.0))
+def _quiet(seconds=2.0, level=0.3, seed=0):
+    """Signal stéréo sous le seuil (sinus + bruit borné), deux canaux distincts."""
+    n = int(seconds * SR)
+    t = np.arange(n)
+    noise = np.random.default_rng(seed).uniform(-0.05, 0.05, (n, 2))
+    sig = np.column_stack([level * np.sin(t * 0.02), -0.7 * level * np.sin(t * 0.031)])
+    return (sig + noise).astype(np.float32)
+
+
+def _gain(src, out):
+    """Gain appliqué, mesuré sur le canal le plus fort de chaque échantillon."""
+    ch = np.argmax(np.abs(src), axis=1)
+    rows = np.arange(len(src))
+    s, o = src[rows, ch], out[rows, ch]
+    return np.where(np.abs(s) > 1e-6, o / np.where(s == 0, 1, s), 1.0)
+
+
+def _spiked(p=SR, value=1.8):
+    x = _quiet()
+    x[p] = [value, -0.6 * value]
+    return x
+
+
+def test_limiter_no_sample_above_threshold():
+    rng = np.random.default_rng(3)
+    x = (rng.standard_normal((SR * 3, 2)) * 0.5).astype(np.float32)   # très chaud
+    for loop in (False, True):
+        y, red = ax.limit_peaks(x, TARGET, SR, loop)
+        assert np.abs(y).max() <= TARGET * (1 + 1e-6)
+        assert red < -3
+
+
+def test_limiter_peak_reaches_threshold_exactly():
+    x = _spiked(value=1.8)
+    y, red = ax.limit_peaks(x, TARGET, SR)
+    assert np.abs(y[SR]).max() == pytest.approx(TARGET, rel=1e-5)
+    assert red == pytest.approx(20 * math.log10(TARGET / 1.8), abs=1e-3)
+
+
+def test_limiter_gain_one_away_from_peaks():
+    """Le niveau de l'écoute est gardé hors des crêtes : c'était le défaut de
+    l'atténuation globale (1h3)."""
+    x = _spiked()
+    y, _ = ax.limit_peaks(x, TARGET, SR)
+    g = _gain(x, y)
+    assert np.allclose(g[:SR - A - 1], 1.0)                 # avant l'anticipation
+    assert np.allclose(g[SR + int(12 * TAU):], 1.0, atol=1e-4)   # après le retour
+    assert np.array_equal(y[:SR - A - 1], x[:SR - A - 1])
+
+
+def test_limiter_lookahead_ramp_before_peak():
+    x = _spiked()
+    g = _gain(x, ax.limit_peaks(x, TARGET, SR)[0])
+    assert g[SR - A - 1] == pytest.approx(1.0)
+    assert g[SR - A] < 1.0                                  # la rampe commence A avant
+    ramp = g[SR - A:SR + 1]
+    assert np.all(np.diff(ramp) <= 1e-9)                    # descente continue
+    assert np.max(np.abs(np.diff(ramp))) < 0.01             # sans saut
+
+
+def test_limiter_release_exponential():
+    x = _spiked(value=1.8)
+    g = _gain(x, ax.limit_peaks(x, TARGET, SR)[0])
+    r = TARGET / 1.8
+    for k, tol in ((int(TAU), 0.02), (int(3 * TAU), 0.01)):
+        expected = 1 - (1 - r) * math.exp(-k / TAU)
+        assert g[SR + k] == pytest.approx(expected, abs=tol)
+    after = g[SR:SR + int(5 * TAU)]
+    assert np.all(np.diff(after) >= -1e-9)                  # remonte sans rechute
+
+
+def test_limiter_stereo_linked():
+    x = _spiked()
+    y, _ = ax.limit_peaks(x, TARGET, SR)
+    sl = slice(SR - A, SR + int(3 * TAU))
+    ratio_l = y[sl, 0] / x[sl, 0]
+    ratio_r = y[sl, 1] / x[sl, 1]
+    ok = (np.abs(x[sl, 0]) > 1e-3) & (np.abs(x[sl, 1]) > 1e-3)
+    assert np.allclose(ratio_l[ok], ratio_r[ok], atol=1e-5)
+
+
+def test_limiter_below_threshold_untouched():
+    x = _quiet()
+    y, red = ax.limit_peaks(x, TARGET, SR)
+    assert y is x and red == 0.0
+    z = np.zeros((0, 2), dtype=np.float32)
+    assert ax.limit_peaks(z, TARGET, SR)[1] == 0.0
+
+
+def test_limiter_loop_is_circular():
+    """Crête au tout début : en boucle, la fin du fichier (qui la précède)
+    est déjà réduite, et la jonction fin → début est continue ; sans boucle,
+    la fin reste intacte."""
+    x = _quiet()
+    x[10] = [1.6, 1.6]
+    yl, _ = ax.limit_peaks(x, TARGET, SR, loop=True)
+    yn, _ = ax.limit_peaks(x, TARGET, SR, loop=False)
+    gl, gn = _gain(x, yl), _gain(x, yn)
+    assert gl[-1] < 0.99 and gn[-1] == pytest.approx(1.0)
+    junction = np.concatenate([gl[-50:], gl[:50]])
+    assert np.max(np.abs(np.diff(junction))) < 0.01
+    assert np.abs(yl).max() <= TARGET * (1 + 1e-6)
+
+
+def test_limiter_loop_matches_steady_state():
+    """Le limiteur circulaire donne ce que donnerait le fichier joué en
+    boucle : le passage du milieu de trois copies limitées d'un bloc."""
+    x = _quiet(seconds=0.5)
+    x[100] = [1.7, -1.0]
+    x[-30] = [-1.4, 1.2]
+    yl, _ = ax.limit_peaks(x, TARGET, SR, loop=True)
+    tiled = np.concatenate([x, x, x])
+    yt, _ = ax.limit_peaks(tiled, TARGET, SR)
+    n = len(x)
+    assert np.allclose(yl, yt[n:2 * n], atol=2e-3)
+
+
+def test_limiter_long_file_is_fast():
+    x = (np.random.default_rng(5).standard_normal((SR * 60, 2)) * 0.4).astype(np.float32)
+    t0 = time.perf_counter()
+    ax.limit_peaks(x, TARGET, SR, loop=True)
+    assert time.perf_counter() - t0 < 10.0                 # une minute : vectorisé
+
+
+# ---------------------------------------------------------------------------
+# Gain, dither, écriture (W3, W4, W10)
+# ---------------------------------------------------------------------------
+
+def test_gain_hot_mix_goes_to_limiter():
+    x = _spiked(value=2.0)
+    for normalize in (False, True):                         # Normaliser ne change rien
+        out, gain_db, limit_db = ax.apply_gain(x, normalize)
+        assert gain_db == 0.0
+        assert limit_db == pytest.approx(20 * math.log10(TARGET / 2.0), abs=1e-3)
+        assert np.abs(out).max() <= TARGET * (1 + 1e-6)
+        assert np.allclose(out[:SR - A - 1], x[:SR - A - 1])
+
+
+def test_gain_quiet_unchanged_without_normalize():
     quiet = np.array([[0.5, -0.2]], dtype=np.float32)
-    out, db = ax.apply_gain(quiet)
-    assert out is quiet and db == 0.0
+    out, gain_db, limit_db = ax.apply_gain(quiet)
+    assert out is quiet and gain_db == 0.0 and limit_db == 0.0
 
 
 def test_gain_normalize_raises_quiet_file():
     quiet = np.array([[0.25, -0.1]], dtype=np.float32)
-    out, db = ax.apply_gain(quiet, normalize=True)
+    out, gain_db, limit_db = ax.apply_gain(quiet, normalize=True)
     assert np.abs(out).max() == pytest.approx(TARGET)
-    assert db == pytest.approx(20 * math.log10(TARGET / 0.25)) and db > 0
+    assert gain_db == pytest.approx(20 * math.log10(TARGET / 0.25)) and gain_db > 0
+    assert limit_db == 0.0
 
 
 def test_gain_silence_unchanged():
     z = np.zeros((10, 2), dtype=np.float32)
-    assert ax.apply_gain(z, normalize=True)[1] == 0.0
-    assert ax.apply_gain(np.zeros((0, 2), dtype=np.float32))[1] == 0.0
+    assert ax.apply_gain(z, normalize=True)[1:] == (0.0, 0.0)
+    assert ax.apply_gain(np.zeros((0, 2), dtype=np.float32))[1:] == (0.0, 0.0)
 
 
 def test_dither_within_one_lsb_and_centered():
@@ -643,8 +780,9 @@ def test_dither_within_one_lsb_and_centered():
     assert np.array_equal(out, again)
 
 
-def _result(data):
-    return ax.RenderResult(np.asarray(data, dtype=np.float32), SR, len(data), 0, False, 1)
+def _result(data, looped=False):
+    return ax.RenderResult(np.asarray(data, dtype=np.float32), SR, len(data), 0, False, 1,
+                           looped=looped)
 
 
 @pytest.mark.parametrize("subtype", ax.SUBTYPES)
@@ -652,13 +790,13 @@ def test_write_wav_formats(tmp_path, subtype):
     t = np.arange(SR // 10)
     x = (0.5 * np.sin(t * 0.03)).astype(np.float32)
     path = str(tmp_path / f"o_{subtype}.wav")
-    db = ax.write_wav(path, _result(np.column_stack([x, -x])), subtype,
-                      rng=np.random.default_rng(0))
+    gains = ax.write_wav(path, _result(np.column_stack([x, -x])), subtype,
+                         rng=np.random.default_rng(0))
     info = sf.info(path)
     assert (info.subtype, info.samplerate, info.channels, info.format) == (subtype, SR, 2, "WAV")
     back, _ = sf.read(path, dtype="float32")
     tol = {"PCM_16": 3 / 32768, "PCM_24": 1e-6, "FLOAT": 0.0}[subtype]
-    assert db == 0.0
+    assert gains == (0.0, 0.0)
     assert np.abs(back[:, 0] - x).max() <= tol + 1e-7
 
 
@@ -668,22 +806,80 @@ def test_write_wav_default_is_16_bits(tmp_path):
     assert sf.info(path).subtype == "PCM_16"
 
 
-def test_write_wav_attenuates_hot_mix(tmp_path):
-    path = str(tmp_path / "hot.wav")
-    data = np.full((1000, 2), 1.8, dtype=np.float32)
-    db = ax.write_wav(path, _result(data), "FLOAT")
+@pytest.mark.parametrize("subtype", ax.SUBTYPES)
+def test_write_wav_hot_mix_limited_keeps_level(tmp_path, subtype):
+    """Quelques crêtes au-dessus de 0 dBFS : le fichier garde le niveau de
+    l'écoute ailleurs (défaut de l'atténuation globale, 1h3)."""
+    x = _spiked(value=1.8)
+    path = str(tmp_path / f"hot_{subtype}.wav")
+    gain_db, limit_db = ax.write_wav(path, _result(x), subtype, rng=np.random.default_rng(0))
     back, _ = sf.read(path, dtype="float32")
-    assert np.abs(back).max() == pytest.approx(TARGET, abs=1e-6)
-    assert db == pytest.approx(20 * math.log10(TARGET / 1.8))
+    assert gain_db == 0.0 and limit_db < -5
+    lsb = 2 / 32768 if subtype == "PCM_16" else 1e-6
+    assert np.abs(back).max() <= TARGET + lsb
+    far = slice(0, SR - A - 1)
+    rms = lambda a: float(np.sqrt(np.mean(a.astype(np.float64) ** 2)))
+    assert rms(back[far]) == pytest.approx(rms(x[far]), rel=1e-3)
+
+
+def test_write_wav_looped_result_uses_circular_limiter(tmp_path):
+    x = _quiet()
+    x[10] = [1.6, 1.6]
+    for looped, expect_end_reduced in ((True, True), (False, False)):
+        path = str(tmp_path / f"l{looped}.wav")
+        ax.write_wav(path, _result(x, looped), "FLOAT")
+        back, _ = sf.read(path, dtype="float32")
+        g_end = _gain(x[-200:], back[-200:])
+        assert (g_end.min() < 0.99) == expect_end_reduced
+
+
+def test_render_loop_result_is_looped(tmp_path):
+    live, pat = Live(tmp_path), _pattern()
+    assert _render(pat, live, end=ax.END_LOOP).looped
+    assert not _render(pat, live, end=ax.END_TAIL).looped
 
 
 def test_write_wav_normalize_flag(tmp_path):
     path = str(tmp_path / "n.wav")
-    db = ax.write_wav(path, _result(np.full((100, 2), 0.1)), "FLOAT", normalize=True)
+    gain_db, limit_db = ax.write_wav(path, _result(np.full((100, 2), 0.1)), "FLOAT",
+                                     normalize=True)
     assert sf.read(path, dtype="float32")[0].max() == pytest.approx(TARGET, abs=1e-6)
-    assert db > 19
+    assert gain_db > 19 and limit_db == 0.0
 
 
 def test_write_wav_unknown_format(tmp_path):
     with pytest.raises(ValueError):
         ax.write_wav(str(tmp_path / "x.wav"), _result(np.zeros((4, 2))), "MP3")
+
+
+# ---------------------------------------------------------------------------
+# Compte rendu (W8, W10)
+# ---------------------------------------------------------------------------
+
+def _report(res, end_idx=0, format_idx=0, gain_db=0.0, limit_db=0.0, notes=()):
+    from ui.mw_project import ProjectMixin
+    win = ProjectMixin.__new__(ProjectMixin)
+    return win._audio_export_report("Pattern 01", "/x/Pat_01.wav", res, end_idx,
+                                    format_idx, gain_db, limit_db, list(notes))
+
+
+def test_report_limiter_and_normalize():
+    res = _result(np.zeros((SR * 2, 2)))
+    msg = _report(res, limit_db=-5.412)
+    assert "limiteur : −5,41 dB au plus" in msg and "normalisé" not in msg
+    msg = _report(res, gain_db=3.1)
+    assert "normalisé : +3,10 dB" in msg and "limiteur" not in msg
+    msg = _report(res)
+    assert "limiteur" not in msg and "normalisé" not in msg and "atténué" not in msg
+
+
+def test_report_file_length_end_format_and_notes():
+    res = ax.RenderResult(np.zeros((SR * 3, 2), np.float32), SR, SR * 2, SR, True, 1)
+    msg = _report(res, end_idx=1, format_idx=1, notes=["Erreur slot 04: absent"])
+    assert msg.startswith("Pattern 01 exporté en WAV : Pat_01.wav")
+    assert "3,00 s, pattern + résonance (1,00 s), 24 bits" in msg
+    assert "résonance coupée à 30,00 s" in msg
+    assert msg.endswith("Erreur slot 04: absent")
+    loop = ax.RenderResult(np.zeros((SR, 2), np.float32), SR, SR, 0, False, 2, looped=True)
+    assert "boucle exacte, 16 bits" in _report(loop)
+    assert "pattern + résonance (aucune)" in _report(_result(np.zeros((SR, 2))), end_idx=1)
