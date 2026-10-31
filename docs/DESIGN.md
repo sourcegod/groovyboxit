@@ -8074,3 +8074,80 @@ Ensuite viennent **1i1**, les tests de l'interface des deux exports
   complète, alors que le fichier passait seul. Le test des raccourcis
   construit donc `KeyManager(FakeWindow())` sur la `wx.App` de la session
   (`conftest.py`).
+
+### Clôture (1j1)
+
+**1a-1i2 FAITS** (commits `de2bdf0` à `66de2ab`, 26 commits, et ce commit
+de clôture ; 3035 tests verts) : **chantier Phase 8 étape 1 complet**.
+GroovyboxIt exporte en WAV le pattern, la sélection ou le presse-papier,
+avec ses propres moteurs. La boucle exacte se rejoue sans couture, et le
+niveau se règle comme dans Reaper.
+
+**Ce que le chantier a livré** :
+- **Moteur** (prototype, cible C/C++) :
+  - `Mixer`, le mélange sans carte son ;
+  - copies des moteurs pour le rendu (`render_copy`) et ordonnanceur des
+    fins de note injecté dans le routeur ;
+  - événements et jeu partagés par la lecture et le rendu
+    (`player/tape_events.py`).
+- **Rendu** (`audio_export.py`) :
+  - hors temps réel, à l'échantillon près ;
+  - passage à blanc, qui attend les chargements à la volée ;
+  - boucle exacte en régime établi, ou pattern + résonance ;
+  - fenêtre et pistes (sélection) ; presse-papiers des pistes (pistes
+    d'origine, sauvegardées dans le `.gvp`) et des notes.
+- **Gain** :
+  - limiteur brickwall à anticipation, circulaire en boucle ;
+  - normalisation à un niveau visé, en crête, RMS ou LUFS-I
+    (BS.1770-4, étalonné), de −24 à 0 dB ;
+  - dither en 16 bits ; formats 16, 24 et 32 bits flottant.
+- **Interface** :
+  - Alt+Shift+W et Alt+Shift+S, dans la fenêtre principale et dans
+    l'éditeur MIDI ;
+  - fichier puis paramètres ; dossier et options gardés pour la session ;
+  - avancement et compte rendu au statut.
+
+**Décisions prises en cours de route** (avenants, tous à la demande ou
+avec l'accord de l'utilisateur) :
+- passage à blanc (1d2) ;
+- limiteur au lieu de l'atténuation globale (1h3) ;
+- niveau visé en crête, RMS ou LUFS-I (1h6), étendu jusqu'à 0 dB (1h8) ;
+- export de la sélection et du presse-papier (1h11) ;
+- dialogue du fichier avant celui des paramètres, et dernier dossier
+  retenu (1h2).
+
+**Défauts trouvés par les tests et corrigés à part** :
+- 1f2 : la résonance finissait à la fin du bloc ;
+- 1h13 : un presse-papier exporté repartait à 100 BPM.
+
+Piège des tests noté en 1i1 (`make_km` / `teardown`).
+
+**`docs/SPECS.md` mis à jour** :
+- ligne Phase 8, arborescence (`audio_export.py`, `tape_events.py`,
+  `Mixer`) ;
+- backends audio (`Mixer`, prototype C/C++) ;
+- nouvelle section « Export audio » ;
+- presse-papier des pistes (pistes d'origine) ;
+- boîtes de dialogue ;
+- tests (`test_mixer.py`, `test_render_copy.py`, `test_audio_export.py`,
+  `test_audio_export_ui.py`).
+
+`docs/shortcuts.md` a été mis à jour en 1i2.
+
+**Laissé hors périmètre, pour la suite** :
+- **niveau à l'écoute** (point ouvert de 1h5 et 1h8) : l'écoute sonne
+  comme −6 LUFS-I, alors que l'export limité de `Pat_01` mesure −10,2. Le
+  callback écrête probablement beaucoup (`np.clip`). À mesurer
+  (échantillons écrêtés en lecture), puis à revoir au besoin : gain
+  FluidSynth 0,4, volume global, voire un limiteur à l'écoute ;
+- **essai de Alt+Shift+S** à l'écoute et au lecteur d'écran, pas encore
+  confirmé par l'utilisateur. Le compte rendu dit « pattern + résonance »
+  aussi pour une sélection : point de forme ouvert ;
+- export d'un song, pistes séparées (stems), autres fréquences, formats
+  compressés, true peak, plafond du limiteur réglable ;
+- poursuite des Program Change avant G sur les pistes qui ne sont pas en
+  Banque (comme à la reprise de la lecture) ;
+- mesure LUFS-I : FFT de 2^19 points même pour un fichier court, à
+  optimiser au besoin ;
+- dossier d'export retenu d'un lancement à l'autre : demande d'écrire
+  `config.json` (chantier « Dialogue de config.json »).

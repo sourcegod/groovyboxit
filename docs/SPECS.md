@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern (boucle exacte ou pattern + résonance) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) | en cours |
 
 ---
 
@@ -45,6 +45,7 @@ groovyboxit/
 ├── requirements.txt      # Dépendances (pip3 install -r requirements.txt --break-system-packages)
 ├── src/
 │   ├── app_config.py     # Chargement data/config.json, chemins configurables
+│   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1)
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
 │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
 │   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
@@ -62,7 +63,7 @@ groovyboxit/
 │   ├── rack.py           # Rack 16 slots + InstrumentType
 │   ├── song.py           # Données Song : séquence ordonnée de patterns
 │   ├── sound_cache.py    # Cache disque sons pré-calculés (.npz sha256)
-│   ├── sound_device_driver.py # SoundDeviceDriver : backend audio polyphonique
+│   ├── sound_device_driver.py # Mixer (mélange sans carte son) et SoundDeviceDriver (Mixer + PortAudio)
 │   ├── sound_manager.py  # Lecture WAV : kits, note_map, pad_sound
 │   ├── synth_engine.py   # Moteur synthé : chargement patch, pitch shifting, cache
 │   ├── tempo_map.py      # TempoMap : carte de tempo, pas ↔ secondes (Phase 7 étape 19)
@@ -84,7 +85,8 @@ groovyboxit/
 │   │   ├── dp_playback.py  # Mixin : boucle de lecture _run_thread et ses 3 étapes
 │   │   ├── dp_live.py      # Mixin : jeu live des pads, Note Repeat, volume, pan
 │   │   ├── dp_recording.py # Mixin : enregistrement (record_*), positions de capture
-│   │   └── dp_erase.py     # Mixin : mode Erase
+│   │   ├── dp_erase.py     # Mixin : mode Erase
+│   │   └── tape_events.py  # Événements de _tape et jeu, partagés par la lecture et l'export audio (Phase 8 étape 1d1)
 │   └── ui/
 │       ├── dialogs.py          # Boîtes de dialogue (explorateur)
 │       ├── dialogs_bank.py     # BankSlotDialog : fichier et emplacement d'un slot Banque
@@ -470,6 +472,13 @@ Moteur audio polyphonique bas niveau, remplace pygame.mixer pour la lecture des 
 - `play(data, samplerate, vol, pan)` : lecture d'un tableau numpy (stéréo ou mono)
 - Polyphonie illimitée : toutes les voix actives sont mixées dans un callback audio
 - Latence faible : pas de conversion pygame.Sound, lecture directe du PCM numpy
+- Depuis la Phase 8 étape 1b1, le mélange est dans `Mixer` (même module) :
+  `mix(out)` remplit un tampon float32 (frames, 2), volume global
+  appliqué, sans écrêtage, sans carte son (export audio hors temps réel).
+  `SoundDeviceDriver(Mixer)` y ajoute le flux PortAudio ; son callback fait
+  `mix`, puis écrête à ±1
+- Prototype : tout le moteur audio (sons, Mixer, driver, callback, moteurs,
+  rendu de l'export) sera réécrit en C/C++
 
 ### PygameDriver (backend alternatif)
 
@@ -1043,6 +1052,84 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
 
 ---
 
+## Export audio (Alt+Shift+W, Alt+Shift+S)
+
+Rendu du pattern courant, de la sélection ou du presse-papier en fichier
+WAV (`src/audio_export.py`, Phase 8 étape 1), depuis la fenêtre principale
+ou l'éditeur MIDI. Le plan et ses avenants sont dans `docs/DESIGN.md`
+(§ Phase 8 étape 1a, 1d2, 1h3, 1h6, 1h8, 1h11).
+
+**Parcours** :
+1. La lecture est mise en pause, position gardée. Un second export pendant
+   un rendu est refusé (« Export audio déjà en cours »).
+2. Alt+Shift+S seulement : dialogue de la source (voir plus bas).
+3. Dialogue du fichier : `Pat_NN[_nom].wav`, `…_selection.wav` ou
+   `…_presse-papier.wav`. Le dossier proposé est le dernier choisi dans la
+   session, sinon `exports_dir`.
+4. Dialogue « Export audio » :
+   - **Fin** : « Boucle exacte (résonance repliée) » (défaut) ou
+     « Pattern + résonance » ;
+   - **Format** : 16 bits (défaut, avec dither TPDF), 24 bits, 32 bits
+     flottant ; stéréo, 44,1 kHz ;
+   - **Normaliser** (décochée) ; si cochée, **Mesure** (Crête, RMS, LUFS-I
+     par défaut) et **Niveau visé** de −24 à 0 dB (−14 par défaut).
+
+   Les choix sont gardés pour la session.
+5. Le rendu tourne dans un fil, et le statut annonce l'avancement
+   (« Export audio : 40 % »).
+6. Compte rendu : fichier, durée, fin, format, normalisation, réduction du
+   limiteur, résonance coupée, messages de chargement. Par exemple :
+   « Pattern 01 exporté en WAV : Pat_01.wav — 9,60 s, boucle exacte,
+   16 bits — normalisé à −6 LUFS-I : +4,20 dB — limiteur : −3,10 dB au
+   plus ».
+
+**Rendu** : hors temps réel, à l'échantillon près, avec les moteurs de
+l'appli. Ce sont des copies (sons, synthés, FluidSynth) branchées sur un
+`Mixer` sans carte son : l'écoute n'est pas touchée.
+- **Ce qui est rendu** : ce qu'on entend en lecture. La carte de tempo, la
+  signature, le mute et le solo des pistes et des pads, les volumes et pans
+  (pads, pistes, globaux), la courbe GM et l'état des banques. Ni le
+  métronome ni le Note Repeat.
+- **Passage à blanc** d'abord : les événements sont joués une fois sans
+  rien mixer. Les chargements à la volée (patch assigné par Program
+  Change) sont ainsi demandés, et le rendu les attend.
+- **Boucle exacte** : longueur exacte du pattern, en régime établi. Le
+  pattern est rendu deux fois (ou plus si la résonance est plus longue) et
+  le dernier passage est gardé, comme le « 2nd pass render » de Reaper. La
+  jonction sonne comme la lecture en boucle (charleston coupée par son
+  groupe, notes tenues).
+- **Pattern + résonance** : le pattern, puis la résonance jusqu'au
+  dernier échantillon non nul (plafond 30 s, signalé).
+- **Gain** : si « Normaliser », le niveau mesuré est amené au niveau visé,
+  vers le haut ou vers le bas. LUFS-I suit l'UIT-R BS.1770-4 (pondération
+  K, portes −70 LUFS et −10 LU). Ensuite, toujours, un **limiteur**
+  brickwall tient les crêtes à −0,3 dBFS : anticipation 5 ms, retour
+  50 ms, stéréo liée, circulaire en boucle exacte. Hors des crêtes, le
+  fichier garde le niveau du mixage.
+
+**Alt+Shift+S, dialogue « Exporter la sélection ou le presse-papier »** :
+- **Source : Sélection** : les pistes sélectionnées (ou la piste courante),
+  entre les champs « Limiteur gauche » et « Limiteur droit »
+  (mesure:temps:pas, préremplis avec les limiteurs ou tout le pattern ;
+  les modifier ne déplace pas les limiteurs). Le pas droit est compris en
+  entier. Les instruments des banques sont réglés comme à la position
+  gauche ; les notes commencées avant sont ignorées. Champs invalides ou
+  droit avant gauche : message, le dialogue reste ouvert.
+- **Source : Presse-papier** : celui de la fenêtre.
+  - Fenêtre principale, presse-papier des pistes : rendu depuis 0, au
+    tempo du pattern courant, sur les pistes d'origine (leur état
+    actuel), remis à l'échelle si la résolution diffère.
+  - Éditeur MIDI, presse-papier des notes : du début de la mesure de la
+    première note à la fin de celle de la dernière ; notes seulement.
+  - Presse-papier vide : « Presse-papier vide ».
+- La source est gardée pour la session.
+
+**Non exportés** : morceaux (songs), pistes séparées (stems), autres
+fréquences et formats compressés, réverbération et chorus de FluidSynth,
+true peak.
+
+---
+
 ## Import MIDI (Alt+Shift+I)
 
 Importe un fichier MIDI standard dans le **pattern courant**
@@ -1180,6 +1267,9 @@ TrackEditor
 | Shift+Suppr | Réinitialiser le pattern entier |
 
 Le presse-papier est **cross-pattern** : on peut copier d'un pattern et coller dans un autre.
+Il retient les pistes d'origine (`_ClipboardData.tracks`, Phase 8 étape
+1h12), pour l'export audio du presse-papier ; elles sont sauvegardées avec
+le projet et dans l'Undo (`"tracks"`, absent : 0..n−1).
 
 ---
 
@@ -1667,6 +1757,8 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |
 | `BankSlotDialog` | dialogs_bank | Alt+X → Banque | Emplacement (1 à 4) et fichier SF2/SF3 du slot courant |
+| `AudioExportDialog` | dialogs_simple | Alt+Shift+W, Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, Normaliser, mesure, niveau visé (Phase 8 étape 1) |
+| `SelectionExportDialog` | dialogs_temporal | Alt+Shift+S | Source de l'export audio : sélection (limiteurs mesure:temps:pas) ou presse-papier |
 
 ### ExplorerDialog (Alt+X)
 
