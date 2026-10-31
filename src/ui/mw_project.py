@@ -290,6 +290,10 @@ class ProjectMixin:
     # Choix du dialogue gardés pour la session : fin, format, normaliser,
     # mesure, niveau visé (W11, § 1h6)
     _audio_export_opts   = (0, 0, False, 2, audio_export.LEVEL_DEFAULT)
+    # Sortie gardée pour la session : 0 mix, 1 pistes séparées, 2 mix + pistes
+    # (Phase 8 étape 2l1, § 2a E14) ; à part, pour ne pas changer les options
+    _audio_export_output = 0
+    OUTPUT_MIX, OUTPUT_STEMS, OUTPUT_BOTH = 0, 1, 2
     _audio_export_dir    = None     # dernier dossier choisi (session, 1h2)
     _audio_export_thread = None
     _AUDIO_ENDS          = (audio_export.END_LOOP, audio_export.END_TAIL)
@@ -357,14 +361,17 @@ class ProjectMixin:
             extra = dict(unit="Song")
         dlg = AudioExportDialog(parent or self, *init,
                                 level_min=audio_export.LEVEL_MIN_DB,
-                                level_max=audio_export.LEVEL_MAX_DB, **extra)
+                                level_max=audio_export.LEVEL_MAX_DB,
+                                output_idx=self._audio_export_output, **extra)
         ok = dlg.ShowModal() == wx.ID_OK
         opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize(),
                 dlg.get_measure_idx(), dlg.get_level_db())
+        output = dlg.get_output_idx()
         dlg.Destroy()
         if not ok:
             status("Export audio annulé")
             return
+        self._audio_export_output = output
         if song_idx is None:
             self._audio_export_opts = opts
         else:
@@ -375,7 +382,7 @@ class ProjectMixin:
             job = dict(segments=segments, label=f"Song {song_idx + 1:02d}", verb="exporté",
                        unit="song",
                        detail=f"{n} pattern{'s' if n > 1 else ''}")
-        self._start_audio_export(path, opts, status, job)
+        self._start_audio_export(path, opts, status, job, output)
 
     def _export_song_audio(self, song_idx, parent=None, status=None):
         """Alt+Shift+W dans la fenêtre Songs : exporte le song song_idx en
@@ -464,11 +471,14 @@ class ProjectMixin:
                     window=None, tracks=None,
                     label=f"Presse-papier ({tracks}, {bars})", verb="exporté")
 
-    def _start_audio_export(self, path, opts, status, job=None):
+    def _start_audio_export(self, path, opts, status, job=None, output=0):
         """Lance le rendu de path dans un fil. job : pattern, tempo_map,
         window, tracks, label, verb ; None : le pattern courant, copié dans
         le fil de l'UI (les modifications pendant le rendu ne l'atteignent
-        pas)."""
+        pas). output : OUTPUT_MIX, OUTPUT_STEMS ou OUTPUT_BOTH (2l1, E3, E4,
+        E12-E14) : les stems sont un rendu par piste non vide, à la longueur
+        du mix et avec son gain, dans le sous-dossier stem_folder(path) ;
+        un stem silencieux (piste muette…) est omis."""
         end_idx, format_idx, normalize, measure_idx, level_db = opts
         player  = self._player
         if job is None:
@@ -485,10 +495,15 @@ class ProjectMixin:
         if "segments" in job:                       # song (2j1)
             render = audio_export.render_song
             params["segments"] = job["segments"]
+            sources = [seg.pattern for seg in job["segments"]]
         else:
             render = audio_export.render_pattern
             params.update(pattern=job["pattern"], tempo_map=job["tempo_map"],
                           window=job["window"], tracks=job["tracks"])
+            sources = [job["pattern"]]
+        stems = output in (self.OUTPUT_STEMS, self.OUTPUT_BOTH)
+        stem_tracks = audio_export.nonempty_tracks(sources, job.get("tracks")) if stems else []
+        stem_names  = self._stem_names(job, stem_tracks) if stems else {}
         subtype = audio_export.SUBTYPES[format_idx]
         label, verb = job["label"], job["verb"]
         unit, detail = job.get("unit", "pattern"), job.get("detail")
@@ -499,36 +514,76 @@ class ProjectMixin:
             except RuntimeError:
                 pass
 
+        units = 1 + len(stem_tracks)                # avancement : mix puis chaque piste
+
+        def progress(k):
+            return lambda f: wx.CallAfter(say, f"Export audio : {round((k + f) / units * 100)} %")
+
         def run():
             notes = []
+            measure = audio_export.MEASURES[measure_idx]
+            stems_written = None
             try:
-                res = render(
-                    **params,
-                    progress=lambda f: wx.CallAfter(say, f"Export audio : {round(f * 100)} %"),
-                    status_cb=notes.append)
-                gain_db, limit_db = audio_export.write_wav(
-                    path, res, subtype, normalize,
-                    audio_export.MEASURES[measure_idx], level_db)
+                res = render(**params, progress=progress(0), status_cb=notes.append)
+                if output != self.OUTPUT_STEMS:
+                    gain_db, limit_db = audio_export.write_wav(
+                        path, res, subtype, normalize, measure, level_db)
+                if stems:
+                    gain = audio_export.mix_gain(res, normalize, measure, level_db)
+                    gain_db, limit_db = gain.gain_db, gain.limit_db
+                    folder = audio_export.stem_folder(path)
+                    os.makedirs(folder, exist_ok=True)
+                    stems_written = 0
+                    for k, t in enumerate(stem_tracks, start=1):
+                        one = dict(params, tracks={t})
+                        stem = render(**one, progress=progress(k), status_cb=lambda m: None)
+                        if audio_export.is_silent(stem):
+                            continue
+                        audio_export.write_wav(
+                            audio_export.stem_path(path, t, stem_names.get(t, "")),
+                            audio_export.fit_length(stem, len(res.data)), subtype,
+                            gain=gain)
+                        stems_written += 1
             except Exception as e:
                 wx.CallAfter(say, f"ERREUR export audio : {e}")
                 return
             norm = (measure_idx, level_db) if normalize else None
+            stems_info = None if stems_written is None else \
+                (stems_written, os.path.basename(audio_export.stem_folder(path)),
+                 output == self.OUTPUT_STEMS)
             wx.CallAfter(say, self._audio_export_report(
                 label, path, res, end_idx, format_idx, gain_db, limit_db, notes, norm,
-                verb, unit=unit, detail=detail))
+                verb, unit=unit, detail=detail, stems=stems_info))
 
         status("Export audio : 0 %")
         self._audio_export_thread = threading.Thread(target=run, daemon=True)
         self._audio_export_thread.start()
 
+    def _stem_names(self, job, tracks):
+        """{piste: nom} des stems : nom du slot de la piste, comme l'export
+        MIDI ; pour un song, celui du premier pattern où elle n'est pas
+        vide (2l1, E3)."""
+        if "segments" not in job:
+            names = self._midi_export_params()["track_names"]
+            return {t: names[t] for t in tracks if t < len(names)}
+        out = {}
+        for t in tracks:
+            for seg in job["segments"]:
+                tape = seg.pattern._tape
+                if t < len(tape) and tape[t]:
+                    out[t] = self._song_midi_params(seg)["track_names"][t]
+                    break
+        return out
+
     def _audio_export_report(self, label, path, res, end_idx, format_idx,
                              gain_db, limit_db, notes, norm=None, verb="exporté",
-                             unit="pattern", detail=None):
+                             unit="pattern", detail=None, stems=None):
         """Compte rendu de l'export audio (W8) : fichier, durée, fin, format,
         normalisation (norm = (mesure, niveau visé) ou None, W11), réduction
         du limiteur (W10), résonance coupée, messages du passage à blanc.
         unit : ce que suit la résonance (« song + résonance ») ; detail :
-        précision après le fichier (« 3 patterns »), 2j1."""
+        précision après le fichier (« 3 patterns »), 2j1. stems : (nombre,
+        dossier, sans le mix) des pistes séparées écrites, ou None (2l1)."""
         def num(x):
             return f"{x:.2f}".replace(".", ",")
         if end_idx == 0:
@@ -538,6 +593,14 @@ class ProjectMixin:
         else:
             fin = f"{unit} + résonance ({num(res.tail_samples / res.samplerate)} s)"
         name = os.path.basename(path) + (f" ({detail})" if detail else "")
+        if stems is not None:
+            count, folder, only = stems
+            pistes = f"{count} piste{'s' if count > 1 else ''} " \
+                     f"séparée{'s' if count > 1 else ''} dans {folder}/"
+            if only:
+                name = pistes + (f" ({detail})" if detail else "")
+            else:
+                name += f" + {pistes}"
         parts = [f"{label} {verb} en WAV : {name}",
                  f"{num(res.seconds)} s, {fin}, {self._AUDIO_FORMAT_NAMES[format_idx]}"]
         if norm is not None:

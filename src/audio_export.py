@@ -22,6 +22,11 @@
     (slots, mix, canaux, gamme, voix, banques) appliqué à sa frontière à
     l'échantillon près ; les voix en cours continuent. Mêmes deux fins.
 
+    Pistes séparées (stems, Phase 8 étape 2l1, § 2a E3, E4, E12, E13) : un
+    rendu par piste, à la longueur du mix ; gain de normalisation et
+    enveloppe du limiteur calculés sur le mix (Gain), appliqués tels quels
+    à chaque piste ; fichiers dans un sous-dossier du nom du fichier.
+
     Prototype, cible C/C++ (moteur audio) : aucune dépendance à wx ;
     événements à un indice d'échantillon, rendu par blocs dans un tampon
     float32 (frames, 2) par Mixer.mix.
@@ -31,6 +36,8 @@
 import copy
 import heapq
 import math
+import os
+import re
 import itertools
 from dataclasses import dataclass
 
@@ -411,7 +418,7 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
 
 def render_song(segments, router, voice_manager, *, end=END_TAIL,
                 master_pan=0, master_volume=1.0, samplerate=Mixer.SAMPLERATE,
-                progress=None, cancelled=None, status_cb=None):
+                progress=None, cancelled=None, status_cb=None, tracks=None):
     """Rend un song (Phase 8 étape 2h1, docs/DESIGN.md § 2a E1, E2, E11) :
     segments = song.song_segments(…), chacun joué une fois en entier, à
     sa place, par la carte de tempo de son pattern. À chaque frontière, à
@@ -423,7 +430,9 @@ def render_song(segments, router, voice_manager, *, end=END_TAIL,
     patchs. Deux fins (E2) : END_LOOP, boucle exacte du song, l'état du
     premier pattern rétabli à chaque reprise (comme le song en boucle à la
     lecture) ; END_TAIL, song + résonance. Le router de l'écoute n'est pas
-    modifié. Autres paramètres : voir render_pattern."""
+    modifié. tracks : pistes rendues dans chaque pattern (les autres sont
+    vidées, l'état des patterns restant appliqué), None = toutes (stems,
+    2l1). Autres paramètres : voir render_pattern."""
     if not segments:
         raise ValueError("song vide")
     router.wait_loaded()                       # patchs de l'écoute en chargement
@@ -431,9 +440,12 @@ def render_song(segments, router, voice_manager, *, end=END_TAIL,
     for seg in segments:
         pat   = seg.pattern
         tape  = _snapshot(pat)
+        state = _PatternState(pat, tape)           # banques : toutes les pistes
+        if tracks is not None:
+            tape = [lst if i in tracks else [] for i, lst in enumerate(tape)]
         base  = seg.start_secs
         vm    = _segment_voices(voice_manager, pat)
-        timeline.append((round(base * samplerate), _PatternState(pat, tape)))
+        timeline.append((round(base * samplerate), state))
         evs = te.tape_events(tape, 0, seg.total_steps - 1, seg.tempo_map().secs)
         timeline.extend((round((base + ev[0]) * samplerate), (ev, vm))
                         for ev in te.sort_events(evs))
@@ -520,10 +532,21 @@ def limit_peaks(data, threshold, samplerate, loop=False):
     threshold (amplitude) ; gain à 1 hors des crêtes, même gain sur les deux
     canaux. loop : le fichier est une boucle (sa fin précède son début).
     Retourne (données, plus forte réduction en dB, ≤ 0)."""
-    n = len(data)
-    peak = np.max(np.abs(data), axis=1).astype(np.float64)
-    if n == 0 or peak.max() <= threshold:
+    gain = limit_envelope(data, threshold, samplerate, loop)
+    if gain is None:
         return data, 0.0
+    out = (data * gain[:, None]).astype(np.float32)
+    return out, 20.0 * math.log10(float(gain.min()))
+
+
+def limit_envelope(data, threshold, samplerate, loop=False):
+    """Enveloppe de gain du limiteur (voir limit_peaks), un gain par
+    échantillon ; None si aucune crête ne dépasse threshold. Calculée sur le
+    mix, elle s'applique aussi à ses pistes séparées (E4, 2l1)."""
+    n = len(data)
+    peak = np.max(np.abs(data), axis=1).astype(np.float64) if n else np.zeros(0)
+    if n == 0 or peak.max() <= threshold:
+        return None
     a = max(1, round(LOOKAHEAD_S * samplerate))
     tau = RELEASE_S * samplerate
     before = a + int(5 * tau) if loop else 0           # passé : retour presque complet
@@ -540,9 +563,7 @@ def limit_peaks(data, threshold, samplerate, loop=False):
     c = np.concatenate([np.zeros(1), np.cumsum(g)])    # moyenne sur [n - a + 1, n]
     lo = np.maximum(np.arange(len(g)) - a + 1, 0)
     avg = (c[np.arange(1, len(g) + 1)] - c[lo]) / (np.arange(len(g)) + 1 - lo)
-    gain = np.minimum(avg, 1.0)[before:before + n]
-    out = (data * gain[:, None]).astype(np.float32)
-    return out, 20.0 * math.log10(float(gain.min()))
+    return np.minimum(avg, 1.0)[before:before + n]
 
 
 def _biquad_response(b, a, w):
@@ -635,6 +656,48 @@ def measure_level(data, measure, samplerate):
     raise ValueError(f"mesure inconnue : {measure}")
 
 
+@dataclass
+class Gain:
+    """Gain d'un fichier (W10, W11) : normalisation (scaled : facteur
+    appliqué, gain_db) puis enveloppe du limiteur (None : aucune crête).
+    Calculé une fois sur le mix, il s'applique aussi tel quel à ses pistes
+    séparées, de même longueur (E4, E13)."""
+    scaled:   bool
+    gain_db:  float
+    envelope: object         # np.ndarray (n,) ou None
+    limit_db: float
+
+    def apply(self, data):
+        if self.scaled:
+            data = (data * 10.0 ** (self.gain_db / 20.0)).astype(np.float32)
+        if self.envelope is not None:
+            data = (data * self.envelope[:, None]).astype(np.float32)
+        return data
+
+
+def compute_gain(data, normalize=False, measure="lufs", level_db=LEVEL_DEFAULT,
+                 peak_db=PEAK_DB, samplerate=Mixer.SAMPLERATE, loop=False):
+    """Gain du fichier data (voir apply_gain), sans l'appliquer."""
+    gain_db, scaled = 0.0, False
+    if normalize:
+        level = measure_level(data, measure, samplerate)
+        if level is not None:
+            gain_db, scaled = level_db - level, True
+            data = (data * 10.0 ** (gain_db / 20.0)).astype(np.float32)
+    peak = float(np.max(np.abs(data))) if len(data) else 0.0
+    target = 10.0 ** (peak_db / 20.0)
+    envelope = limit_envelope(data, target, samplerate, loop) if peak > target else None
+    limit_db = 20.0 * math.log10(float(envelope.min())) if envelope is not None else 0.0
+    return Gain(scaled, gain_db, envelope, limit_db)
+
+
+def mix_gain(result, normalize=False, measure="lufs", level_db=LEVEL_DEFAULT):
+    """Gain d'un rendu (RenderResult), limiteur circulaire s'il boucle :
+    celui que write_wav appliquerait au mix, à passer à ses stems."""
+    return compute_gain(result.data, normalize, measure, level_db,
+                        samplerate=result.samplerate, loop=result.looped)
+
+
 def apply_gain(data, normalize=False, measure="lufs", level_db=LEVEL_DEFAULT,
                peak_db=PEAK_DB, samplerate=Mixer.SAMPLERATE, loop=False):
     """Gain du fichier (W10, W11) : si normalize, le niveau mesuré (measure)
@@ -642,18 +705,8 @@ def apply_gain(data, normalize=False, measure="lufs", level_db=LEVEL_DEFAULT,
     limiteur tient les crêtes à peak_db (limit_peaks, circulaire si loop).
     Retourne (données, gain de normalisation en dB, réduction du limiteur
     en dB ≤ 0)."""
-    gain_db = 0.0
-    if normalize:
-        level = measure_level(data, measure, samplerate)
-        if level is not None:
-            gain_db = level_db - level
-            data = (data * 10.0 ** (gain_db / 20.0)).astype(np.float32)
-    peak = float(np.max(np.abs(data))) if len(data) else 0.0
-    target = 10.0 ** (peak_db / 20.0)
-    if peak > target:
-        data, reduction = limit_peaks(data, target, samplerate, loop)
-        return data, gain_db, reduction
-    return data, gain_db, 0.0
+    gain = compute_gain(data, normalize, measure, level_db, peak_db, samplerate, loop)
+    return gain.apply(data), gain.gain_db, gain.limit_db
 
 
 def dither_tpdf(data, bits=16, rng=None):
@@ -665,20 +718,69 @@ def dither_tpdf(data, bits=16, rng=None):
 
 
 def write_wav(path, result, subtype="PCM_16", normalize=False, measure="lufs",
-              level_db=LEVEL_DEFAULT, rng=None):
+              level_db=LEVEL_DEFAULT, rng=None, gain=None):
     """Écrit result (RenderResult) en WAV stéréo à sa fréquence :
     normalisation au niveau visé si normalize, puis limiteur (apply_gain ;
     limiteur circulaire si result.looped), dither en 16 bits, écrêtage
-    final de sécurité à ±1 pour les formats entiers. Retourne (gain de
+    final de sécurité à ±1 pour les formats entiers. gain : Gain déjà
+    calculé (celui du mix, pour une piste séparée de même longueur, E13),
+    à la place de normalize, measure et level_db. Retourne (gain de
     normalisation en dB, réduction du limiteur en dB)."""
     if subtype not in SUBTYPES:
         raise ValueError(f"format inconnu : {subtype}")
-    data, gain_db, limit_db = apply_gain(result.data, normalize, measure, level_db,
-                                         samplerate=result.samplerate,
-                                         loop=result.looped)
+    if gain is None:
+        gain = mix_gain(result, normalize, measure, level_db)
+    data, gain_db, limit_db = gain.apply(result.data), gain.gain_db, gain.limit_db
     if subtype == "PCM_16":
         data = dither_tpdf(data, 16, rng)
     if subtype != "FLOAT":
         data = np.clip(data, -1.0, 1.0)
     sf.write(path, data, result.samplerate, subtype=subtype, format="WAV")
     return gain_db, limit_db
+
+
+# ---------------------------------------------------------------------------
+# Pistes séparées (stems) — Phase 8 étape 2l1, docs/DESIGN.md § 2a (E3, E12)
+# ---------------------------------------------------------------------------
+
+def nonempty_tracks(patterns, tracks=None):
+    """Pistes à rendre en stems : non vides dans au moins un des patterns,
+    parmi tracks (None = toutes), dans l'ordre. Une piste muette ou hors
+    solo donne un rendu silencieux, omis ensuite (is_silent)."""
+    found = set()
+    for pat in patterns:
+        for t, lst in enumerate(_snapshot(pat)):
+            if lst and (tracks is None or t in tracks):
+                found.add(t)
+    return sorted(found)
+
+
+def is_silent(result):
+    return not result.data.any()
+
+
+def fit_length(result, n):
+    """Rendu ramené à n échantillons (complété de silence ou coupé), pour
+    qu'une piste séparée ait la longueur du mix et reçoive son gain (E13)."""
+    data = result.data
+    if len(data) < n:
+        data = np.concatenate([data, np.zeros((n - len(data), data.shape[1]), np.float32)])
+    elif len(data) > n:
+        data = data[:n]
+    return RenderResult(np.ascontiguousarray(data), result.samplerate, result.pattern_samples,
+                        result.tail_samples, result.tail_cut, result.passes, result.looped)
+
+
+def stem_folder(path):
+    """Sous-dossier des stems (E3) : le chemin du fichier sans .wav."""
+    return os.path.splitext(path)[0]
+
+
+def stem_path(path, track, name=""):
+    """Fichier du stem de la piste track (0-based) : dossier/base_NN_nom.wav,
+    nom nettoyé, Track_NN s'il est vide (E3)."""
+    folder = stem_folder(path)
+    base = os.path.basename(folder)
+    clean = re.sub(r"[^\w\-]+", "_", name or "").strip("_") or f"Track_{track + 1:02d}"
+    return os.path.join(folder, f"{base}_{track + 1:02d}_{clean}.wav")
+

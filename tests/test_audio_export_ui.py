@@ -90,7 +90,8 @@ class Dialogs:
     notée dans self.order, avec ses arguments."""
 
     def __init__(self, file_ok=True, path="/tmp/x/out", opts_ok=True,
-                 opts=(1, 2, True, 1, -10), sel_ok=True, source=0, window=(16, 31)):
+                 opts=(1, 2, True, 1, -10), sel_ok=True, source=0, window=(16, 31),
+                 output=0):
         self.order, self.file_kw, self.opts_args, self.sel_args = [], {}, None, None
         d = self
 
@@ -112,6 +113,7 @@ class Dialogs:
             def get_normalize(self):   return opts[2]
             def get_measure_idx(self): return opts[3]
             def get_level_db(self):    return opts[4]
+            def get_output_idx(self):  return output          # Sortie (2l1)
             def Destroy(self): pass
 
         class SelDlg:
