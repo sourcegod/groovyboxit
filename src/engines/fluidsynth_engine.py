@@ -105,6 +105,8 @@ class FluidSynthEngine(BankEngine):
 
     def __init__(self, samplerate=44100, bank_select="gs", gain=GAIN):
         super().__init__(bank_select)
+        self._samplerate = samplerate
+        self._gain       = gain
         self._lib = load_library()
         self._settings = self._lib.new_fluid_settings()
         if not self._settings:
@@ -215,6 +217,9 @@ class FluidSynthEngine(BankEngine):
         # Entrelacé : gauche à l'indice 0, droite à 1, pas de 2.
         self._lib.fluid_synth_write_float(self._synth, frames, ptr, 0, 2, ptr, 1, 2)
         out += self._buf
+
+    def render_copy(self):
+        return FluidSynthEngine(self._samplerate, self.bank_select, self._gain)
 
     def close(self):
         if self._synth:

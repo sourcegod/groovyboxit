@@ -8,6 +8,7 @@
     Author: Coolbrother
 """
 import os
+import copy
 import json
 import numpy as np
 from audio_sampler import AudioSampler, PlayMode
@@ -110,6 +111,25 @@ class SynthEngine:
         self.mod_wheel        = 0    # 0..127 (réservé pour future LFO/vibrato)
         self.sustain          = False
         self._sustained_notes = set()   # notes en attente de note_off (CC#64)
+
+    def render_copy(self, driver):
+        """Copie qui joue sur driver (le Mixer du rendu hors temps réel de
+        l'export WAV, Phase 8 étape 1d1, docs/DESIGN.md § Phase 8 étape 1a,
+        W7) : même patch, sons déjà calculés repris (caches copiés : les
+        vider d'un côté ne vide pas l'autre), état de jeu neuf (aucune voix,
+        Pitch Bend, modulation et pédale à zéro)."""
+        c = copy.copy(self)
+        c._driver           = driver
+        c._samples          = list(self._samples)
+        c._raw_cache        = dict(self._raw_cache)
+        c._cache            = dict(self._cache)
+        c._loop_cache       = dict(self._loop_cache)
+        c._active_voices    = {}
+        c.pitch_bend        = 0
+        c.mod_wheel         = 0
+        c.sustain           = False
+        c._sustained_notes  = set()
+        return c
 
     # ------------------------------------------------------------------
     # Chargement de patch

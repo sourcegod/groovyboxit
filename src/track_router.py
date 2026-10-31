@@ -92,6 +92,9 @@ class TrackRouter:
     synths_dir    : str  — chemin vers les dossiers de patches SYNTH
     sound_manager : SoundManager — lecture des sons KIT
     status_cb     : callable(str) — DOIT être thread-safe (envelopper wx.CallAfter)
+    schedule      : callable(delay_ms, fn, *args) — fins de note différées ;
+                    défaut threading.Timer, l'horloge murale (le rendu de
+                    l'export WAV passe le sien, Phase 8 étape 1d1)
     """
 
     NUM_TRACKS      = 16   # = Pattern.DEFAULT_NUM_TRACKS (Phase 7 étape 10d1)
@@ -101,12 +104,13 @@ class TrackRouter:
     KB_SYNTH_MAX    = 96   # C7 — borne haute du pré-calcul chromatique (61 notes)
 
     def __init__(self, rack, synths_dir, sound_manager, status_cb, driver=None,
-                 bank_engine=None, cur_track=None):
+                 bank_engine=None, cur_track=None, schedule=None):
         self._rack       = rack
         self._synths_dir = synths_dir
         self._snd        = sound_manager
         self._status_cb  = status_cb
         self._driver     = driver   # propagé aux SynthEngine
+        self._schedule   = schedule or self._timer_schedule
 
         self._track_slots    = [0] * self.NUM_TRACKS
         self._track_mutes    = [False] * self.NUM_TRACKS
@@ -148,6 +152,48 @@ class TrackRouter:
         self._preset_names  = {}        # {emplacement: {(banque, programme): nom}}
         self.master_pan     = 0
         self._bank_preview  = BankPreview(self)
+
+    @staticmethod
+    def _timer_schedule(delay_ms, fn, *args):
+        """Ordonnanceur par défaut : fn(*args) dans delay_ms, horloge murale."""
+        threading.Timer(delay_ms / 1000.0, fn, args).start()
+
+    def render_copy(self, driver, bank_engine=None, schedule=None, status_cb=None):
+        """Copie du routeur pour le rendu hors temps réel de l'export WAV
+        (Phase 8 étape 1d1, docs/DESIGN.md § Phase 8 étape 1a, W6, W7) :
+        même état de lecture (slots, mute, solo, volume, pan et canal des
+        pistes, pan global, gamme de lecture, état des canaux de banque) ;
+        sons et moteurs de synthé copiés sur driver (le Mixer du rendu),
+        avec un état de jeu neuf ; bank_engine : moteur de banque neuf (voir
+        BankEngine.render_copy), chargé des fichiers du Rack au premier
+        sync_banks ou chase ; schedule : ordonnanceur des fins de note ;
+        status_cb : messages de la copie (défaut : ignorés, l'écoute les a
+        déjà donnés). Le routeur d'origine et ses moteurs ne changent pas."""
+        r = TrackRouter(self._rack, self._synths_dir, self._snd.render_copy(driver),
+                        status_cb or (lambda msg: None), driver=driver,
+                        bank_engine=bank_engine, schedule=schedule)
+        r._track_slots        = list(self._track_slots)
+        r._track_mutes        = list(self._track_mutes)
+        r._track_solos        = list(self._track_solos)
+        r._track_volumes      = list(self._track_volumes)
+        r._track_pans         = list(self._track_pans)
+        r._track_channels     = list(self._track_channels)
+        r._track_cur_channels = list(self._track_cur_channels)
+        r._chan_prog          = list(self._chan_prog)
+        r._chan_msb           = list(self._chan_msb)
+        r._chan_lsb           = list(self._chan_lsb)
+        r._kb_notes_play      = list(self._kb_notes_play)
+        r._kb_scale           = self._kb_scale
+        r._kb_root_midi       = self._kb_root_midi
+        r.master_pan          = self.master_pan
+        copies = {}                     # un même moteur partagé par deux slots : une copie
+        for slot_idx, engine in self._slot_synths.items():
+            if engine is None:
+                continue
+            if id(engine) not in copies:
+                copies[id(engine)] = engine.render_copy(driver)
+            r._slot_synths[slot_idx] = copies[id(engine)]
+        return r
 
     # ------------------------------------------------------------------
     # Propriétés (accès lecture seule aux moteurs)
@@ -427,8 +473,7 @@ class TrackRouter:
         note = max(0, min(127, note))
         engine.note_on(channel, note, velocity)
         if duration_ms > 0:
-            threading.Timer(duration_ms / 1000.0, engine.note_off,
-                            [channel, note]).start()
+            self._schedule(duration_ms, engine.note_off, channel, note)
 
     def _bank_grid_note(self, track_idx, pad_idx):
         """Note d'un pad sur une piste Banque (D12) : canal 10 → 36 + pad,
@@ -792,7 +837,7 @@ class TrackRouter:
                 midi = self._kb_notes_play[pad_idx]
                 dur  = duration_ms if duration_ms > 0 else 500
                 engine.play(midi, vol_factor, pan, dur)
-                threading.Timer(dur / 1000.0, engine.stop, [midi]).start()
+                self._schedule(dur, engine.stop, midi)
         else:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 
@@ -830,7 +875,7 @@ class TrackRouter:
             bend_log(f"PLAY note={midi_note} bend={engine.pitch_bend} "
                       f"({engine.pitch_bend_semitones:+.3f}st) engine_id={id(engine)}")
             engine.play(midi_note, vol, pan, dur)
-            threading.Timer(dur / 1000.0, engine.stop, [midi_note]).start()
+            self._schedule(dur, engine.stop, midi_note)
 
     def on_bend_tape(self, track_idx, bend_value):
         """Applique un point d'automation pitch bend au moteur du slot de la piste."""

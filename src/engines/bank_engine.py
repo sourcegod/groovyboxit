@@ -95,5 +95,11 @@ class BankEngine:
         SoundDeviceDriver.add_render_source."""
         raise NotImplementedError
 
+    def render_copy(self):
+        """Moteur neuf aux mêmes réglages (fréquence, gain, Bank Select),
+        sans banque chargée : celui du rendu hors temps réel de l'export
+        WAV (Phase 8 étape 1d1, docs/DESIGN.md § Phase 8 étape 1a, W7)."""
+        raise NotImplementedError
+
     def close(self):
         raise NotImplementedError

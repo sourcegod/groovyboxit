@@ -1,21 +1,24 @@
 import time
 
 from metronome import Metronome
-from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
+from pattern import Pattern, ETYPE_KIT, ETYPE_PATCH
+from player import tape_events as te
 
 
 class PlaybackLoopMixin:
     """DrumPlayer — boucle de lecture (_run_thread) et marqueurs internes d'événements."""
 
     NR_EVENT         = -100  # marqueur interne pour les événements Note Repeat dans la liste
-    GRID_EVENT       = -6   # marqueur interne pour les événements grille (etype ETYPE_GRID de _tape)
-    KIT_TAPE_EVENT   = -2   # marqueur interne pour les événements kit_tape (MIDI brut)
-    PATCH_TAPE_EVENT = -3   # marqueur interne pour les événements patch_tape (MIDI brut)
-    BEND_TAPE_EVENT  = -4   # marqueur interne pour les événements Pitch Bend (etype ETYPE_BEND de _tape)
+    # Marqueurs des événements de _tape : player/tape_events.py, partagé avec
+    # le rendu de l'export WAV (Phase 8 étape 1d1)
+    GRID_EVENT       = te.GRID_EVENT
+    KIT_TAPE_EVENT   = te.KIT_TAPE_EVENT
+    PATCH_TAPE_EVENT = te.PATCH_TAPE_EVENT
+    BEND_TAPE_EVENT  = te.BEND_TAPE_EVENT
     # MOD_TAPE_EVENT (-5) supprimé en Phase 7 étape 5h : CC#1 rejoué via
     # CC_TAPE_EVENT (_tape), qui délègue déjà à on_mod_tape (TrackRouter.on_cc_tape).
-    CC_TAPE_EVENT    = -7   # marqueur interne pour les événements CC générique (etype ETYPE_CC de _tape)
-    PGM_TAPE_EVENT   = -8   # marqueur interne pour les événements Program Change (etype ETYPE_PGM de _tape)
+    CC_TAPE_EVENT    = te.CC_TAPE_EVENT
+    PGM_TAPE_EVENT   = te.PGM_TAPE_EVENT
     TEMPO_EVENT      = -9   # changement de tempo franchi (carte de tempo, Phase 7 étape 19d3)
 
     def _run_thread(self):
@@ -99,35 +102,8 @@ class PlaybackLoopMixin:
             # concurrentes (record_*, erase_*) pendant l'itération.
             with self._pattern._lock:
                 tape_snap = [list(track_list) for track_list in self._pattern._tape]
-            for t_idx, note_list in enumerate(tape_snap):
-                for ev in note_list:
-                    float_off = ev.time
-                    if not (lp_start <= float_off <= lp_end):
-                        continue
-                    t_sec = to_sec(float_off - lp_start)
-                    if t_sec > elapsed - 0.002:
-                        if ev.etype == ETYPE_GRID:
-                            events.append((t_sec, self.GRID_EVENT,
-                                           (t_idx, ev.payload.get("pad"), ev.dur), ev.payload.get("vel")))
-                        elif ev.etype == ETYPE_KIT:
-                            events.append((t_sec, self.KIT_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("note"), ev.dur), ev.payload.get("vel")))
-                        elif ev.etype == ETYPE_PATCH:
-                            events.append((t_sec, self.PATCH_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("note"), ev.dur),
-                                           ev.payload.get("vel")))
-                        elif ev.etype == ETYPE_CC:
-                            events.append((t_sec, self.CC_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("cc_num"), ev.payload.get("value"),
-                                            ev.channel), 0))
-                        elif ev.etype == ETYPE_PGM:
-                            # canal de l'événement : celui où la piste Banque
-                            # passe (Phase 7 étape 17f1, docs/DESIGN.md § 17e3 O3)
-                            events.append((t_sec, self.PGM_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("program"), ev.channel), 0))
-                        elif ev.etype == ETYPE_BEND:
-                            events.append((t_sec, self.BEND_TAPE_EVENT,
-                                           (t_idx, ev.payload.get("value")), 0))
+            events.extend(te.tape_events(tape_snap, lp_start, lp_end, to_sec,
+                                         min_sec=elapsed - 0.002))
             # Tempos franchis, pour l'affichage du champ BPM en lecture (§ 19d2
             # R2) : début de la fenêtre (retour de boucle) et chaque changement
             tm = self.tempo_map()
@@ -150,13 +126,8 @@ class PlaybackLoopMixin:
                 if t_sec > elapsed - 0.002:
                     events.append((t_sec, self.NR_EVENT, 0, 100))
                 nr_step += interval
-        # Tri stable sur (temps, marqueur) seulement : à temps égal, les
-        # événements gardent l'ordre de _tape (pistes, puis rang dans la
-        # piste). Trier aussi sur les données classait les CC par numéro :
-        # un CC121 (Reset All Controllers) passait après le CC64 qui le
-        # suit, et relâchait la pédale (Phase 7 étape 18d3, § 18d2).
-        events.sort(key=lambda e: (e[0], e[1]))
-        return events
+        # Tri stable sur (temps, marqueur) seulement (§ 18d2) : te.sort_events
+        return te.sort_events(events)
 
     #--------------------------------------------------------------------------
 
@@ -186,12 +157,9 @@ class PlaybackLoopMixin:
                     and pad_idx in self._erase_active_pads:
                 self._clear_offset(pad_idx, self._t_to_offset(t_sec))
             elif self.voice_manager.is_audible(pad_idx):
-                vol = min(1.0, self.voice_manager.get_volume_factor(pad_idx)
-                          * velocity / 100.0)
-                pan = self._mix_pan(self.voice_manager.get_pan(pad_idx))
-                # dur_override>0 (Numpad1/3, Phase 7 étape 1k) prime sur la
-                # durée de la voix, pour cette occurrence uniquement.
-                dur = dur_override if dur_override > 0 else self.voice_manager.get_duration_ms(pad_idx)
+                # Volume, pan et durée : règles partagées avec le rendu (1d1)
+                vol, pan, dur = te.grid_hit(self.voice_manager, pad_idx, velocity,
+                                            dur_override, self.pan)
                 if self._on_track_play_cb:
                     self._on_track_play_cb(t_idx, pad_idx, vol, pan, dur)
                 else:

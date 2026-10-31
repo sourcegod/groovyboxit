@@ -8,6 +8,7 @@
     Author: Coolbrother
 """
 import os
+import copy
 import json
 import numpy as np
 
@@ -218,6 +219,23 @@ class SoundManager(object):
             self.drum_sounds[i] = sound if sound else self._silent_sound()
             labels.append(self.note_labels.get(note, f"Note {note}"))
         return labels
+
+    def render_copy(self, driver):
+        """Copie qui joue sur driver (le Mixer du rendu hors temps réel de
+        l'export WAV, Phase 8 étape 1d1, docs/DESIGN.md § Phase 8 étape 1a,
+        W7). Les sons sont partagés, pas rechargés ; les tables (sons, notes,
+        groupes de mute) sont copiées : un kit chargé pendant le rendu ne
+        change pas la copie."""
+        c = copy.copy(self)
+        c._driver       = driver
+        c.drum_sounds   = list(self.drum_sounds)
+        c.note_map      = dict(self.note_map)
+        c.mute_groups   = list(self.mute_groups)
+        c._sound_group  = dict(self._sound_group)
+        c._group_sounds = {g: set(snds) for g, snds in self._group_sounds.items()}
+        c.pad_notes     = list(self.pad_notes)
+        c.gm_note_map   = dict(self.gm_note_map)
+        return c
 
     # ------------------------------------------------------------------
     # Mute exclusif — point central
