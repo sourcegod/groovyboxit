@@ -17,7 +17,8 @@
     Pistes d'Alt+Shift+S (Phase 8 étape 2o1, § 2a E16) : dialogue (liste,
     activation selon la source, Entrée, ordre de tabulation), toutes les
     pistes entre les limiteurs en mix et en stems, choix gardé pour la
-    session, éditeur MIDI, rendu réel.
+    session, éditeur MIDI, rendu réel. Mot du compte rendu et de la fin
+    pour une sélection ou un presse-papier (Phase 8 étape 2o3).
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
@@ -946,3 +947,72 @@ def test_real_render_all_tracks_between_limiters(tmp_path, monkeypatch):
     onsets = list(np.flatnonzero(np.abs(y[:, 0]) > 1e-3))
     assert onsets == [round(s * 0.125 * SR) for s in (4, 8, 12)]
     print("  rendu réel : toutes les pistes entre les limiteurs, rien hors fenêtre : OK")
+
+
+
+# ---------------------------------------------------------------------------
+# « Sélection + résonance », « Presse-papier + résonance » (Phase 8 étape 2o3)
+# ---------------------------------------------------------------------------
+
+def _tail_render(monkeypatch):
+    """Rendu simulé « + résonance » : 1 s, dont 0,5 s de résonance."""
+    def fake(**kw):
+        kw["progress"](1.0)
+        return audio_export.RenderResult(np.zeros((SR, 2), np.float32), SR, SR // 2,
+                                         SR // 2, False, 1)
+    monkeypatch.setattr(audio_export, "render_pattern", fake)
+
+
+def test_selection_report_and_end_label_say_selection(tmp_path, env, monkeypatch):
+    _tail_render(monkeypatch)
+    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), opts=(1, 0, False, 2, -14)))
+    win = _Window(str(tmp_path))
+    win._export_audio_selection()
+    _wait(win)
+    assert d.opts_args[2]["unit"] == "Sélection"
+    assert "sélection + résonance (0,50 s)" in win.statuses[-1]
+    assert "pattern + résonance" not in win.statuses[-1]
+    print("  sélection : « Sélection + résonance » au dialogue et au compte rendu : OK")
+
+
+@pytest.mark.parametrize("editor", (False, True))
+def test_clipboard_report_and_end_label_say_clipboard(tmp_path, env, monkeypatch, editor):
+    _tail_render(monkeypatch)
+    d = env.install(Dialogs(path=str(tmp_path / "c.wav"), source=1, opts=(1, 0, False, 2, -14)))
+    win = _Window(str(tmp_path))
+    te = win._track_editor
+    if editor:
+        te.copy_events([{"type": "note", "etype": ETYPE_GRID, "track": 3, "pad": 1, "vel": 90,
+                         "offset": 21, "dur": 500, "dur_override": 0, "channel": 0}])
+    else:
+        pat = win._player._pattern
+        pat._tape[6].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 90}, time=18))
+        te._sel_tracks = {6}
+        te.copy(pat, 0)
+    win._export_audio_selection(editor=editor)
+    _wait(win)
+    assert d.opts_args[2]["unit"] == "Presse-papier"
+    assert "presse-papier + résonance (0,50 s)" in win.statuses[-1]
+    print("  presse-papier : « Presse-papier + résonance » au dialogue et au compte rendu : OK")
+
+
+def test_pattern_report_and_end_label_unchanged(tmp_path, env, monkeypatch):
+    _tail_render(monkeypatch)
+    d = env.install(Dialogs(path=str(tmp_path / "p.wav"), opts=(1, 0, False, 2, -14)))
+    win = _Window(str(tmp_path))
+    win._export_audio()
+    _wait(win)
+    assert "unit" not in d.opts_args[2]
+    assert "pattern + résonance (0,50 s)" in win.statuses[-1]
+    print("  pattern : libellé et compte rendu inchangés : OK")
+
+
+def test_end_label_for_selection_and_clipboard():
+    from ui.dialogs import AudioExportDialog
+    for unit in ("Sélection", "Presse-papier"):
+        dlg = AudioExportDialog(None, unit=unit)
+        try:
+            assert dlg._end_lb.GetString(1) == f"Fin : {unit} + résonance"
+        finally:
+            dlg.Destroy()
+    print("  dialogue : « Fin : Sélection / Presse-papier + résonance » : OK")

@@ -8562,3 +8562,16 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
   - **Toutes les pistes** : aucune restriction de pistes au rendu
     (`tracks=None`). Les pistes muettes ou hors solo restent silencieuses,
     comme à l'écoute ; en stems, leur rendu silencieux n'est pas écrit.
+
+### Phase 8 étape 2 — Avancement (2o2, 2o3, imprévus)
+
+- **Origine** : le point de forme laissé ouvert à la clôture 1j1 (le
+  compte rendu d'Alt+Shift+S disait « pattern + résonance » pour une
+  sélection). Corrigé dans ce chantier à la demande de l'utilisateur
+  (2026-10-31).
+- **2o2** (`5da4f7a`) : les travaux de la sélection et du presse-papier
+  portent leur mot (`unit`). Il passe au compte rendu (« sélection +
+  résonance », « presse-papier + résonance ») et au dialogue des
+  paramètres (« Fin : Sélection + résonance », « Fin : Presse-papier +
+  résonance »). Rien ne change pour un pattern.
+- **2o3** : 5 tests dans `test_audio_export_ui.py`.
