@@ -46,7 +46,7 @@ RELEASE_S   = 0.05      # constante de temps du retour du limiteur (W10)
 # Normalisation à un niveau visé (W11, § Phase 8 étape 1h6)
 MEASURES      = ("peak", "rms", "lufs")   # Crête, RMS, LUFS-I
 LEVEL_MIN_DB  = -24
-LEVEL_MAX_DB  = -6
+LEVEL_MAX_DB  = 0        # jusqu'à 0 dB, saturation acceptée (W12, § 1h8)
 LEVEL_DEFAULT = -14
 BLOCK      = Mixer.BLOCKSIZE   # bloc de rendu maximal : celui de l'écoute (LFO identique)
 

@@ -235,7 +235,7 @@ class AudioExportDialog(wx.Dialog):
     MEASURE_LABELS = ["Mesure : Crête", "Mesure : RMS", "Mesure : LUFS-I"]
 
     def __init__(self, parent, end_idx=0, format_idx=0, normalize=False,
-                 measure_idx=2, level_db=-14, level_min=-24, level_max=-6):
+                 measure_idx=2, level_db=-14, level_min=-24, level_max=0):
         super().__init__(parent, title="Export audio")
         self._end_lb = wx.ListBox(self, choices=self.END_LABELS, style=wx.LB_SINGLE)
         self._end_lb.SetSelection(max(0, min(end_idx, len(self.END_LABELS) - 1)))
