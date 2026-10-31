@@ -8023,3 +8023,54 @@ Ensuite viennent **1i1**, les tests de l'interface des deux exports
   fenêtre incluse, poursuite depuis 0, pistes non filtrées, pistes
   relatives, sans mise à l'échelle, notes non alignées, pistes non
   sauvegardées.
+
+### Phase 8 étape 1 — Avancement (1h15, 1i1)
+
+- **1h15** — conforme à W21 :
+  - `SelectionExportDialog` (`dialogs_temporal.py`) : liste Source ;
+    champs mesure:temps:pas avec étiquette et `SetName` ; `_validate`
+    affiche un message et garde le dialogue ouvert ;
+  - dans `ProjectMixin` : `_audio_export_ready` (export déjà en cours,
+    pause) et `_audio_export_flow` (fichier, puis paramètres), communs aux
+    deux exports ; `_export_audio_selection(editor=)` avec
+    `_selection_job` et `_clipboard_job` ; `_start_audio_export(job=)` ;
+    compte rendu au masculin ou au féminin (« exporté », « exportée ») ;
+  - Alt+Shift+S dans `key_handler_alt.py` et `mew_keymap.py` (avant le
+    transport).
+
+  Essai sans écoute, sur un vrai affichage : champs préremplis, erreurs
+  détectées, sélection et presse-papier rendus aux bonnes positions. Reste
+  à faire par l'utilisateur : l'essai à l'écoute et au lecteur d'écran.
+  Point de forme ouvert : le compte rendu dit « pattern + résonance »
+  aussi pour une sélection.
+- **1i1** — 27 tests dans `tests/test_audio_export_ui.py` (nouveau) :
+  - **Alt+Shift+W** : fichier avant paramètres ; annulation à chaque
+    dialogue ; extension ajoutée ; nom, titre et filtre proposés ; EXPORTS
+    créé puis dernier dossier retenu ; cinq options gardées et transmises
+    (format, normalisation, mesure, niveau, fin) ; paramètres du rendu
+    (copie du pattern, pan et volume globaux, carte de tempo) ; pause de
+    la lecture ; export déjà en cours ; statut d'avancement et compte rendu
+    (normalisation, limiteur, messages) ; erreur annoncée ; parent et
+    statut de l'éditeur ; fenêtre fermée pendant le rendu ;
+  - **Alt+Shift+S** : source, puis fichier, puis paramètres ; fenêtre
+    [G, D + 1) et pistes sélectionnées (ou la piste courante) ;
+    limiteurs non déplacés ; presse-papier des pistes (fenêtre principale)
+    et des notes (éditeur MIDI) ; presse-papier vide ; source gardée ;
+  - **dialogue de la source** : valeurs préremplies, `SetName`, erreurs,
+    champs inactifs pour le presse-papier, dialogue gardé ouvert sur une
+    erreur ;
+  - **raccourcis** dans les deux fenêtres ;
+  - **un rendu réel** de la sélection jusqu'au fichier.
+
+  Huit défauts réintroduits à l'essai font échouer des tests : dossier non
+  retenu, options non gardées, pas de pause, pas D exclu, presse-papier
+  des notes ignoré, droit avant gauche accepté, Alt+Shift+S absent,
+  éditeur sans presse-papier des notes.
+
+  **Piège rencontré** : `make_km()` et `teardown()` (`test_key_manager.py`)
+  créent puis détruisent une `wx.App`. Les fichiers qui passent ensuite
+  par ordre alphabétique (dialogues de banque, de CC, de filtre,
+  explorateur) perdaient l'application : 85 `PyNoAppError` dans la suite
+  complète, alors que le fichier passait seul. Le test des raccourcis
+  construit donc `KeyManager(FakeWindow())` sur la `wx.App` de la session
+  (`conftest.py`).

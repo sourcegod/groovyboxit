@@ -132,6 +132,7 @@ groovyboxit/
     ├── test_app_config.py
     ├── test_app_launch.py
     ├── test_audio_export.py
+    ├── test_audio_export_ui.py
     ├── test_audio_sampler.py
     ├── test_bank_dialogs.py
     ├── test_bank_slot.py
@@ -1779,6 +1780,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_app_config.py` | Clés de config.json du slot Banque : soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain |
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_export.py` | Export audio WAV, Phase 8 étape 1g1 : positions à l'échantillon, carte de tempo et signature, longueur exacte, régime établi (passages identiques, repli, charleston coupée à la jonction), fin de la résonance et plafond, fins de note avant les notes, passage à blanc et chargements à la volée, banque, écoute intacte, mixage, progression et annulation, limiteur (seuil, niveau gardé hors des crêtes, anticipation, retour, stéréo liée, boucle circulaire), mesures (crête, RMS, LUFS-I étalonné BS.1770-4, pondération K, portes), normalisation au niveau visé puis limiteur, dialogue (Mesure, Niveau visé −24 à 0), dither, formats, compte rendu, sélection (fenêtre, tempo, poursuite à G, pistes filtrées, boucle sur la fenêtre) et presse-papiers (pistes d'origine sauvegardées, résolution, notes alignées sur la mesure) (95 tests) |
+| `test_audio_export_ui.py` | Interface des exports audio, Phase 8 étape 1i1 : Alt+Shift+W et Alt+Shift+S (fenêtre principale, éditeur MIDI), fichier puis paramètres, annulations, extension, nom proposé, dossier et options gardés, pause de la lecture, export déjà en cours, statut et compte rendu, erreur, source sélection ou presse-papier de la fenêtre, dialogue de la source, rendu réel jusqu'au fichier (27 tests) |
 | `test_audio_sampler.py` | AudioSampler : boucle, crossfade, ADSR, pitch shift |
 | `test_bank_dialogs.py` | Slot Banque, dialogues : entête de piste, propriétés de piste en direct (liste du canal, MSB / LSB, le canal impose son instrument, piste temporaire, autres pistes du canal, note d'aperçu, Annuler, Undo, aller-retour de canal), dialogue Banque de l'Explorateur |
 | `test_bank_slot.py` | Slot Banque, modèle « orchestre » : Rack et .gvp (slot = emplacement), instrument par canal, Program Change et Bank Select (canal de l'événement, la piste suit), poursuite, le canal impose son instrument, canal 10 = batterie, rejeu, jeu direct, poursuite par le player, export (Bank Select avant le programme, canal courant) ; pédale au canal de la piste, Zero Controllers à l'arrêt, poursuite de la pédale, du Pitch Bend et de la modulation, rappel de fin de lecture |
