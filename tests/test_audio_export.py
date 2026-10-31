@@ -430,6 +430,7 @@ class FakeBank(BankEngine):
         self.release_frames = release_frames
         self.closed = False
         self.calls = []
+        self.selects = []      # (canal, programme) choisis (1h13), à part de calls
 
     def load(self, slot, path):
         self.paths[slot] = path
@@ -445,6 +446,7 @@ class FakeBank(BankEngine):
         return []
 
     def select(self, channel, slot, bank, program):
+        self.selects.append((channel, program))
         return True
 
     def note_on(self, channel, note, velocity):
@@ -1061,3 +1063,232 @@ def test_report_file_length_end_format_and_notes():
     loop = ax.RenderResult(np.zeros((SR, 2), np.float32), SR, SR, 0, False, 2, looped=True)
     assert "boucle exacte, 16 bits" in _report(loop)
     assert "pattern + résonance (aucune)" in _report(_result(np.zeros((SR, 2))), end_idx=1)
+
+
+# ---------------------------------------------------------------------------
+# Sélection et presse-papiers (W13-W20, § Phase 8 étape 1h11)
+# ---------------------------------------------------------------------------
+
+from track_editor import TrackEditor, _ClipboardData
+from pattern import ETYPE_KIT, ETYPE_CC
+
+STEP = 0.125 * SR                      # un pas à 120 BPM, 16 pas par mesure
+
+
+def test_selection_window_includes_last_step():
+    assert ax.selection_window(4, 19) == (4, 20)
+
+
+def test_window_positions_relative_to_start(tmp_path):
+    live, pat = Live(tmp_path), _pattern(bars=2)
+    for t in (2, 4, 9.5, 19, 19.75, 20):
+        _grid(pat, 0, 1, t)
+    res = _render(pat, live, window=(4, 20))
+    assert res.pattern_samples == round(16 * STEP)
+    # 2 (avant) et 20 (après) exclus ; le pas 19 compris en entier
+    assert _onsets(res.data) == [round((t - 4) * STEP) for t in (4, 9.5, 19, 19.75)]
+
+
+def test_window_follows_tempo_map(tmp_path):
+    live, pat = Live(tmp_path), _pattern(bars=2)
+    pat.set_tempo_changes([(8, 60), (24, 240)])
+    for t in (10, 26):
+        _grid(pat, 0, 1, t)
+    res = _render(pat, live, window=(6, 28))
+    tm = pat.tempo_map()
+    base = tm.secs(6)
+    assert _onsets(res.data) == [round((tm.secs(t) - base) * SR) for t in (10, 26)]
+    assert res.pattern_samples == round((tm.secs(28) - base) * SR)
+
+
+def test_window_ignores_notes_started_before(tmp_path):
+    pads = [_const(tmp_path, f"w{i}.wav", 3.0, 0.2) for i in range(16)]
+    live, pat = Live(tmp_path, pads), _pattern(bars=2)
+    _grid(pat, 0, 0, 3)                         # 3 s : sonnerait dans la fenêtre
+    res = _render(pat, live, window=(4, 20))
+    assert not res.data.any()
+
+
+def test_tracks_filter(tmp_path):
+    live, pat = Live(tmp_path), _pattern()
+    _grid(pat, 0, 1, 0)
+    _grid(pat, 1, 1, 4)
+    _grid(pat, 2, 1, 8)
+    res = _render(pat, live, tracks={1, 2})
+    assert _onsets(res.data) == [round(4 * STEP), round(8 * STEP)]
+
+
+def test_window_loop_is_steady_state_of_window(tmp_path):
+    pads = [_const(tmp_path, f"s{i}.wav", 0.9, 0.2) for i in range(16)]
+    live, pat = Live(tmp_path, pads), _pattern(bars=2)
+    _grid(pat, 0, 0, 4)
+    _grid(pat, 0, 1, 18)                        # dépasse la fin de la fenêtre
+    loop = _render(pat, live, end=ax.END_LOOP, window=(4, 20))
+    tail = _render(pat, live, end=ax.END_TAIL, window=(4, 20))
+    assert len(loop.data) == round(16 * STEP) and loop.looped
+    assert tail.tail_samples > 0
+    assert np.allclose(loop.data, _fold(tail), atol=1e-6)
+
+
+def test_window_chases_bank_state_at_start(tmp_path):
+    """Program Change avant G sur une piste rendue : l'instrument est réglé
+    à G (W15) ; celui d'une piste non rendue ne compte pas."""
+    live, bank = _bank_live(tmp_path)
+    live.router.assign_slot(3, 2)               # deuxième piste Banque
+    ch1 = live.router.track_channel_now(1)
+    ch3 = live.router.track_channel_now(3)
+    pat = _pattern(bars=2)
+    pat._tape[1].append(TapeEvent(ETYPE_PGM, channel=ch1, payload={"program": 40}, time=2))
+    pat._tape[3].append(TapeEvent(ETYPE_PGM, channel=ch3, payload={"program": 70}, time=2))
+    pat._tape[1].append(TapeEvent(ETYPE_PATCH, dur=200, payload={"note": 60, "vel": 100}, time=8))
+    _render(pat, live, window=(4, 20), tracks={1})
+    rendered = FakeBank.copies[1]               # passage simple (après le passage à blanc)
+    assert (ch1, 40) in rendered.selects
+    assert (ch3, 70) not in rendered.selects
+    assert ("on", ch1, 60) in rendered.calls
+
+
+def test_window_none_is_whole_pattern_as_before(tmp_path):
+    live, pat = Live(tmp_path), _pattern()
+    _grid(pat, 0, 1, 15.5)                      # au-delà de total - 1 : ignoré, comme à l'écoute
+    _grid(pat, 0, 1, 3)
+    assert _onsets(_render(pat, live).data) == [round(3 * STEP)]
+
+
+# -- presse-papier des pistes ------------------------------------------------
+
+def _copied(pat, tracks, lim=None):
+    ed = TrackEditor()
+    ed._sel_tracks = set(tracks)
+    if lim:
+        ed.set_lim_left(lim[0])
+        ed.set_lim_right(lim[1])
+    ed.copy(pat, 0)
+    return ed._clipboard
+
+
+def test_extract_remembers_source_tracks():
+    pat = _pattern()
+    cb = _copied(pat, {5, 2})
+    assert cb.tracks == [2, 5] and cb.num_tracks == 2
+    old = _ClipboardData(3, 1, 16, {})          # presse-papier d'avant : 0..n-1
+    assert old.tracks == [0, 1, 2]
+
+
+def test_clipboard_pattern_on_source_tracks_from_zero():
+    pat = _pattern(bars=3)
+    _grid(pat, 2, 1, 20)
+    pat._tape[5].append(TapeEvent(ETYPE_CC, channel=4, payload={"cc_num": 1, "value": 64},
+                                  time=25.5))
+    _grid(pat, 0, 1, 21)                        # piste non copiée
+    cb = _copied(pat, {2, 5}, lim=(16, 31))
+    cp = ax.clipboard_pattern(cb, pat)
+    assert cp._num_bars == 1
+    assert [e.time for e in cp._tape[2]] == [4.0]
+    assert [e.time for e in cp._tape[5]] == [9.5]
+    assert cp._tape[0] == []
+    ev = cp._tape[5][0]
+    assert (ev.etype, ev.channel, ev.payload) == (ETYPE_CC, 4, {"cc_num": 1, "value": 64})
+    assert ev is not pat._tape[5][0]            # copie, pas partage
+    assert [e.time for e in pat._tape[2]] == [20]
+
+
+def test_clipboard_pattern_keeps_pattern_settings():
+    pat = _pattern(bpm=90)
+    pat.set_tempo_changes([(8, 120)])
+    cb = _copied(pat, {0})
+    cp = ax.clipboard_pattern(cb, pat)
+    assert cp._bpm == 90 and cp._tempo_changes == pat._tempo_changes
+    assert (cp._num_steps, cp._num_beats, cp._denumerator) == \
+        (pat._num_steps, pat._num_beats, pat._denumerator)
+
+
+def test_clipboard_pattern_scales_other_resolution():
+    src = _pattern()
+    src.resize(1, 32)                           # 32 pas par mesure
+    _grid(src, 0, 1, 12)
+    cb = _copied(src, {0})
+    cur = _pattern()                            # 16 pas par mesure
+    cp = ax.clipboard_pattern(cb, cur)
+    assert [e.time for e in cp._tape[0]] == [6.0]
+
+
+def test_clipboard_pattern_from_saved_project_fraction_only():
+    """Presse-papier relu d'un .gvp : time = fraction de pas seulement ;
+    la clé (mesure, pas) donne la place, comme au collage."""
+    ev = TapeEvent(ETYPE_CC, channel=0, payload={"cc_num": 7, "value": 90}, time=0.25)
+    cb = _ClipboardData(1, 2, 16, {(0, 1, 3): [ev]}, tracks=[4])
+    cp = ax.clipboard_pattern(cb, _pattern())
+    assert cp._num_bars == 2
+    assert [e.time for e in cp._tape[4]] == [19.25]
+
+
+def test_render_clipboard_on_source_track_instrument(tmp_path):
+    pads = [_impulse(tmp_path, f"c{i}.wav") for i in range(16)]
+    live = Live(tmp_path, pads)
+    live.router.toggle_track_mute(7)            # état actuel de la piste d'origine
+    pat = _pattern(bars=2)
+    _grid(pat, 3, 1, 18)
+    _grid(pat, 7, 1, 20)
+    cp = ax.clipboard_pattern(_copied(pat, {3, 7}, lim=(16, 31)), pat)
+    res = _render(cp, live)
+    assert len(res.data) >= round(16 * STEP)
+    assert _onsets(res.data) == [round(2 * STEP)]   # piste 7 muette : non rendue
+
+
+def test_clipboard_tracks_saved_in_project():
+    from ui.mw_project import ProjectMixin
+    win = ProjectMixin.__new__(ProjectMixin)
+    win._track_editor = TrackEditor()
+    pat = _pattern()
+    _grid(pat, 6, 2, 5)
+    win._track_editor._clipboard = _copied(pat, {6, 9})
+    d = win._clipboard_to_dict()
+    assert d["tracks"] == [6, 9]
+    win._track_editor._clipboard = None
+    win._clipboard_from_dict(d)
+    assert win._track_editor._clipboard.tracks == [6, 9]
+    del d["tracks"]                             # .gvp d'avant la Phase 8 étape 1h12
+    win._clipboard_from_dict(d)
+    assert win._track_editor._clipboard.tracks == [0, 1]
+
+
+# -- presse-papier des notes -------------------------------------------------
+
+def _note(track, offset, etype=ETYPE_GRID, pad=1, vel=100, dur=300, dur_override=0):
+    return {"type": "note", "etype": etype, "track": track, "pad": pad, "vel": vel,
+            "offset": offset, "dur": dur, "dur_override": dur_override, "channel": 0}
+
+
+def test_event_clipboard_aligned_on_bars():
+    pat = _pattern(bars=4)
+    cp = ax.event_clipboard_pattern([_note(3, 21), _note(0, 37)], pat)
+    assert cp._num_bars == 2                    # mesures 2 et 3
+    assert [e.time for e in cp._tape[3]] == [5]
+    assert [e.time for e in cp._tape[0]] == [21]
+
+
+def test_event_clipboard_payloads():
+    pat = _pattern()
+    cp = ax.event_clipboard_pattern(
+        [_note(0, 2, pad=4, vel=80, dur=999, dur_override=120),
+         _note(1, 3, etype=ETYPE_KIT, pad=38, vel=90, dur=50),
+         _note(2, 4, etype=ETYPE_PATCH, pad=64, vel=70, dur=400)], pat)
+    g, k, p_ = cp._tape[0][0], cp._tape[1][0], cp._tape[2][0]
+    assert (g.etype, g.payload, g.dur) == (ETYPE_GRID, {"pad": 4, "vel": 80}, 120)
+    assert (k.etype, k.payload, k.dur) == (ETYPE_KIT, {"note": 38, "vel": 90}, 50)
+    assert (p_.etype, p_.payload, p_.dur) == (ETYPE_PATCH, {"note": 64, "vel": 70}, 400)
+
+
+def test_event_clipboard_empty_or_without_notes():
+    pat = _pattern()
+    assert ax.event_clipboard_pattern([], pat) is None
+    assert ax.event_clipboard_pattern([{"type": "cc", "track": 0, "offset": 3}], pat) is None
+
+
+def test_render_event_clipboard(tmp_path):
+    live, pat = Live(tmp_path), _pattern(bars=4)
+    cp = ax.event_clipboard_pattern([_note(0, 18), _note(1, 30)], pat)
+    res = _render(cp, live, end=ax.END_LOOP)
+    assert len(res.data) == round(16 * STEP)
+    assert _onsets(res.data) == [round(2 * STEP), round(14 * STEP)]

@@ -7984,3 +7984,42 @@ courant, aligné sur la mesure :
 
 Ensuite viennent **1i1**, les tests de l'interface des deux exports
 (`tests/test_audio_export_ui.py`), puis **1j1**, la clôture.
+
+### Phase 8 étape 1 — Avancement après l'avenant 1h11 (1h14)
+
+- **1h12** — conforme à W13-W20 :
+  - `render_pattern(..., window=(début, fin), tracks=…)` ; poursuite à
+    `début` dans le passage à blanc et dans les passages rendus ;
+  - `selection_window(G, D)`, `clipboard_pattern`,
+    `event_clipboard_pattern` ;
+  - `_ClipboardData.tracks`, sauvegardé dans le `.gvp` et dans l'Undo
+    (`"tracks"`, absent → 0..n−1).
+
+  **Écart à W14** : pas de `start_step`. Un presse-papier relu d'un
+  `.gvp` ne garde que la fraction de pas de chaque événement (`time =
+  frac`, § 5d). On replace donc chaque événement par sa clé (mesure, pas)
+  plus cette fraction, exactement comme `TrackEditor.paste`.
+- **1h13** — commit imprévu, trouvé par les tests de 1h14 : le pattern de
+  rendu des presse-papiers repartait à 100 BPM, car `Pattern.copy_from`
+  laisse volontairement le tempo de départ au player. `_render_copy_of`
+  recopie `_bpm`. **Renumérotation** : tests en 1h14 (prévus en 1h13),
+  interface en 1h15 (prévue en 1h14).
+- **1h14** — 95 tests dans `tests/test_audio_export.py` (19 de plus) :
+  - **fenêtre** : positions relatives au début, pas D compris en entier,
+    au-delà exclu ; carte de tempo dans la fenêtre ; notes d'avant G
+    ignorées, même longues ; pistes filtrées ; boucle exacte en régime
+    établi sur la fenêtre ; Program Change d'avant G poursuivi pour une
+    piste rendue, pas pour une piste exclue ; sans fenêtre, comportement
+    inchangé ;
+  - **presse-papier des pistes** : pistes d'origine retenues, depuis 0,
+    événements copiés ; réglages du pattern (tempo, carte, signature) ;
+    autre résolution remise à l'échelle ; presse-papier relu d'un `.gvp`
+    (fraction seule) ; rendu avec l'état actuel de la piste d'origine
+    (piste muette) ; `tracks` sauvegardé, relu, absent → 0..n−1 ;
+  - **presse-papier des notes** : aligné sur la mesure, pistes d'origine ;
+    GRID (durée propre), KIT et PATCH ; vide ou sans note → None ; rendu.
+
+  Sept défauts réintroduits à l'essai font échouer des tests : fin de
+  fenêtre incluse, poursuite depuis 0, pistes non filtrées, pistes
+  relatives, sans mise à l'échelle, notes non alignées, pistes non
+  sauvegardées.
