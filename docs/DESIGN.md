@@ -8140,9 +8140,10 @@ Piège des tests noté en 1i1 (`make_km` / `teardown`).
   callback écrête probablement beaucoup (`np.clip`). À mesurer
   (échantillons écrêtés en lecture), puis à revoir au besoin : gain
   FluidSynth 0,4, volume global, voire un limiteur à l'écoute ;
-- **essai de Alt+Shift+S** à l'écoute et au lecteur d'écran, pas encore
-  confirmé par l'utilisateur. Le compte rendu dit « pattern + résonance »
-  aussi pour une sélection : point de forme ouvert ;
+- Alt+Shift+S : l'essai à l'écoute et avec Orca a été **confirmé** par
+  l'utilisateur après la clôture (2026-10-31, 1j2). Reste un point de
+  forme : le compte rendu dit « pattern + résonance » aussi pour une
+  sélection ;
 - export d'un song, pistes séparées (stems), autres fréquences, formats
   compressés, true peak, plafond du limiteur réglable ;
 - poursuite des Program Change avant G sur les pistes qui ne sont pas en
@@ -8151,3 +8152,7 @@ Piège des tests noté en 1i1 (`make_km` / `teardown`).
   optimiser au besoin ;
 - dossier d'export retenu d'un lancement à l'autre : demande d'écrire
   `config.json` (chantier « Dialogue de config.json »).
+
+**Suite décidée (utilisateur, 2026-10-31, 1j2)** : à la prochaine
+session, le plan de l'export d'un song, en MIDI puis en audio, et des
+pistes séparées (stems). Ce sera la Phase 8 étape 2a.
