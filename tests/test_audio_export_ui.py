@@ -13,7 +13,11 @@
     E12-E14) : Sortie passée au dialogue et gardée pour la session, mix
     seul, stems seuls (mix rendu, pas écrit), mix + stems, gain du mix
     commun, stems silencieux omis, noms des slots, sélection, presse-papier,
-    avancement, compte rendu, rendu réel (somme des stems = mix).
+    avancement, compte rendu, rendu réel (somme des stems = mix). Choix
+    Pistes d'Alt+Shift+S (Phase 8 étape 2o1, § 2a E16) : dialogue (liste,
+    activation selon la source, Entrée, ordre de tabulation), toutes les
+    pistes entre les limiteurs en mix et en stems, choix gardé pour la
+    session, éditeur MIDI, rendu réel.
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
@@ -775,3 +779,170 @@ def test_real_render_stems_sum_to_mix(tmp_path, monkeypatch):
     assert np.max(np.abs(mix)) > 0.9                   # limiteur actif
     assert np.allclose(total, mix, atol=1e-6)
     print("  rendu réel : somme des stems = mix, limiteur actif : OK")
+
+
+
+# ---------------------------------------------------------------------------
+# Choix Pistes d'Alt+Shift+S (Phase 8 étape 2o1, docs/DESIGN.md § 2a E16)
+# ---------------------------------------------------------------------------
+
+def test_selection_dialog_tracks_field():
+    D = SelectionExportDialog
+    dlg = D(None, 4, 4, 16, 16, 47, 0)
+    try:
+        assert [dlg._tracks_lb.GetString(i) for i in range(2)] == \
+            ["Pistes : Sélectionnées", "Pistes : Toutes"]
+        assert dlg.get_tracks_idx() == D.TRACKS_SELECTED and dlg._tracks_lb.IsEnabled()
+        dlg._tracks_lb.SetSelection(1)
+        assert dlg.get_tracks_idx() == D.TRACKS_ALL
+    finally:
+        dlg.Destroy()
+    dlg = D(None, 4, 4, 16, 16, 47, 0, D.TRACKS_ALL)
+    try:
+        assert dlg.get_tracks_idx() == D.TRACKS_ALL
+    finally:
+        dlg.Destroy()
+    dlg = D(None, 4, 4, 16, 16, 47, 0, 7)
+    try:
+        assert dlg.get_tracks_idx() == D.TRACKS_ALL               # borné
+    finally:
+        dlg.Destroy()
+    print("  dialogue : liste Pistes, valeur initiale, bornée : OK")
+
+
+def test_selection_dialog_tracks_enabled_for_selection_only():
+    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47, 1)
+    try:
+        assert not dlg._tracks_lb.IsEnabled()                     # presse-papier
+        dlg._source_lb.SetSelection(0)
+        dlg._source_lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX.typeId,
+                                                    dlg._source_lb.GetId()))
+        assert dlg._tracks_lb.IsEnabled()
+    finally:
+        dlg.Destroy()
+    print("  dialogue : Pistes actif pour la source Sélection seulement : OK")
+
+
+def test_selection_dialog_enter_on_tracks_validates(monkeypatch):
+    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47)
+    ended = []
+    dlg.EndModal = ended.append
+    try:
+        dlg._tracks_lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX_DCLICK.typeId,
+                                                    dlg._tracks_lb.GetId()))
+        assert ended == [wx.ID_OK]
+    finally:
+        dlg.Destroy()
+    print("  dialogue : Entrée sur la liste Pistes valide : OK")
+
+
+def test_selection_dialog_tab_order():
+    """Ordre de tabulation (ordre de création) : Source, Pistes, limiteur
+    gauche, limiteur droit, puis les boutons."""
+    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47)
+    try:
+        focusable = [c for c in dlg.GetChildren() if not isinstance(c, wx.StaticText)]
+        assert focusable[:4] == [dlg._source_lb, dlg._tracks_lb, dlg._left, dlg._right]
+        assert all(isinstance(c, wx.Button) for c in focusable[4:])
+    finally:
+        dlg.Destroy()
+    print("  dialogue : ordre de tabulation Source, Pistes, gauche, droit : OK")
+
+
+def test_selection_all_tracks_job(tmp_path, env):
+    env.install(Dialogs(path=str(tmp_path / "s.wav"), window=(16, 31),
+                        tracks=SelectionExportDialog.TRACKS_ALL))
+    win = _Window(str(tmp_path))
+    win._track_editor._sel_tracks = {2}
+    win._export_audio_selection()
+    _wait(win)
+    kw = env.rendered[0]
+    assert kw["tracks"] is None and kw["window"] == (16, 32)
+    assert win._audio_sel_tracks == SelectionExportDialog.TRACKS_ALL
+    assert win.statuses[-1].startswith(
+        "Sélection (toutes les pistes ; 2:1:1 à 2:4:4) exportée en WAV : s.wav")
+    print("  toutes les pistes : aucune restriction, fenêtre des limiteurs, compte rendu : OK")
+
+
+def test_selection_tracks_choice_kept_for_session(tmp_path, env):
+    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), tracks=1))
+    win = _Window(str(tmp_path))
+    assert win._audio_sel_tracks == 0
+    win._export_audio_selection()
+    _wait(win)
+    assert d.sel_args[1][-1] == 0                                  # défaut au premier appel
+    d2 = env.install(Dialogs(path=str(tmp_path / "s.wav"), tracks=0, sel_ok=False))
+    win._export_audio_selection()
+    assert d2.sel_args[1][-1] == 1                                 # gardé
+    assert win._audio_sel_tracks == 1                              # annulé : inchangé
+    print("  choix Pistes gardé pour la session, pas sur annulation : OK")
+
+
+def test_clipboard_source_leaves_tracks_choice(tmp_path, env):
+    env.install(Dialogs(path=str(tmp_path / "c.wav"), source=1, tracks=1))
+    win = _Window(str(tmp_path))
+    pat = win._player._pattern
+    pat._tape[6].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 90}, time=18))
+    win._track_editor._sel_tracks = {6}
+    win._track_editor.copy(pat, 0)
+    win._export_audio_selection()
+    _wait(win)
+    assert win._audio_sel_tracks == 0
+    print("  source presse-papier : choix Pistes non modifié : OK")
+
+
+def test_selection_all_tracks_stems(tmp_path, stems_env):
+    stems_env.install(Dialogs(path=str(tmp_path / "s.wav"), output=1, window=(0, 15),
+                              tracks=SelectionExportDialog.TRACKS_ALL))
+    win = _stems_window(tmp_path, tracks=(0, 2, 5, 9))
+    win._track_editor._sel_tracks = {5}
+    win._export_audio_selection()
+    _wait(win)
+    mix, *stems = stems_env.rendered
+    assert mix["tracks"] is None
+    assert [kw["tracks"] for kw in stems] == [{0}, {2}, {5}, {9}]
+    assert all(kw["window"] == (0, 16) for kw in stems_env.rendered)
+    assert "4 pistes séparées dans s/" in win.statuses[-1]
+    print("  toutes les pistes en stems : un stem par piste non vide, même fenêtre : OK")
+
+
+def test_selection_all_tracks_in_midi_editor(tmp_path, env):
+    env.install(Dialogs(path=str(tmp_path / "s.wav"), tracks=SelectionExportDialog.TRACKS_ALL))
+    win = _Window(str(tmp_path))
+    win._track_editor._sel_tracks = {3}
+    said = []
+    win._export_audio_selection(parent="éditeur", status=said.append, editor=True)
+    _wait(win)
+    assert env.rendered[0]["tracks"] is None
+    assert said[-1].startswith("Sélection (toutes les pistes ;")
+    print("  éditeur MIDI : toutes les pistes, statut de l'éditeur : OK")
+
+
+def test_real_render_all_tracks_between_limiters(tmp_path, monkeypatch):
+    """Vrai rendu : toutes les pistes entre G et D, sélection ignorée ; une
+    note avant G ou après D n'est pas jouée."""
+    monkeypatch.setattr(mwp.wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    wav = str(tmp_path / "imp.wav")
+    x = np.zeros(2000, np.float32)
+    x[0] = 0.5
+    sf.write(wav, x, SR)
+    drv = Mixer()
+    snd = SoundManager([wav] * 16, wav, wav, driver=drv)
+    snd.load_sounds()
+    rack = Rack()
+    rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    win = _Window(str(tmp_path))
+    win._router = TrackRouter(rack, str(tmp_path), snd, lambda m: None, driver=drv)
+    win._player.volume = 100
+    pat = win._player._pattern
+    for t, at in ((0, 2), (0, 20), (3, 24), (6, 28), (9, 40)):
+        pat._tape[t].append(TapeEvent(ETYPE_GRID, payload={"pad": 0, "vel": 100}, time=at))
+    win._track_editor._sel_tracks = {3}
+    out = str(tmp_path / "all.wav")
+    win._start_audio_export(out, (1, 2, False, 2, -14), win._show_status,
+                            win._selection_job((16, 31), all_tracks=True))
+    _wait(win)
+    y, _ = sf.read(out, dtype="float32")
+    onsets = list(np.flatnonzero(np.abs(y[:, 0]) > 1e-3))
+    assert onsets == [round(s * 0.125 * SR) for s in (4, 8, 12)]
+    print("  rendu réel : toutes les pistes entre les limiteurs, rien hors fenêtre : OK")

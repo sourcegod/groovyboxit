@@ -8545,3 +8545,20 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
   - **Avancement** : un seul pourcentage, sur le mix puis chaque piste.
 - **À essayer dans l'appli** : la Sortie dans Alt+Shift+W, Alt+Shift+S et
   la fenêtre Songs, avec Orca.
+
+### Phase 8 étape 2 — Avancement (2n1, 2o1)
+
+- **2n1** (`a7060fd`) : choix Pistes dans `SelectionExportDialog`
+  (`TRACKS_LABELS`, `get_tracks_idx`), gardé pour la session
+  (`_audio_sel_tracks`) ; `_selection_job(window, all_tracks)` (E16).
+- **2o1** : 10 tests dans `test_audio_export_ui.py`.
+- **Précisions par rapport au plan** :
+  - **Place de la liste** : juste après la Source, avant les limiteurs.
+    L'ordre de tabulation est donc Source, Pistes, limiteur gauche,
+    limiteur droit, puis les boutons. Entrée sur la liste Pistes valide,
+    comme sur la liste Source.
+  - **Activation** : la liste n'est active que pour la source Sélection.
+    Avec le presse-papier, le choix n'est pas modifié.
+  - **Toutes les pistes** : aucune restriction de pistes au rendu
+    (`tracks=None`). Les pistes muettes ou hors solo restent silencieuses,
+    comme à l'écoute ; en stems, leur rendu silencieux n'est pas écrit.
