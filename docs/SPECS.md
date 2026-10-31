@@ -1899,7 +1899,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
 | `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/CC/program/position (30 tests) |
 | `test_midi_editor_window.py` | MidiEditorWindow : solo/mute des pistes (avec Undo), statut MIDI live |
-| `test_midi_export.py` | Export MIDI : fichier relu par mido, pistes, canaux, notes GRID/KIT/PATCH, CC/PGM/BEND, conversion GM, mute/solo, fin pile |
+| `test_midi_export.py` | Export MIDI : fichier relu par mido, pistes, canaux, notes GRID/KIT/PATCH, CC/PGM/BEND, conversion GM, mute/solo, fin pile ; song (Phase 8 étape 2e1) : pattern identique à l'octet, marqueurs, tempo et signature au changement, état des pistes réécrit au changement, canal par pattern, notes qui débordent au tempo suivant, pistes muettes par pattern, banque |
 | `test_midi_export_mix.py` | Export MIDI : volume et pan de piste (CC7/CC10), notes PATCH sans synthé omises, CC91/CC93 à 0 |
 | `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E |
 | `test_midi_import.py` | Import MIDI : nom, tempo, signature, longueur, pas et arrondi des notes, durées, pistes par canal, type 0, fusion, entête, volume / pan, CC / Bend, ignorés, compte rendu, aller-retour, fichier abîmé |

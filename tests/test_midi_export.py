@@ -10,7 +10,13 @@
     docs/DESIGN.md § 11a1 D1, D4, D5) ; vélocité des cases de grille
     d'après le gain joué (Phase 7 étape 12e1, § 12a1 D2) ; pistes et pads
     muets ou hors solo omis (Phase 7 étape 12f3, § 12a3 D7) ; fin du
-    fichier pile à la fin du pattern (Phase 7 étape 12i3, § 12a4 D8).
+    fichier pile à la fin du pattern (Phase 7 étape 12i3, § 12a4 D8) ;
+    export d'un song (Phase 8 étape 2e1, § 2a E1, E6-E10) : pattern
+    identique à l'octet, conductor (marqueurs, tempo et signature au
+    changement), début des patterns, état des pistes réécrit au changement
+    seulement, canal par pattern, notes qui débordent au tempo suivant,
+    pistes muettes ou vides par pattern, banque, notes de kit non
+    converties, fichier écrit.
     Le Program Change, le volume et le pan ont leurs propres tests
     (test_gm_program.py, test_midi_export_mix.py).
     Date: Wed, 21/10/2026
@@ -27,6 +33,7 @@ import pytest
 from pattern import (Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
                      ETYPE_CC, ETYPE_PGM, ETYPE_BEND)
 from midi.midi_export import (build_pattern_midi, export_pattern, grid_velocity,
+                              build_song_midi, export_song, SongPart,
                               PPQ, PATCH_DEFAULT_MS)
 
 
@@ -607,3 +614,287 @@ def test_note_rounded_onto_end_omitted():
     _add(p, 0, ETYPE_PATCH, 15.9999, {"note": 60, "vel": 100}, dur=100)
     assert _notes(_build(p).tracks[1]) == []
     print("  note arrondie sur le tick de fin : omise : OK")
+
+
+# ---------------------------------------------------------------------------
+# Export d'un song (Phase 8 étape 2e1, docs/DESIGN.md § 2a E1, E6-E10)
+# ---------------------------------------------------------------------------
+
+def _params(p, *, bpm=120, channels=None, is_synth=None, names=None, programs=None,
+            volumes=None, pans=None, audible=None, is_bank=None, gm_map=None,
+            pad_notes=None):
+    n = p._num_tracks
+    return dict(
+        bpm=bpm,
+        track_channels=channels or [Pattern.default_channel(t) for t in range(n)],
+        track_is_synth=is_synth if is_synth is not None else [True] * n,
+        track_names=names or [""] * n,
+        kit_pad_notes=pad_notes or [36 + i for i in range(16)],
+        synth_grid_notes=SYNTH_NOTES, voice_durations=[500] * 16,
+        track_programs=programs, track_volumes=volumes, track_pans=pans,
+        track_audible=audible, track_is_bank=is_bank, kit_gm_map=gm_map)
+
+def _part(p, label="P", **kw):
+    return SongPart(p, label, _params(p, **kw))
+
+def _sig_pattern(beats, steps, denominator=4, bars=1):
+    p = _pattern(bars, steps)
+    p._num_beats, p._denumerator = beats, denominator
+    return p
+
+def _state(track):
+    """[(tick, type, canal, contrôle ou programme, valeur)] des programmes et
+    des CC d'une piste (tous, CC91 / CC93 compris)."""
+    out = []
+    for at, m in _abs(track):
+        if m.type == "program_change":
+            out.append((at, "pgm", m.channel, m.program, None))
+        elif m.type == "control_change":
+            out.append((at, "cc", m.channel, m.control, m.value))
+    return out
+
+def _metas(track, kind):
+    return [(at, m) for at, m in _abs(track) if m.type == kind]
+
+
+def test_song_of_one_pattern_without_markers_is_the_pattern_file(tmp_path):
+    """E7 : un pattern est un song d'un seul segment, à l'octet près."""
+    p = _pattern(2, 16)
+    _add(p, 0, ETYPE_PATCH, 3.0, {"note": 60, "vel": 90}, dur=700)
+    _add(p, 1, ETYPE_GRID, 0.0, {"pad": 2, "vel": 80})
+    _add(p, 1, ETYPE_CC, 4.0, {"cc_num": 7, "value": 90})
+    p.set_tempo_changes([(16, 90)])
+    a, b = str(tmp_path / "a.mid"), str(tmp_path / "b.mid")
+    params = _params(p, volumes=[80] * 16, pans=[10] * 16, programs=[5] * 16)
+    build_pattern_midi(p, name="P", **params).save(a)
+    build_song_midi([SongPart(p, "P", params)], name="P", markers=False).save(b)
+    assert open(a, "rb").read() == open(b, "rb").read()
+    print("  song d'un pattern sans marqueur = fichier du pattern, à l'octet : OK")
+
+def test_song_markers_at_each_pattern():
+    a, b = _pattern(), _sig_pattern(3, 12)
+    mid = build_song_midi([_part(a, "Intro"), _part(b, "Valse"), _part(a, "Intro")],
+                          name="Song_01")
+    cond = mid.tracks[0]
+    assert cond[0].type == "track_name" and cond[0].name == "Song_01"
+    assert [(at, m.text) for at, m in _metas(cond, "marker")] == \
+        [(0, "Intro"), (4 * PPQ, "Valse"), (7 * PPQ, "Intro")]
+    assert _metas(cond, "end_of_track")[0][0] == 11 * PPQ
+    print("  marqueur au libellé de chaque pattern, fin = somme des patterns : OK")
+
+def test_song_pattern_starts_follow_signatures():
+    """Début de chaque pattern en noires (E6) : 4/4, 3/4, 6/8 (3 noires)."""
+    parts = [_part(_pattern(2, 16)), _part(_sig_pattern(3, 12)),
+             _part(_sig_pattern(6, 12, 8)), _part(_pattern())]
+    cond = build_song_midi(parts, name="S").tracks[0]
+    assert [at for at, _ in _metas(cond, "marker")] == [0, 8 * PPQ, 11 * PPQ, 14 * PPQ]
+    print("  débuts des patterns d'après leur signature : OK")
+
+def test_song_tempo_written_only_when_it_changes():
+    a, b, c = _pattern(), _pattern(), _pattern()
+    mid = build_song_midi([_part(a, bpm=120), _part(b, bpm=120), _part(c, bpm=90)],
+                          name="S")
+    tempos = [(at, round(mido.tempo2bpm(m.tempo), 3)) for at, m in _metas(mid.tracks[0], "set_tempo")]
+    assert tempos == [(0, 120), (8 * PPQ, 90)]
+    print("  tempo réécrit seulement quand il change : OK")
+
+def test_song_tempo_changes_of_each_pattern_are_offset():
+    a = _pattern(2, 16)
+    a.set_tempo_changes([(16, 90)])                 # 2e mesure à 90
+    b = _pattern()
+    mid = build_song_midi([_part(a, bpm=120), _part(b, bpm=120)], name="S")
+    tempos = [(at, round(mido.tempo2bpm(m.tempo), 3)) for at, m in _metas(mid.tracks[0], "set_tempo")]
+    # 120 au départ, 90 à la 2e mesure, retour à 120 au début de b
+    assert tempos == [(0, 120), (4 * PPQ, 90), (8 * PPQ, 120)]
+    print("  carte de tempo de chaque pattern, décalée ; tempo de b rétabli : OK")
+
+def test_song_signature_written_only_when_it_changes():
+    parts = [_part(_pattern()), _part(_pattern()), _part(_sig_pattern(3, 12)),
+             _part(_sig_pattern(3, 12)), _part(_pattern())]
+    sigs = [(at, m.numerator, m.denominator)
+            for at, m in _metas(build_song_midi(parts, name="S").tracks[0], "time_signature")]
+    assert sigs == [(0, 4, 4), (8 * PPQ, 3, 4), (14 * PPQ, 4, 4)]
+    print("  signature réécrite seulement quand elle change : OK")
+
+def test_song_events_placed_in_each_pattern():
+    a, b = _pattern(), _sig_pattern(3, 12)
+    _add(a, 0, ETYPE_PATCH, 4.0, {"note": 60, "vel": 100}, dur=100)
+    _add(b, 0, ETYPE_PATCH, 4.0, {"note": 62, "vel": 100}, dur=100)   # 2e temps de b (4 pas par temps)
+    mid = build_song_midi([_part(a), _part(b), _part(a)], name="S")
+    starts = [(n[0], n[2]) for n in _notes(mid.tracks[1])]
+    assert starts == [(PPQ, 60), (4 * PPQ + PPQ, 62), (7 * PPQ + PPQ, 60)]
+    print("  événements placés dans chaque pattern, pattern répété : OK")
+
+def test_song_state_written_once_when_unchanged():
+    """E9 : programme, CC7, CC10, CC91, CC93 au premier pattern ; rien
+    ensuite si rien ne change."""
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)
+    kw = dict(programs=[5] * 16, volumes=[80] * 16, pans=[20] * 16)
+    st = _state(build_song_midi([_part(a, **kw), _part(b, **kw)], name="S").tracks[1])
+    assert st == [(0, "pgm", 0, 5, None), (0, "cc", 0, 7, 102), (0, "cc", 0, 10, 77),
+                  (0, "cc", 0, 91, 0), (0, "cc", 0, 93, 0)]
+    print("  état complet au premier pattern, rien d'écrit ensuite : OK")
+
+def test_song_state_rewritten_when_it_changes():
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)
+    st = _state(build_song_midi(
+        [_part(a, programs=[5] * 16, volumes=[80] * 16, pans=[20] * 16),
+         _part(b, programs=[9] * 16, volumes=[80] * 16, pans=[-50] * 16)],
+        name="S").tracks[1])
+    later = [e for e in st if e[0] > 0]
+    assert later == [(4 * PPQ, "pgm", 0, 9, None), (4 * PPQ, "cc", 0, 10, 32)]
+    print("  programme et pan réécrits au changement, volume égal non réécrit : OK")
+
+def test_song_state_compared_with_tape_events():
+    """Un CC7 de _tape a changé le volume dans a : le volume rangé de b,
+    pourtant égal à celui de a, est réécrit (comme à la lecture, où le
+    pattern suivant rétablit son volume)."""
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)
+    _add(a, 0, ETYPE_CC, 8.0, {"cc_num": 7, "value": 30})
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)
+    st = _state(build_song_midi([_part(a, volumes=[100] * 16), _part(b, volumes=[100] * 16)],
+                                name="S").tracks[1])
+    cc7 = [(at, v) for at, kind, _ch, c, v in st if kind == "cc" and c == 7]
+    assert cc7 == [(0, 127), (2 * PPQ, 30), (4 * PPQ, 127)]
+    print("  CC7 de _tape pris en compte : volume de b réécrit : OK")
+
+def test_song_track_channel_of_each_pattern():
+    """Canal propre à chaque pattern : sur un canal neuf, état complet."""
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)
+    kw = dict(programs=[5] * 16, volumes=[80] * 16)
+    mid = build_song_midi([_part(a, channels=[0] * 16, **kw),
+                           _part(b, channels=[3] * 16, **kw)], name="S")
+    st = _state(mid.tracks[1])
+    assert [e for e in st if e[0] == 4 * PPQ] == \
+        [(4 * PPQ, "pgm", 3, 5, None), (4 * PPQ, "cc", 3, 7, 102),
+         (4 * PPQ, "cc", 3, 91, 0), (4 * PPQ, "cc", 3, 93, 0)]
+    assert [(n[2], n[4]) for n in _notes(mid.tracks[1])] == [(60, 0), (62, 3)]
+    print("  canal de chaque pattern ; état complet sur le canal neuf : OK")
+
+def test_song_note_overflows_at_next_pattern_tempo():
+    """E1, E10 : une note qui déborde garde sa durée en secondes, au tempo
+    du pattern suivant."""
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 12.0, {"note": 60, "vel": 100}, dur=1500)   # à 1,5 s, 1,5 s
+    _add(b, 1, ETYPE_PATCH, 0.0, {"note": 70, "vel": 100}, dur=100)
+    mid = build_song_midi([_part(a, bpm=120), _part(b, bpm=60)], name="S")
+    # fin à 3,0 s = fin de a (2 s, tick 1920) + 1 s à 60 BPM (480 ticks)
+    assert _notes(mid.tracks[1]) == [(3 * PPQ, 4 * PPQ + PPQ, 60, 100, 0)]
+    print("  note qui déborde : durée au tempo du pattern suivant : OK")
+
+def test_song_note_cut_at_song_end_only():
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 12.0, {"note": 60, "vel": 100}, dur=1000)
+    _add(b, 0, ETYPE_PATCH, 12.0, {"note": 62, "vel": 100}, dur=5000)
+    mid = build_song_midi([_part(a), _part(b)], name="S")
+    assert [(n[0], n[1], n[2]) for n in _notes(mid.tracks[1])] == \
+        [(3 * PPQ, 5 * PPQ, 60), (7 * PPQ, 8 * PPQ, 62)]
+    assert _abs(mid.tracks[1])[-1] == (8 * PPQ, mid.tracks[1][-1])
+    print("  note coupée seulement à la fin du song : OK")
+
+def test_song_overlap_across_patterns():
+    """Même note rejouée au début du pattern suivant avant son note-off :
+    note-off de la première avancé (D6, sur tout le song)."""
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 12.0, {"note": 60, "vel": 100}, dur=1500)
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 90}, dur=250)
+    mid = build_song_midi([_part(a), _part(b)], name="S")
+    assert _notes(mid.tracks[1]) == [(3 * PPQ, 4 * PPQ, 60, 100, 0),
+                                     (4 * PPQ, 4 * PPQ + _ms_ticks(250), 60, 90, 0)]
+    print("  chevauchement d'un pattern à l'autre : note-off avancé : OK")
+
+def test_song_events_at_pattern_end_do_not_leak():
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PATCH, 16.0, {"note": 60, "vel": 100}, dur=100)   # pile à la fin de a
+    _add(b, 0, ETYPE_PATCH, 4.0, {"note": 62, "vel": 100}, dur=100)
+    mid = build_song_midi([_part(a), _part(b)], name="S")
+    assert [n[2] for n in _notes(mid.tracks[1])] == [62]
+    print("  événement à la fin d'un pattern : omis, pas reporté sur le suivant : OK")
+
+def test_song_track_muted_in_one_pattern():
+    """E10 : muette dans a, ses événements de a sont omis ; son état est
+    écrit au premier pattern où elle joue."""
+    a, b = _pattern(), _pattern()
+    _add(a, 2, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)
+    _add(b, 2, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)
+    muted = [t != 2 for t in range(16)]
+    mid = build_song_midi([_part(a, audible=muted, volumes=[50] * 16),
+                           _part(b, volumes=[50] * 16)], name="S")
+    assert len(mid.tracks) == 2
+    assert [n[2] for n in _notes(mid.tracks[1])] == [62]
+    assert {e[0] for e in _state(mid.tracks[1])} == {4 * PPQ}
+    print("  piste muette dans un pattern : omise là, état au premier pattern joué : OK")
+
+def test_song_track_omitted_only_if_silent_everywhere():
+    a, b = _pattern(), _pattern()
+    _add(a, 1, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=100)   # 1 : seulement dans a
+    _add(b, 3, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)   # 3 : seulement dans b
+    _add(a, 5, ETYPE_PATCH, 0.0, {"note": 64, "vel": 100}, dur=100)   # 5 : muette partout
+    _add(b, 5, ETYPE_PATCH, 0.0, {"note": 64, "vel": 100}, dur=100)
+    muted5 = [t != 5 for t in range(16)]
+    names = [f"T{t}" for t in range(16)]
+    mid = build_song_midi([_part(a, audible=muted5, names=names),
+                           _part(b, audible=muted5, names=names)], name="S")
+    assert [tr[0].name for tr in mid.tracks[1:]] == ["T1", "T3"]
+    print("  piste omise seulement si vide ou muette dans tous les patterns : OK")
+
+def test_song_track_name_from_first_pattern_where_it_plays():
+    a, b = _pattern(), _pattern()
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=100)
+    mid = build_song_midi([_part(a, names=["Orgue"] + [""] * 15),
+                           _part(b, names=["Piano"] + [""] * 15)], name="S")
+    assert mid.tracks[1][0].name == "Piano"
+    print("  nom de piste : celui du premier pattern où elle joue : OK")
+
+def test_song_bank_channel_resets_to_pattern_channel():
+    """Piste en Banque : le Program Change de a la fait passer sur son
+    canal ; au début de b, elle repart du canal de la piste dans b (comme
+    à la lecture : canaux du pattern suivant, puis chase)."""
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_PGM, 0.0, {"program": 40}, channel=4)
+    _add(a, 0, ETYPE_PATCH, 4.0, {"note": 60, "vel": 100}, dur=100)
+    _add(b, 0, ETYPE_PATCH, 4.0, {"note": 62, "vel": 100}, dur=100)
+    bank = [True] + [False] * 15
+    mid = build_song_midi([_part(a, is_bank=bank, is_synth=[False] * 16, channels=[0] * 16),
+                           _part(b, is_bank=bank, is_synth=[False] * 16, channels=[0] * 16)],
+                          name="S")
+    assert [(n[2], n[4]) for n in _notes(mid.tracks[1])] == [(60, 4), (62, 0)]
+    pgms = [(at, ch, prog) for at, kind, ch, prog, _ in _state(mid.tracks[1]) if kind == "pgm"]
+    assert pgms == [(0, 4, 40)]
+    print("  banque : canal du Program Change dans a, canal de la piste dans b : OK")
+
+def test_song_unmapped_kit_notes_collected_over_all_patterns():
+    a, b = _pattern(), _pattern()
+    _add(a, 0, ETYPE_KIT, 0.0, {"note": 36, "vel": 100})
+    _add(b, 0, ETYPE_KIT, 0.0, {"note": 37, "vel": 100})
+    unmapped = set()
+    build_song_midi([_part(a, is_synth=[False] * 16, gm_map={36: 36}),
+                     _part(b, is_synth=[False] * 16, gm_map={36: 36})],
+                    name="S", unmapped=unmapped)
+    assert unmapped == {37}
+    print("  notes de kit non converties : réunies sur tout le song : OK")
+
+def test_song_empty_gives_conductor_only():
+    mid = build_song_midi([], name="S")
+    assert len(mid.tracks) == 1
+    assert [m.type for m in mid.tracks[0]] == ["track_name", "end_of_track"]
+    print("  song vide : piste conductor seule : OK")
+
+def test_export_song_written_and_reread(tmp_path):
+    a, b = _pattern(), _sig_pattern(3, 12)
+    _add(a, 0, ETYPE_PATCH, 0.0, {"note": 60, "vel": 100}, dur=250)
+    _add(b, 0, ETYPE_PATCH, 0.0, {"note": 62, "vel": 100}, dur=250)
+    path = str(tmp_path / "song.mid")
+    export_song(path, [_part(a, "Intro"), _part(b, "Valse")], name="Song_01")
+    mid = mido.MidiFile(path)
+    assert mid.type == 1 and mid.ticks_per_beat == PPQ and len(mid.tracks) == 2
+    assert [m.text for m in mid.tracks[0] if m.type == "marker"] == ["Intro", "Valse"]
+    assert [(n[0], n[2]) for n in _notes(mid.tracks[1])] == [(0, 60), (4 * PPQ, 62)]
+    print("  export_song : fichier écrit et relu : OK")

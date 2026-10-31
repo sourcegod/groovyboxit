@@ -8418,3 +8418,29 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
   - les événements de la tape sont partagés avec le store, comme dans
     `copy_from` et le `_snapshot` de l'export audio ; seules les listes
     sont copiées.
+
+### Phase 8 étape 2 — Avancement (2d1, 2e1)
+
+- **2d1** (`921c553`) : dans `midi/midi_export.py`, `build_song_midi`,
+  `SongPart`, `export_song` et l'écrivain de segment `_segment_track`
+  (E7-E10). `build_pattern_midi` est devenu un song d'un seul segment,
+  sans marqueur. Les 115 fichiers MIDI construits par la suite de tests
+  ont été comparés avant et après, par empreinte : identiques à l'octet.
+- **2e1** : 22 tests du song dans `tests/test_midi_export.py`.
+- **Précisions par rapport au plan** :
+  - **E9, état comparé par canal** : programme, CC7, CC10, CC91 et CC93
+    sont comparés à l'état laissé **sur ce canal** par les patterns
+    précédents, événements de `_tape` compris. Un CC7 enregistré qui a
+    changé le volume fait donc réécrire le volume rangé du pattern
+    suivant, comme à la lecture. Sur un canal où la piste n'a pas encore
+    joué, l'état est écrit en entier.
+  - **E10** : une note qui déborde garde sa durée en secondes ; sa fin est
+    placée au tempo du pattern où elle tombe. Un événement placé à la fin
+    d'un pattern, ou au-delà, reste omis : il n'est pas reporté sur le
+    pattern suivant.
+  - **Piste en Banque** : au début de chaque pattern, elle repart du
+    canal de la piste dans ce pattern, comme à la lecture (canaux du
+    pattern suivant, puis `chase`).
+  - **Nom de piste** : celui du premier pattern où elle joue.
+  - **Conductor** : le marqueur précède le tempo et la signature au même
+    tick.
