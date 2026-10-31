@@ -184,11 +184,12 @@ class ProjectMixin:
 
     #--------------------------------------------------------------------------
     # Export audio WAV du pattern courant (Phase 8 étape 1h1, docs/DESIGN.md
-    # § Phase 8 étape 1a, W8) : options, fichier, rendu dans un fil
+    # § Phase 8 étape 1a, W8) : fichier, options, rendu dans un fil
     # (audio_export, sans wx), avancement et compte rendu au statut.
 
     # Choix du dialogue gardés pour la session : fin, format, normaliser
     _audio_export_opts   = (0, 0, False)
+    _audio_export_dir    = None     # dernier dossier choisi (session, 1h2)
     _audio_export_thread = None
     _AUDIO_ENDS          = (audio_export.END_LOOP, audio_export.END_TAIL)
     _AUDIO_FORMAT_NAMES  = ("16 bits", "24 bits", "32 bits flottant")
@@ -205,21 +206,17 @@ class ProjectMixin:
         if self._player.playing:                    # W8 : lecture arrêtée, position gardée
             self._player.pause_pattern()
             self._router.stop_all_synth_voices()
-        dlg = AudioExportDialog(parent or self, *self._audio_export_opts)
-        ok = dlg.ShowModal() == wx.ID_OK
-        opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize())
-        dlg.Destroy()
-        if not ok:
-            status("Export audio annulé")
-            return
-        self._audio_export_opts = opts
-        try:
-            os.makedirs(self._exports_dir, exist_ok=True)
-        except OSError:
-            pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
+        # Fichier d'abord, puis paramètres (ordre standard, 1h2) ; dossier :
+        # le dernier choisi dans la session, sinon EXPORTS
+        start = self._audio_export_dir or self._exports_dir
+        if start == self._exports_dir:
+            try:
+                os.makedirs(self._exports_dir, exist_ok=True)
+            except OSError:
+                pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
         fdlg = wx.FileDialog(
             parent or self, "Exporter le pattern en WAV…",
-            defaultDir=self._exports_dir,
+            defaultDir=start,
             defaultFile=self._midi_export_filename(".wav"),
             wildcard="Fichiers WAV (*.wav)|*.wav",
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
@@ -232,6 +229,15 @@ class ProjectMixin:
             return
         if not path.lower().endswith(".wav"):
             path += ".wav"
+        self._audio_export_dir = os.path.dirname(path)
+        dlg = AudioExportDialog(parent or self, *self._audio_export_opts)
+        ok = dlg.ShowModal() == wx.ID_OK
+        opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize())
+        dlg.Destroy()
+        if not ok:
+            status("Export audio annulé")
+            return
+        self._audio_export_opts = opts
         self._start_audio_export(path, opts, status)
 
     def _start_audio_export(self, path, opts, status):
