@@ -8156,3 +8156,248 @@ Piège des tests noté en 1i1 (`make_km` / `teardown`).
 **Suite décidée (utilisateur, 2026-10-31, 1j2)** : à la prochaine
 session, le plan de l'export d'un song, en MIDI puis en audio, et des
 pistes séparées (stems). Ce sera la Phase 8 étape 2a.
+
+---
+
+## Phase 8 étape 2a — Export du song (MIDI puis audio) et pistes séparées (stems)
+
+### Numérotation des commits de ce chantier
+
+`2a` = ce plan (doc seule). Le code commence à `2b1`. Une paire impl →
+tests par sous-chantier ; `2a2`, `2b2`… pour un commit imprévu. Les
+décisions de ce plan sont notées **E1, E2…** (§ 2a).
+
+### Origine du besoin
+
+- Le song et les stems ont été laissés hors périmètre en Phase 7 étape 10
+  (export MIDI) et en Phase 8 étape 1 (export audio).
+- Demande de l'utilisateur (2026-10-31, clôture 1j2) : « à la prochaine
+  session on pourrait faire le plan de l'export du Song en Midi, puis en
+  Audio, ainsi que les pistes séparées ». L'ordre est voulu : MIDI du
+  song, puis audio du song, puis stems.
+- Ajout de l'utilisateur pendant le plan (2026-10-31) : « Pour
+  l'exportation des pistes séparées, ajouter l'option sélection, avec la
+  possibilité d'une sélection temporelle avec les limiteurs Gauche/Droit
+  de toutes les pistes » (E16).
+
+### État des lieux constaté en code (2026-10-31, 3035 tests verts à 1j1)
+
+- **Song** (`src/song.py`) : `_name`, `_sequence` (indices dans
+  `_pattern_list` ; un même pattern peut revenir), `_looping`. Un song
+  vide est refusé par `_play_song` (« Song vide — ajoutez des
+  patterns… »).
+- **Enchaînement en lecture** (`DrumPlayer._on_measure_end`,
+  `player/dp_playback.py:221`) : en song, `_looping` du pattern est forcé
+  à `False`. Chaque pattern est donc joué **une fois, en entier** ; ses
+  points de boucle et son compteur sont ignorés
+  (`LoopManager.compute_window`). Au passage, le player fait `copy_from`
+  du pattern suivant (tape, mesures, pas, signature, carte de tempo) et
+  prend son BPM. Rien n'est coupé : les voix en cours continuent. En fin
+  de song, le player se met en pause, ou repart du premier pattern si le
+  song boucle.
+- **État propre à chaque pattern** (`MainWindow._on_song_advance`,
+  `ui/mw_songs.py:133`, appliqué après coup sur le fil de l'UI) :
+  - voix des pads (`_voices` : volume, pan, durée, mute, solo) ;
+  - slots, mute, solo, volume, pan et canal de chaque piste ;
+  - gamme de lecture (`_kb_scale`, `_kb_root_midi`) ;
+  - poursuite des banques (`router.chase(new._tape, 0.0)`).
+
+  Le mixage et les instruments **changent donc d'un pattern à l'autre**.
+  À l'écoute, le changement arrive quelques millisecondes après la
+  frontière ; au rendu, il peut tomber pile dessus.
+- **Pattern courant** : il est édité dans le player. `_play_song` le
+  range d'abord dans `_pattern_list` (`_flush_pattern_to_store`, plus
+  `_voices` lu dans le `voice_manager`). Un export devra faire de même.
+- **Export MIDI d'un pattern** (`midi/midi_export.py`,
+  `build_pattern_midi`) : une passe sur un seul pattern. Il écrit
+  programme, CC7, CC10, CC91 et CC93 au tick 0. Les notes sont coupées à
+  la fin du pattern (12a4 D8), et les chevauchements traités par
+  (canal, note). Les arguments viennent de `mw_project.py:107` (état du
+  routeur et du `voice_manager`).
+- **Export audio** (`audio_export.py`, `render_pattern`) : une seule
+  carte de tempo et un seul état du routeur, plus une fenêtre et un choix
+  de pistes (`tracks`). Le limiteur (`limit_peaks`) est une enveloppe de
+  gain, multipliée aux données et identique sur les deux canaux.
+- **Export de la sélection** (Alt+Shift+S, `_export_audio_selection`,
+  `mw_project.py:263`) : le dialogue `SelectionExportDialog` propose la
+  source (sélection ou presse-papier) et les limiteurs G et D, préremplis
+  en mesure:temps:pas. La sélection prend les pistes de
+  `TrackEditor.get_effective_tracks` (les pistes sélectionnées, sinon la
+  piste courante). Il n'existe pas encore de choix « toutes les pistes ».
+- **Fenêtre Songs** (`ui/song_window.py`) : Alt+Shift+E et Alt+Shift+W y
+  sont libres.
+
+### Comportement de Sonar et de Reaper (de mémoire, à vérifier à l'essai)
+
+- **Song** : les deux exportent la ligne de temps du projet d'un seul
+  tenant, et les queues des sons débordent sur la suite. En MIDI, la
+  piste de tempo porte les changements de tempo et de signature.
+- **Stems** : Reaper propose « Master mix », « Stems (selected tracks) »
+  ou « Master mix + stems ». Sa plage peut être tout le projet ou la
+  sélection temporelle, et son nom de fichier accepte des motifs
+  (`$track`, sous-dossier possible). Ses options de normalisation
+  comprennent un gain commun aux stems, calculé sur le mix. Sonar exporte
+  « chaque piste séparément », sur la sélection ou sur tout le projet.
+
+### Décisions validées (utilisateur, 2026-10-31)
+
+- **E1 — Résonance continue** : le song est rendu d'un seul tenant. Les
+  notes et les queues d'un pattern débordent sur le suivant, comme à
+  l'écoute.
+- **E2 — Deux fins pour le song audio**, comme pour un pattern : « song +
+  résonance » ou « boucle exacte » (queue du dernier pattern repliée sur
+  le début du premier, en régime établi). Par défaut : boucle exacte si
+  le song est en mode boucle, sinon song + résonance. En MIDI, le song
+  est écrit une seule fois.
+- **E3 — Stems dans un sous-dossier** du nom du fichier : `Song_01/`
+  contient `Song_01_01_Drums.wav`, `Song_01_02_Bass.wav`… (numéro de
+  piste sur deux chiffres, puis nom de la piste ou `Track NN`). Avec
+  « mix + pistes », le mix `Song_01.wav` est écrit à côté du dossier. La
+  règle est la même pour un pattern ou une sélection
+  (`Pat_03_selection/Pat_03_selection_01_Drums.wav`).
+- **E4 — Gain commun calculé sur le mix** : la normalisation et le
+  limiteur sont calculés sur le mix. Le même gain et la même enveloppe du
+  limiteur sont appliqués à chaque stem, sans limiteur propre. La somme
+  des stems redonne le mix, au dither près (sauf les cas de E12).
+- **E16 — Stems de la sélection, sur les pistes choisies ou sur toutes**
+  (ajout de l'utilisateur) : le dialogue d'Alt+Shift+S reçoit, pour la
+  source « Sélection », un choix **Pistes** :
+  - « Pistes sélectionnées » : comportement actuel, les pistes
+    sélectionnées ou la piste courante ;
+  - « Toutes les pistes » : sélection temporelle seule. Les limiteurs
+    Gauche et Droit s'appliquent à toutes les pistes non vides et
+    audibles.
+
+  Le choix est retenu pour la session. Il vaut pour le mix comme pour les
+  stems (E14) : Alt+Shift+S, « Toutes les pistes », Sortie « Pistes
+  séparées » donne un stem par piste, entre G et D. Le compte rendu le
+  dit (« toutes les pistes ; 2:1:1 à 4:4:4 »). La fenêtre principale et
+  l'éditeur MIDI sont concernés tous les deux.
+
+### Choix de conception proposés
+
+**Le song comme suite de segments**
+
+- **E5 — `SongSegment`** : un pattern du song, figé en données pures et
+  sans wx. Il contient :
+  - une copie du pattern (tape, mesures, pas, signature, carte de
+    tempo) et son BPM ;
+  - son état : voix des pads, slots, mute, solo, volume, pan et canal
+    des pistes, gamme ;
+  - son début, en secondes et en noires depuis le début du song.
+
+  `song_segments(song, pattern_list)` construit la liste, après le
+  rangement du pattern courant. Les deux exports partent de cette liste.
+  Chaque pattern est pris en entier, une fois (comme en lecture) ; ses
+  points de boucle sont ignorés.
+- **E6 — Tempo et signature de chaque pattern** : chaque segment garde
+  son BPM, sa carte de tempo et sa signature, comme en lecture. La durée
+  du song est la somme des durées des segments.
+
+**Export MIDI du song**
+
+- **E7 — Une seule écriture pour le pattern et le song** :
+  `build_pattern_midi` est découpé en deux parties, un écrivain de
+  segment (tick de départ, état du segment) et un assemblage. Un pattern
+  devient un song d'un seul segment. **Le fichier d'un pattern ne change
+  pas d'un octet** ; les tests existants de `test_midi_export.py` en
+  sont la garde.
+- **E8 — Piste conductor** : elle porte le nom du song. À chaque début de
+  pattern, elle reçoit un `set_tempo`, un `time_signature` si la
+  signature change, et un `marker` au libellé du pattern (Sonar et
+  Reaper l'affichent). Viennent ensuite les changements de tempo de
+  chaque pattern, décalés.
+- **E9 — État des pistes à chaque pattern** : au premier segment, comme
+  aujourd'hui (programme, CC7, CC10, CC91, CC93). Ensuite, programme, CC7
+  et CC10 ne sont réécrits que s'ils changent par rapport au segment
+  précédent sur cette piste, ou si le canal de la piste change. Les
+  pistes en Banque gardent leurs CC0, CC32 et Program Change de `_tape`,
+  poursuivis par segment (comme `chase`).
+- **E10 — Notes au passage** : une note déborde sur le pattern suivant
+  (E1) et n'est coupée qu'à la fin du song. Les chevauchements par
+  (canal, note) sont traités sur tout le song. Une piste n'est omise que
+  si elle est vide, ou muette ou hors solo, dans **tous** les segments.
+  Dans un segment où elle est muette, ses événements sont omis.
+
+**Export audio du song**
+
+- **E11 — `render_song(segments, router, …)`** : un rendu continu.
+  - Les événements de chaque segment sont placés à l'échantillon par sa
+    carte de tempo, puis décalés de son début.
+  - À chaque frontière, à l'échantillon près, l'état du segment est
+    appliqué à la copie du routeur et au `voice_manager` du rendu :
+    slots, mix, canaux, gamme, voix, `chase` des banques. Les voix en
+    cours continuent.
+  - Le passage à blanc parcourt tous les segments, pour charger tous les
+    patchs du song.
+  - Les deux fins (E2) reprennent le régime établi de `render_pattern`,
+    sur la durée du song.
+
+  `render_pattern` devient un `render_song` d'un seul segment ; ses tests
+  sont la garde.
+
+**Pistes séparées (stems)**
+
+- **E12 — Un rendu par piste** : un rendu par piste non vide et audible
+  (`tracks={t}`), en plus du mix. C'est simple et sûr. La durée est
+  multipliée par le nombre de pistes (prototype, voir la note « moteur
+  audio = prototype Python, cible C/C++ ») ; un mixeur à bus par piste
+  pourra venir avec le moteur C/C++. La somme des stems égale le mix,
+  sauf dans deux cas, notés dans la doc :
+  - un groupe de mute partagé entre pistes (une charleston coupée par une
+    autre piste) ;
+  - deux pistes sur un même canal de banque (le CC7 de l'une agit sur
+    l'autre).
+- **E13 — Gain commun (E4)** : `apply_gain` rend aussi son gain de
+  normalisation et l'enveloppe du limiteur (`limit_peaks`). Les deux sont
+  calculés sur le mix, qui est rendu même s'il n'est pas écrit, puis
+  appliqués à chaque stem. Le dither est tiré indépendamment pour chaque
+  fichier.
+- **E14 — Sortie, dans le dialogue des paramètres**
+  (`AudioExportDialog`) : « Mix », « Pistes séparées » ou « Mix +
+  pistes ». Disponible pour le pattern, la sélection (E16), le
+  presse-papier et le song, et retenue pour la session comme les autres
+  options. Le compte rendu donne le nombre de fichiers et le dossier.
+
+**Interface**
+
+- **E15 — Fenêtre Songs** : Alt+Shift+E exporte en MIDI le song
+  sélectionné, et Alt+Shift+W l'exporte en audio. Le parcours est celui
+  d'un pattern : fichier dans `EXPORTS`, puis les paramètres pour
+  l'audio. Le nom proposé est `Song_NN[_nom]`. La lecture est mise en
+  pause pendant le rendu. Un song vide est refusé, avec le message de la
+  lecture. La fenêtre principale garde Alt+Shift+E et Alt+Shift+W pour
+  le pattern.
+
+### Portée exclue
+
+- l'export du song depuis la fenêtre principale ou l'éditeur MIDI ;
+- une sélection temporelle dans un song (les limiteurs restent ceux du
+  pattern) ;
+- les stems en MIDI (le SMF de type 1 sépare déjà les pistes) ;
+- un mixeur à bus par piste (E12), les autres fréquences, les formats
+  compressés, le true peak ;
+- le métronome et le Note Repeat dans les fichiers ;
+- le point ouvert du niveau à l'écoute (1j1), qui reste un chantier à
+  part.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **2a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **2b1** | Implémentation — `SongSegment`, `song_segments`, rangement du pattern courant avant export (E5, E6). | `src/song.py`, `ui/mw_songs.py` |
+| **2c1** | Tests — 2b1 (début des segments en secondes et en noires, tempo et signature par pattern, carte de tempo, pattern répété, état figé indépendant de la liste, pattern courant rangé). | `tests/test_song_segments.py` (nouveau), `docs/SPECS.md` |
+| **2d1** | Implémentation — écrivain de segment et `build_song_midi` (E7-E10). | `midi/midi_export.py` |
+| **2e1** | Tests — 2d1 (pattern identique à l'octet ; conductor : tempo, signature, marqueurs ; état réécrit au changement seulement ; notes qui débordent ; muet par segment ; banque). | `tests/test_midi_export.py` |
+| **2f1** | Implémentation — Alt+Shift+E dans la fenêtre Songs (E15). | `ui/song_window.py`, `ui/mw_songs.py`, `ui/mw_project.py` |
+| **2g1** | Tests — 2f1. | `tests/test_song_export_ui.py` (nouveau), `docs/SPECS.md` |
+| **2h1** | Implémentation — `render_song`, état appliqué aux frontières, passage à blanc sur tout le song, deux fins (E11). | `src/audio_export.py` |
+| **2i1** | Tests — 2h1 (pattern inchangé, frontières à l'échantillon, tempo par segment, queue qui déborde, changement de slot et de mix à la frontière, boucle exacte du song). | `tests/test_audio_export.py` |
+| **2j1** | Implémentation — Alt+Shift+W dans la fenêtre Songs (E15). Essayé à l'écoute et avec Orca. | `ui/song_window.py`, `ui/mw_project.py` |
+| **2k1** | Tests — 2j1. | `tests/test_song_export_ui.py` |
+| **2l1** | Implémentation — stems : rendu par piste, gain et enveloppe communs, sous-dossier, option Sortie, compte rendu (E3, E4, E12-E14). | `src/audio_export.py`, `ui/dialogs_simple.py`, `ui/mw_project.py` |
+| **2m1** | Tests — 2l1 (somme des stems = mix, nommage et dossier, pistes muettes omises, gain commun, option retenue). | `tests/test_audio_export.py`, `tests/test_audio_export_ui.py` |
+| **2n1** | Implémentation — choix Pistes (« Pistes sélectionnées » / « Toutes les pistes ») dans le dialogue d'Alt+Shift+S, fenêtre principale et éditeur MIDI ; compte rendu (E16). Essayé avec Orca. | `ui/dialogs_temporal.py`, `ui/mw_project.py` |
+| **2o1** | Tests — 2n1 (toutes les pistes entre G et D, mix et stems ; choix retenu ; pistes vides ou muettes omises ; ordre de tabulation du dialogue). | `tests/test_audio_export_ui.py` |
+| **2p1** | Doc — clôture (SPECS : Export MIDI, Export audio, fenêtre Songs, dialogues ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
