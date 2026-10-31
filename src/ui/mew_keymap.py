@@ -357,6 +357,13 @@ class KeymapMixin:
             self._parent._export_audio(parent=self, status=self._set_status)
             return
 
+        # Alt+Shift+S : export audio de la sélection ou du presse-papier des
+        # notes de cette fenêtre (Phase 8 étape 1h15, § 1h11 W13)
+        if not ctrl and shift and alt and (ukey in (ord('s'), ord('S')) or key == ord('S')):
+            self._parent._export_audio_selection(parent=self, status=self._set_status,
+                                                 editor=True)
+            return
+
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
         if self._parent._key_manager.handle_transport(evt):
             pat   = self._parent._player._pattern

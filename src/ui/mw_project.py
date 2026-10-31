@@ -10,7 +10,7 @@ from project_manager import ProjectManager
 from midi.midi_export import export_pattern
 from midi.midi_import import import_pattern
 import audio_export
-from .dialogs import AudioExportDialog
+from .dialogs import AudioExportDialog, SelectionExportDialog
 from tempo_map import format_bpm
 
 
@@ -201,15 +201,27 @@ class ProjectMixin:
         des dialogs (éditeur MIDI) ; status : où annoncer avancement et
         résultat (appelé dans le fil de l'UI)."""
         status = status or self._show_status
+        if self._audio_export_ready(status):
+            self._audio_export_flow(parent, status, "Exporter le pattern en WAV…", "")
+
+    def _audio_export_ready(self, status):
+        """Faux si un export tourne déjà ; sinon met la lecture en pause
+        (W8 : position gardée) et retourne vrai."""
         thread = self._audio_export_thread
         if thread is not None and thread.is_alive():
             status("Export audio déjà en cours")
-            return
-        if self._player.playing:                    # W8 : lecture arrêtée, position gardée
+            return False
+        if self._player.playing:
             self._player.pause_pattern()
             self._router.stop_all_synth_voices()
-        # Fichier d'abord, puis paramètres (ordre standard, 1h2) ; dossier :
-        # le dernier choisi dans la session, sinon EXPORTS
+        return True
+
+    def _audio_export_flow(self, parent, status, title, suffix, job=None):
+        """Parcours commun des exports audio : dialogue du fichier (nom
+        Pat_NN[_nom]suffix.wav), puis paramètres (ordre standard, 1h2),
+        puis rendu de job (None : le pattern courant, voir
+        _start_audio_export)."""
+        # Dossier : le dernier choisi dans la session, sinon EXPORTS
         start = self._audio_export_dir or self._exports_dir
         if start == self._exports_dir:
             try:
@@ -217,9 +229,9 @@ class ProjectMixin:
             except OSError:
                 pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
         fdlg = wx.FileDialog(
-            parent or self, "Exporter le pattern en WAV…",
+            parent or self, title,
             defaultDir=start,
-            defaultFile=self._midi_export_filename(".wav"),
+            defaultFile=self._midi_export_filename(f"{suffix}.wav"),
             wildcard="Fichiers WAV (*.wav)|*.wav",
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         )
@@ -243,22 +255,104 @@ class ProjectMixin:
             status("Export audio annulé")
             return
         self._audio_export_opts = opts
-        self._start_audio_export(path, opts, status)
+        self._start_audio_export(path, opts, status, job)
 
-    def _start_audio_export(self, path, opts, status):
-        """Lance le rendu de path dans un fil ; le pattern est copié dans le
-        fil de l'UI (les modifications pendant le rendu ne l'atteignent pas)."""
+    # Source du dialogue de la sélection gardée pour la session (W21)
+    _audio_sel_source = 0
+
+    def _export_audio_selection(self, parent=None, status=None, editor=False):
+        """Alt+Shift+S : exporte en .wav la sélection (pistes sélectionnées,
+        ou la piste courante, entre les limiteurs) ou le presse-papier de la
+        fenêtre (editor : celui des notes de l'éditeur MIDI, sinon celui des
+        pistes). Phase 8 étape 1h15, docs/DESIGN.md § 1h11, W13-W21."""
+        status = status or self._show_status
+        if not self._audio_export_ready(status):
+            return
+        player, te = self._player, self._track_editor
+        pat = player._pattern
+        dlg = SelectionExportDialog(parent or self, pat._num_bars, pat._num_beats,
+                                    pat._num_steps, te._lim_left, te._lim_right,
+                                    self._audio_sel_source)
+        ok     = dlg.ShowModal() == wx.ID_OK
+        source = dlg.get_source_idx()
+        window = dlg.get_window()
+        dlg.Destroy()
+        if not ok:
+            status("Export audio annulé")
+            return
+        self._audio_sel_source = source
+        if source == SelectionExportDialog.SOURCE_SELECTION:
+            job = self._selection_job(window)
+            title, suffix = "Exporter la sélection en WAV…", "_selection"
+        else:
+            job = self._clipboard_job(editor)
+            if job is None:
+                status("Presse-papier vide")
+                return
+            title, suffix = "Exporter le presse-papier en WAV…", "_presse-papier"
+        self._audio_export_flow(parent, status, title, suffix, job)
+
+    def _selection_job(self, window):
+        """Rendu de la sélection : copie du pattern courant, pistes de la
+        sélection, fenêtre [G, D + 1) (W18)."""
+        player = self._player
+        pat = player._pattern
+        left, right = window
+        tracks = self._track_editor.get_effective_tracks(player._cur_track)
+        pattern = Pattern()
+        pattern.copy_from(pat)
+        spb = max(1, pat._num_steps // pat._num_beats)
+        total = pat._num_bars * pat._num_steps
+        bbt = lambda step: self._track_editor.fmt_bbt(step, pat._num_steps, spb, total)
+        names = ", ".join(str(t + 1) for t in tracks)
+        which = f"piste {names}" if len(tracks) == 1 else f"pistes {names}"
+        return dict(pattern=pattern, tempo_map=player.tempo_map(),
+                    window=audio_export.selection_window(left, right), tracks=set(tracks),
+                    label=f"Sélection ({which} ; {bbt(left)} à {bbt(right)})",
+                    verb="exportée")
+
+    def _clipboard_job(self, editor):
+        """Rendu du presse-papier de la fenêtre (W13) : notes (éditeur MIDI)
+        ou pistes. None si vide."""
+        te, player = self._track_editor, self._player
+        pat = player._pattern
+        if editor:
+            ecb = te._event_clipboard
+            pattern = audio_export.event_clipboard_pattern(ecb.events, pat) if ecb else None
+            num_tracks = len({e["track"] for e in ecb.events}) if pattern else 0
+        else:
+            cb = te._clipboard
+            pattern = audio_export.clipboard_pattern(cb, pat) if cb else None
+            num_tracks = cb.num_tracks if cb else 0
+        if pattern is None:
+            return None
+        tracks = f"{num_tracks} piste" + ("s" if num_tracks > 1 else "")
+        bars = f"{pattern._num_bars} mesure" + ("s" if pattern._num_bars > 1 else "")
+        return dict(pattern=pattern, tempo_map=pattern.tempo_map(start_bpm=player.bpm),
+                    window=None, tracks=None,
+                    label=f"Presse-papier ({tracks}, {bars})", verb="exporté")
+
+    def _start_audio_export(self, path, opts, status, job=None):
+        """Lance le rendu de path dans un fil. job : pattern, tempo_map,
+        window, tracks, label, verb ; None : le pattern courant, copié dans
+        le fil de l'UI (les modifications pendant le rendu ne l'atteignent
+        pas)."""
         end_idx, format_idx, normalize, measure_idx, level_db = opts
         player  = self._player
-        pattern = Pattern()
-        pattern.copy_from(player._pattern)
+        if job is None:
+            pattern = Pattern()
+            pattern.copy_from(player._pattern)
+            job = dict(pattern=pattern, tempo_map=player.tempo_map(), window=None,
+                       tracks=None, label=f"Pattern {self._cur_pattern_idx + 1:02d}",
+                       verb="exporté")
         params = dict(
-            pattern=pattern, tempo_map=player.tempo_map(), router=self._router,
+            pattern=job["pattern"], tempo_map=job["tempo_map"], router=self._router,
             voice_manager=player.voice_manager, end=self._AUDIO_ENDS[end_idx],
             master_pan=player.pan, master_volume=player.volume,
+            window=job["window"], tracks=job["tracks"],
         )
         subtype = audio_export.SUBTYPES[format_idx]
-        label   = f"Pattern {self._cur_pattern_idx + 1:02d}"
+        label, verb = job["label"], job["verb"]
 
         def say(msg):                               # fil de l'UI ; fenêtre fermée : ignoré
             try:
@@ -281,14 +375,15 @@ class ProjectMixin:
                 return
             norm = (measure_idx, level_db) if normalize else None
             wx.CallAfter(say, self._audio_export_report(
-                label, path, res, end_idx, format_idx, gain_db, limit_db, notes, norm))
+                label, path, res, end_idx, format_idx, gain_db, limit_db, notes, norm,
+                verb))
 
         status("Export audio : 0 %")
         self._audio_export_thread = threading.Thread(target=run, daemon=True)
         self._audio_export_thread.start()
 
     def _audio_export_report(self, label, path, res, end_idx, format_idx,
-                             gain_db, limit_db, notes, norm=None):
+                             gain_db, limit_db, notes, norm=None, verb="exporté"):
         """Compte rendu de l'export audio (W8) : fichier, durée, fin, format,
         normalisation (norm = (mesure, niveau visé) ou None, W11), réduction
         du limiteur (W10), résonance coupée, messages du passage à blanc."""
@@ -300,7 +395,7 @@ class ProjectMixin:
             fin = "pattern + résonance (aucune)"
         else:
             fin = f"pattern + résonance ({num(res.tail_samples / res.samplerate)} s)"
-        parts = [f"{label} exporté en WAV : {os.path.basename(path)}",
+        parts = [f"{label} {verb} en WAV : {os.path.basename(path)}",
                  f"{num(res.seconds)} s, {fin}, {self._AUDIO_FORMAT_NAMES[format_idx]}"]
         if norm is not None:
             measure_idx, level_db = norm

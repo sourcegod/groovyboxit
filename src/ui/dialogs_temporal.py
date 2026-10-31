@@ -1060,3 +1060,95 @@ class EventFilterDialog(wx.Dialog):
             wx.CallAfter(target.SetFocus)
             return
         event.Skip()
+
+
+class SelectionExportDialog(wx.Dialog):
+    """Source de l'export audio de la sélection ou du presse-papier
+    (Alt+Shift+S, Phase 8 étape 1h15, docs/DESIGN.md § Phase 8 étape 1h11,
+    W16, W21) : liste Sélection / Presse-papier ; pour la sélection, les
+    limiteurs gauche et droit en mesure:temps:pas, préremplis, pour
+    l'export seul (les limiteurs ne bougent pas). Ok valide les champs :
+    invalides ou droit avant gauche → message, le dialogue reste ouvert.
+    Entrée sur la liste valide (GTK : EVT_LISTBOX_DCLICK)."""
+
+    SOURCE_LABELS = ["Source : Sélection", "Source : Presse-papier"]
+    SOURCE_SELECTION = 0
+    SOURCE_CLIPBOARD = 1
+
+    def __init__(self, parent, num_bars, num_beats, num_steps,
+                 lim_left=None, lim_right=None, source_idx=0):
+        super().__init__(parent, title="Exporter la sélection ou le presse-papier")
+        total = num_bars * num_steps
+        self._bbt = BBTHelper(num_steps, max(1, num_steps // num_beats), total)
+        left  = 0 if lim_left is None else lim_left
+        right = total - 1 if lim_right is None else lim_right
+
+        self._source_lb = wx.ListBox(self, choices=self.SOURCE_LABELS, style=wx.LB_SINGLE)
+        self._source_lb.SetSelection(max(0, min(source_idx, len(self.SOURCE_LABELS) - 1)))
+        left_label  = wx.StaticText(self, label="Limiteur gauche (mesure:temps:pas) :")
+        self._left  = wx.TextCtrl(self, value=self._bbt.fmt(left), size=(140, -1))
+        self._left.SetName("Limiteur gauche")
+        right_label = wx.StaticText(self, label="Limiteur droit (mesure:temps:pas) :")
+        self._right = wx.TextCtrl(self, value=self._bbt.fmt(right), size=(140, -1))
+        self._right.SetName("Limiteur droit")
+        self._source_lb.Bind(wx.EVT_LISTBOX, lambda e: self._update_enabled())
+        self._source_lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._on_ok(None))
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        ok_btn.Bind(wx.EVT_BUTTON, self._on_ok)
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        grid = wx.FlexGridSizer(2, 2, 6, 6)
+        grid.Add(left_label,  0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._left,  0)
+        grid.Add(right_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._right, 0)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._source_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(grid,            0, wx.ALL, 6)
+        vbox.Add(btn_sizer,       0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._update_enabled()
+        self._source_lb.SetFocus()
+
+    def _update_enabled(self):
+        on = self.get_source_idx() == self.SOURCE_SELECTION
+        self._left.Enable(on)
+        self._right.Enable(on)
+
+    def _validate(self):
+        """Message d'erreur, ou None si les champs sont valides (ou sans objet)."""
+        if self.get_source_idx() != self.SOURCE_SELECTION:
+            return None
+        left  = self._bbt.parse(self._left.GetValue())
+        right = self._bbt.parse(self._right.GetValue())
+        if left is None or right is None:
+            return "Position invalide : mesure:temps:pas attendu (par exemple 2:1:1)"
+        if right < left:
+            return "Le limiteur droit est avant le limiteur gauche"
+        return None
+
+    def _on_ok(self, event):
+        error = self._validate()
+        if error is not None:
+            wx.MessageBox(error, "Exporter la sélection", wx.OK | wx.ICON_WARNING, self)
+            return
+        self.EndModal(wx.ID_OK)
+
+    def get_source_idx(self):
+        sel = self._source_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
+
+    def get_window(self):
+        """(G, D) en pas, D compris ; None si invalide."""
+        left  = self._bbt.parse(self._left.GetValue())
+        right = self._bbt.parse(self._right.GetValue())
+        if left is None or right is None or right < left:
+            return None
+        return left, right
