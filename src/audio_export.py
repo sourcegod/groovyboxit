@@ -187,10 +187,12 @@ def _bucket_time(bar, step, ev, num_steps):
 
 def _render_copy_of(pattern):
     """Pattern neuf aux réglages de pattern (tempo, signature, résolution),
-    sans événement."""
+    sans événement. copy_from laisse le tempo de départ au player : il est
+    recopié ici (1h13)."""
     from pattern import Pattern
     pat = Pattern()
     pat.copy_from(pattern)
+    pat._bpm = pattern._bpm
     pat._tape = [[] for _ in range(max(pattern._num_tracks, len(pattern._tape)))]
     return pat
 
