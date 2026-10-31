@@ -7798,3 +7798,49 @@ revoir au besoin le gain de FluidSynth (0,4, § 18d4) ou le volume global.
 | **1h10** | Tests — ceux prévus en 1h8 par l'avenant 1h6, plus la plage de −24 à 0. | `tests/test_audio_export.py` |
 
 1i1 et 1j1 gardent leurs numéros.
+
+### Phase 8 étape 1 — Avancement après les avenants 1h6 et 1h8 (1h10)
+
+- **1h7** — conforme à W11 :
+  - `k_weighting(sr)` et `_k_filter` (FFT, recouvrement-addition par
+    blocs de 2^18) ;
+  - `loudness_lufs`, `measure_level(data, mesure, sr)` ;
+  - `apply_gain(data, normalize, measure, level_db, ...)` : normalisation,
+    puis limiteur toujours ; `write_wav(..., normalize, measure,
+    level_db)` ;
+  - dialogue : liste Mesure et champ Niveau visé, actifs si Normaliser ;
+  - options de session à cinq valeurs ; compte rendu « normalisé à −14
+    LUFS-I : +3,20 dB ».
+
+  **Mesures** :
+  - 997 Hz à 0 dBFS sur un canal → −3,010 LUFS, à 48 kHz comme à
+    44,1 kHz ; 3 min de son mesurées en 2 s ;
+  - les exports de `Pat_01` (−10,2 LUFS-I) et la boucle TiMidity (−10,5)
+    sont déjà plus forts que −14.
+
+  À l'essai, −6 LUFS-I donne le niveau de l'écoute.
+- **1h9** — `LEVEL_MAX_DB = 0` (W12).
+- **1h10** — 76 tests dans `tests/test_audio_export.py` : 21 de plus, et
+  4 tests de 1h5 adaptés.
+  - **LUFS-I** : référence de la norme à 48 et 44,1 kHz ; stéréo et
+    linéarité en dB ; réponse de la pondération K (≈ 0 dB à 1 kHz, ≈ +4 dB
+    à 10 kHz, coupure à 20 Hz) ; aigu favorisé ; porte absolue (silence
+    sans effet) ; porte relative (partie à −45 ignorée) ; silence et son
+    sous −70 → None ; fichier court ; deux minutes en moins de 10 s.
+  - **Crête et RMS**, mesure inconnue refusée.
+  - **Normalisation** : vers le haut, vers le bas, cible élevée puis
+    limiteur (loudness finale sous la cible), silence sans gain, boucle
+    circulaire ; écriture au niveau visé pour les trois mesures, LUFS-I à
+    −14 par défaut ; plage de −24 à 0.
+  - **Dialogue** : champs inactifs sans Normaliser, plage du SpinCtrl,
+    options restaurées, niveau borné.
+  - **Compte rendu** de la normalisation et du limiteur.
+
+  Six défauts réintroduits à l'essai font échouer des tests : sans porte
+  relative, sans porte absolue, sans pondération K, gain inversé, pas de
+  limiteur après la normalisation, RMS sur le canal le plus fort.
+
+  **Constat** : chaque mesure LUFS fait une FFT de 2^19 points, même pour
+  un fichier court ; `test_audio_export.py` passe de 2,7 s à 8,5 s. À
+  optimiser au besoin : FFT à la taille du fichier, plus la queue de la
+  réponse impulsionnelle.

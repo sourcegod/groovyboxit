@@ -737,17 +737,183 @@ def test_limiter_long_file_is_fast():
 
 
 # ---------------------------------------------------------------------------
+# Mesures et normalisation au niveau visé (W11, W12, § 1h6, § 1h8)
+# ---------------------------------------------------------------------------
+
+def _tone(level_dbfs, seconds=3.0, freq=997.0, sr=SR, channels=(0, 1)):
+    """Sinus de crête level_dbfs sur les canaux donnés (les autres muets)."""
+    t = np.arange(int(seconds * sr)) / sr
+    s = (10 ** (level_dbfs / 20.0)) * np.sin(2 * np.pi * freq * t)
+    out = np.zeros((len(t), 2), dtype=np.float32)
+    for ch in channels:
+        out[:, ch] = s
+    return out
+
+
+@pytest.mark.parametrize("sr", (48000, 44100))
+def test_lufs_reference_997hz_one_channel(sr):
+    """BS.1770-4 : un sinus de 997 Hz à 0 dBFS sur un seul canal = −3,01 LUFS."""
+    assert ax.loudness_lufs(_tone(0.0, sr=sr, channels=(0,)), sr) == pytest.approx(-3.01, abs=0.02)
+
+
+def test_lufs_stereo_and_linear_in_db():
+    assert ax.loudness_lufs(_tone(0.0), SR) == pytest.approx(0.0, abs=0.03)
+    assert ax.loudness_lufs(_tone(-20.0), SR) == pytest.approx(-20.0, abs=0.03)
+    assert ax.loudness_lufs(_tone(-26.0), SR) == pytest.approx(-26.0, abs=0.03)
+
+
+def test_k_weighting_response():
+    """Pondération K à 48 kHz : ≈ 0 dB à 1 kHz, plateau ≈ +4 dB dans
+    l'aigu, coupure dans le grave."""
+    (b1, a1), (b2, a2) = ax.k_weighting(48000)
+    def db(f):
+        w = np.array([2 * math.pi * f / 48000])
+        h = ax._biquad_response(b1, a1, w) * ax._biquad_response(b2, a2, w)
+        return 20 * math.log10(abs(h[0]))
+    assert abs(db(1000)) < 0.7
+    assert 3.5 < db(10000) < 4.2
+    assert db(20) < -10 < db(60)
+
+
+def test_lufs_k_weighting_favours_treble():
+    low = ax.loudness_lufs(_tone(-20.0, freq=40.0), SR)
+    high = ax.loudness_lufs(_tone(-20.0, freq=8000.0), SR)
+    assert high > -20.0 + 3 and low < -20.0 - 1
+
+
+def test_lufs_absolute_gate_ignores_silence():
+    """6 s de silence de part et d'autre ne changent rien : seuls comptent
+    les blocs qui touchent le son (ceux du bord, en partie, comme le veut
+    la norme). Sans porte, la moyenne serait diluée de 7 dB."""
+    tone = _tone(-20.0, seconds=3.0)
+    def pad(seconds):
+        z = np.zeros((int(seconds * SR), 2), np.float32)
+        return np.concatenate([z, tone, z])
+    assert ax.loudness_lufs(pad(6.0), SR) == pytest.approx(ax.loudness_lufs(pad(0.5), SR), abs=0.01)
+    assert ax.loudness_lufs(pad(6.0), SR) > ax.loudness_lufs(tone, SR) - 0.5
+
+
+def test_lufs_relative_gate_ignores_quiet_part():
+    loud, quiet = _tone(-20.0, seconds=5.0), _tone(-45.0, seconds=5.0)
+    both = np.concatenate([loud, quiet])
+    ungated = -0.691 + 10 * math.log10(
+        np.mean(np.sum(np.stack([ax._k_filter(both[:, c], SR) ** 2 for c in (0, 1)]), axis=0)))
+    assert ungated < -22.0                                    # sans porte : dilué
+    assert ax.loudness_lufs(both, SR) == pytest.approx(-20.0, abs=0.3)
+
+
+def test_lufs_silence_and_below_gate_is_none():
+    assert ax.loudness_lufs(np.zeros((SR, 2), np.float32), SR) is None
+    assert ax.loudness_lufs(_tone(-80.0), SR) is None
+    assert ax.loudness_lufs(np.zeros((0, 2), np.float32), SR) is None
+
+
+def test_lufs_short_file_single_block():
+    short = _tone(-20.0, seconds=0.2)
+    assert ax.loudness_lufs(short, SR) == pytest.approx(-20.0, abs=0.5)
+
+
+def test_lufs_long_file_is_fast():
+    x = (np.random.default_rng(2).standard_normal((SR * 120, 2)) * 0.1).astype(np.float32)
+    t0 = time.perf_counter()
+    assert ax.loudness_lufs(x, SR) is not None
+    assert time.perf_counter() - t0 < 10.0
+
+
+def test_measure_peak_and_rms():
+    x = _tone(-6.0)
+    assert ax.measure_level(x, "peak", SR) == pytest.approx(-6.0, abs=0.01)
+    assert ax.measure_level(x, "rms", SR) == pytest.approx(-6.0 - 3.01, abs=0.02)
+    one = _tone(0.0, channels=(0,))                           # moyenne sur les deux canaux
+    assert ax.measure_level(one, "rms", SR) == pytest.approx(-6.02, abs=0.02)
+    for m in ax.MEASURES:
+        assert ax.measure_level(np.zeros((100, 2), np.float32), m, SR) is None
+    with pytest.raises(ValueError):
+        ax.measure_level(x, "true_peak", SR)
+
+
+def test_normalize_down_too():
+    loud = _tone(-3.0)
+    out, gain_db, limit_db = ax.apply_gain(loud, True, "lufs", -20, samplerate=SR)
+    assert gain_db == pytest.approx(-20.0 - ax.loudness_lufs(loud, SR), abs=0.01) and gain_db < 0
+    assert limit_db == 0.0
+    assert ax.loudness_lufs(out, SR) == pytest.approx(-20.0, abs=0.03)
+
+
+def test_normalize_then_limiter_holds_peaks():
+    """Niveau visé élevé : le morceau monte, le limiteur tient les crêtes ;
+    la loudness finale reste un peu sous la cible (comme Reaper)."""
+    x = _quiet(seconds=3.0, level=0.1)
+    x[SR] = [0.9, -0.5]
+    out, gain_db, limit_db = ax.apply_gain(x, True, "lufs", 0, samplerate=SR)
+    assert gain_db > 10 and limit_db < -3
+    assert np.abs(out).max() <= TARGET * (1 + 1e-6)
+    assert ax.loudness_lufs(out, SR) < 0.0
+
+
+def test_normalize_skipped_on_silence():
+    z = np.zeros((SR, 2), dtype=np.float32)
+    out, gain_db, limit_db = ax.apply_gain(z, True, "lufs", -6, samplerate=SR)
+    assert (gain_db, limit_db) == (0.0, 0.0) and not out.any()
+
+
+def test_normalize_loop_uses_circular_limiter():
+    x = _quiet(seconds=1.0, level=0.2)
+    x[10] = [0.9, 0.9]
+    out, _, limit_db = ax.apply_gain(x, True, "peak", 0, samplerate=SR, loop=True)
+    assert limit_db < 0
+    g_end = _gain(x[-200:], out[-200:]) / 10 ** ((0 - 20 * math.log10(0.9)) / 20)
+    assert g_end.min() < 0.99                                 # la fin précède la crête du début
+
+
+def test_level_range_and_default():
+    assert (ax.LEVEL_MIN_DB, ax.LEVEL_MAX_DB, ax.LEVEL_DEFAULT) == (-24, 0, -14)
+    assert ax.MEASURES == ("peak", "rms", "lufs")
+
+
+def test_dialog_normalize_fields():
+    from ui.dialogs import AudioExportDialog
+    import wx
+    dlg = AudioExportDialog(None, level_min=ax.LEVEL_MIN_DB, level_max=ax.LEVEL_MAX_DB)
+    try:
+        assert not dlg.get_normalize()
+        assert not dlg._measure_lb.IsEnabled() and not dlg._level.IsEnabled()
+        assert dlg.get_measure_idx() == 2 and dlg.get_level_db() == -14
+        assert (dlg._level.GetMin(), dlg._level.GetMax()) == (-24, 0)
+        assert dlg._measure_lb.GetString(2) == "Mesure : LUFS-I"
+        dlg._normalize_cb.SetValue(True)
+        dlg._normalize_cb.ProcessEvent(wx.CommandEvent(wx.EVT_CHECKBOX.typeId,
+                                                       dlg._normalize_cb.GetId()))
+        assert dlg._measure_lb.IsEnabled() and dlg._level.IsEnabled()
+        dlg._level.SetValue(0)
+        dlg._measure_lb.SetSelection(1)
+        assert (dlg.get_normalize(), dlg.get_measure_idx(), dlg.get_level_db()) == (True, 1, 0)
+    finally:
+        dlg.Destroy()
+
+
+def test_dialog_restores_options_and_clamps_level():
+    from ui.dialogs import AudioExportDialog
+    dlg = AudioExportDialog(None, 1, 2, True, 0, -30, -24, 0)
+    try:
+        assert (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize(),
+                dlg.get_measure_idx(), dlg.get_level_db()) == (1, 2, True, 0, -24)
+        assert dlg._measure_lb.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+# ---------------------------------------------------------------------------
 # Gain, dither, écriture (W3, W4, W10)
 # ---------------------------------------------------------------------------
 
 def test_gain_hot_mix_goes_to_limiter():
     x = _spiked(value=2.0)
-    for normalize in (False, True):                         # Normaliser ne change rien
-        out, gain_db, limit_db = ax.apply_gain(x, normalize)
-        assert gain_db == 0.0
-        assert limit_db == pytest.approx(20 * math.log10(TARGET / 2.0), abs=1e-3)
-        assert np.abs(out).max() <= TARGET * (1 + 1e-6)
-        assert np.allclose(out[:SR - A - 1], x[:SR - A - 1])
+    out, gain_db, limit_db = ax.apply_gain(x)               # sans Normaliser
+    assert gain_db == 0.0
+    assert limit_db == pytest.approx(20 * math.log10(TARGET / 2.0), abs=1e-3)
+    assert np.abs(out).max() <= TARGET * (1 + 1e-6)
+    assert np.allclose(out[:SR - A - 1], x[:SR - A - 1])
 
 
 def test_gain_quiet_unchanged_without_normalize():
@@ -757,11 +923,10 @@ def test_gain_quiet_unchanged_without_normalize():
 
 
 def test_gain_normalize_raises_quiet_file():
-    quiet = np.array([[0.25, -0.1]], dtype=np.float32)
-    out, gain_db, limit_db = ax.apply_gain(quiet, normalize=True)
-    assert np.abs(out).max() == pytest.approx(TARGET)
-    assert gain_db == pytest.approx(20 * math.log10(TARGET / 0.25)) and gain_db > 0
-    assert limit_db == 0.0
+    quiet = _tone(-40.0)
+    out, gain_db, limit_db = ax.apply_gain(quiet, True, "rms", -20, samplerate=SR)
+    assert gain_db == pytest.approx(-20.0 - (-40.0 - 3.0103), abs=0.01) and limit_db == 0.0
+    assert ax.measure_level(out, "rms", SR) == pytest.approx(-20.0, abs=0.01)
 
 
 def test_gain_silence_unchanged():
@@ -839,12 +1004,21 @@ def test_render_loop_result_is_looped(tmp_path):
     assert not _render(pat, live, end=ax.END_TAIL).looped
 
 
-def test_write_wav_normalize_flag(tmp_path):
-    path = str(tmp_path / "n.wav")
-    gain_db, limit_db = ax.write_wav(path, _result(np.full((100, 2), 0.1)), "FLOAT",
-                                     normalize=True)
-    assert sf.read(path, dtype="float32")[0].max() == pytest.approx(TARGET, abs=1e-6)
-    assert gain_db > 19 and limit_db == 0.0
+@pytest.mark.parametrize("measure, level", [("peak", -6), ("rms", -20), ("lufs", -14)])
+def test_write_wav_normalize_to_target(tmp_path, measure, level):
+    path = str(tmp_path / f"n_{measure}.wav")
+    gain_db, limit_db = ax.write_wav(path, _result(_tone(-35.0, seconds=2.0)), "FLOAT",
+                                     normalize=True, measure=measure, level_db=level)
+    back, _ = sf.read(path, dtype="float32")
+    assert limit_db == 0.0 and gain_db > 0
+    assert ax.measure_level(back, measure, SR) == pytest.approx(level, abs=0.05)
+
+
+def test_write_wav_default_normalization_is_lufs_minus_14(tmp_path):
+    path = str(tmp_path / "d.wav")
+    ax.write_wav(path, _result(_tone(-30.0, seconds=2.0)), "FLOAT", normalize=True)
+    back, _ = sf.read(path, dtype="float32")
+    assert ax.loudness_lufs(back, SR) == pytest.approx(-14.0, abs=0.05)
 
 
 def test_write_wav_unknown_format(tmp_path):
@@ -856,19 +1030,23 @@ def test_write_wav_unknown_format(tmp_path):
 # Compte rendu (W8, W10)
 # ---------------------------------------------------------------------------
 
-def _report(res, end_idx=0, format_idx=0, gain_db=0.0, limit_db=0.0, notes=()):
+def _report(res, end_idx=0, format_idx=0, gain_db=0.0, limit_db=0.0, notes=(), norm=None):
     from ui.mw_project import ProjectMixin
     win = ProjectMixin.__new__(ProjectMixin)
     return win._audio_export_report("Pattern 01", "/x/Pat_01.wav", res, end_idx,
-                                    format_idx, gain_db, limit_db, list(notes))
+                                    format_idx, gain_db, limit_db, list(notes), norm)
 
 
 def test_report_limiter_and_normalize():
     res = _result(np.zeros((SR * 2, 2)))
     msg = _report(res, limit_db=-5.412)
     assert "limiteur : −5,41 dB au plus" in msg and "normalisé" not in msg
-    msg = _report(res, gain_db=3.1)
-    assert "normalisé : +3,10 dB" in msg and "limiteur" not in msg
+    msg = _report(res, gain_db=3.1, norm=(2, -14))
+    assert "normalisé à −14 LUFS-I : +3,10 dB" in msg and "limiteur" not in msg
+    msg = _report(res, gain_db=-2.5, norm=(1, -20))
+    assert "normalisé à −20 dBFS RMS : −2,50 dB" in msg
+    msg = _report(res, gain_db=8.0, limit_db=-3.0, norm=(0, 0))
+    assert msg.endswith("normalisé à 0 dBFS crête : +8,00 dB — limiteur : −3,00 dB au plus")
     msg = _report(res)
     assert "limiteur" not in msg and "normalisé" not in msg and "atténué" not in msg
 
