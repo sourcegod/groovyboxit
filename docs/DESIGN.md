@@ -7844,3 +7844,143 @@ revoir au besoin le gain de FluidSynth (0,4, § 18d4) ou le volume global.
   un fichier court ; `test_audio_export.py` passe de 2,7 s à 8,5 s. À
   optimiser au besoin : FFT à la taille du fichier, plus la queue de la
   réponse impulsionnelle.
+
+## Phase 8 étape 1h11 — Avenant : export audio de la sélection ou du presse-papier
+
+### Origine
+
+Demande de l'utilisateur (2026-10-31) : exporter en audio la sélection
+courante, ou le contenu du presse-papier, plutôt que le pattern entier.
+- Un dialogue « Exporter la sélection ou le presse-papier » propose la
+  liste « Sélection », « Presse-papier ».
+- Pour « Sélection », deux champs donnent les limiteurs Gauche et Droit.
+- Ok mène ensuite au même parcours que l'export audio : fichier, puis
+  paramètres.
+- Raccourci : Alt+Shift+S.
+
+### Comportement de Sonar (vérifié le 2026-10-31)
+
+L'export audio de Sonar part de la sélection : les pistes choisies, sur la
+plage de temps sélectionnée (le fichier dure exactement la sélection) ;
+sans sélection, tout le projet. Le module « Export » de la barre de
+contrôle propose « Selection » comme source.
+
+### État des lieux constaté en code (2026-10-31, 2989 tests verts)
+
+- **Sélection** (`TrackEditor`, partagé par la fenêtre principale et
+  l'éditeur MIDI) :
+  - pistes : `_sel_tracks`, ou la piste courante si vide
+    (`get_effective_tracks`) ;
+  - limiteurs `_lim_left` et `_lim_right`, en pas, posés par i et o.
+    Ils sont inclusifs : l'effacement par plage prend
+    `lim_l ≤ t < lim_r + 1` (§ 6g2).
+- **Deux presse-papiers** :
+  - **pistes** (`_ClipboardData`, Ctrl+C de la fenêtre principale) :
+    `tape` = {(piste relative, mesure relative, pas): [TapeEvent]} ;
+    `num_bars`, `num_steps` de la source. L'événement garde son temps
+    absolu, mais ni les pistes d'origine ni la mesure de départ ne sont
+    retenues ;
+  - **notes** (`_EventClipboard`, Ctrl+C de l'éditeur MIDI) : des notes
+    seulement, chacune avec sa piste d'origine (`track`), `offset` en
+    pas, `rel_offset` et une durée en ms.
+- **Champs mesure:temps:pas** : `BBTHelper` (`dialogs_temporal.py`),
+  `fmt` / `parse`, comme dans `LoopSelectDialog`.
+- **Alt+Shift+S** est libre dans les deux fenêtres (S, Shift+S, Ctrl+S
+  et Ctrl+Shift+S existent, sans Alt).
+- **Rendu** : `render_pattern` rend toujours tout le pattern, de 0 à
+  `mesures × pas`, et poursuit l'état des banques depuis 0
+  (`chase(tape, 0)`).
+
+### Décisions validées (utilisateur, 2026-10-31)
+
+**W13 — Presse-papier de la fenêtre** (choix 1a) : Alt+Shift+S dans la
+fenêtre principale rend le presse-papier des pistes, et dans l'éditeur
+MIDI celui des notes.
+
+**W14 — Instruments des pistes d'origine** (choix 2a).
+`_ClipboardData` retient les pistes copiées (`tracks`) et le pas de début
+de la copie (`start_step`). Chaque événement est rendu sur sa piste
+d'origine, avec l'état actuel de cette piste (slot, mute, solo, volume,
+pan). Le presse-papier des notes a déjà sa piste d'origine.
+
+**W15 — Notes commencées avant le limiteur gauche : ignorées** (choix
+3a). Les instruments sont réglés comme à cette position, comme à la
+reprise de la lecture : `chase(tape, G)` rejoue Program Change, banque,
+pédale, modulation et Pitch Bend des pistes sur slot Banque.
+
+**W16 — Champs Gauche et Droit préremplis, pour l'export seul** (choix
+4a). Ils sont en mesure:temps:pas, avec les limiteurs, ou tout le
+pattern s'ils ne sont pas posés. Les modifier ne déplace pas les
+limiteurs.
+
+### Choix de conception proposés
+
+**W17 — Fenêtre de rendu.** `render_pattern` reçoit une fenêtre
+`[début, fin)` en pas, et un ensemble de pistes à rendre (les autres sont
+vidées dans la copie du pattern rendue).
+- Les événements gardés sont ceux de temps `début ≤ t < fin`.
+- Les secondes sont `TempoMap.secs(t) − TempoMap.secs(début)`, et la
+  longueur `secs(fin) − secs(début)`.
+- La poursuite se fait à `début`.
+- Sans fenêtre, rien ne change : tout le pattern, avec la fenêtre de la
+  lecture (positions 0 à total − 1).
+- Les deux fins (W1) s'appliquent à la fenêtre : « Boucle exacte » boucle
+  sur la sélection, « Pattern + résonance » donne la sélection plus la
+  résonance.
+
+**W18 — Sélection** : les pistes de `get_effective_tracks`, et la
+fenêtre `[G, D + 1)`, D compris en entier, comme l'effacement par plage.
+Champs invalides, ou D < G : message, et le dialogue reste ouvert.
+
+**W19 — Presse-papier des pistes.** Il est rendu à partir de 0, au tempo
+du pattern courant :
+- temps rendu = `ev.time − start_step`, mis à l'échelle
+  `pas du pattern courant / pas de la source` si les résolutions
+  diffèrent ;
+- longueur : `num_bars` mesures du pattern courant ;
+- pistes : celles d'origine (W14).
+
+**W20 — Presse-papier des notes.** Il est rendu au tempo du pattern
+courant, aligné sur la mesure :
+- il commence au début de la mesure de la première note et finit à la fin
+  de la mesure de la dernière ; chaque note garde sa place dans la
+  mesure ;
+- il ne contient que des notes, sans CC ni Pitch Bend : les instruments
+  partent de l'état par défaut.
+
+**W21 — Interface.**
+1. Alt+Shift+S, dans les deux fenêtres.
+2. Le dialogue « Exporter la sélection ou le presse-papier » :
+   - la liste « Source : Sélection », « Source : Presse-papier » ;
+   - les champs « Limiteur gauche » et « Limiteur droit » (TextCtrl
+     mesure:temps:pas, avec étiquette et `SetName`), actifs seulement
+     pour « Sélection » ;
+   - Ok et Annuler.
+3. Ok mène au parcours de l'export audio (W8 et 1h2) : dialogue de
+   fichier, puis « Export audio », puis rendu dans un fil. Noms proposés :
+   `Pat_NN[_nom]_selection.wav` et `Pat_NN[_nom]_presse-papier.wav`.
+4. Presse-papier vide : message « Presse-papier vide », pas d'export.
+5. Compte rendu : « Sélection (pistes 1, 3 ; 2:1:1 à 4:4:4) exportée en
+   WAV : … », « Presse-papier (3 pistes, 2 mesures) exporté en WAV : … ».
+6. La source choisie est gardée pour la session.
+
+### Portée exclue
+
+- notes commencées avant le limiteur gauche (W15) ;
+- poursuite des Program Change sur les pistes qui ne sont pas en Banque,
+  comme à la reprise de la lecture ;
+- sélection d'événements de l'éditeur MIDI (Shift+↑/↓) comme source :
+  seule compte la sélection de pistes et de limiteurs ;
+- export d'un song.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **1h11** | Doc — cet avenant. | `docs/DESIGN.md` |
+| **1h12** | Implémentation — fenêtre et pistes de `render_pattern` (W17) ; patterns de rendu de la sélection (W18) et des deux presse-papiers (W19, W20) ; `_ClipboardData.tracks` et `start_step` (W14). | `src/audio_export.py`, `src/track_editor.py` |
+| **1h13** | Tests — 1h12 : positions dans la fenêtre, tempo, poursuite à G, notes d'avant G ignorées, pistes filtrées, presse-papiers (pistes d'origine, résolutions différentes, alignement sur la mesure), boucle sur la fenêtre. | `tests/test_audio_export.py`, `tests/test_track_editor.py` (au besoin) |
+| **1h14** | Implémentation — W21 : dialogue, Alt+Shift+S dans les deux fenêtres, parcours, compte rendu. Essai à l'écoute et au lecteur d'écran. | `ui/dialogs_simple.py`, `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py` |
+
+Ensuite viennent **1i1**, les tests de l'interface des deux exports
+(`tests/test_audio_export_ui.py`), puis **1j1**, la clôture.
