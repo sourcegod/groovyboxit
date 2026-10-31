@@ -8513,3 +8513,35 @@ décisions de ce plan sont notées **E1, E2…** (§ 2a).
     patterns) — 6,00 s, song + résonance (aucune), 32 bits flottant ».
 - **À essayer dans l'appli** : Alt+Shift+E et Alt+Shift+W dans la
   fenêtre Songs, à l'écoute et avec Orca.
+
+### Phase 8 étape 2 — Avancement (2l1, 2m1)
+
+- **2l1** (`6c9aca2`) : pistes séparées (E3, E4, E12-E14).
+  - Dans `audio_export.py` : `Gain`, `compute_gain`, `mix_gain`,
+    `limit_envelope`, `nonempty_tracks`, `is_silent`, `fit_length`,
+    `stem_folder`, `stem_path`, et le paramètre `tracks` de
+    `render_song`.
+  - Dans l'interface : l'option Sortie de `AudioExportDialog`, et le
+    rendu des stems dans le fil de `_start_audio_export`.
+- **2m1** : 15 tests du moteur dans `test_audio_export.py`, 10 tests
+  d'interface dans `test_audio_export_ui.py`, 1 test des stems d'un song
+  dans `test_song_export_ui.py` (non prévu au plan). Les faux
+  `write_wav` des tests acceptent désormais `gain`. 3156 tests verts.
+- **Précisions par rapport au plan** :
+  - **Sortie rangée à part** : `_audio_export_output`, hors du tuple
+    `_audio_export_opts`, que dix tests vérifient à cinq valeurs.
+  - **Pistes rendues** : celles qui ne sont pas vides dans le pattern, la
+    sélection, le presse-papier ou au moins un pattern du song. Une piste
+    muette ou hors solo donne un rendu silencieux, qui n'est pas écrit ;
+    il n'y a pas de filtre d'audibilité à part.
+  - **Longueur** : chaque stem est ramené à la longueur du mix (complété
+    de silence ou coupé) avant de recevoir son gain. En boucle exacte,
+    chaque stem atteint son propre régime établi ; la somme reste celle du
+    mix.
+  - **Banques dans un song** : la poursuite des banques à chaque frontière
+    se fait sur la tape complète du pattern, même pour un stem.
+  - **Mesuré** : la somme des stems relus égale le mix relu (flottant,
+    normalisé et limité), à 1e-6 près.
+  - **Avancement** : un seul pourcentage, sur le mix puis chaque piste.
+- **À essayer dans l'appli** : la Sortie dans Alt+Shift+W, Alt+Shift+S et
+  la fenêtre Songs, avec Orca.

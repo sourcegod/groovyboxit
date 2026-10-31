@@ -14,7 +14,8 @@
     boucle du song et non gardée pour les patterns, libellé « Song +
     résonance », render_song et ses paramètres, annulations, song vide,
     pause, export déjà en cours, compte rendu, raccourci Alt+Shift+W, rendu
-    réel jusqu'au fichier.
+    réel jusqu'au fichier. Stems d'un song (Phase 8 étape 2m1) : une piste
+    par rendu, nom du slot du premier pattern où elle joue.
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
@@ -358,7 +359,8 @@ def audio(monkeypatch):
         return audio_export.RenderResult(np.zeros((SR, 2), np.float32), SR, SR,
                                          SR // 2, False, 1)
 
-    def fake_write(path, res, subtype, normalize, measure, level):
+    def fake_write(path, res, subtype, normalize=False, measure="lufs", level=-14,
+                   rng=None, gain=None):
         written.append((path, subtype, normalize, measure, level))
         return 0.0, 0.0
 
@@ -596,3 +598,30 @@ def test_song_audio_real_render_to_file(tmp_path, monkeypatch):
     assert list(np.flatnonzero(np.abs(y[:, 0]) > 1e-3)) == [round(0.5 * SR), 4 * SR]
     assert win.statuses[-1].startswith("Song 01 exporté en WAV : song.wav (2 patterns) — 6,00 s")
     print("  rendu réel jusqu'au fichier : longueur et positions : OK")
+
+
+
+def test_song_stems_per_track_named_from_first_pattern(tmp_path, audio, monkeypatch):
+    """Stems d'un song (2m1, E3) : render_song par piste ; nom du slot du
+    premier pattern où la piste n'est pas vide."""
+    audio.install(Dialogs(path=str(tmp_path / "Song_01.wav"), output=1))
+    rendered = []
+    def render(**kw):
+        rendered.append(kw.get("tracks"))
+        return audio_export.RenderResult(np.full((SR, 2), 0.1, np.float32), SR, SR, 0,
+                                         False, 1)
+    monkeypatch.setattr(audio_export, "render_song", render)
+    win = _AudioSongWindow(str(tmp_path))
+    pont = win._pattern_list[1]
+    pont._track_slots[6] = KIT
+    pont._tape[6].append(TapeEvent(ETYPE_KIT, payload={"note": 36, "vel": 100}, time=0))
+    win._export_song_audio(0)
+    _wait(win)
+    assert rendered == [None, {0}, {1}, {2}, {6}]
+    assert [os.path.basename(w[0]) for w in audio.written] == [
+        "Song_01_01_Piano_1.wav", "Song_01_02_TR-707.wav", "Song_01_03_DrawbarOrgan.wav",
+        "Song_01_07_TR-707.wav"]
+    assert all(os.path.dirname(w[0]) == str(tmp_path / "Song_01") for w in audio.written)
+    assert win.statuses[-1].startswith(
+        "Song 01 exporté en WAV : 4 pistes séparées dans Song_01/ (2 patterns) — 1,00 s")
+    print("  stems d'un song : une piste par rendu, nom du premier pattern où elle joue : OK")

@@ -12,7 +12,11 @@
     signature par pattern, voix qui continuent, état appliqué à la
     frontière (mix, mute, solo, voix des pads, slot, patch chargé au
     passage à blanc), charleston coupée à la frontière, deux fins, état du
-    premier pattern rétabli à la reprise, écoute intacte.
+    premier pattern rétabli à la reprise, écoute intacte. Pistes séparées
+    (Phase 8 étape 2m1, § 2a E3, E4, E12, E13) : enveloppe du limiteur,
+    gain calculé puis appliqué, gain du mix passé aux stems, somme des
+    stems égale au mix (pattern, boucle, song), longueur alignée, noms et
+    dossier, pistes non vides, stems silencieux, dialogue (Sortie).
     Le rendu est un prototype, cible C/C++ : ces tests fixent le contenu
     des tampons, référence de la version native.
     Date: Sat, 31/10/2026
@@ -1564,3 +1568,173 @@ def test_song_live_untouched(tmp_path):
 def test_song_empty_raises(tmp_path):
     with pytest.raises(ValueError):
         ax.render_song([], Live(tmp_path).router, VoiceManager())
+
+
+
+# ---------------------------------------------------------------------------
+# Pistes séparées (Phase 8 étape 2m1, docs/DESIGN.md § 2a E3, E4, E12, E13)
+# ---------------------------------------------------------------------------
+
+def test_limit_envelope_none_below_threshold_and_matches_limiter():
+    quiet = _quiet(1.0, 0.3)
+    assert ax.limit_envelope(quiet, 0.9, SR) is None
+    assert ax.limit_envelope(np.zeros((0, 2), np.float32), 0.9, SR) is None
+    loud = _spiked()
+    for loop in (False, True):
+        env = ax.limit_envelope(loud, 0.9, SR, loop)
+        out, red = ax.limit_peaks(loud, 0.9, SR, loop)
+        assert env.shape == (len(loud),) and env.max() <= 1.0
+        assert np.array_equal(out, (loud * env[:, None]).astype(np.float32))
+        assert red == pytest.approx(20 * math.log10(env.min()))
+
+
+@pytest.mark.parametrize("normalize, measure, loop", [
+    (False, "lufs", False), (True, "peak", False), (True, "rms", True), (True, "lufs", False)])
+def test_compute_gain_then_apply_equals_apply_gain(normalize, measure, loop):
+    data = _spiked()
+    gain = ax.compute_gain(data, normalize, measure, -6, samplerate=SR, loop=loop)
+    out, gain_db, limit_db = ax.apply_gain(data, normalize, measure, -6, samplerate=SR, loop=loop)
+    assert np.array_equal(gain.apply(data), out)
+    assert (gain.gain_db, gain.limit_db) == (gain_db, limit_db)
+    assert gain.scaled is normalize
+
+
+def test_mix_gain_uses_result_loop_and_samplerate():
+    data = _spiked()
+    looped = ax.RenderResult(data, SR, len(data), 0, False, 2, looped=True)
+    assert np.array_equal(ax.mix_gain(looped).envelope, ax.limit_envelope(
+        data, 10 ** (ax.PEAK_DB / 20), SR, loop=True))
+
+
+def test_write_wav_with_gain_ignores_own_normalization(tmp_path):
+    data = _quiet(1.0, 0.1)
+    res = ax.RenderResult(data, SR, len(data), 0, False, 1)
+    gain = ax.Gain(True, 6.0, None, 0.0)
+    path = str(tmp_path / "g.wav")
+    assert ax.write_wav(path, res, "FLOAT", normalize=False, gain=gain) == (6.0, 0.0)
+    y, _ = sf.read(path, dtype="float32")
+    assert np.allclose(y, data * 10 ** (6 / 20), atol=1e-6)
+
+
+def test_fit_length_pads_cuts_and_keeps_fields():
+    data = np.ones((10, 2), np.float32)
+    res = ax.RenderResult(data, SR, 8, 2, True, 3, looped=True)
+    longer, shorter, same = ax.fit_length(res, 15), ax.fit_length(res, 4), ax.fit_length(res, 10)
+    assert len(longer.data) == 15 and not longer.data[10:].any() and longer.data[:10].all()
+    assert len(shorter.data) == 4
+    assert np.array_equal(same.data, data)
+    assert (longer.samplerate, longer.pattern_samples, longer.tail_samples, longer.tail_cut,
+            longer.passes, longer.looped) == (SR, 8, 2, True, 3, True)
+
+
+def test_stem_folder_and_path():
+    assert ax.stem_folder("/x/EXPORTS/Song_01.wav") == "/x/EXPORTS/Song_01"
+    assert ax.stem_path("/x/Song_01.wav", 0, "Drums") == "/x/Song_01/Song_01_01_Drums.wav"
+    assert ax.stem_path("/x/Mon song.wav", 11, "Piano 1: doux!") == \
+        "/x/Mon song/Mon song_12_Piano_1_doux.wav"
+    assert ax.stem_path("/x/S.wav", 2, "") == "/x/S/S_03_Track_03.wav"
+    assert ax.stem_path("/x/S.wav", 2, "  ") == "/x/S/S_03_Track_03.wav"
+
+
+def test_nonempty_tracks_and_is_silent():
+    a, b = _pattern(), _pattern()
+    _grid(a, 3, 0, 0)
+    _grid(b, 1, 0, 0)
+    _grid(b, 5, 0, 0)
+    assert ax.nonempty_tracks([a]) == [3]
+    assert ax.nonempty_tracks([a, b]) == [1, 3, 5]
+    assert ax.nonempty_tracks([a, b], tracks={1, 2, 3}) == [1, 3]
+    silent = ax.RenderResult(np.zeros((5, 2), np.float32), SR, 5, 0, False, 1)
+    assert ax.is_silent(silent)
+    assert not ax.is_silent(ax.fit_length(ax.RenderResult(np.ones((1, 2), np.float32),
+                                                           SR, 1, 0, False, 1), 5))
+
+
+def _write_stems(tmp_path, mix, stems, normalize=True):
+    """Écrit le mix et ses stems comme l'interface (gain du mix), en
+    flottant ; retourne (mix relu, somme des stems relus)."""
+    path = str(tmp_path / "out.wav")
+    ax.write_wav(path, mix, "FLOAT", normalize, "rms", -3)
+    gain = ax.mix_gain(mix, normalize, "rms", -3)
+    total = 0
+    for t, stem in stems.items():
+        sp = ax.stem_path(path, t)
+        os.makedirs(os.path.dirname(sp), exist_ok=True)
+        ax.write_wav(sp, ax.fit_length(stem, len(mix.data)), "FLOAT", gain=gain)
+        total = total + sf.read(sp, dtype="float32")[0]
+    return sf.read(path, dtype="float32")[0], total
+
+
+def test_stems_sum_to_mix_with_common_gain(tmp_path):
+    """E4 : normalisation et limiteur du mix appliqués aux stems : leur somme
+    redonne le mix, au flottant près."""
+    pads = [_const(tmp_path, f"s{i}.wav", 0.4, 0.3 + 0.03 * i) for i in range(16)]
+    live, pat = Live(tmp_path, pads), _pattern()
+    for t, pad, at in ((0, 0, 0), (0, 0, 8), (1, 4, 4), (1, 4, 12), (2, 9, 2)):
+        _grid(pat, t, pad, at)
+    mix = _render(pat, live)
+    stems = {t: _render(pat, live, tracks={t}) for t in ax.nonempty_tracks([pat])}
+    assert ax.mix_gain(mix, True, "rms", -3).envelope is not None     # limiteur actif
+    m, total = _write_stems(tmp_path, mix, stems)
+    assert np.allclose(total, m, atol=1e-6)
+
+
+def test_stems_sum_to_mix_in_loop(tmp_path):
+    pads = [_const(tmp_path, f"l{i}.wav", 0.8, 0.2) for i in range(16)]
+    live, pat = Live(tmp_path, pads), _pattern()
+    _grid(pat, 0, 0, 14)                        # déborde sur le début
+    _grid(pat, 1, 1, 4)
+    mix = _render(pat, live, end=ax.END_LOOP)
+    stems = {t: _render(pat, live, end=ax.END_LOOP, tracks={t}) for t in (0, 1)}
+    assert all(len(s.data) == len(mix.data) for s in stems.values())
+    m, total = _write_stems(tmp_path, mix, stems, normalize=False)
+    assert np.allclose(total, m, atol=1e-6)
+
+
+def test_song_stems_render_only_their_track_and_sum_to_mix(tmp_path):
+    live = Live(tmp_path, _flat_pads(tmp_path, 0.3, 0.2))
+    a, b = _pattern(120), _pattern(60)
+    _grid(a, 0, 0, 0)
+    _grid(a, 1, 1, 8)
+    _grid(b, 1, 1, 0)
+    b._track_volumes[1] = 50                    # état de b appliqué aussi au stem
+    segs = _segments([a, b])
+    mix = ax.render_song(segs, live.router, live.vm)
+    one = ax.render_song(segs, live.router, live.vm, tracks={1})
+    assert not one.data[:SR].any() and one.data[SR + 100].any()
+    assert one.data[2 * SR + 100, 0] == pytest.approx(0.2 * 0.25, abs=1e-4)
+    zero = ax.render_song(segs, live.router, live.vm, tracks={0})
+    total = ax.fit_length(one, len(mix.data)).data + ax.fit_length(zero, len(mix.data)).data
+    assert np.allclose(total, mix.data, atol=1e-6)
+
+
+def test_stem_of_muted_track_is_silent(tmp_path):
+    live, pat = Live(tmp_path, _flat_pads(tmp_path)), _pattern()
+    _grid(pat, 0, 0, 0)
+    _grid(pat, 1, 0, 4)
+    live.router.toggle_track_mute(1)
+    assert ax.is_silent(_render(pat, live, tracks={1}))
+    assert not ax.is_silent(_render(pat, live, tracks={0}))
+
+
+def test_dialog_output_field():
+    from ui.dialogs import AudioExportDialog
+    dlg = AudioExportDialog(None)
+    try:
+        assert [dlg._output_lb.GetString(i) for i in range(3)] == \
+            ["Sortie : Mix", "Sortie : Pistes séparées", "Sortie : Mix + pistes"]
+        assert dlg.get_output_idx() == 0
+    finally:
+        dlg.Destroy()
+    dlg = AudioExportDialog(None, output_idx=2)
+    try:
+        assert dlg.get_output_idx() == 2
+        dlg._output_lb.SetSelection(1)
+        assert dlg.get_output_idx() == 1
+    finally:
+        dlg.Destroy()
+    dlg = AudioExportDialog(None, output_idx=9)
+    try:
+        assert dlg.get_output_idx() == 2               # borné
+    finally:
+        dlg.Destroy()
