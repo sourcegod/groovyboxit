@@ -9214,3 +9214,11 @@ Rack).
 - **5b2** — correctif trouvé par les tests de 5c1 : le message des canaux
   muets de `_apply_rack_kit` disait « canalaux » au pluriel ; « canal » /
   « canaux ».
+- **5c1** — `tests/test_rack_mode.py` (62 tests) : `_rack_mode` du
+  pattern (`.gvp`, clé absente ou non booléenne, `copy_from`, song figé),
+  slot effectif et repli, lecture par canal, PATCH sur un kit (deux
+  modes), Program Change sans pont et pont gardé en mode normal,
+  poursuite, moteurs des canaux, `render_copy`, `rack_report`,
+  `kit_note_of_gm` / `kit_path`, `_apply_rack_kit`, mode posé au
+  changement de pattern, à l'avance du song et à l'export WAV ;
+  `SPECS.md` (arborescence, table). 3256 verts.

@@ -182,6 +182,7 @@ groovyboxit/
     ├── test_playback_loop.py
     ├── test_pygame_driver.py
     ├── test_quantize.py
+    ├── test_rack_mode.py
     ├── test_rename.py
     ├── test_render_copy.py
     ├── test_save_confirm_dialog.py
@@ -2013,6 +2014,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_playback_loop.py` | Boucle de lecture : _build_measure_events (ordre de _tape à temps égal), _dispatch_event, _on_measure_end (rappel de fin de lecture) |
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
+| `test_rack_mode.py` | Mode Rack 16 canaux, moteur (Phase 8 étape 5c1) : `_rack_mode` du pattern (défaut, .gvp, clé absente ou non booléenne, copy_from, song figé), slot effectif (canal N → slot N, repli sur le premier slot Banque, slot vide muet sans banque, `_track_slots` intact, mode normal), lecture par canal (PATCH, KIT, cases de grille, Pitch Bend et modulation, batterie GM au canal 10, mute), note PATCH sur un kit par sa note GM (deux modes), Program Change sans pont (la piste suit son canal et son slot, ignoré sur un synthé, instrument d'une banque ou du repli, rejeu), pont gardé en mode normal, poursuite de toutes les pistes, moteurs des slots synthé des canaux joués, `render_copy`, kit du pattern (canal 10 d'abord, autres kits, canaux muets), `kit_note_of_gm` et `kit_path`, `_apply_rack_kit` (sans renommer les pads, pas de rechargement, avertissements, sons par défaut, mode normal), mode posé au changement de pattern, à l'avance du song et à l'export WAV (62 tests) |
 | `test_rename.py` | Renommage F2 : piste, pattern, song (18 tests) |
 | `test_render_copy.py` | Rendu hors temps réel, Phase 8 étape 1e1 : ordonnanceur des fins de note injecté dans TrackRouter, copies des moteurs (routeur, sons, synthés, FluidSynth) indépendantes de l'écoute, événements de _tape et jeu partagés par la lecture et le rendu (30 tests) |
 | `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
