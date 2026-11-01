@@ -8640,3 +8640,31 @@ stems) a été écrit de mémoire et reste à confirmer.
 - autres fréquences, formats compressés, true peak ;
 - Program Change avant G sur les pistes hors Banque ; dossier d'export
   retenu d'un lancement à l'autre (`config.json`).
+
+### Phase 8 étape 2 — Après la clôture : pistes kit au canal 10 (2p2, 2p3)
+
+- **Origine** : essai de l'utilisateur (2026-11-01). Alt+Shift+E et
+  Alt+Shift+W de la fenêtre Songs sont concluants, mais dans le `.mid` du
+  song, les patterns qui n'ont qu'un kit jouent la batterie sur un
+  instrument de FluidSynth.
+- **Cause** (constatée dans `Song_01.mid` et `essai_banque_17f1.gvp`) : un
+  pattern créé sans réglage a toutes ses pistes sur le slot 0, ici le kit
+  TR-707, mais aux canaux par défaut 1, 2, 3… La règle « kit → canal 10 »
+  n'est posée que par `assign_slot_by_user`, quand l'utilisateur assigne
+  un kit, et par la migration des anciens presets. La piste kit sortait
+  donc sur un canal mélodique, avec le Program Change 25 du kit, qui n'y
+  désigne pas un kit (guitare acoustique). L'export d'un tel pattern seul
+  avait le même défaut. À l'écoute, rien ne s'entend : le sampler ignore
+  le canal.
+- **Décision (utilisateur, 2026-11-01)** : les deux remèdes.
+  1. **Tout de suite** (2p2) : à l'export MIDI, pattern et song, une piste
+     sur un slot Kit est toujours écrite au canal 10 (`_midi_params`).
+     L'état du routeur et du pattern n'est pas touché.
+  2. **Plus tard, chantier à part** : corriger les données, c'est-à-dire
+     appliquer la règle « kit → 10 » dans les patterns eux-mêmes (création,
+     chargement du projet, changement de pattern), avec le canal affiché
+     par Alt+Entrée. Plan à écrire.
+- **2p2** (`247f611`) : implémentation. Une assertion de
+  `test_song_export_ui.py`, qui attendait les canaux tels quels, a été
+  adaptée.
+- **2p3** : 2 tests, l'export d'un pattern et celui d'un song.

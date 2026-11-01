@@ -15,7 +15,8 @@
     résonance », render_song et ses paramètres, annulations, song vide,
     pause, export déjà en cours, compte rendu, raccourci Alt+Shift+W, rendu
     réel jusqu'au fichier. Stems d'un song (Phase 8 étape 2m1) : une piste
-    par rendu, nom du slot du premier pattern où elle joue.
+    par rendu, nom du slot du premier pattern où elle joue. Piste kit d'un
+    pattern créé sans réglage au canal 10 dans le song (Phase 8 étape 2p3).
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
@@ -627,3 +628,32 @@ def test_song_stems_per_track_named_from_first_pattern(tmp_path, audio, monkeypa
     assert win.statuses[-1].startswith(
         "Song 01 exporté en WAV : 4 pistes séparées dans Song_01/ (2 patterns) — 1,00 s")
     print("  stems d'un song : une piste par rendu, nom du premier pattern où elle joue : OK")
+
+
+
+def test_song_kit_tracks_of_default_pattern_on_channel_10(tmp_path):
+    """Cas signalé à l'essai : un pattern créé sans réglage (toutes ses
+    pistes sur le kit du slot 0, canaux 1, 2, 3…) jouait sa batterie sur un
+    instrument mélodique. Dans le song, ses pistes kit sortent au canal 10,
+    celles des autres patterns gardent leur canal."""
+    win = _SongWindow(str(tmp_path))
+    pont = win._pattern_list[1]
+    pont._track_slots = [KIT] * len(pont._track_slots)
+    pont._track_channels = [Pattern.default_channel(t) for t in range(len(pont._track_channels))]
+    pont._tape = [[] for _ in pont._tape]
+    pont._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 0, "vel": 100}, time=0))
+    pont._tape[2].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 100}, time=4))
+    path = str(tmp_path / "s.mid")
+    _export(win, path)
+    mid = mido.MidiFile(path)
+    by_name = {}
+    for tr in mid.tracks[1:]:
+        by_name[tr.name] = [(at, m.channel) for at, m in _abs(tr) if m.type == "note_on"]
+    pont_start = 4 * 480
+    piano = by_name["Piano 1"]                      # piste 1 : piano dans Pat_01, kit dans Pont
+    assert all(ch == 0 for at, ch in piano if at < pont_start)
+    assert [ch for at, ch in piano if at >= pont_start] == [9]
+    organ = by_name["DrawbarOrgan"]                 # piste 3 : orgue dans Pat_01, kit dans Pont
+    assert all(ch == 2 for at, ch in organ if at < pont_start)
+    assert [ch for at, ch in organ if at >= pont_start] == [9]
+    print("  song : pistes kit d'un pattern créé sans réglage au canal 10 : OK")

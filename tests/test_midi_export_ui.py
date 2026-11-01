@@ -7,7 +7,8 @@
     extension, erreur), raccourci Alt+Shift+E dans la fenêtre principale
     et dans l'éditeur MIDI. Notes des pads, correspondance GM du kit et
     sons non convertis au statut (Phase 7 étape 11g1, docs/DESIGN.md
-    § 11a1 D1, D4).
+    § 11a1 D1, D4). Piste sur un slot Kit toujours au canal 10 (Phase 8
+    étape 2p3).
     Date: Wed, 21/10/2026
     Author: Coolbrother
 """
@@ -347,3 +348,27 @@ def test_alt_shift_e_midi_editor_uses_its_window():
     assert parent is ed and status == ed._set_status
     assert evt.skipped is False
     print("  éditeur MIDI : Alt+Shift+E exporte, dialog et statut de l'éditeur : OK")
+
+
+
+# ---------------------------------------------------------------------------
+# Piste sur un slot Kit : canal 10 (Phase 8 étape 2p3)
+# ---------------------------------------------------------------------------
+
+def test_kit_track_on_other_channel_exported_on_channel_10(tmp_path):
+    """Pattern créé sans réglage : piste kit restée au canal 2. À l'export,
+    elle sort au canal 10 (programme du kit compris) ; les pistes de synthé
+    gardent leur canal."""
+    win = _ExportWindow(str(tmp_path))
+    win._router._track_channels[1] = 1             # kit (slot TR-707) au canal 2
+    win._router._track_channels[2] = 5             # orgue : canal choisi, gardé
+    p = win._midi_export_params()
+    assert p["track_channels"][:3] == [0, 9, 5]
+    assert win._router._track_channels[1] == 1     # l'état du routeur n'est pas touché
+    path, seen = str(tmp_path / "k.mid"), {}
+    with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(wx.ID_OK, path, seen)):
+        win._export_midi()
+    kit = mido.MidiFile(path).tracks[2]
+    assert kit.name == "TR-707"
+    assert {m.channel for m in kit if m.type in ("note_on", "program_change", "control_change")} == {9}
+    print("  piste kit au canal 2 : exportée au canal 10, synthé à son canal : OK")

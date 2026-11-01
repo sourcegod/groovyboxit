@@ -1047,6 +1047,9 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   avec la table du kit du slot courant
 - Un ancien projet sans canaux enregistrés s'ouvre avec ses pistes kit sur
   le canal 10
+- Une piste sur un slot Kit est toujours écrite au canal 10 (Phase 8 étape
+  2p2), quel que soit le canal enregistré : un pattern créé sans réglage a
+  ses pistes sur le kit du slot 0, mais aux canaux 1, 2, 3…
 - Piste sur slot Banque (Phase 7 étape 17) : banque et programme viennent
   de ses événements (entête) ; à tick égal, CC0 et CC32 avant le Program
   Change ; chaque événement sur le canal courant de la piste ; nom de
@@ -1967,7 +1970,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_editor_window.py` | MidiEditorWindow : solo/mute des pistes (avec Undo), statut MIDI live |
 | `test_midi_export.py` | Export MIDI : fichier relu par mido, pistes, canaux, notes GRID/KIT/PATCH, CC/PGM/BEND, conversion GM, mute/solo, fin pile ; song (Phase 8 étape 2e1) : pattern identique à l'octet, marqueurs, tempo et signature au changement, état des pistes réécrit au changement, canal par pattern, notes qui débordent au tempo suivant, pistes muettes par pattern, banque |
 | `test_midi_export_mix.py` | Export MIDI : volume et pan de piste (CC7/CC10), notes PATCH sans synthé omises, CC91/CC93 à 0 |
-| `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E |
+| `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E ; piste sur un slot Kit au canal 10 (Phase 8 étape 2p3) |
 | `test_midi_import.py` | Import MIDI : nom, tempo, signature, longueur, pas et arrondi des notes, durées, pistes par canal, type 0, fusion, entête, volume / pan, CC / Bend, ignorés, compte rendu, aller-retour, fichier abîmé |
 | `test_midi_import_ui.py` | Interface de l'import MIDI : slot Banque trouvé ou créé, dossier du dialogue, annulation, erreur de lecture, confirmation, remplacement du pattern, noms de pistes, Undo, compte rendu, Alt+Shift+I |
 | `test_midi_handler_window.py` | Statut MIDI live de l'éditeur : format_midi_status, _notify_editor_midi |
@@ -1992,7 +1995,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
 | `test_sixteen_tracks.py` | 16 pistes par pattern : défauts, migration des presets à 8 pistes, sérialisation |
 | `test_song.py` | Song : création, séquence, label |
-| `test_song_export_ui.py` | Interface de l'export d'un song, Phase 8 étape 2g1 : nom proposé, réglages de chaque pattern d'après son état figé et cohérence avec le pattern courant, Alt+Shift+E de la fenêtre Songs (Ok, Annuler, extension, erreur, song vide, dossier créé, compte rendu, notes de kit non converties), modifications non rangées du pattern courant, état propre à chaque pattern dans le fichier ; export audio du song, Phase 8 étape 2k1 : Alt+Shift+W de la fenêtre Songs (fichier puis paramètres, nom, fin proposée d'après la boucle du song et non gardée pour les patterns, libellé « Song + résonance », render_song et ses paramètres, annulations, song vide, pause, export déjà en cours, erreur, compte rendu, rendu réel jusqu'au fichier) ; stems d'un song (2m1) (39 tests) |
+| `test_song_export_ui.py` | Interface de l'export d'un song, Phase 8 étape 2g1 : nom proposé, réglages de chaque pattern d'après son état figé et cohérence avec le pattern courant, Alt+Shift+E de la fenêtre Songs (Ok, Annuler, extension, erreur, song vide, dossier créé, compte rendu, notes de kit non converties), modifications non rangées du pattern courant, état propre à chaque pattern dans le fichier ; export audio du song, Phase 8 étape 2k1 : Alt+Shift+W de la fenêtre Songs (fichier puis paramètres, nom, fin proposée d'après la boucle du song et non gardée pour les patterns, libellé « Song + résonance », render_song et ses paramètres, annulations, song vide, pause, export déjà en cours, erreur, compte rendu, rendu réel jusqu'au fichier) ; stems d'un song (2m1) ; pistes kit d'un pattern créé sans réglage au canal 10 (2p3) (40 tests) |
 | `test_song_segments.py` | Segments d'un song pour l'export, Phase 8 étape 2c1 : début en secondes et en noires, tempo, carte de tempo et signature par pattern, pattern répété, indices hors du store, copie figée de l'état du pattern (pistes, voix, gamme), boucle ignorée, rangement du pattern courant avant l'export (18 tests) |
 | `test_song_serialization.py` | to_dict / from_dict Song (16 tests) |
 | `test_sound_cache.py` | sound_cache : init, load, save_async, hash (21 tests) |
