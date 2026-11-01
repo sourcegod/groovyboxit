@@ -495,7 +495,7 @@ def test_alt_shift_w_and_s_main_window():
     win = FakeWindow()
     km = KeyManager(win)
     calls = []
-    win._export_audio = lambda: calls.append("W")
+    win._export_audio_choose = lambda: calls.append("W")     # choix pattern / song (4b1)
     win._export_audio_selection = lambda: calls.append("S")
     km.handle(FakeEvent(key=ord('W'), alt=True, shift=True))
     km.handle(FakeEvent(key=ord('S'), alt=True, shift=True))
@@ -521,7 +521,7 @@ class _FakeEditor:
     def __init__(self):
         self.calls = calls = []
         class Parent:
-            def _export_audio(self, parent=None, status=None):
+            def _export_audio_choose(self, parent=None, status=None):   # 4b1
                 calls.append(("W", parent, status))
             def _export_audio_selection(self, parent=None, status=None, editor=False):
                 calls.append(("S", parent, status, editor))

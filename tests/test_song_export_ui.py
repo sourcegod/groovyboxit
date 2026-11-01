@@ -17,6 +17,10 @@
     réel jusqu'au fichier. Stems d'un song (Phase 8 étape 2m1) : une piste
     par rendu, nom du slot du premier pattern où elle joue. Piste kit d'un
     pattern créé sans réglage au canal 10 dans le song (Phase 8 étape 2p3).
+    Choix « Pattern courant / Song courant » d'Alt+Shift+E et Alt+Shift+W
+    dans la fenêtre principale et l'éditeur MIDI (Phase 8 étape 4c1, § 4a
+    X1-X8) : libellés, dialogue, pattern ou song, choix gardé et partagé,
+    annulation, export en cours, song vide, de bout en bout.
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
@@ -657,3 +661,185 @@ def test_song_kit_tracks_of_default_pattern_on_channel_10(tmp_path):
     assert all(ch == 2 for at, ch in organ if at < pont_start)
     assert [ch for at, ch in organ if at >= pont_start] == [9]
     print("  song : pistes kit d'un pattern créé sans réglage au canal 10 : OK")
+
+
+
+# ---------------------------------------------------------------------------
+# Choix « Pattern courant / Song courant » (Phase 8 étape 4c1, § 4a X1-X8)
+# ---------------------------------------------------------------------------
+
+from ui.dialogs import ExportTargetDialog
+
+
+class _TargetDlg:
+    """Faux ExportTargetDialog : note ses ouvertures, rend target (ou Annuler)."""
+    opened = []
+
+    def __init__(self, target=0, ok=True):
+        self.target, self.ok = target, ok
+
+    def install(self, monkeypatch):
+        fake = self
+        class Dlg:
+            TARGET_PATTERN, TARGET_SONG = 0, 1
+            def __init__(self, parent, title, pattern_label, song_label, target_idx=0):
+                _TargetDlg.opened.append(dict(parent=parent, title=title, pattern=pattern_label,
+                                              song=song_label, target_idx=target_idx))
+            def ShowModal(self):      return wx.ID_OK if fake.ok else wx.ID_CANCEL
+            def get_target_idx(self): return fake.target
+            def Destroy(self):        pass
+        _TargetDlg.opened = []
+        monkeypatch.setattr(mwp, "ExportTargetDialog", Dlg)
+        return self
+
+
+def _target_window(tmp_path, **kw):
+    win = _AudioSongWindow(str(tmp_path), **kw)
+    win._cur_song_idx = 0
+    win.exports = []
+    win._export_midi       = lambda parent=None, status=None: win.exports.append(("midi", parent, status))
+    win._export_audio      = lambda parent=None, status=None: win.exports.append(("wav", parent, status))
+    win._export_song_midi  = lambda idx, parent=None, status=None: win.exports.append(("song midi", idx, parent, status))
+    win._export_song_audio = lambda idx, parent=None, status=None: win.exports.append(("song wav", idx, parent, status))
+    return win
+
+
+def test_target_labels(tmp_path):
+    win = _AudioSongWindow(str(tmp_path), name="Mon song")
+    win._cur_song_idx = 0
+    assert win._export_target_labels() == ("Pat_01", "Song_01 Mon song, 2 patterns")
+    win._pattern_list[0]._name = "Intro"
+    win._cur_song_idx = 2                                 # un pattern
+    assert win._export_target_labels() == ("Pat_01 Intro", "Song_03, 1 pattern")
+    win._cur_song_idx = 1                                 # vide
+    assert win._export_target_labels()[1] == "Song_02, vide"
+    print("  libellés : pattern courant, song courant (patterns, vide) : OK")
+
+
+def test_target_dialog(wx_app_alive):
+    dlg = ExportTargetDialog(None, "Exporter en MIDI", "Pat_02 Intro", "Song_01, 3 patterns", 1)
+    ended = []
+    dlg.EndModal = ended.append
+    try:
+        assert dlg.GetTitle() == "Exporter en MIDI"
+        assert [dlg._target_lb.GetString(i) for i in range(2)] == [
+            "Exporter : Pattern courant (Pat_02 Intro)", "Exporter : Song courant (Song_01, 3 patterns)"]
+        assert dlg.get_target_idx() == ExportTargetDialog.TARGET_SONG
+        dlg._target_lb.SetSelection(0)
+        assert dlg.get_target_idx() == ExportTargetDialog.TARGET_PATTERN
+        dlg._target_lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX_DCLICK.typeId,
+                                                    dlg._target_lb.GetId()))
+        assert ended == [wx.ID_OK]
+    finally:
+        dlg.Destroy()
+    dlg = ExportTargetDialog(None, "Exporter en WAV", "p", "s", 7)
+    try:
+        assert dlg.get_target_idx() == 1                  # borné
+    finally:
+        dlg.Destroy()
+    print("  dialogue : titre, lignes, sélection, Entrée valide, bornes : OK")
+
+
+@pytest.mark.parametrize("target, expected", [(0, "midi"), (1, "song midi")])
+def test_midi_choose_dispatches(tmp_path, monkeypatch, target, expected):
+    _TargetDlg(target).install(monkeypatch)
+    win = _target_window(tmp_path)
+    win._cur_song_idx = 2
+    said, parent = [], object()
+    win._export_midi_choose(parent=parent, status=said.append)
+    opened, = _TargetDlg.opened
+    assert opened["title"] == "Exporter en MIDI" and opened["parent"] is parent
+    assert opened["target_idx"] == 0                      # premier export : pattern
+    kind, *rest = win.exports[0]
+    assert kind == expected and rest[-2:] == [parent, said.append]
+    if target == 1:
+        assert rest[0] == 2                               # song courant
+    print("  Alt+Shift+E : pattern ou song courant, parent et statut transmis : OK")
+
+
+@pytest.mark.parametrize("target, expected", [(0, "wav"), (1, "song wav")])
+def test_audio_choose_dispatches(tmp_path, monkeypatch, target, expected):
+    _TargetDlg(target).install(monkeypatch)
+    win = _target_window(tmp_path)
+    win._export_audio_choose()
+    assert _TargetDlg.opened[0]["title"] == "Exporter en WAV"
+    assert win.exports[0][0] == expected
+    print("  Alt+Shift+W : pattern ou song courant : OK")
+
+
+def test_choice_kept_and_shared_between_midi_and_wav(tmp_path, monkeypatch):
+    fake = _TargetDlg(1).install(monkeypatch)
+    win = _target_window(tmp_path)
+    win._export_midi_choose()
+    fake.target = 1
+    win._export_audio_choose()
+    assert [o["target_idx"] for o in _TargetDlg.opened] == [0, 1]   # gardé, partagé
+    assert win._export_target == 1
+    print("  dernier choix gardé pour la session, commun au MIDI et au WAV : OK")
+
+
+def test_choose_cancelled(tmp_path, monkeypatch):
+    _TargetDlg(1, ok=False).install(monkeypatch)
+    win = _target_window(tmp_path)
+    win._export_target = 0
+    win._export_midi_choose()
+    win._export_audio_choose()
+    assert win.exports == []
+    assert win.statuses == ["Export MIDI annulé", "Export audio annulé"]
+    assert win._export_target == 0                        # inchangé
+    print("  annulé : rien exporté, message, choix gardé inchangé : OK")
+
+
+def test_audio_choose_refused_while_export_running(tmp_path, monkeypatch):
+    _TargetDlg(0).install(monkeypatch)
+    win = _target_window(tmp_path)
+    win._audio_export_thread = SimpleNamespace(is_alive=lambda: True)
+    win._export_audio_choose()
+    assert _TargetDlg.opened == [] and win.exports == []
+    assert win.statuses == ["Export audio déjà en cours"]
+    print("  export audio en cours : refusé avant la question : OK")
+
+
+def test_choose_empty_song_refused(tmp_path, monkeypatch):
+    """X8 : le song courant vide reste proposé ; le choisir donne le refus
+    habituel, sans dialogue de fichier."""
+    _TargetDlg(1).install(monkeypatch)
+    win = _AudioSongWindow(str(tmp_path))
+    win._cur_song_idx = 1
+    opened = []
+    monkeypatch.setattr(mwp.wx, "FileDialog", lambda *a, **k: opened.append(a))
+    win._export_midi_choose()
+    win._export_audio_choose()
+    assert _TargetDlg.opened[0]["song"] == "Song_02, vide"
+    assert opened == []
+    assert win.statuses == ["Song vide — ajoutez des patterns dans la fenêtre Songs"] * 2
+    print("  song courant vide : proposé, puis refusé : OK")
+
+
+def test_choose_song_end_to_end_writes_song_midi(tmp_path, monkeypatch):
+    """De bout en bout : Alt+Shift+E, « Song courant », vrai export du song."""
+    _TargetDlg(1).install(monkeypatch)
+    win = _AudioSongWindow(str(tmp_path), name="Mon song")
+    win._cur_song_idx = 0
+    path = str(tmp_path / "s.mid")
+    seen = {}
+    monkeypatch.setattr(mwp.wx, "FileDialog", _fake_file_dialog(wx.ID_OK, path, seen))
+    win._export_midi_choose()
+    assert seen["title"] == "Exporter le song en MIDI…"
+    assert win.statuses == ["Song 01 exporté : s.mid (2 patterns)"]
+    assert [m.text for m in mido.MidiFile(path).tracks[0] if m.type == "marker"] == ["Pat_01", "Pont"]
+    print("  de bout en bout : Alt+Shift+E puis Song courant, fichier du song écrit : OK")
+
+
+def test_choose_pattern_end_to_end_writes_pattern_midi(tmp_path, monkeypatch):
+    _TargetDlg(0).install(monkeypatch)
+    win = _AudioSongWindow(str(tmp_path))
+    win._cur_song_idx = 0
+    path = str(tmp_path / "p.mid")
+    seen = {}
+    monkeypatch.setattr(mwp.wx, "FileDialog", _fake_file_dialog(wx.ID_OK, path, seen))
+    win._export_midi_choose()
+    assert seen["title"] == "Exporter le pattern en MIDI…"
+    assert win.statuses == ["Pattern 01 exporté : p.mid"]
+    assert not [m for m in mido.MidiFile(path).tracks[0] if m.type == "marker"]
+    print("  de bout en bout : Alt+Shift+E puis Pattern courant, fichier du pattern écrit : OK")

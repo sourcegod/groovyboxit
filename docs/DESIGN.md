@@ -8934,3 +8934,20 @@ X2…** (§ 4a).
 | **4b1** | Implémentation — `ExportTargetDialog`, `_export_midi_choose`, `_export_audio_choose`, choix gardé, raccourcis de la fenêtre principale et de l'éditeur MIDI (X1-X8). Essayé avec Orca. | `ui/dialogs_simple.py`, `ui/dialogs.py`, `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py` |
 | **4c1** | Tests — 4b1 (dialogue, choix pattern ou song, MIDI et WAV, choix gardé et partagé, annulation, déjà en cours, song vide, raccourcis des deux fenêtres, fenêtre Songs inchangée). | `tests/test_song_export_ui.py`, tests des raccourcis, `docs/SPECS.md` |
 | **4d1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 4 — Avancement (4b1, 4c1)
+
+- **4b1** (`f385806`) : `ExportTargetDialog`, `_export_midi_choose`,
+  `_export_audio_choose`, `_export_target_labels`, choix gardé
+  `_export_target` ; raccourcis de la fenêtre principale et de l'éditeur
+  MIDI. Quatre tests des raccourcis étaient rouges à ce commit, comme
+  annoncé.
+- **4c1** : les quatre tests des raccourcis visent les nouveaux points
+  d'entrée ; 12 tests du choix dans `test_song_export_ui.py` ; 3194 tests
+  verts.
+- **Précisions par rapport au plan** :
+  - **Libellés** : « Pat_02 Intro » pour le pattern ; « Song_01 Mon song,
+    3 patterns », « 1 pattern » ou « vide » pour le song.
+  - **Pour le WAV**, l'export en cours est refusé avant la question ; la
+    pause de la lecture vient ensuite, dans l'export choisi.
+  - **Essai de l'utilisateur avec Orca** : concluant (2026-11-01).

@@ -309,7 +309,7 @@ def test_export_uses_given_parent_and_status(tmp_path):
 def test_alt_shift_e_main_window():
     app, win, km = make_km()
     calls = []
-    win._export_midi = lambda: calls.append("export")
+    win._export_midi_choose = lambda: calls.append("export")   # choix pattern / song (4b1)
     km.handle(FakeEvent(key=ord('E'), alt=True, shift=True))
     km.handle(FakeEvent(key=ord('E'), alt=True))              # Alt+E seul : rien
     assert calls == ["export"]
@@ -333,7 +333,7 @@ class _FakeEditor:
         self.calls = []
         editor = self
         class Parent:
-            def _export_midi(self, parent=None, status=None):
+            def _export_midi_choose(self, parent=None, status=None):   # 4b1
                 editor.calls.append((parent, status))
             _key_manager = SimpleNamespace(handle_transport=lambda evt: False)
         self._parent = Parent()
