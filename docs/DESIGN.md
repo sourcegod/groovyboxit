@@ -8808,3 +8808,37 @@ force déjà (K3).
   - **Démarrage sans projet** : le routeur reçoit les canaux corrigés du
     pattern courant par `set_track_channel`, piste par piste.
   - **Piste 10** : déjà au canal 10, elle n'est pas comptée.
+
+### Clôture (3d1)
+
+**3a-3c1 FAITS** (commits `9b4af05`, `f71a6bb`, `d072ec4`, et ce commit
+de clôture ; 3182 tests verts) : **chantier Phase 8 étape 3 complet**.
+Les patterns du projet ont leurs pistes kit au canal 10, et le canal
+affiché par Alt+Entrée est juste.
+
+**Ce que le chantier a livré** :
+- **Règle** (`Pattern.apply_kit_channels`) : une piste sur un slot Kit
+  restée sur son canal par défaut passe au canal 10 ; un canal choisi est
+  gardé (K1). Elle remplace la migration des projets sans canaux de la
+  Phase 7 étape 10h7 ; le drapeau `_needs_kit_channels` est retiré.
+- **Moments** (`_apply_kit_rule`) : démarrage, projet absent compris, avec
+  le routeur aligné ; Ctrl+N ; Ctrl+O, avant que le pattern courant passe
+  au routeur (K2, K5). Ni Undo ni « modifié » (K6).
+- **Compte rendu** de Ctrl+O et de l'ouverture par l'explorateur :
+  « — N pistes kit mises au canal 10 » (K7).
+- **Forçage du canal 10 à l'export MIDI gardé** (2p2, K3).
+
+**Essai de l'utilisateur** (2026-11-01) : concluant.
+
+**Laissé hors périmètre** (non retenu par l'utilisateur) :
+- un slot qui change de type par Alt+X ;
+- le changement de slot dans Alt+Entrée, qui appelle `assign_slot` sans
+  la règle du canal.
+
+Un pattern dont le slot devient un kit en cours de session n'est donc
+corrigé qu'à la prochaine ouverture du projet ; l'export MIDI, lui, le
+force déjà.
+
+`docs/SPECS.md` a été mis à jour en 3c1 (règle dans la section Export
+MIDI, table des tests) et en 3d1 (ligne Phase 8). Aucun raccourci n'a
+changé.
