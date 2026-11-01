@@ -1045,8 +1045,11 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   des notes au-delà de la fin du pattern
 - Un seul kit chargé à la fois : toutes les pistes kit sont converties
   avec la table du kit du slot courant
-- Un ancien projet sans canaux enregistrés s'ouvre avec ses pistes kit sur
-  le canal 10
+- Au démarrage, à Ctrl+N et à Ctrl+O, une piste sur un slot Kit restée sur
+  son canal par défaut passe au canal 10, dans tous les patterns (Phase 8
+  étape 3) ; un autre canal est un choix, gardé. Ni Undo ni projet modifié ;
+  Ctrl+O annonce « — N pistes kit mises au canal 10 ». Un ancien projet sans
+  canaux enregistrés est traité de même
 - Une piste sur un slot Kit est toujours écrite au canal 10 (Phase 8 étape
   2p2), quel que soit le canal enregistré : un pattern créé sans réglage a
   ses pistes sur le kit du slot 0, mais aux canaux 1, 2, 3…
@@ -1956,7 +1959,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_gm_program.py` | Program Change par slot : guess_gm_program, gm_program, export au tick 0, propriétés de piste (aperçu, Annuler, Undo, transposition et gain GM) |
 | `test_gm_slot_export.py` | Transposition et gain GM d'un slot : accesseurs, sérialisation du Rack, effet à l'export |
 | `test_key_manager.py` | Raccourcis clavier, transport, ProjectManager |
-| `test_kit_channel_migration.py` | Migration des canaux : pistes kit sur le canal 10 à l'ouverture d'un ancien projet |
+| `test_kit_channel_migration.py` | Règle « kit → canal 10 » des données (Phase 8 étape 3c1) : piste kit restée sur son canal par défaut au canal 10, canal choisi gardé, synthé et banque intacts, projet sans canaux, seconde application sans effet ; démarrage (projet absent compris, routeur aligné), Ctrl+N, Ctrl+O sur tous les patterns, ni Undo ni « modifié », compte rendu (16 tests) |
 | `test_live_take.py` | Prise d'enregistrement live : Undo avant la prise, retiré si _tape n'a pas changé |
 | `test_load_project_cache.py` | Non-régression : Ctrl+O invalide le cache des patterns sérialisés de l'Undo |
 | `test_loop_points_pattern.py` | Loop points : données Pattern (29 tests) |

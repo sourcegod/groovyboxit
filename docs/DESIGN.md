@@ -8787,3 +8787,24 @@ force déjà (K3).
 | **3b1** | Implémentation — `Pattern.apply_kit_channels` selon K1 (drapeau retiré), `_apply_kit_rule` au démarrage, à Ctrl+N et à Ctrl+O, compte rendu de Ctrl+O (K4-K7). | `src/pattern.py`, `ui/mw_project.py`, `ui/main_window.py` |
 | **3c1** | Tests — 3b1 : règle (défaut corrigé, choix respecté, synthé et banque intacts, projet sans canaux), démarrage avec et sans fichier, Ctrl+N, Ctrl+O, routeur, ni Undo ni « modifié », compte rendu ; tests de 10h8 revus (le kit au canal 2 de la piste 2 passe au canal 10). | `tests/test_kit_channel_migration.py`, `docs/SPECS.md` |
 | **3d1** | Doc — clôture (SPECS), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
+
+### Phase 8 étape 3 — Avancement (3b1, 3c1)
+
+- **3b1** (`f71a6bb`) : `Pattern.apply_kit_channels` selon K1 (drapeau
+  `_needs_kit_channels` retiré), `_apply_kit_rule` au démarrage, à Ctrl+N
+  et à Ctrl+O, `_project_loaded_msg` (Ctrl+O et ouverture par
+  l'explorateur). Quatre tests de 10h8 étaient rouges à ce commit, comme
+  annoncé.
+- **3c1** : `tests/test_kit_channel_migration.py` réécrit, 16 tests ;
+  3182 tests verts.
+  - Tests de 10h8 revus : le drapeau n'existe plus ; le kit de la piste 2
+    « laissé sur le canal 2 » passe au canal 10 (limite de K1) ; un canal
+    choisi, différent du canal par défaut, est gardé.
+- **Précisions par rapport au plan** :
+  - **Cache de l'Undo** : `_apply_kit_rule` ne marque pas le cache de
+    `_capture_state` ; les trois appelants le marquent déjà en entier. Une
+    première version le marquait avant sa recréation au chargement, ce qui
+    a fait échouer deux tests (corrigé avant le commit 3b1).
+  - **Démarrage sans projet** : le routeur reçoit les canaux corrigés du
+    pattern courant par `set_track_channel`, piste par piste.
+  - **Piste 10** : déjà au canal 10, elle n'est pas comptée.

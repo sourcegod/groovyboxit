@@ -1,10 +1,13 @@
 #python3
 """
     File: tests/test_kit_channel_migration.py
-    Tests de la migration des canaux (Phase 7 étape 10h7, docs/DESIGN.md
-    § 10h7) : à l'ouverture d'un projet sans track_channels, les pistes dont
-    le slot est un kit passent sur le canal 10 ; un projet qui a ses canaux
-    n'est pas touché ; Pattern.apply_kit_channels n'agit qu'une fois.
+    Tests de la règle « kit → canal 10 » des données. D'abord migration des
+    projets sans canaux (Phase 7 étape 10h7) ; depuis la Phase 8 étape 3c1
+    (docs/DESIGN.md § 3a K1-K7) : une piste sur un kit restée sur son canal
+    par défaut passe au canal 10, un canal choisi est gardé, synthé et
+    banque intacts, règle sans effet la seconde fois ; appliquée aux 99
+    patterns au démarrage (projet absent compris, routeur aligné), à Ctrl+N
+    et à Ctrl+O, ni Undo ni « modifié », compte rendu de Ctrl+O.
     Date: Wed, 21/10/2026
     Author: Coolbrother
 """
@@ -45,17 +48,24 @@ def _old_pattern_dict(slots):
 
 
 # ---------------------------------------------------------------------------
-# Pattern : drapeau et apply_kit_channels
+# Pattern.apply_kit_channels (Phase 8 étape 3c1, § 3a K1, K4)
 # ---------------------------------------------------------------------------
 
-def test_flag_set_only_when_key_missing():
+BANK = 5
+
+def _bank_rack():
+    rack = _rack()
+    rack.set_slot(BANK, InstrumentType.BANK, "FluidR3", {"bank_slot": 0})
+    return rack
+
+def test_no_flag_any_more():
+    """Le drapeau de 10h7 est retiré : la règle ne dépend plus de la clé
+    track_channels."""
     p = Pattern()
-    assert p._needs_kit_channels is False
+    assert not hasattr(p, "_needs_kit_channels")
     p.from_dict(_old_pattern_dict([PIANO, KIT]))
-    assert p._needs_kit_channels is True
-    p.from_dict(Pattern().to_dict())          # Pattern réutilisé, clé présente
-    assert p._needs_kit_channels is False
-    print("  _needs_kit_channels : vrai seulement sans track_channels : OK")
+    assert not hasattr(p, "_needs_kit_channels")
+    print("  plus de drapeau _needs_kit_channels : OK")
 
 def test_kit_tracks_move_to_channel_10():
     rack = _rack()
@@ -65,38 +75,69 @@ def test_kit_tracks_move_to_channel_10():
     assert p._track_channels[:4] == [0, 9, 2, 9]
     assert changed[:2] == [1, 3]
     assert p._track_channels[4:] == [9] * 12          # pistes vides sur le slot kit
-    print("  pistes kit → canal 10, piste synthé gardée : OK")
+    assert 9 not in changed                           # piste 10 déjà au canal 10
+    print("  projet sans canaux : pistes kit → canal 10, piste synthé gardée : OK")
 
-def test_apply_only_once():
+def test_new_pattern_all_kit_tracks_move():
+    """Pattern créé sans réglage : toutes ses pistes sur le kit du slot 0,
+    canaux 1 à 16 → toutes au canal 10 (cas trouvé à l'essai, § 2p2)."""
+    p = Pattern()
+    changed = p.apply_kit_channels(_is_kit(_rack()))
+    assert p._track_channels == [9] * 16
+    assert changed == [t for t in range(16) if t != 9]
+    print("  pattern neuf : toutes les pistes kit au canal 10 : OK")
+
+def test_chosen_channel_kept():
+    """K1 : un canal autre que le canal par défaut est un choix, gardé."""
+    p = Pattern()
+    p._track_channels[0] = 4                           # piste 1 mise au canal 5
+    p._track_channels[3] = 0                           # piste 4 mise au canal 1
+    p.apply_kit_channels(_is_kit(_rack()))
+    assert p._track_channels[0] == 4 and p._track_channels[3] == 0
+    print("  kit sur un canal choisi : gardé : OK")
+
+def test_choice_equal_to_default_is_corrected():
+    """Limite acceptée de K1 (ancien test de 10h8 : kit « laissé sur le
+    canal 2 ») : la piste 2 au canal 2 est sur son canal par défaut, elle
+    passe au canal 10."""
+    rack = _rack()
+    src = Pattern()
+    src._track_slots[1] = KIT
+    src._track_channels[1] = 1
+    p = Pattern()
+    p.from_dict(src.to_dict())
+    assert 1 in p.apply_kit_channels(_is_kit(rack))
+    assert p._track_channels[1] == 9
+    print("  piste 2 au canal 2 (son canal par défaut) : passe au canal 10 : OK")
+
+def test_synth_and_bank_tracks_untouched():
+    rack = _bank_rack()
+    p = Pattern()
+    p._track_slots[:4] = [PIANO, BANK, BANK, KIT]
+    p._track_channels[2] = 9                           # banque : batterie au canal 10
+    assert p.apply_kit_channels(_is_kit(rack))[:1] == [3]
+    assert p._track_channels[:4] == [0, 1, 9, 9]
+    print("  synthé et banque intacts (banque au canal 10 comprise) : OK")
+
+def test_second_application_does_nothing():
     rack = _rack()
     p = Pattern()
-    p.from_dict(_old_pattern_dict([KIT]))
     p.apply_kit_channels(_is_kit(rack))
     p._track_channels[0] = 4                           # réglage ultérieur
     assert p.apply_kit_channels(_is_kit(rack)) == []
     assert p._track_channels[0] == 4
-    print("  apply_kit_channels : une seule fois, puis sans effet : OK")
+    print("  seconde application sans effet, réglage ultérieur gardé : OK")
 
-def test_saved_channels_untouched():
-    rack = _rack()
-    src = Pattern()
-    src._track_slots[1] = KIT
-    src._track_channels[1] = 1                         # kit laissé sur le canal 2
-    p = Pattern()
-    p.from_dict(src.to_dict())
-    assert p.apply_kit_channels(_is_kit(rack)) == []
-    assert p._track_channels[1] == 1
-    print("  canaux enregistrés : migration sans effet : OK")
-
-def test_saved_after_migration_keeps_channels():
+def test_saved_after_rule_keeps_channels():
     rack = _rack()
     p = Pattern()
     p.from_dict(_old_pattern_dict([PIANO, KIT]))
     p.apply_kit_channels(_is_kit(rack))
     q = Pattern()
     q.from_dict(p.to_dict())
-    assert q._needs_kit_channels is False and q._track_channels[:2] == [0, 9]
-    print("  projet migré puis réenregistré : canaux conservés, plus de migration : OK")
+    assert q._track_channels[:2] == [0, 9]
+    assert q.apply_kit_channels(_is_kit(rack)) == []
+    print("  projet mis en règle puis réenregistré : canaux conservés : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -148,12 +189,120 @@ def test_load_old_project_moves_kit_tracks(tmp_path):
     assert win._project_modified is False
     print("  _load_project d'un ancien projet : pistes kit sur 10, router alimenté : OK")
 
-def test_load_project_with_channels_untouched(tmp_path):
+def test_load_project_keeps_chosen_and_corrects_default(tmp_path):
     src = Pattern()
-    src._track_slots[1] = KIT
-    src._track_channels[1] = 1
+    src._track_slots[:3] = [PIANO, KIT, KIT]
+    src._track_channels[1] = 1                          # canal par défaut : corrigé
+    src._track_channels[2] = 6                          # choisi : gardé
     path = _write_project(tmp_path, [src.to_dict()])
     win = _FakeProjectWindow(path)
     win._load_project()
-    assert win._pattern_list[0]._track_channels[1] == 1
-    print("  _load_project d'un projet avec canaux : réglage conservé : OK")
+    assert win._pattern_list[0]._track_channels[:3] == [0, 9, 6]
+    print("  _load_project : canal par défaut corrigé, canal choisi gardé : OK")
+
+
+# ---------------------------------------------------------------------------
+# Moments : Ctrl+O, démarrage, Ctrl+N (Phase 8 étape 3c1, § 3a K2, K5-K7)
+# ---------------------------------------------------------------------------
+
+def test_load_project_applies_rule_to_every_pattern(tmp_path):
+    a, b = Pattern(), Pattern()                         # pistes sur le kit, canaux par défaut
+    b._track_slots = [PIANO] * 16
+    path = _write_project(tmp_path, [a.to_dict(), b.to_dict()])
+    win = _FakeProjectWindow(path)
+    win._load_project()
+    assert win._pattern_list[0]._track_channels == [9] * 16
+    assert win._pattern_list[1]._track_channels == list(range(16))
+    assert win._pattern_list[2]._track_channels == [9] * 16      # absent du fichier : neuf
+    assert win._kit_rule_count == 2 * 15
+    assert win.applied[0]._track_channels == [9] * 16            # routeur : canaux justes
+    print("  Ctrl+O : règle sur tous les patterns avant le routeur : OK")
+
+def test_load_project_neither_undo_nor_modified(tmp_path):
+    path = _write_project(tmp_path, [Pattern().to_dict()])
+    win = _FakeProjectWindow(path)
+    win._load_project()
+    assert win._kit_rule_count > 0
+    assert win._project_modified is False
+    assert not win._undo.can_undo()
+    print("  Ctrl+O : ni Undo ni « modifié » : OK")
+
+def test_loaded_message_counts_kit_tracks(tmp_path):
+    win = _FakeProjectWindow(str(tmp_path / "x.gvp"))
+    win._project_path = str(tmp_path / "projet.gvp")
+    win._kit_rule_count = 12
+    assert win._project_loaded_msg() == \
+        "Projet chargé : projet.gvp — 12 pistes kit mises au canal 10"
+    win._kit_rule_count = 1
+    assert win._project_loaded_msg() == \
+        "Projet chargé : projet.gvp — 1 piste kit mise au canal 10"
+    win._kit_rule_count = 0
+    assert win._project_loaded_msg() == "Projet chargé : projet.gvp"
+    print("  message de Ctrl+O : nombre de pistes mises au canal 10, ou rien : OK")
+
+def test_ctrl_o_reports_count(tmp_path, monkeypatch):
+    import ui.mw_project as mwp
+    import wx
+    path = _write_project(tmp_path, [Pattern().to_dict()])
+    win = _FakeProjectWindow(path)
+    win._project_modified = False
+    win._projects_dir = str(tmp_path)
+    win._take = None
+    said = []
+    win._show_status = said.append
+    class Dlg:
+        def __init__(self, *a, **k): pass
+        def ShowModal(self): return wx.ID_OK
+        def GetPath(self):   return path
+        def Destroy(self):   pass
+    monkeypatch.setattr(mwp.wx, "FileDialog", Dlg)
+    win._open_project()
+    assert said[-1] == "Projet chargé : ancien.gvp — 45 pistes kit mises au canal 10"
+    print("  Ctrl+O : compte rendu au statut : OK")
+
+
+class _Router:
+    """Routeur minimal : canaux des pistes, réglés par set_track_channel."""
+    def __init__(self):
+        self._track_channels = [Pattern.default_channel(t) for t in range(16)]
+        self.set_calls = []
+    def get_track_channel(self, t):
+        return self._track_channels[t]
+    def set_track_channel(self, t, ch):
+        self.set_calls.append((t, ch))
+        self._track_channels[t] = ch
+
+
+def test_startup_without_project_file(tmp_path):
+    """Démarrage sans fichier de projet : patterns neufs mis en règle, et
+    le routeur suit le pattern courant."""
+    win = _FakeProjectWindow(str(tmp_path / "absent.gvp"))
+    win._rack = _rack()                                           # Rack de démarrage : kit au slot 0
+    win._router = _Router()
+    win._pattern_list[1]._track_slots = [PIANO] * 16
+    win._cur_pattern_idx = 0
+    win._load_project()
+    assert win._pattern_list[0]._track_channels == [9] * 16
+    assert win._pattern_list[1]._track_channels == list(range(16))
+    assert win._router._track_channels == [9] * 16
+    assert len(win._router.set_calls) == 15                       # piste 10 déjà au canal 10
+    assert win._project_modified is False and win._kit_rule_count == 0
+    print("  démarrage sans projet : patterns et routeur au canal 10 : OK")
+
+
+def test_new_project_applies_rule(tmp_path):
+    win = _FakeProjectWindow(str(tmp_path / "x.gvp"))
+    win._rack = _rack()
+    win._project_modified = False
+    win._projects_dir = str(tmp_path)
+    win._take = None
+    win._pattern_listbox = MagicMock()
+    seen = {}
+    win._apply_pattern_from_store = lambda new: seen.setdefault("channels", list(new._track_channels))
+    win._new_project()
+    assert len(win._pattern_list) == 99
+    assert all(p._track_channels == [9] * 16 for p in win._pattern_list)
+    assert seen["channels"] == [9] * 16                           # avant le routeur
+    assert win._project_modified is False and not win._undo.can_undo()
+    print("  Ctrl+N : 99 patterns neufs au canal 10, avant le routeur : OK")
+
