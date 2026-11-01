@@ -153,6 +153,14 @@ class ProjectMixin:
         de lecture de la gamme, nom du preset d'une piste en Banque."""
         slots = [self._rack.get_slot(s) for s in track_slots]
         is_bank = [s.type == InstrumentType.BANK for s in slots]
+        # Piste sur un slot Kit : toujours au canal 10 (Phase 8 étape 2p2).
+        # Les patterns créés sans réglage ont toutes leurs pistes sur le
+        # slot 0 (souvent un kit) mais aux canaux 1, 2, 3… : la règle « kit
+        # → 10 » n'est posée qu'à l'assignation par l'utilisateur. Sur un
+        # autre canal, un lecteur GM jouerait la batterie avec un instrument
+        # mélodique (le programme du kit n'y désigne pas un kit).
+        channels = [Pattern.KIT_CHANNEL if t < len(slots) and slots[t].type == InstrumentType.KIT
+                    else ch for t, ch in enumerate(channels)]
         # Piste sur slot Banque (17f1, § 17e3 O8) : banque et programme
         # viennent des événements de _tape ; nom = preset de son canal.
         preset_names = [preset_name(t) if is_bank[t] else None

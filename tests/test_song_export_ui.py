@@ -119,7 +119,9 @@ def test_song_midi_params_come_from_frozen_pattern(tmp_path):
     assert p["track_programs"][0] == 18
     assert p["track_is_synth"][0] is True
     assert p["track_volumes"][0] == 50 and p["track_pans"][0] == 30
-    assert p["track_channels"] == seg.pattern._track_channels
+    # Pistes sur le kit (slot 0) au canal 10, les autres à leur canal (2p2)
+    assert p["track_channels"] == [9 if slot == KIT else ch for slot, ch in
+                                   zip(seg.pattern._track_slots, seg.pattern._track_channels)]
     assert p["track_channels"] is not seg.pattern._track_channels      # copies
     assert p["synth_grid_notes"] == scale_midi_notes("minor", 50, TrackRouter.KB_NUMPAD_NOTES)
     assert p["kit_pad_notes"] == list(range(44, 60)) and p["kit_gm_map"] == {46: 56}
