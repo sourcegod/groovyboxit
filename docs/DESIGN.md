@@ -9264,3 +9264,35 @@ Rack).
   pattern ; fakes des 20 tests rouges de 5d1 adaptés (`rack_mode` du
   routeur factice, `get_rack_mode` des `FakeDlg`) ; `SPECS.md`. 3292 verts.
   Essai de 5d1 avec Orca : pas encore fait.
+- **5f1** — import et export, conforme à M8, M17, M18 :
+  - **Import** : `ImportModeDialog` (`dialogs_simple.py`), « Importer :
+    Banque GM (toutes les pistes sur le slot Banque) » ou « Importer : Rack
+    16 canaux (le canal N joue le slot N) », titre « Importer song.mid »,
+    Entrée valide ; posé après la lecture du fichier, avant la
+    confirmation ; Annuler = « Import MIDI annulé » ; dernier choix gardé
+    pour la session (`_import_mode`). En mode Rack : pistes sur le slot
+    Banque comme aujourd'hui, `_rack_mode = True`, slot courant = slot
+    effectif, compte rendu « ; mode Rack 16 canaux » suivi des
+    avertissements du kit (`_rack_kit_messages`, extrait de
+    `_apply_rack_kit`).
+  - **Précision : Rack plein sans slot Banque.** Toujours refusé en Banque
+    GM ; accepté en mode Rack (chaque canal a son slot), sans slot Banque :
+    les pistes gardent leur slot.
+  - **Export MIDI** : `build_pattern_midi(rack_mode, track_is_kit)` ; en
+    mode Rack, le canal de chaque piste suit ses Program Change quel que
+    soit son slot, Program Change / CC0 / CC32 sur leur propre canal ;
+    `_midi_params` décrit chaque piste par le slot que joue son canal à
+    1.1.1 (`_rack_slot_at_start` : canal de l'entête, sinon de la piste) et
+    garde son canal, kit compris (pas de « kit → 10 » en mode Rack).
+    Pattern courant et song.
+  - **Précision : notes PATCH sur un kit exportées** dans les deux modes,
+    telles quelles (notes GM), puisqu'elles sonnent depuis M11.
+  - **Limite** : une piste qui change de slot en cours de morceau (Program
+    Change vers un canal d'un autre type) garde les réglages GM de son slot
+    de départ (programme de tête, transposition, gain, conversion du kit).
+  - **Export WAV** : rien à ajouter ; le rendu suit le routeur
+    (`render_copy`, `_PatternState.apply`, 5b1).
+  - `pytest` : **15 tests rouges jusqu'à 5g1** dans
+    `test_midi_import_ui.py` (le vrai `ImportModeDialog` refuse leur
+    fenêtre factice comme parent). Dialogue et export vérifiés par un
+    script.

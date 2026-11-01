@@ -258,6 +258,43 @@ class ExportTargetDialog(wx.Dialog):
         return sel if sel != wx.NOT_FOUND else self.TARGET_PATTERN
 
 
+class ImportModeDialog(wx.Dialog):
+    """Comment Alt+Shift+I joue le fichier importé (Phase 8 étape 5f1,
+    docs/DESIGN.md § 5a M8, M17) : toutes les pistes sur le slot Banque
+    (GM), ou pattern en mode Rack 16 canaux. Liste de deux lignes au
+    libellé complet ; Entrée sur la liste valide (GTK : EVT_LISTBOX_DCLICK)."""
+
+    MODE_BANK = 0
+    MODE_RACK = 1
+    LABELS = ["Importer : Banque GM (toutes les pistes sur le slot Banque)",
+              "Importer : Rack 16 canaux (le canal N joue le slot N)"]
+
+    def __init__(self, parent, file_name, mode_idx=0):
+        super().__init__(parent, title=f"Importer {file_name}")
+        self._mode_lb = wx.ListBox(self, choices=self.LABELS, style=wx.LB_SINGLE)
+        self._mode_lb.SetSelection(max(0, min(mode_idx, len(self.LABELS) - 1)))
+        self._mode_lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._mode_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,     0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._mode_lb.SetFocus()
+
+    def get_mode_idx(self):
+        sel = self._mode_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else self.MODE_BANK
+
+
 class AudioExportDialog(wx.Dialog):
     """Options de l'export audio WAV (Alt+Shift+W, Phase 8 étape 1h1,
     docs/DESIGN.md § Phase 8 étape 1a, W1, W4, W8, et § 1h6, W11) : fin du

@@ -3,7 +3,8 @@ import re
 import time
 import threading
 import wx
-from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
+from pattern import Pattern, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND, \
+    bank_header
 from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
@@ -13,7 +14,8 @@ from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 import audio_export
-from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog
+from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog, \
+    ImportModeDialog
 from tempo_map import format_bpm
 
 
@@ -121,7 +123,9 @@ class ProjectMixin:
             audible     = [r._track_is_audible(t) for t in range(len(r._track_slots))],  # 12a3 D7
             vm          = self._player.voice_manager,
             kb_notes    = r._kb_notes_play,
-            preset_name = r.bank_preset_name)
+            preset_name = r.bank_preset_name,
+            rack_mode   = self._player._pattern._rack_mode,      # 5f1, M18
+            tape        = self._player._pattern._tape)
 
     def _song_midi_params(self, seg):
         """Arguments de build_pattern_midi pour un segment du song (Phase 8
@@ -145,13 +149,21 @@ class ProjectMixin:
             vm          = vm,
             kb_notes    = scale_midi_notes(p._kb_scale, p._kb_root_midi,
                                            TrackRouter.KB_NUMPAD_NOTES),
-            preset_name = lambda t: None)
+            preset_name = lambda t: None,
+            rack_mode   = p._rack_mode,                          # 5f1, M18
+            tape        = p._tape)
 
     def _midi_params(self, *, name, bpm, track_slots, channels, volumes, pans,
-                     audible, vm, kb_notes, preset_name):
+                     audible, vm, kb_notes, preset_name, rack_mode=False, tape=None):
         """Arguments de build_pattern_midi d'après un état : slots, canaux,
         volumes, pans, pistes audibles, voix des pads (VoiceManager), notes
-        de lecture de la gamme, nom du preset d'une piste en Banque."""
+        de lecture de la gamme, nom du preset d'une piste en Banque. Mode
+        Rack (Phase 8 étape 5f1, docs/DESIGN.md § 5a M18) : chaque piste est
+        décrite par le slot que joue son canal à 1.1.1 (celui de son entête,
+        sinon le sien), et garde son canal, kit compris."""
+        if rack_mode:
+            track_slots = [self._rack_slot_at_start(t, ch, tape)
+                           for t, ch in enumerate(channels)]
         slots = [self._rack.get_slot(s) for s in track_slots]
         is_bank = [s.type == InstrumentType.BANK for s in slots]
         # Piste sur un slot Kit : toujours au canal 10 (Phase 8 étape 2p2).
@@ -160,7 +172,9 @@ class ProjectMixin:
         # → 10 » n'est posée qu'à l'assignation par l'utilisateur. Sur un
         # autre canal, un lecteur GM jouerait la batterie avec un instrument
         # mélodique (le programme du kit n'y désigne pas un kit).
-        channels = [Pattern.KIT_CHANNEL if t < len(slots) and slots[t].type == InstrumentType.KIT
+        # En mode Rack, le canal est le slot : il est gardé (M18).
+        channels = [Pattern.KIT_CHANNEL if not rack_mode and t < len(slots)
+                    and slots[t].type == InstrumentType.KIT
                     else ch for t, ch in enumerate(channels)]
         # Piste sur slot Banque (17f1, § 17e3 O8) : banque et programme
         # viennent des événements de _tape ; nom = preset de son canal.
@@ -172,6 +186,8 @@ class ProjectMixin:
             track_channels   = list(channels),
             track_is_synth   = [s.type == InstrumentType.SYNTH for s in slots],
             track_is_bank    = is_bank,
+            track_is_kit     = [s.type == InstrumentType.KIT for s in slots],   # 5f1, M11
+            rack_mode        = bool(rack_mode),
             track_names      = [preset_names[t] or s.name        # nom du slot (10h2 D12)
                                 for t, s in enumerate(slots)],
             kit_pad_notes    = list(self._snd.pad_notes),        # 11a1 D1
@@ -187,6 +203,12 @@ class ProjectMixin:
             track_volumes    = list(volumes),
             track_pans       = list(pans),
         )
+
+    def _rack_slot_at_start(self, t, channel, tape):
+        """Slot que joue la piste t d'un pattern en mode Rack à 1.1.1 : celui
+        du canal de son entête, sinon de son canal (M18)."""
+        header = bank_header(tape[t]) if tape is not None and t < len(tape) else None
+        return self._router.rack_slot_idx(header[0] if header else channel)
 
     def _midi_export_filename(self, ext=".mid"):
         """Nom de fichier proposé : Pat_NN[_nom].mid (ou ext), nom nettoyé."""
@@ -710,6 +732,20 @@ class ProjectMixin:
     # le slot Banque, remplace le pattern courant et pose l'Undo.
 
     _import_dir = None          # dernier dossier d'import validé (session)
+    # Dernier choix « Banque GM / Rack 16 canaux » de la session (5f1, M17)
+    _import_mode = ImportModeDialog.MODE_BANK
+
+    def _choose_import_mode(self, parent, file_name):
+        """Choix de l'import (Phase 8 étape 5f1, docs/DESIGN.md § 5a M8) :
+        MODE_BANK, MODE_RACK, ou None si Annuler (choix gardé inchangé)."""
+        dlg = ImportModeDialog(parent or self, file_name, self._import_mode)
+        ok = dlg.ShowModal() == wx.ID_OK
+        mode = dlg.get_mode_idx()
+        dlg.Destroy()
+        if not ok:
+            return None
+        self._import_mode = mode
+        return mode
 
     def _import_bank_slot(self):
         """(slot, emplacement, créé) du slot Banque des pistes importées
@@ -760,8 +796,15 @@ class ProjectMixin:
         except Exception as e:
             status(f"ERREUR import MIDI : {e}")
             return
+        mode = self._choose_import_mode(parent, base)
+        if mode is None:
+            status("Import MIDI annulé")
+            return
+        rack_mode = mode == ImportModeDialog.MODE_RACK
         target = self._import_bank_slot()
-        if target is None:
+        # Rack plein sans banque : refusé en Banque GM ; en mode Rack, chaque
+        # canal a son slot, l'import se fait sans banque (5f1, M17)
+        if target is None and not rack_mode:
             status("Import MIDI refusé : aucun slot Banque, et aucun slot vide dans le Rack")
             return
         idx = self._cur_pattern_idx
@@ -784,7 +827,7 @@ class ProjectMixin:
         self._router.stop_all_synth_voices()
         self._add_undo(f"Import MIDI : {base}")
 
-        slot_idx, bank_slot, created = target
+        slot_idx, bank_slot, created = target if target is not None else (None, None, False)
         if created:
             name = os.path.splitext(os.path.basename(self._gm_soundfont))[0] \
                    or f"Banque {bank_slot + 1}"
@@ -792,8 +835,10 @@ class ProjectMixin:
                 self._rack.set_bank_file(bank_slot, self._gm_soundfont)
             self._rack.set_slot(slot_idx, InstrumentType.BANK, name, {"bank_slot": bank_slot})
             self._update_slot_list()
-        for t in range(report.num_tracks):
-            imported._track_slots[t] = slot_idx
+        if slot_idx is not None:
+            for t in range(report.num_tracks):
+                imported._track_slots[t] = slot_idx
+        imported._rack_mode = rack_mode                 # M17
 
         # Pattern entièrement remplacé (I2) : le store, puis le player et le
         # router comme à un changement de pattern ; boucle remise à zéro.
@@ -808,8 +853,7 @@ class ProjectMixin:
         self._router.sync_banks()
 
         cur_track = self._player._cur_track
-        self._cur_slot = stored._track_slots[cur_track] \
-                         if cur_track < len(stored._track_slots) else slot_idx
+        self._cur_slot = self._router.slot_for_track(cur_track)   # slot effectif (5f1)
         self._slot_choice.SetSelection(self._cur_slot)
         if self._rack.get_slot(self._cur_slot).plays_notes:
             self._router.load_slot_preview(self._cur_slot)
@@ -827,7 +871,9 @@ class ProjectMixin:
                f"{format_bpm(report.bpm)} BPM, résolution 1/{report.resolution}")
         if created:
             msg += f" ; slot {slot_idx + 1:02d} créé : banque {self._rack.get_slot(slot_idx).name}"
-        details = report.details()
+        if rack_mode:
+            msg += " ; mode Rack 16 canaux"
+        details = report.details() + self._rack_kit_messages(stored._tape)
         if details:
             msg += " ; " + " ; ".join(details)
         status(msg)

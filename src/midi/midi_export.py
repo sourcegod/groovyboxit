@@ -81,7 +81,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        track_volumes=None, track_pans=None,
                        kit_gm_map=None, unmapped=None, pad_volumes=None,
                        track_transposes=None, track_gain_db=None,
-                       track_audible=None, pad_audible=None, track_is_bank=None):
+                       track_audible=None, pad_audible=None, track_is_bank=None,
+                       track_is_kit=None, rack_mode=False):
     """Construit le mido.MidiFile du pattern.
 
     name             : nom de la piste conductor (libellé du pattern)
@@ -128,6 +129,16 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                        événements suivants ; cases de grille en 36 + pad au
                        canal 10, sinon gamme ; notes KIT telles quelles,
                        PATCH gardées. None = aucune
+    track_is_kit     : bool par piste — slot Kit ; ses notes PATCH sont
+                       exportées telles quelles (notes GM, jouées par le kit
+                       depuis la Phase 8 étape 5b1, docs/DESIGN.md § 5a M11).
+                       None = aucune
+    rack_mode        : pattern en mode Rack 16 canaux (Phase 8 étape 5f1,
+                       § 5a M18) : le canal de chaque piste suit ses Program
+                       Change, quel que soit son slot, et Program Change, CC0
+                       et CC32 s'écrivent sur leur propre canal, comme pour
+                       une banque ; les autres listes décrivent le slot que
+                       joue chaque piste à 1.1.1
     Chaque piste reçoit CC91 et CC93 à 0 au tick 0 : pas de reverb ni de
     chorus, comme dans l'appli (12a1 D3).
     Un pattern est un song d'un seul segment, sans marqueur
@@ -141,7 +152,8 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
                   track_pans=track_pans, kit_gm_map=kit_gm_map, pad_volumes=pad_volumes,
                   track_transposes=track_transposes, track_gain_db=track_gain_db,
                   track_audible=track_audible, pad_audible=pad_audible,
-                  track_is_bank=track_is_bank)
+                  track_is_bank=track_is_bank, track_is_kit=track_is_kit,
+                  rack_mode=rack_mode)
     return build_song_midi([SongPart(pattern, name, params)], name=name,
                            unmapped=unmapped, markers=False)
 
@@ -367,12 +379,15 @@ def _segment_track(seg, k, t, notes, chstate, song_tick_at, unmapped):
         return gm
 
     is_bank = bool(track_is_bank and track_is_bank[t])
+    is_kit  = bool(prm.get("track_is_kit") and prm["track_is_kit"][t])
     # Canal courant de la piste à chaque instant (O3) : celui de son
-    # dernier Program Change sur une banque, à temps égal compris. Au début
-    # de chaque pattern, le canal de la piste dans ce pattern.
+    # dernier Program Change sur une banque, ou sur tout slot en mode Rack
+    # (5f1, M18), à temps égal compris. Au début de chaque pattern, le
+    # canal de la piste dans ce pattern.
+    follows = is_bank or bool(prm.get("rack_mode"))
     changes = sorted((ev.time, seq, _clamp(ev.channel, 0, 15))
                      for seq, ev in enumerate(events)
-                     if is_bank and ev.etype == ETYPE_PGM)
+                     if follows and ev.etype == ETYPE_PGM)
 
     def chan_at(time_steps, base_ch=track_channels[t]):
         ch_now = base_ch
@@ -441,16 +456,17 @@ def _segment_track(seg, k, t, notes, chstate, song_tick_at, unmapped):
                           note if is_bank else kit_note(note),
                           p.get("vel", 100), rank, ev_ch))
         elif ev.etype == ETYPE_PATCH:
-            # Muette au rejeu sur une piste sans slot SYNTH
-            # (TrackRouter.on_patch_tape) : non exportée (Phase 7 étape 10h5)
-            if not plays_notes:
+            # Muette au rejeu sur une piste sans slot SYNTH, banque ou kit
+            # (TrackRouter.on_patch_tape) : non exportée (Phase 7 étape
+            # 10h5) ; sur un kit, jouée par sa note GM (5b1, M11)
+            if not (plays_notes or is_kit):
                 continue
             ms = ev.dur if ev.dur > 0 else PATCH_DEFAULT_MS
             notes.append((start, end_tick(ev.time, ms), p.get("note", 0) + transpose,
                           p.get("vel", 100), rank, ev_ch))
         elif ev.etype == ETYPE_PGM:
             timed.append((start, _ORDER_PGM, rank, mido.Message(
-                "program_change", channel=_clamp(ev.channel, 0, 15) if is_bank else ev_ch,
+                "program_change", channel=_clamp(ev.channel, 0, 15) if follows else ev_ch,
                 program=_clamp(p.get("program", 0), 0, 127))))
         elif ev.etype == ETYPE_CC:
             control = _clamp(p.get("cc_num", 0), 0, 127)
@@ -461,7 +477,7 @@ def _segment_track(seg, k, t, notes, chstate, song_tick_at, unmapped):
             timed.append((start, _ORDER_BANK if bank_select else _ORDER_CC, rank,
                           mido.Message("control_change",
                                        channel=_clamp(ev.channel, 0, 15)
-                                       if is_bank and bank_select else ev_ch,
+                                       if follows and bank_select else ev_ch,
                                        control=control, value=value)))
         elif ev.etype == ETYPE_BEND:
             timed.append((start, _ORDER_BEND, rank, mido.Message(

@@ -148,8 +148,16 @@ class PadMixin:
         pour ses sons seulement — les noms de pads tiennent ceux des pistes —
         et dit dans la barre d'état quels autres kits l'entendent et quels
         canaux restent muets. Rien en mode normal."""
+        msgs = self._rack_kit_messages(tape)
+        if msgs:
+            self._show_status(" — ".join(msgs))
+
+    def _rack_kit_messages(self, tape):
+        """Charge le kit d'un pattern en mode Rack (voir _apply_rack_kit) et
+        rend les avertissements ([] en mode normal ou sans rien à dire) ;
+        l'import MIDI les joint à son compte rendu (Phase 8 étape 5f1)."""
         if not self._router.rack_mode:
-            return
+            return []
         report = self._router.rack_report(tape)
         msgs   = []
         kit_idx = report["kit"]
@@ -175,8 +183,7 @@ class PadMixin:
             plural = len(report["muted"]) > 1
             msgs.append(f"Mode Rack : {'canaux' if plural else 'canal'} {chans} "
                         f"muet{'s' if plural else ''} (slot vide, aucun slot Banque)")
-        if msgs:
-            self._show_status(" — ".join(msgs))
+        return msgs
 
     def _open_explorer(self):
         dlg = ExplorerDialog(self)
