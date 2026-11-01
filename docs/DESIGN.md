@@ -8978,3 +8978,202 @@ principale et l'éditeur MIDI ; « sans choix » dans la fenêtre Songs.
 
 **Laissé hors périmètre** : Alt+Shift+S (son propre choix de source), et
 l'export d'un autre song que le song courant.
+
+## Phase 8 étape 5a — Mode Rack 16 canaux : le canal N joue le slot N
+
+### Numérotation des commits de ce chantier
+
+`5a` = ce plan (doc seule). Le code commence à `5b1`. Une paire impl →
+tests par sous-chantier ; `5a2`, `5b2`… pour un commit imprévu. Décisions
+notées **M1, M2…** (§ 5a).
+
+### Origine du besoin
+
+- But formulé le 2026-09-21 : un **mode Synth/GM du Rack** pour jouer des
+  fichiers MIDI sur **16 canaux**, chaque canal avec le patch qui lui est
+  associé (**16 slots du Rack ↔ 16 canaux**). C'est pour lui que le format
+  garde le canal de chaque événement et qu'un Program Change peut tomber à
+  tout moment.
+- Choisi le 2026-11-01, de préférence aux 128 pads : il apporte un vrai
+  atout sonore (un `.mid` joué par **vos propres sons** WAV, kits et
+  banques, pas seulement par la soundfont GM), et il avance le code des 128
+  pads (notes de kit par numéro, kits par slot).
+- Il remplace, dans ce mode, le **pont provisoire** du Program Change
+  (`assign_slot(program % 16)`), explicitement temporaire depuis la Phase 7
+  étape 4a.
+- Comportement de référence : **Sonar**.
+
+### État des lieux constaté en code (2026-11-01, 3194 tests verts)
+
+- **Une piste joue son propre slot** (`TrackRouter._track_slots`, copié du
+  pattern). Le routeur le lit à 5 endroits : `_bank_slot_of`
+  (`track_router.py:389`), `on_play` (`:827`), `on_patch_tape` (`:868`),
+  `on_bend_tape` (`:890`), `on_mod_tape` (`:909`) ; plus `slot_for_track` et
+  `slot_name` (`:259-263`).
+- **Le canal ne compte que sur un slot Banque** (modèle « orchestre »,
+  Phase 7 étape 17e3) : instrument des 16 canaux (`_chan_prog`, `_chan_msb`,
+  `_chan_lsb`) ; canal courant d'une piste = celui de son dernier Program
+  Change (`_track_cur_channels`, `track_channel_now`, `:402`) ; poursuite
+  (`chase`, `:554`) limitée aux pistes Banque. Ailleurs, le canal ne sert
+  qu'à l'export.
+- **Program Change hors banque** : `program_change` (`:625`) réassigne le
+  slot de la piste à `program % 16` (pont provisoire), en direct
+  (`midi_handler_window.py:269`) comme au rejeu
+  (`on_program_change_tape`, `:966`).
+- **Notes** : une case de grille joue selon le type du slot (kit : pad ;
+  synthé : gamme ; banque : 36 + pad au canal 10, sinon gamme) ; une note
+  PATCH ne sonne que sur un synthé ou une banque (`on_patch_tape`, `:874`),
+  **elle est muette sur un kit** ; une note KIT passe par
+  `SoundManager.note_map` (`on_kit_tape`, `:850`).
+- **Un seul kit sonne à la fois** : un seul `SoundManager`, chargé par
+  `_load_kit_slot` (`mw_pads.py:120`) quand l'utilisateur choisit un slot kit.
+  Ce chargement **renomme les pads**, donc les pistes (noms mêlés, I5 de
+  Phase 7 étape 18).
+- **Entrée MIDI** : tout va à la piste courante et au slot courant
+  (`win._cur_slot`), quel que soit le canal du contrôleur ;
+  l'enregistrement remet Program Change, CC0 et CC32 au canal courant de la
+  piste (O7). `_cur_slot` suit le slot de la piste au changement de piste
+  (`mw_tracks.py:295`).
+- **Import MIDI** (`_import_midi`, `mw_project.py:735`) : toutes les pistes
+  sur le premier slot Banque (créé au besoin, `_import_bank_slot`, `:714`).
+  Les notes de batterie arrivent en PATCH au canal 10.
+- **Propriétés du pattern** (Alt+Entrée sur la liste des patterns,
+  `PatternPropertiesDialog`, `dialogs_properties.py:274`) : nom, début,
+  longueur, tempo, signature, résolution, boucle ; Undo posé à Ok.
+- **Ctrl+T** assigne le slot courant à la piste (`assign_slot_by_user`,
+  `:747` : un kit met la piste au canal 10).
+- **Export MIDI** : programme de tête, transposition et gain GM pris au slot
+  de chaque piste (`track_programs`, `track_transposes`, `track_gain_db`) ;
+  `track_is_bank` fait suivre aux événements le canal du Program Change.
+
+### Décisions validées (utilisateur, 2026-11-01)
+
+**M1 — Le canal N joue le slot N.** Dans un pattern en mode Rack, toute
+piste joue le slot dont le numéro est son **canal courant** (canal 1 → slot
+1 … canal 16 → slot 16), quel que soit son propre slot : synthé WAV, kit ou
+banque. Vrai à la lecture, à l'export audio et au jeu direct (M4).
+
+**M2 — Un réglage par pattern.** Case « Mode Rack 16 canaux (canal N →
+slot N) » dans les propriétés du pattern. Sauvée dans le `.gvp` avec le
+pattern ; absente = mode normal. Un song peut mêler des patterns des deux
+modes ; le routeur change de mode avec le pattern (chargement, avance du
+song).
+
+**M3 — Program Change sur un slot synthé WAV ou kit : ignoré pour le
+son.** Le slot N reste le son du canal N. Le Program Change reste un
+événement de la piste, visible, modifiable, exporté ; il porte toujours le
+canal (O3) : il fait changer la piste de canal, donc de slot. Sur un slot
+Banque, il choisit l'instrument GM du canal, comme aujourd'hui. **Le pont
+`program % 16` n'existe pas en mode Rack** ; il reste en mode normal.
+
+**M4 — Entrée MIDI comme Sonar : la piste courante.** Le contrôleur joue
+la piste courante avec le son de son canal courant N, donc le slot N ;
+l'enregistrement va sur cette piste, à son canal (O7 inchangé). Changer de
+piste change le son du clavier. Le canal émis par le contrôleur ne choisit
+pas le son.
+
+**M5 — Slot vide : repli sur la banque GM.** Un canal dont le slot est
+vide joue le **premier slot Banque du Rack**, avec l'instrument GM du canal
+(Program Change, CC0, CC32). Sans slot Banque, le canal est muet, et un
+message le dit au chargement du pattern. Un `.mid` importé sonne donc en
+entier même avec quelques slots seulement remplis, et à l'identique du mode
+normal avec un Rack vide.
+
+**M6 — Un seul kit à la fois, avec avertissement.** Au chargement d'un
+pattern en mode Rack, le kit joué est celui du slot 10 si c'est un kit,
+sinon celui du premier canal joué dont le slot est un kit. Un autre slot kit
+joué par un autre canal est signalé dans la barre d'état ; il entend le kit
+chargé. Plusieurs kits ensemble : chantier 128 pads / AudioSampler.
+
+**M7 — Ctrl+T met la piste au canal S.** En mode Rack, canal et slot ne
+font qu'un : assigner le slot S à la piste, c'est la passer au canal S,
+comme le ferait Alt+Entrée (entête réécrit s'il existe, O3). Undo comme
+aujourd'hui.
+
+**M8 — Import : un choix.** Alt+Shift+I demande « Banque GM » (comme
+aujourd'hui) ou « Rack 16 canaux » (le pattern importé passe en mode
+Rack).
+
+### Choix de conception proposés
+
+- **M9 — Slot effectif.** Le routeur lit le slot d'une piste par une seule
+  méthode, `_slot_idx_of(t)` : en mode normal `_track_slots[t]` ; en mode
+  Rack le slot du canal courant, ou le slot de repli (M5). Les 5 lectures
+  de `_track_slots` y passent ; `slot_for_track` et `slot_name` aussi.
+  `_track_slots` du pattern n'est pas modifié par le mode : décocher la
+  case rend à chaque piste son propre slot.
+- **M10 — Canal courant pour toutes les pistes en mode Rack.**
+  `_track_cur_channels` et la poursuite (`chase`) couvrent toutes les pistes
+  du pattern, pas seulement celles d'une banque : le canal d'une piste est
+  celui de son dernier Program Change, quel que soit le slot. L'instrument
+  GM d'un canal n'est envoyé au moteur que si son slot effectif est une
+  banque.
+- **M11 — Note PATCH sur un kit** (nouveau, utile aux `.mid` importés : la
+  batterie arrive en PATCH) : jouée par `note_map` du kit chargé, après
+  conversion GM → note du kit (inverse de `gm_note_map`, Phase 7 étape 11),
+  sinon telle quelle ; durée ignorée (one-shot). Vrai aussi en mode normal
+  (une note PATCH muette sur un kit n'avait pas de raison d'être).
+- **M12 — Kit chargé sans renommer les pads.** En mode Rack, le kit de M6
+  est chargé pour ses sons seulement : les noms de pads tiennent les noms de
+  pistes importés (I5). À vérifier à l'essai.
+- **M13 — `Pattern._rack_mode`** (bool, `"rack_mode"` dans `to_dict`,
+  absent = False) ; le routeur le reçoit au chargement du pattern
+  (`TrackRouter.rack_mode`), comme les canaux ; `render_copy` le copie
+  (export WAV).
+- **M14 — Libellé de piste** : en mode Rack, « Canal 3 → Slot_03 Piano »
+  (banque : nom du preset du canal, comme aujourd'hui ; repli : « Canal 3 →
+  banque GM, Acoustic Grand Piano »).
+- **M15 — Propriétés de piste (Alt+Entrée) en mode Rack** : la liste des
+  canaux dit le slot de chaque canal (« Canal 3 — Slot_03 Piano ») ;
+  programme et banque ne sont actifs que si le canal choisi joue une banque
+  (repli compris). La note d'aperçu joue le slot du canal choisi.
+- **M16 — Jeu direct** : au changement de piste et quand un Program Change
+  la fait changer de canal, `_cur_slot` et la préécoute (`load_slot_preview`)
+  suivent le slot effectif ; la liste des slots le montre.
+- **M17 — Import en mode Rack** : mêmes pistes et même slot Banque
+  qu'aujourd'hui (I3 : `_track_slots` = la banque, si bien que décocher le
+  mode rend le son GM), plus `_rack_mode = True`. Dialogue à deux lignes
+  comme `ExportTargetDialog` (Entrée valide), dernier choix gardé pour la
+  session.
+- **M18 — Export MIDI en mode Rack** : chaque piste est traitée comme une
+  piste Banque (canal qui suit le Program Change, événements de `_tape`) ;
+  les réglages GM (programme de tête s'il n'y a pas d'entête, transposition,
+  gain, conversion des notes de kit) sont pris au **slot effectif** de la
+  piste. Export WAV : le rendu suit M1 par `render_copy`.
+
+### Alternatives écartées
+
+- Entrée MIDI multitimbrale (canal du contrôleur → slot) : contraire à M4,
+  qui suit Sonar ;
+- mode global au projet, ou par piste (pseudo-slot « selon le canal ») ;
+- Program Change qui choisit un autre patch WAV ou un autre kit ;
+- slot vide muet ; plusieurs kits ensemble dès ce chantier ;
+- Ctrl+T refusé en mode Rack.
+
+### Portée exclue
+
+- plusieurs kits joués ensemble, 128 pads ;
+- suppression du pont `program % 16` en mode normal ;
+- filtre de canal d'entrée par piste ;
+- notes en temps flottant, SFZ, réverbération et chorus.
+
+### Points à vérifier à l'essai
+
+- rechargement du kit à l'avance d'un song entre deux patterns Rack aux
+  kits différents (latence en pleine lecture) ;
+- noms de pads d'un pattern Rack quand son kit est chargé (M12) ;
+- un `.mid` importé en mode Rack avec quelques slots WAV et le reste en
+  repli GM.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **5a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **5b1** | Implémentation — moteur : `Pattern._rack_mode` (M13), slot effectif et repli (M1, M5, M9), canal courant et poursuite de toutes les pistes (M10), Program Change sans pont (M3), PATCH sur un kit (M11), kit du pattern et avertissement (M6, M12), `render_copy`. | `src/pattern.py`, `src/track_router.py`, `src/player/dp_playback.py`, `ui/mw_patterns.py`, `ui/mw_songs.py`, `ui/mw_pads.py` |
+| **5c1** | Tests — 5b1 (lecture par canal, repli, Program Change, poursuite, PATCH sur kit, kit unique, `.gvp`, mode normal inchangé). | `tests/test_rack_mode.py` (nouveau), `docs/SPECS.md` |
+| **5d1** | Implémentation — UI : case des propriétés du pattern et Undo (M2), libellé (M14), Ctrl+T (M7), jeu direct (M4, M16), propriétés de piste (M15). Essayé à l'écoute avec Orca. | `ui/dialogs_properties.py`, `ui/mw_patterns.py`, `ui/mw_tracks.py`, `ui/midi_handler_window.py` |
+| **5e1** | Tests — 5d1. | `tests/test_rack_mode_ui.py` (nouveau), tests des raccourcis, `docs/SPECS.md` |
+| **5f1** | Implémentation — import (M8, M17) et export MIDI / WAV (M18). Essayé sur de vrais `.mid`. | `ui/mw_project.py`, `ui/dialogs_simple.py`, `src/midi/midi_export.py` |
+| **5g1** | Tests — 5f1 (choix à l'import, aller-retour, export par slot effectif, rendu WAV). | `tests/test_midi_import_ui.py`, `tests/test_midi_export.py`, `tests/test_audio_export_ui.py` |
+| **5h1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
