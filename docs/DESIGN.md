@@ -9256,3 +9256,11 @@ Rack).
     (routeurs sans `rack_mode` dans `test_midi_handler_window.py`,
     `FakeDlg` sans `get_rack_mode` dans `test_signature_ui.py` et
     `test_step_duration.py`). Dialogues vérifiés par un script.
+- **5e1** — `tests/test_rack_mode_ui.py` (36 tests) sur une fenêtre
+  factice (pistes, patterns, pads) et un vrai `TrackRouter` : case des
+  propriétés du pattern et Undo, `_set_rack_mode`, libellés, Ctrl+T, slot
+  courant qui suit la piste, kit sans renommer les pads, Program Change
+  reçu, propriétés de piste (vrai dialogue et fenêtre), changement de
+  pattern ; fakes des 20 tests rouges de 5d1 adaptés (`rack_mode` du
+  routeur factice, `get_rack_mode` des `FakeDlg`) ; `SPECS.md`. 3292 verts.
+  Essai de 5d1 avec Orca : pas encore fait.

@@ -185,6 +185,7 @@ def _fake_properties_dialog(action, num_steps, num_bars=1):
         def get_resolution(self): return num_steps      # 4/4 : pas par mesure = résolution
         def get_tempo(self):     return None            # tempo inchangé (Phase 7 étape 20e3)
         def get_looping(self):   return True
+        def get_rack_mode(self): return False           # mode Rack (Phase 8 étape 5d1)
         def get_action(self):    return action
         def Destroy(self):       pass
     return FakeDlg

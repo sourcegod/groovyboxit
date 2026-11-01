@@ -174,6 +174,7 @@ def _fake_dialog(action, num_beats, den, res=16, num_bars=None, tempo=None,
         def get_denominator(self):     return den
         def get_resolution(self):      return res
         def get_looping(self):         return True
+        def get_rack_mode(self):       return FakeDlg.kwargs.get("rack_mode", False)  # 5d1
         def get_action(self):          return action
         def Destroy(self):             pass
     return FakeDlg

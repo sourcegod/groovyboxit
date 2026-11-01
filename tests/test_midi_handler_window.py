@@ -126,6 +126,7 @@ class _FakeRouter:
         self.assigned_slot = (track, slot_idx)
 
     on_bank      = False   # piste courante sur un slot Banque (17f1)
+    rack_mode    = False   # pattern en mode Rack (Phase 8 étape 5d1)
     track_chan   = 6       # canal courant de la piste (track_channel_now)
 
     def program_change(self, track, program):
