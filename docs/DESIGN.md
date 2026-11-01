@@ -8842,3 +8842,12 @@ force déjà.
 `docs/SPECS.md` a été mis à jour en 3c1 (règle dans la section Export
 MIDI, table des tests) et en 3d1 (ligne Phase 8). Aucun raccourci n'a
 changé.
+
+### Phase 8 étape 1j3 — Point ouvert du niveau à l'écoute : clos (2026-11-01)
+
+Le point ouvert de la clôture 1j1 (l'écoute sonnait plus fort que
+l'export, autour de −6 LUFS-I contre −10,2 pour `Pat_01`) est clos par
+l'utilisateur : avec la normalisation à un niveau visé (avenants 1h6 et
+1h8), la différence entre le niveau d'écoute et celui de l'export est
+très faible, et elle s'ajuste facilement. La mesure de l'écrêtage du
+callback et un limiteur à l'écoute ne sont donc pas à faire.
