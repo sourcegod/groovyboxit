@@ -873,7 +873,7 @@ class ProjectMixin:
             msg += f" ; slot {slot_idx + 1:02d} créé : banque {self._rack.get_slot(slot_idx).name}"
         if rack_mode:
             msg += " ; mode Rack 16 canaux"
-        details = report.details() + self._rack_kit_messages(stored._tape)
+        details = report.details() + (self._rack_kit_messages(stored._tape) if rack_mode else [])
         if details:
             msg += " ; " + " ; ".join(details)
         status(msg)

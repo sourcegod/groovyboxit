@@ -9296,3 +9296,6 @@ Rack).
     `test_midi_import_ui.py` (le vrai `ImportModeDialog` refuse leur
     fenêtre factice comme parent). Dialogue et export vérifiés par un
     script.
+- **5f2** — correctif trouvé par les tests de 5g1 : l'import demandait
+  les avertissements du kit (`_rack_kit_messages`) même en Banque GM ; ils
+  ne sont demandés qu'en mode Rack.
