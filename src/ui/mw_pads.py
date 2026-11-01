@@ -168,7 +168,7 @@ class PadMixin:
         if report["muted"]:
             chans = ", ".join(str(c + 1) for c in report["muted"])
             plural = len(report["muted"]) > 1
-            msgs.append(f"Mode Rack : canal{'aux' if plural else ''} {chans} "
+            msgs.append(f"Mode Rack : {'canaux' if plural else 'canal'} {chans} "
                         f"muet{'s' if plural else ''} (slot vide, aucun slot Banque)")
         if msgs:
             self._show_status(" — ".join(msgs))

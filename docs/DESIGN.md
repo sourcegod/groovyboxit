@@ -9211,3 +9211,6 @@ Rack).
     contrôleur est déjà ignoré (M4).
   - `pytest` : 3194 verts (mode normal inchangé) ; essai du routeur par
     un script (fakes de `test_bank_slot.py`), avant les tests de 5c1.
+- **5b2** — correctif trouvé par les tests de 5c1 : le message des canaux
+  muets de `_apply_rack_kit` disait « canalaux » au pluriel ; « canal » /
+  « canaux ».
