@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI | en cours |
 
 ---
 
@@ -1016,6 +1016,18 @@ Exporte le pattern courant en fichier MIDI standard (`src/midi/midi_export.py`,
 Phase 7 étape 10), depuis la fenêtre principale ou l'éditeur MIDI. Un
 dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
 
+**Choix « Pattern courant / Song courant »** (Phase 8 étape 4,
+docs/DESIGN.md § 4a) : dans la fenêtre principale et l'éditeur MIDI,
+Alt+Shift+E et Alt+Shift+W ouvrent d'abord le dialogue « Exporter en
+MIDI » ou « Exporter en WAV », à deux lignes : « Exporter : Pattern courant
+(Pat_02 Intro) » et « Exporter : Song courant (Song_01 Mon song, 3
+patterns) » (« vide » pour un song sans pattern, refusé ensuite). Entrée
+valide. Le dernier choix est sélectionné à l'ouverture, commun au MIDI et
+au WAV, gardé pour la session (« Pattern courant » au premier export).
+Annuler : « Export MIDI annulé » ou « Export audio annulé ». Pour le WAV,
+un export en cours est refusé avant la question. La fenêtre Songs exporte
+directement le song courant, sans ce choix.
+
 - SMF de type 1, 480 ticks par noire ; piste conductor : nom, tempo
   (un temps = 60/BPM, quel que soit le nombre de pas), un `set_tempo` par
   changement de la carte de tempo (Phase 7 étape 19b1), signature du
@@ -1059,7 +1071,9 @@ dialogue propose `Pat_NN[_nom].mid` dans `exports_dir`.
   piste = nom du preset ; notes KIT non converties
 
 **Export d'un song** (Phase 8 étape 2, docs/DESIGN.md § 2a E5-E10, E15) :
-Alt+Shift+E dans la fenêtre Songs exporte le song courant. Le dialogue
+Alt+Shift+E dans la fenêtre Songs exporte le song courant, comme « Song
+courant » dans la fenêtre principale et l'éditeur MIDI (Phase 8 étape 4).
+Le dialogue
 propose `Song_NN[_nom].mid` dans `exports_dir`. Le pattern en cours
 d'édition est rangé d'abord ; un song vide est refusé.
 - Chaque pattern est écrit une fois, en entier, comme en lecture (ses
@@ -1087,13 +1101,18 @@ d'édition est rangé d'abord ; un song vide est refusé.
 Rendu du pattern courant, de la sélection ou du presse-papier en fichier
 WAV (`src/audio_export.py`, Phase 8 étape 1), depuis la fenêtre principale
 ou l'éditeur MIDI ; rendu d'un song depuis la fenêtre Songs, et pistes
-séparées (Phase 8 étape 2). Les plans et leurs avenants sont dans
-`docs/DESIGN.md` (§ Phase 8 étape 1a, 1d2, 1h3, 1h6, 1h8, 1h11, 2a).
+séparées (Phase 8 étape 2) ; rendu du song courant aussi depuis la
+fenêtre principale et l'éditeur MIDI, par le choix « Pattern courant /
+Song courant » d'Alt+Shift+W (Phase 8 étape 4, voir Export MIDI). Les
+plans et leurs avenants sont dans `docs/DESIGN.md` (§ Phase 8 étape 1a,
+1d2, 1h3, 1h6, 1h8, 1h11, 2a, 4a).
 
 **Parcours** :
 1. La lecture est mise en pause, position gardée. Un second export pendant
    un rendu est refusé (« Export audio déjà en cours »).
-2. Alt+Shift+S seulement : dialogue de la source (voir plus bas).
+2. Alt+Shift+W de la fenêtre principale et de l'éditeur MIDI : choix
+   « Pattern courant / Song courant » (voir Export MIDI). Alt+Shift+S :
+   dialogue de la source (voir plus bas).
 3. Dialogue du fichier : `Pat_NN[_nom].wav`, `…_selection.wav`,
    `…_presse-papier.wav` ou `Song_NN[_nom].wav`. Le dossier proposé est le
    dernier choisi dans la session, sinon `exports_dir`.
@@ -1830,6 +1849,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |
 | `BankSlotDialog` | dialogs_bank | Alt+X → Banque | Emplacement (1 à 4) et fichier SF2/SF3 du slot courant |
+| `ExportTargetDialog` | dialogs_simple | Alt+Shift+E, Alt+Shift+W (fenêtre principale, éditeur MIDI) | Ce qu'on exporte : pattern courant ou song courant ; dernier choix gardé (Phase 8 étape 4) |
 | `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1 et 2) |
 | `SelectionExportDialog` | dialogs_temporal | Alt+Shift+S | Source de l'export audio : sélection (pistes sélectionnées ou toutes, limiteurs mesure:temps:pas) ou presse-papier |
 

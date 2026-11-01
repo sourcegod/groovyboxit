@@ -12,8 +12,10 @@ Ctrl+Shift+Z     Afficher l'historique des annulations
 --- Pattern ---
 Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
-Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), dossier EXPORTS
-Alt+Shift+W      Exporter le pattern courant en audio (.wav) : fichier, puis paramètres
+Alt+Shift+E      Exporter en fichier MIDI (.mid), dossier EXPORTS : choix d'abord,
+                 « Pattern courant » ou « Song courant » (dernier choix gardé)
+Alt+Shift+W      Exporter en audio (.wav) : choix « Pattern courant » ou « Song
+                 courant » comme Alt+Shift+E, puis fichier, puis paramètres
                  (fin : boucle exacte ou pattern + résonance ; format 16, 24 ou 32 bits
                  flottant ; sortie : mix, pistes séparées ou mix + pistes, les pistes
                  dans un sous-dossier du nom du fichier ; Normaliser : mesure Crête,
@@ -241,8 +243,8 @@ Double-clic      Connecter le port MIDI sélectionné (liste des ports)
 --- Éditeur MIDI (Alt+4) ---
 Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
 Échap            Fermer la fenêtre
-Alt+Shift+E      Exporter le pattern courant en fichier MIDI (.mid), comme la fenêtre principale
-Alt+Shift+W      Exporter le pattern courant en audio (.wav), comme la fenêtre principale
+Alt+Shift+E      Exporter en MIDI (.mid) le pattern ou le song courant, comme la fenêtre principale
+Alt+Shift+W      Exporter en audio (.wav) le pattern ou le song courant, comme la fenêtre principale
 Alt+Shift+S      Exporter en audio la sélection ou le presse-papier des notes de l'éditeur
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant, comme la fenêtre principale
 Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
@@ -350,7 +352,7 @@ g                Aller au début du song (Goto Start)
 Shift+G          Aller à la fin du song (Goto End)
 Ctrl+W           Enregistrer le projet (avec le song courant)
 Ctrl+Shift+W     Enregistrer le projet sous... (avec le song courant)
-Alt+Shift+E      Exporter le song courant en fichier MIDI (.mid), dossier EXPORTS
+Alt+Shift+E      Exporter le song courant en fichier MIDI (.mid), dossier EXPORTS (sans choix)
 Alt+Shift+W      Exporter le song courant en audio (.wav) : fichier, puis paramètres
                  comme dans la fenêtre principale (fin proposée : boucle exacte si
                  le song boucle, sinon song + résonance ; sortie mix ou pistes)

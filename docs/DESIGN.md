@@ -8951,3 +8951,30 @@ X2…** (§ 4a).
   - **Pour le WAV**, l'export en cours est refusé avant la question ; la
     pause de la lecture vient ensuite, dans l'export choisi.
   - **Essai de l'utilisateur avec Orca** : concluant (2026-11-01).
+
+### Clôture (4d1)
+
+**4a-4c1 FAITS** (commits `6ed4cae`, `f385806`, `49fa001`, et ce commit
+de clôture ; 3194 tests verts) : **chantier Phase 8 étape 4 complet**. Le
+song courant s'exporte en MIDI et en WAV depuis la fenêtre principale et
+l'éditeur MIDI, sans nouveau raccourci.
+
+**Ce que le chantier a livré** :
+- `ExportTargetDialog` : « Pattern courant » ou « Song courant », libellés
+  complets, Entrée valide ;
+- `_export_midi_choose`, `_export_audio_choose` : les raccourcis
+  Alt+Shift+E et Alt+Shift+W des deux fenêtres y passent, puis appellent
+  l'export existant du pattern ou du song ;
+- dernier choix gardé pour la session, commun au MIDI et au WAV ; export
+  audio en cours refusé avant la question ; song vide proposé puis refusé.
+
+**Essai de l'utilisateur avec Orca** : concluant (2026-11-01).
+
+**`docs/SPECS.md`** : ligne Phase 8, Export MIDI (choix « Pattern courant
+/ Song courant »), Export d'un song, Export audio (introduction, parcours),
+boîtes de dialogue (`ExportTargetDialog`), tests (4c1).
+**`docs/shortcuts.md`** : Alt+Shift+E et Alt+Shift+W dans la fenêtre
+principale et l'éditeur MIDI ; « sans choix » dans la fenêtre Songs.
+
+**Laissé hors périmètre** : Alt+Shift+S (son propre choix de source), et
+l'export d'un autre song que le song courant.
