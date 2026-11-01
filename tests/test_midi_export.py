@@ -898,3 +898,89 @@ def test_export_song_written_and_reread(tmp_path):
     assert [m.text for m in mid.tracks[0] if m.type == "marker"] == ["Intro", "Valse"]
     assert [(n[0], n[2]) for n in _notes(mid.tracks[1])] == [(0, 60), (4 * PPQ, 62)]
     print("  export_song : fichier écrit et relu : OK")
+
+
+# ---------------------------------------------------------------------------
+# Mode Rack 16 canaux (Phase 8 étape 5g1, tests de 5f1 ; docs/DESIGN.md
+# § 5a M11, M18) : le canal suit les Program Change quel que soit le slot ;
+# notes PATCH d'un kit exportées
+# ---------------------------------------------------------------------------
+
+def _rack_build(p, *, rack_mode, is_synth=None, is_kit=None, is_bank=None):
+    n = p._num_tracks
+    return build_pattern_midi(
+        p, name="R", bpm=120,
+        track_channels=[1, 9] + [Pattern.default_channel(t) for t in range(2, n)],
+        track_is_synth=is_synth or [True] + [False] * (n - 1),
+        track_names=[""] * n, kit_pad_notes=[36 + i for i in range(16)],
+        synth_grid_notes=SYNTH_NOTES, voice_durations=[500] * 16,
+        track_is_kit=is_kit, track_is_bank=is_bank, rack_mode=rack_mode)
+
+
+def _chan_msgs(mid, types=("note_on", "program_change", "control_change")):
+    return [(m.type, m.channel, getattr(m, "note", getattr(m, "program", getattr(m, "control", None))))
+            for tr in mid.tracks for m in tr
+            if m.type in types and not (m.type == "control_change" and m.control in (7, 10, 91, 93))]
+
+
+def _rack_track0():
+    p = _pattern()
+    _add(p, 0, ETYPE_PATCH, 0, {"note": 60, "vel": 90}, dur=100, channel=1)
+    _add(p, 0, ETYPE_CC, 4, {"cc_num": 0, "value": 8}, channel=3)
+    _add(p, 0, ETYPE_PGM, 4, {"program": 5}, channel=3)
+    _add(p, 0, ETYPE_PATCH, 8, {"note": 62, "vel": 90}, dur=100, channel=1)
+    return p
+
+
+def test_rack_mode_track_follows_program_change_channel():
+    mid = _rack_build(_rack_track0(), rack_mode=True)
+    assert _chan_msgs(mid) == [("note_on", 1, 60), ("control_change", 3, 0),
+                               ("program_change", 3, 5), ("note_on", 3, 62)]
+
+
+def test_normal_mode_synth_track_stays_on_its_channel():
+    mid = _rack_build(_rack_track0(), rack_mode=False)
+    assert _chan_msgs(mid) == [("note_on", 1, 60), ("control_change", 1, 0),
+                               ("program_change", 1, 5), ("note_on", 1, 62)]
+
+
+def test_rack_mode_grid_cell_on_kit_track_uses_kit_note():
+    """Mode Rack sans banque : une case de grille d'un kit garde sa note de
+    kit (pas 36 + pad comme une banque au canal 10)."""
+    p = _pattern()
+    _add(p, 1, ETYPE_GRID, 0, {"pad": 2, "vel": 100})
+    mid = build_pattern_midi(p, name="R", bpm=120,
+                             track_channels=[1, 9] + list(range(2, 16)),
+                             track_is_synth=[False] * 16, track_names=[""] * 16,
+                             kit_pad_notes=[40 + i for i in range(16)],
+                             synth_grid_notes=SYNTH_NOTES, voice_durations=[500] * 16,
+                             kit_gm_map={42: 38}, rack_mode=True)
+    assert _chan_msgs(mid, ("note_on",)) == [("note_on", 9, 38)]
+
+
+def test_patch_note_on_kit_track_exported_in_both_modes():
+    p = _pattern()
+    _add(p, 1, ETYPE_PATCH, 0, {"note": 36, "vel": 90}, dur=100, channel=9)
+    is_kit = [False, True] + [False] * 14
+    for rack_mode in (False, True):
+        mid = _rack_build(p, rack_mode=rack_mode, is_kit=is_kit)
+        assert _chan_msgs(mid, ("note_on",)) == [("note_on", 9, 36)]
+
+
+def test_patch_note_on_track_without_synth_kit_or_bank_still_omitted():
+    p = _pattern()
+    _add(p, 1, ETYPE_PATCH, 0, {"note": 36, "vel": 90}, dur=100, channel=9)
+    assert _chan_msgs(_rack_build(p, rack_mode=True), ("note_on",)) == []
+
+
+def test_rack_mode_default_false_keeps_file_identical():
+    p = _rack_track0()
+    a = _rack_build(p, rack_mode=False)
+    n = p._num_tracks
+    b = build_pattern_midi(
+        p, name="R", bpm=120,
+        track_channels=[1, 9] + [Pattern.default_channel(t) for t in range(2, n)],
+        track_is_synth=[True] + [False] * (n - 1), track_names=[""] * n,
+        kit_pad_notes=[36 + i for i in range(16)], synth_grid_notes=SYNTH_NOTES,
+        voice_durations=[500] * 16)
+    assert [list(t) for t in a.tracks] == [list(t) for t in b.tracks]

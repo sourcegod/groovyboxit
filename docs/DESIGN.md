@@ -9299,3 +9299,15 @@ Rack).
 - **5f2** — correctif trouvé par les tests de 5g1 : l'import demandait
   les avertissements du kit (`_rack_kit_messages`) même en Banque GM ; ils
   ne sont demandés qu'en mode Rack.
+- **5g1** — tests de 5f1 : 15 tests de `test_midi_import_ui.py`
+  adaptés (faux `ImportModeDialog` dans `_run`) ; 11 tests de l'import
+  et des réglages d'export (vrai `ImportModeDialog`, choix proposé avec le
+  nom du fichier et le dernier choix, Annuler, mode Rack ou Banque GM,
+  slot courant du canal, Rack plein accepté en mode Rack, avertissements
+  du kit au compte rendu, `_midi_params` d'un pattern ou d'un song Rack) ;
+  6 tests de `test_midi_export.py` (canal qui suit les Program Change,
+  case de grille d'un kit, notes PATCH d'un kit, fichier identique sans le
+  mode) ; 3 tests du rendu WAV dans `test_audio_export.py` (slot du canal,
+  synthé chargé au passage à blanc, écoute intacte, song) ; `SPECS.md`.
+  3312 verts. Essais avec Orca (5d1) et sur de vrais `.mid` (5f1) : pas
+  encore faits.

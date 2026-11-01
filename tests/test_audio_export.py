@@ -1738,3 +1738,51 @@ def test_dialog_output_field():
         assert dlg.get_output_idx() == 2               # borné
     finally:
         dlg.Destroy()
+
+
+# ---------------------------------------------------------------------------
+# Mode Rack 16 canaux (Phase 8 étape 5g1 ; docs/DESIGN.md § 5a M1, M18) :
+# le rendu joue le slot du canal, synthé chargé au passage à blanc
+# ---------------------------------------------------------------------------
+
+def _rack_live(tmp_path):
+    rack = Rack()
+    rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    rack.set_slot(3, InstrumentType.SYNTH, "Slow", {"patch": "slow"})
+    live = Live(tmp_path, rack=rack)
+    live.router._track_channels[0] = 3          # canal 4 → slot 4, le synthé
+    live.router._track_cur_channels[0] = 3
+    return live
+
+
+def _rack_note_pattern():
+    pat = _pattern()
+    pat._track_channels[0] = 3
+    pat._tape[0].append(TapeEvent(ETYPE_PATCH, dur=400, channel=3,
+                                  payload={"note": 60, "vel": 127}, time=1))
+    return pat
+
+
+def test_rack_mode_render_plays_slot_of_channel(tmp_path, slow_synth):
+    live = _rack_live(tmp_path)
+    live.router.rack_mode = True
+    res = _render(_rack_note_pattern(), live)
+    on = round(0.125 * SR)
+    assert not res.data[:on].any() and res.data[on + 1000].any()
+    assert slow_synth.loads == ["slow"]                  # chargé au passage à blanc
+    assert 3 not in live.router._slot_synths             # écoute intacte
+
+
+def test_normal_mode_render_plays_track_slot(tmp_path, slow_synth):
+    live = _rack_live(tmp_path)                          # piste sur le kit, sans son pour 60
+    res = _render(_rack_note_pattern(), live)
+    assert not res.data.any() and slow_synth.loads == []
+
+
+def test_rack_mode_song_render_follows_pattern_mode(tmp_path, slow_synth):
+    live = _rack_live(tmp_path)
+    pat = _rack_note_pattern()
+    pat._rack_mode = True
+    res = _render_song([pat], live)
+    assert res.data[round(0.125 * SR) + 1000].any()
+    assert live.router.rack_mode is False                # l'écoute garde son mode

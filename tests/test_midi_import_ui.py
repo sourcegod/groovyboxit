@@ -130,10 +130,25 @@ def _write_mid(path, *, bpm=96, end_bars=2):
     return path
 
 
-def _run(win, path, *, answer=wx.ID_YES, result=wx.ID_OK, parent=None, status=None):
+def _fake_mode_dialog(mode, ok, seen):
+    """Choix « Banque GM / Rack 16 canaux » (Phase 8 étape 5f1, M8)."""
+    class FakeMode:
+        MODE_BANK, MODE_RACK = 0, 1
+        def __init__(self, parent, file_name, mode_idx=0):
+            seen.append((parent, file_name, mode_idx))
+        def ShowModal(self):   return wx.ID_OK if ok else wx.ID_CANCEL
+        def get_mode_idx(self): return mode
+        def Destroy(self):     pass
+    return FakeMode
+
+
+def _run(win, path, *, answer=wx.ID_YES, result=wx.ID_OK, parent=None, status=None,
+         mode=0, mode_ok=True, modes=None):
     seen, asked = {}, []
+    modes = [] if modes is None else modes
     with patch("ui.mw_project.wx.FileDialog", _fake_file_dialog(result, path, seen)), \
-         patch("ui.mw_project.wx.MessageDialog", _fake_message_dialog(answer, asked)):
+         patch("ui.mw_project.wx.MessageDialog", _fake_message_dialog(answer, asked)), \
+         patch("ui.mw_project.ImportModeDialog", _fake_mode_dialog(mode, mode_ok, modes)):
         win._import_midi(parent=parent, status=status)
     return seen, asked
 
@@ -446,3 +461,163 @@ def test_alt_shift_i_midi_editor_imports_before_shift_i():
     ed._on_key(_FakeKey(ord('I'), shift=True))
     assert ed.calls == [("lim_left", 0)]
     print("  éditeur MIDI : Alt+Shift+I importe et rafraîchit, Shift+I inchangé : OK")
+
+
+# ---------------------------------------------------------------------------
+# Mode Rack 16 canaux (Phase 8 étape 5g1, tests de 5f1 ; docs/DESIGN.md
+# § 5a M8, M17, M18) : choix à l'import, réglages de l'export MIDI
+# ---------------------------------------------------------------------------
+
+from ui.mw_pads import PadMixin
+from ui.dialogs import ImportModeDialog
+from pattern import with_bank_header
+
+
+def test_import_mode_dialog_labels_and_choice():
+    if wx.GetApp() is None:
+        globals()["_APP"] = wx.App(False)
+    frame = wx.Frame(None)
+    dlg = ImportModeDialog(frame, "song.mid", 1)
+    assert dlg.GetTitle() == "Importer song.mid"
+    assert [dlg._mode_lb.GetString(i) for i in range(2)] == [
+        "Importer : Banque GM (toutes les pistes sur le slot Banque)",
+        "Importer : Rack 16 canaux (le canal N joue le slot N)"]
+    assert dlg.get_mode_idx() == ImportModeDialog.MODE_RACK
+    dlg.Destroy()
+    dlg = ImportModeDialog(frame, "song.mid", 7)          # borné
+    assert dlg.get_mode_idx() == ImportModeDialog.MODE_RACK
+    dlg.Destroy()
+    frame.Destroy()
+
+
+def test_import_mode_asked_with_file_name_and_last_choice(tmp_path):
+    win = _RackImportWindow(str(tmp_path))
+    path = _write_mid(str(tmp_path / "a.mid"))
+    modes = []
+    _run(win, path, mode=1, modes=modes, parent="P")
+    _run(win, path, modes=modes, mode=1)
+    assert modes == [("P", "a.mid", 0), (win, "a.mid", 1)]    # dernier choix gardé
+
+
+def test_import_mode_cancel(tmp_path):
+    win = _ImportWindow(str(tmp_path))
+    _run(win, _write_mid(str(tmp_path / "a.mid")), mode=1, mode_ok=False)
+    assert win.statuses[-1] == "Import MIDI annulé"
+    assert win.undos == [] and win._player._pattern.is_empty()
+    assert win._import_mode == ImportModeDialog.MODE_BANK
+
+
+def test_import_in_rack_mode(tmp_path):
+    win = _RackImportWindow(str(tmp_path))
+    win._rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    _run(win, _write_mid(str(tmp_path / "a.mid")), mode=1)
+    assert win._pattern_list[1]._rack_mode is True
+    assert win._player._pattern._rack_mode is True and win._router.rack_mode is True
+    assert win._pattern_list[1]._track_slots[:2] == [1, 1]   # slot Banque, comme en GM (M17)
+    assert win.undos == ["Import MIDI : a.mid"]
+    assert "; mode Rack 16 canaux" in win.statuses[-1]
+
+
+def test_import_in_bank_mode_clears_rack_mode(tmp_path):
+    win = _ImportWindow(str(tmp_path))
+    win._pattern_list[1]._rack_mode = True
+    win._player._pattern._rack_mode = True
+    win._router.rack_mode = True
+    _run(win, _write_mid(str(tmp_path / "a.mid")), mode=0)
+    assert win._pattern_list[1]._rack_mode is False and win._router.rack_mode is False
+    assert "mode Rack" not in win.statuses[-1]
+
+
+def test_import_rack_mode_current_slot_is_channel_slot(tmp_path):
+    win = _RackImportWindow(str(tmp_path))
+    win._rack.set_slot(1, InstrumentType.SYNTH, "Piano WAV", {"patch": "p"})
+    _run(win, _write_mid(str(tmp_path / "a.mid")), mode=1)
+    assert win._rack.get_slot(0).type == InstrumentType.BANK      # créé au premier slot vide
+    assert win._cur_slot == 1 and win._slot_choice.value == 1     # piste 1 au canal 2
+
+
+def test_import_rack_full_without_bank_accepted_in_rack_mode(tmp_path):
+    win = _RackImportWindow(str(tmp_path))
+    for i in range(Rack.NUM_SLOTS):
+        win._rack.set_slot(i, InstrumentType.KIT, f"Kit {i}", {})
+    _run(win, _write_mid(str(tmp_path / "a.mid")), mode=1)
+    assert "refusé" not in win.statuses[-1] and "créé" not in win.statuses[-1]
+    assert win._pattern_list[1]._rack_mode is True
+    assert win._pattern_list[1]._track_slots[:2] == [0, 0]       # slots gardés
+
+
+class _Snd:
+    kit_path    = None
+    mute_groups = [0] * 16
+    pad_notes   = [36 + i for i in range(16)]
+    gm_note_map = {}
+    note_labels = {}
+    def load_sounds(self): pass
+    def stop_all(self):    pass
+
+
+class _RackImportWindow(_ImportWindow, PadMixin):
+    def __init__(self, exports_dir):
+        super().__init__(exports_dir)
+        self._snd = _Snd()
+
+
+def test_import_rack_mode_report_includes_kit_warnings(tmp_path):
+    win = _RackImportWindow(str(tmp_path))
+    win._rack.set_slot(1, InstrumentType.KIT, "909", {"kit": ""})      # canal 2
+    win._rack.set_slot(9, InstrumentType.KIT, "808", {"kit": ""})      # canal 10
+    _run(win, _write_mid(str(tmp_path / "a.mid")), mode=1)
+    assert win.statuses[-1].endswith(
+        "; mode Rack 16 canaux ; Mode Rack : un seul kit à la fois — slot 2 joue le kit du slot 10")
+
+
+# --- Réglages de l'export MIDI d'un pattern Rack (M18) ---------------------
+
+def _params_window(tmp_path):
+    win = _RackImportWindow(str(tmp_path))
+    win._rack.set_slot(1, InstrumentType.SYNTH, "Piano WAV", {"patch": "p", "gm_program": 4})
+    win._rack.set_slot(3, InstrumentType.KIT, "909", {"kit": ""})
+    win._rack.set_slot(5, InstrumentType.BANK, "FluidR3", {"bank_slot": 0})
+    r = win._router
+    r._track_slots[:] = [3] * 16
+    r._track_channels[:4] = [5, 3, 7, 0]
+    live = win._player._pattern
+    live._tape[0] = with_bank_header([], 1, 0, 0, 0)        # entête : canal 2
+    for t in range(4):
+        live._tape[t].append(TapeEvent(ETYPE_PATCH, dur=100, payload={"note": 60, "vel": 90},
+                                       time=0, channel=r._track_channels[t]))
+    return win, live
+
+
+def test_midi_params_rack_mode_use_slot_of_channel_at_start(tmp_path):
+    win, live = _params_window(tmp_path)
+    live._rack_mode = True
+    prm = win._midi_export_params()
+    assert prm["rack_mode"] is True
+    assert prm["track_is_synth"][:4] == [True, False, False, False]   # entête canal 2 → synthé
+    assert prm["track_is_kit"][:4] == [False, True, False, False]     # canal 4 → kit
+    assert prm["track_is_bank"][:4] == [False, False, True, True]     # canaux 8, 1 vides → repli
+    assert prm["track_programs"][0] == 4
+    assert prm["track_channels"][:4] == [5, 3, 7, 0]                  # kit gardé au canal 4
+    assert prm["track_names"][0] == "Piano WAV"
+
+
+def test_midi_params_normal_mode_unchanged(tmp_path):
+    win, live = _params_window(tmp_path)
+    prm = win._midi_export_params()
+    assert prm["rack_mode"] is False
+    assert prm["track_is_kit"][:4] == [True] * 4                      # slot propre : kit
+    assert prm["track_channels"][:4] == [Pattern.KIT_CHANNEL] * 4     # kit → canal 10 (2p2)
+
+
+def test_song_midi_params_follow_pattern_rack_mode(tmp_path):
+    win, live = _params_window(tmp_path)
+    p = Pattern()
+    p.copy_from(live)
+    p._track_slots    = [3] * 16
+    p._track_channels = list(win._router._track_channels)
+    p._rack_mode      = True
+    prm = win._song_midi_params(SimpleNamespace(pattern=p, label="S"))
+    assert prm["rack_mode"] is True and prm["track_is_synth"][0] is True
+    p._rack_mode = False
+    assert win._song_midi_params(SimpleNamespace(pattern=p, label="S"))["rack_mode"] is False
