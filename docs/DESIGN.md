@@ -8668,3 +8668,20 @@ stems) a été écrit de mémoire et reste à confirmer.
   `test_song_export_ui.py`, qui attendait les canaux tels quels, a été
   adaptée.
 - **2p3** : 2 tests, l'export d'un pattern et celui d'un song.
+
+### Phase 8 étape 2p4 — Essais de l'utilisateur (2026-11-01)
+
+Essais concluants dans l'appli, à l'écoute et avec Orca :
+- Alt+Shift+E et Alt+Shift+W dans la fenêtre Songs ;
+- après 2p2, la batterie des patterns qui n'ont qu'un kit, dans le `.mid`
+  du song ;
+- l'orgue à la bonne hauteur dans le `.mid`, après réglage de la
+  transposition GM du slot à +24 (réglage prévu en Phase 7 étape 12 pour
+  le preset Drawbar Organ de FluidR3), enregistré dans le projet ;
+- la Sortie du dialogue des paramètres audio (Mix, Pistes séparées, Mix +
+  pistes) ;
+- la liste Pistes d'Alt+Shift+S (Sélectionnées ou Toutes).
+
+Tout ce que le chantier Phase 8 étape 2 avait laissé « à essayer » est
+donc confirmé. Reste seulement, pour mémoire, le comportement de Reaper et
+de Sonar sur le gain commun des stems, cité de mémoire au plan.
