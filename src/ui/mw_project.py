@@ -13,7 +13,7 @@ from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 import audio_export
-from .dialogs import AudioExportDialog, SelectionExportDialog
+from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog
 from tempo_map import format_bpm
 
 
@@ -242,6 +242,69 @@ class ProjectMixin:
     # Export MIDI d'un song (Phase 8 étape 2f1, docs/DESIGN.md § 2a E15) :
     # depuis la fenêtre Songs ; un SongPart par pattern du song, d'après son
     # état figé.
+
+    #--------------------------------------------------------------------------
+    # Alt+Shift+E et Alt+Shift+W de la fenêtre principale et de l'éditeur
+    # MIDI : pattern courant ou song courant (Phase 8 étape 4b1,
+    # docs/DESIGN.md § 4a X1-X8)
+
+    # Choix gardé pour la session, commun au MIDI et au WAV (X3, X6)
+    _export_target = ExportTargetDialog.TARGET_PATTERN
+
+    def _export_target_labels(self):
+        """(pattern, song) : libellés du pattern courant et du song courant
+        pour le choix (X4, X8)."""
+        idx = self._cur_pattern_idx
+        pat = self._pattern_list[idx]
+        pattern = f"Pat_{idx + 1:02d}" + (f" {pat._name}" if pat._name else "")
+        s_idx = self._cur_song_idx
+        song = self._song_list[s_idx]
+        n = len(song._sequence)
+        count = "vide" if n == 0 else f"{n} pattern{'s' if n > 1 else ''}"
+        name = f"Song_{s_idx + 1:02d}" + (f" {song._name}" if song._name else "")
+        return pattern, f"{name}, {count}"
+
+    def _choose_export_target(self, parent, title):
+        """Ouvre le choix ; retourne TARGET_PATTERN, TARGET_SONG, ou None si
+        Annuler (le choix gardé ne change pas, X7)."""
+        pattern, song = self._export_target_labels()
+        dlg = ExportTargetDialog(parent or self, title, pattern, song, self._export_target)
+        ok = dlg.ShowModal() == wx.ID_OK
+        target = dlg.get_target_idx()
+        dlg.Destroy()
+        if not ok:
+            return None
+        self._export_target = target
+        return target
+
+    def _export_midi_choose(self, parent=None, status=None):
+        """Alt+Shift+E (fenêtre principale, éditeur MIDI) : choix, puis
+        export MIDI du pattern courant ou du song courant (X5)."""
+        status = status or self._show_status
+        target = self._choose_export_target(parent, "Exporter en MIDI")
+        if target is None:
+            status("Export MIDI annulé")
+        elif target == ExportTargetDialog.TARGET_SONG:
+            self._export_song_midi(self._cur_song_idx, parent=parent, status=status)
+        else:
+            self._export_midi(parent=parent, status=status)
+
+    def _export_audio_choose(self, parent=None, status=None):
+        """Alt+Shift+W (fenêtre principale, éditeur MIDI) : choix, puis
+        export audio du pattern courant ou du song courant (X5). Un export
+        en cours est refusé avant la question (X7)."""
+        status = status or self._show_status
+        thread = self._audio_export_thread
+        if thread is not None and thread.is_alive():
+            status("Export audio déjà en cours")
+            return
+        target = self._choose_export_target(parent, "Exporter en WAV")
+        if target is None:
+            status("Export audio annulé")
+        elif target == ExportTargetDialog.TARGET_SONG:
+            self._export_song_audio(self._cur_song_idx, parent=parent, status=status)
+        else:
+            self._export_audio(parent=parent, status=status)
 
     def _song_export_filename(self, song_idx, ext=".mid"):
         """Nom de fichier proposé : Song_NN[_nom].mid (ou ext), nom nettoyé."""

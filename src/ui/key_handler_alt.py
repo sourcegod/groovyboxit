@@ -81,10 +81,10 @@ class AltHandler:
             win._open_explorer()
             return True
         if not ctrl and shift and (ukey in (ord('e'), ord('E')) or key == ord('E')):
-            win._export_midi()          # Alt+Shift+E : export MIDI (Phase 7 étape 10j1)
+            win._export_midi_choose()   # Alt+Shift+E : pattern ou song en MIDI (Phase 8 étape 4b1)
             return True
         if not ctrl and shift and (ukey in (ord('w'), ord('W')) or key == ord('W')):
-            win._export_audio()         # Alt+Shift+W : export audio WAV (Phase 8 étape 1h1)
+            win._export_audio_choose()  # Alt+Shift+W : pattern ou song en WAV (Phase 8 étape 4b1)
             return True
         if not ctrl and shift and (ukey in (ord('s'), ord('S')) or key == ord('S')):
             win._export_audio_selection()   # Alt+Shift+S : sélection ou presse-papier (1h15)

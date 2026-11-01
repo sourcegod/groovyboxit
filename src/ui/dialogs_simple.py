@@ -220,6 +220,44 @@ class QuantizeDialog(wx.Dialog):
         return sel if sel != wx.NOT_FOUND else 0
 
 
+class ExportTargetDialog(wx.Dialog):
+    """Ce qu'exportent Alt+Shift+E et Alt+Shift+W depuis la fenêtre
+    principale et l'éditeur MIDI (Phase 8 étape 4b1, docs/DESIGN.md § 4a
+    X1, X4) : le pattern courant ou le song courant. Liste de deux lignes
+    au libellé complet ; Entrée sur la liste valide (GTK :
+    EVT_LISTBOX_DCLICK)."""
+
+    TARGET_PATTERN = 0
+    TARGET_SONG    = 1
+
+    def __init__(self, parent, title, pattern_label, song_label, target_idx=0):
+        super().__init__(parent, title=title)
+        choices = [f"Exporter : Pattern courant ({pattern_label})",
+                   f"Exporter : Song courant ({song_label})"]
+        self._target_lb = wx.ListBox(self, choices=choices, style=wx.LB_SINGLE)
+        self._target_lb.SetSelection(max(0, min(target_idx, len(choices) - 1)))
+        self._target_lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._target_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer,       0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._target_lb.SetFocus()
+
+    def get_target_idx(self):
+        sel = self._target_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else self.TARGET_PATTERN
+
+
 class AudioExportDialog(wx.Dialog):
     """Options de l'export audio WAV (Alt+Shift+W, Phase 8 étape 1h1,
     docs/DESIGN.md § Phase 8 étape 1a, W1, W4, W8, et § 1h6, W11) : fin du

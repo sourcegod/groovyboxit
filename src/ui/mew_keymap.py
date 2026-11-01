@@ -345,16 +345,16 @@ class KeymapMixin:
             self._filter_dialog()
             return
 
-        # Alt+Shift+E : export MIDI du pattern (même raccourci que la fenêtre
-        # principale, Phase 7 étape 10j1) ; dialog et statut dans cette fenêtre
+        # Alt+Shift+E : export MIDI du pattern ou du song (même raccourci que
+        # la fenêtre principale, Phase 8 étape 4b1) ; dialogs et statut ici
         if not ctrl and shift and alt and (ukey in (ord('e'), ord('E')) or key == ord('E')):
-            self._parent._export_midi(parent=self, status=self._set_status)
+            self._parent._export_midi_choose(parent=self, status=self._set_status)
             return
 
-        # Alt+Shift+W : export audio WAV du pattern (même raccourci que la
-        # fenêtre principale, Phase 8 étape 1h1) ; dialogs et statut ici
+        # Alt+Shift+W : export audio WAV du pattern ou du song (même raccourci
+        # que la fenêtre principale, Phase 8 étape 4b1) ; dialogs et statut ici
         if not ctrl and shift and alt and (ukey in (ord('w'), ord('W')) or key == ord('W')):
-            self._parent._export_audio(parent=self, status=self._set_status)
+            self._parent._export_audio_choose(parent=self, status=self._set_status)
             return
 
         # Alt+Shift+S : export audio de la sélection ou du presse-papier des
