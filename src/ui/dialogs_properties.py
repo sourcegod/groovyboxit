@@ -9,7 +9,8 @@ class TrackPropertiesDialog(wx.Dialog):
 
     def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
                  on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None,
-                 slot_program=None, slot_gm_tuning=None, bank_info=None):
+                 slot_program=None, slot_gm_tuning=None, bank_info=None,
+                 rack_slot_of=None, channel_labels=None):
         """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
         channel) -> canal : règle appliquée quand l'utilisateur change de slot
         (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé.
@@ -24,7 +25,12 @@ class TrackPropertiesDialog(wx.Dialog):
         dict names (128 noms ou None), program, msb, lsb (instrument du
         canal si msb est None : le canal impose son instrument), drums
         (canal 10), gs (mode Bank Select GS) — Phase 7 étape 17h1,
-        docs/DESIGN.md § 17e3 O5 ; None = jamais de banque."""
+        docs/DESIGN.md § 17e3 O5 ; None = jamais de banque.
+        rack_slot_of(channel) -> slot joué par le canal : pattern en mode
+        Rack (Phase 8 étape 5d1, docs/DESIGN.md § 5a M15) ; le slot choisi
+        est alors le canal (slot N = canal N), et programmes, banque et
+        réglages GM sont ceux du slot que joue le canal. channel_labels :
+        libellés des 16 canaux (« Canal 3 — Slot_03 Piano »)."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
         self._on_change          = on_change
@@ -35,6 +41,7 @@ class TrackPropertiesDialog(wx.Dialog):
         self._slot_gm_tuning     = slot_gm_tuning
         self._bank_info          = bank_info
         self._is_bank            = False
+        self._rack_slot_of       = rack_slot_of
 
         # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Banque MSB
         # → Banque LSB → Transposition → Gain → Volume → Pan
@@ -50,11 +57,14 @@ class TrackPropertiesDialog(wx.Dialog):
         channel_label  = wx.StaticText(self, label="Canal :")
         self._channels = wx.ListBox(
             self,
-            choices=[f"Canal {c + 1}" for c in range(16)],
+            choices=channel_labels or [f"Canal {c + 1}" for c in range(16)],
             style=wx.LB_SINGLE,
             size=(-1, self._LIST_H),
         )
         self._channels.SetSelection(channel)
+        if rack_slot_of is not None:                # mode Rack : slot N = canal N
+            self._slots.SetSelection(channel)
+            cur_slot_idx = channel
 
         self._program_label = wx.StaticText(self, label="Programme GM du slot :")
         self._programs = wx.ListBox(self, style=wx.LB_SINGLE, size=(-1, self._LIST_H))
@@ -67,13 +77,13 @@ class TrackPropertiesDialog(wx.Dialog):
         self._lsb_label = wx.StaticText(self, label="Banque LSB (CC32) :")
         self._lsb      = wx.SpinCtrl(self, min=0, max=127, initial=0)
         self._lsb.SetName("Banque LSB")
-        self._load_programs(cur_slot_idx)
+        self._load_programs(self._played_slot())
 
         transpose_label  = wx.StaticText(self, label="Transposition GM du slot (demi-tons) :")
         self._transpose  = wx.SpinCtrl(self, min=-24, max=24, initial=0)
         gain_label       = wx.StaticText(self, label="Gain GM du slot (dB) :")
         self._gain       = wx.SpinCtrl(self, min=-40, max=0, initial=0)
-        self._load_gm_tuning(cur_slot_idx)
+        self._load_gm_tuning(self._played_slot())
 
         vol_label  = wx.StaticText(self, label="Volume :")
         self._vol  = wx.SpinCtrl(self, min=0, max=100, initial=volume)
@@ -139,6 +149,13 @@ class TrackPropertiesDialog(wx.Dialog):
 
         self._mute.SetFocus()
 
+    def _played_slot(self):
+        """Slot entendu : le slot choisi, ou en mode Rack celui que joue le
+        canal choisi (M15)."""
+        if self._rack_slot_of is not None:
+            return self._rack_slot_of(self._channels.GetSelection())
+        return self._slots.GetSelection()
+
     def _load_programs(self, slot_idx):
         """Remplit la liste des programmes selon le genre du slot :
         programmes de la banque du canal (slot Banque, 17h1), 128
@@ -186,15 +203,21 @@ class TrackPropertiesDialog(wx.Dialog):
 
     def _on_channel_change(self, event):
         """Changement de canal : sur une banque, le canal impose son
-        instrument (§ 17e3 O5, choix B) — liste, MSB et LSB rechargés."""
-        if self._is_bank:
+        instrument (§ 17e3 O5, choix B) — liste, MSB et LSB rechargés. Mode
+        Rack (M15) : le slot suit le canal, et programmes et réglages GM sont
+        ceux du slot qu'il joue."""
+        if self._rack_slot_of is not None:
+            self._slots.SetSelection(self._channels.GetSelection())
+            self._load_programs(self._played_slot())
+            self._load_gm_tuning(self._played_slot())
+        elif self._is_bank:
             self._load_programs(self._slots.GetSelection())
         self._on_widget_change(event)
 
     def _on_bank_change(self, event):
         """MSB / LSB changés : liste de la nouvelle banque, même programme."""
         if self._is_bank:
-            info = self._bank_info(self._slots.GetSelection(), self._channels.GetSelection(),
+            info = self._bank_info(self._played_slot(), self._channels.GetSelection(),
                                    self._msb.GetValue(), self._lsb.GetValue())
             self._show_bank(info, self._programs.GetSelection())
         self._on_widget_change(event)
@@ -211,7 +234,10 @@ class TrackPropertiesDialog(wx.Dialog):
         """Changement de slot : règle du canal (kit → 10), liste des
         programmes du nouveau slot, puis aperçu."""
         slot_idx = self._slots.GetSelection()
-        if self._channel_after_slot:
+        if self._rack_slot_of is not None:          # mode Rack : le canal suit le slot (M7)
+            self._channels.SetSelection(slot_idx)
+            slot_idx = self._played_slot()
+        elif self._channel_after_slot:
             self._channels.SetSelection(self._channel_after_slot(
                 slot_idx, self._channels.GetSelection()))
         self._load_programs(slot_idx)      # après le canal : instrument du canal (17h1)
@@ -285,8 +311,9 @@ class PatternPropertiesDialog(wx.Dialog):
     def __init__(self, parent, pat_idx, name, start_bar, num_bars, num_steps,
                  looping, max_bars, valid_steps, on_play_toggle=None,
                  num_beats=4, denominator=4, tempo=120, on_tempo_change=None,
-                 on_signature_change=None):
-        """valid_steps : résolutions proposées (pas par ronde, 16 … 128) ;
+                 on_signature_change=None, rack_mode=False):
+        """rack_mode : case « Mode Rack 16 canaux » (Phase 8 étape 5d1,
+        docs/DESIGN.md § 5a M2). valid_steps : résolutions proposées (pas par ronde, 16 … 128) ;
         num_steps : pas par mesure actuels (la résolution s'en déduit avec la
         signature num_beats / denominator)."""
         super().__init__(parent, title=f"Propriétés — Pattern {pat_idx + 1:02d}")
@@ -300,7 +327,7 @@ class PatternPropertiesDialog(wx.Dialog):
         self._total_steps    = num_bars * num_steps
 
         # Ordre Tab : Nom → Début → Longueur → Tempo → Temps par mesure →
-        # Valeur du temps → Résolution → Boucler → Actions
+        # Valeur du temps → Résolution → Boucler → Mode Rack → Actions
 
         name_label  = wx.StaticText(self, label="Nom :")
         self._name  = wx.TextCtrl(self, value=name)
@@ -364,6 +391,8 @@ class PatternPropertiesDialog(wx.Dialog):
 
         self._loop = wx.CheckBox(self, label="Boucler")
         self._loop.SetValue(looping)
+        self._rack = wx.CheckBox(self, label="Mode Rack 16 canaux (canal N → slot N)")
+        self._rack.SetValue(rack_mode)
 
         action_label   = wx.StaticText(self, label="Action :")
         self._actions  = wx.ListBox(
@@ -381,7 +410,7 @@ class PatternPropertiesDialog(wx.Dialog):
         btn_sizer.AddButton(wx.Button(self, wx.ID_CANCEL, "Annuler"))
         btn_sizer.Realize()
 
-        grid = wx.FlexGridSizer(rows=9, cols=2, vgap=6, hgap=8)
+        grid = wx.FlexGridSizer(rows=10, cols=2, vgap=6, hgap=8)
         grid.AddGrowableCol(1)
         grid.Add(name_label,   0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self._name,   0, wx.EXPAND)
@@ -399,6 +428,8 @@ class PatternPropertiesDialog(wx.Dialog):
         grid.Add(self._steps,  0, wx.EXPAND)
         grid.Add(wx.StaticText(self, label=""), 0)
         grid.Add(self._loop,   0)
+        grid.Add(wx.StaticText(self, label=""), 0)
+        grid.Add(self._rack,   0)
         grid.Add(action_label, 0, wx.ALIGN_TOP | wx.TOP, 2)
         grid.Add(self._actions, 0, wx.EXPAND)
 
@@ -463,6 +494,7 @@ class PatternPropertiesDialog(wx.Dialog):
         return Pattern.steps_for(self.get_resolution(), self.get_num_beats(),
                                  self.get_denominator())
     def get_looping(self):   return self._loop.GetValue()
+    def get_rack_mode(self): return self._rack.GetValue()
     def get_action(self):
         sel = self._actions.GetSelection()
         return self._ACTIONS[sel] if sel != wx.NOT_FOUND else "Courant"

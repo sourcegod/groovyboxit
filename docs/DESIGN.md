@@ -9222,3 +9222,37 @@ Rack).
   `kit_note_of_gm` / `kit_path`, `_apply_rack_kit`, mode posé au
   changement de pattern, à l'avance du song et à l'export WAV ;
   `SPECS.md` (arborescence, table). 3256 verts.
+- **5d1** — interface, conforme à M2, M4, M7, M12, M14-M16 :
+  - **Propriétés du pattern** : case « Mode Rack 16 canaux (canal N →
+    slot N) », après Boucler (`get_rack_mode`) ; `_set_rack_mode`
+    (`mw_patterns.py`) l'applique après l'Undo de l'action : store et
+    pattern joué, routeur, poursuite, kit du pattern, slot courant,
+    libellés. Si seul le mode change, l'Undo s'appelle « Mode Rack pattern
+    03 : activé / désactivé ».
+  - **Libellé** (M14) : « Track_01 (Basse) - Canal 4 → Slot_04 Piano
+    WAV », « … → Slot_04 vide → banque GM (Slot_06 FluidR3) - Fingered
+    Bass » ou « … → Slot_04 vide, muet » (`_rack_channel_desc`).
+  - **Ctrl+T** (M7) : `_assign_rack_channel` passe la piste au canal du
+    slot choisi, réécrit son entête sur ce canal (programme et banque
+    gardés), poursuit. **Précision** : un Undo « Piste 2 → canal 3 » est
+    posé, car l'entête change ; Ctrl+T n'en pose pas en mode normal.
+  - **Jeu direct** (M4, M16) : `_follow_track_slot` (slot courant,
+    préécoute ou kit, libellés) au changement de pattern, aux propriétés
+    de piste, à Ctrl+T et quand un Program Change reçu change le canal ;
+    message du Program Change reçu en mode Rack : « Piste 1: Program
+    Change 33 — canal 2, Slot_02 Piano WAV (programme sans effet sur ce
+    slot) », ou le nom du preset sur une banque.
+  - **Kit sans renommer les pads** (M12) : `_load_kit_slot(rename=None)`,
+    sans renommage en mode Rack, partout où un kit se charge (changement
+    de piste, liste des slots).
+  - **Propriétés de piste** (M15) : `TrackPropertiesDialog(rack_slot_of,
+    channel_labels)` ; le slot choisi est le canal (choisir l'un choisit
+    l'autre) ; programmes, banque et réglages GM sont ceux du slot que
+    joue le canal ; `_track_slots` n'est pas touché ; libellés « Canal 3 —
+    Slot_03 Piano WAV ».
+  - **Changement de pattern** : « Pattern 03 — mode Rack 16 canaux »,
+    puis les avertissements du kit.
+  - `pytest` : **20 tests rouges jusqu'à 5e1**, tous dus aux fakes
+    (routeurs sans `rack_mode` dans `test_midi_handler_window.py`,
+    `FakeDlg` sans `get_rack_mode` dans `test_signature_ui.py` et
+    `test_step_duration.py`). Dialogues vérifiés par un script.

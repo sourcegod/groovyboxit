@@ -280,7 +280,21 @@ class MidiHandler:
             # remis au canal courant de la piste (17f1, § 17e3 O7) : un
             # Program Change enregistré ne change pas la piste de canal
             win._player.record_program_change(program, win._router.track_channel_now(track))
-        if win._router.program_change(track, program):    # piste sur banque (17d1, D18)
+        old_channel = win._router.track_channel_now(track)
+        is_bank = win._router.program_change(track, program)
+        if win._router.rack_mode:
+            # Mode Rack (Phase 8 étape 5d1, M3, M4, M16) : pas de pont ; la
+            # piste passe sur le canal du Program Change (remis au canal de
+            # la piste, O7), et le slot courant suit
+            ch   = win._router.track_channel_now(track)
+            name = win._router.bank_preset_name(track) if is_bank else None
+            if ch != old_channel:
+                win._follow_track_slot()
+            win._show_status(f"Piste {track + 1}: Program Change {program} — canal {ch + 1}, "
+                             f"{win._rack_channel_desc(ch)}"
+                             + (f" — {name}" if name else
+                                ("" if is_bank else " (programme sans effet sur ce slot)")))
+        elif is_bank:                                      # piste sur banque (17d1, D18)
             name = win._router.bank_preset_name(track)
             win._show_status(f"Piste {track + 1}: Program Change {program}"
                              + (f" — {name}" if name else ""))

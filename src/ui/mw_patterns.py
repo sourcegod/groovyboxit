@@ -113,13 +113,19 @@ class PatternMixin:
         self._pattern_cache_dirty.add(self._cur_pattern_idx)  # ancien courant flushé
         self._cur_pattern_idx = idx
         new = self._pattern_list[idx]
+        was_rack = cur._rack_mode
         self._apply_pattern_from_store(new)
         self._player._compute_offsets()
+        if was_rack or new._rack_mode:              # slot courant du canal (5d1, M16)
+            self._follow_track_slot()
         self._refresh_grid()
         self._refresh_all_voice_display()
         self._refresh_track_list()
         self._refresh_pad_list()
-        self._show_status(f"Pattern {idx + 1:02d}")
+        self._show_status(f"Pattern {idx + 1:02d}"
+                          + (" — mode Rack 16 canaux" if new._rack_mode else ""))
+        if new._rack_mode:                          # avertissements après le titre (M6)
+            self._apply_rack_kit(self._player._pattern._tape)
 
     def _save_pattern(self):
         self._add_undo(f"Sauvegarder pattern {self._cur_pattern_idx + 1:02d}")
@@ -425,6 +431,7 @@ class PatternMixin:
             tempo=self._player.bpm,                 # tempo de départ (20e3)
             on_tempo_change=self._preview_properties_tempo,
             on_signature_change=self._preview_properties_signature,
+            rack_mode=live._rack_mode,              # Phase 8 étape 5d1, M2
         )
         # Tempos d'origine, rétablis avant l'Undo (Ok) ou à l'annulation :
         # le champ Tempo s'entend en direct (20e3)
@@ -444,6 +451,8 @@ class PatternMixin:
             looping   = dlg.get_looping()
             action    = dlg.get_action()
             tempo     = dlg.get_tempo()
+            rack_mode = dlg.get_rack_mode()
+            rack_changed = rack_mode != live._rack_mode
             sig_label = f"{num_beats}/{den}, résolution 1/{dlg.get_resolution()}"
             pat._name      = name
             pat._start_bar = start_bar
@@ -479,7 +488,13 @@ class PatternMixin:
                 else:
                     self._show_status("Impossible de diviser (1 mesure minimum)")
             else:
-                self._add_undo(f"Redimensionner pattern {self._cur_pattern_idx + 1:02d}")
+                same_size = (num_bars, num_steps, num_beats, den) == (
+                    live._num_bars, live._num_steps, live._num_beats, live._denumerator)
+                if rack_changed and same_size:      # seul le mode change (M2)
+                    self._add_undo(f"Mode Rack pattern {self._cur_pattern_idx + 1:02d} : "
+                                   + ("activé" if rack_mode else "désactivé"))
+                else:
+                    self._add_undo(f"Redimensionner pattern {self._cur_pattern_idx + 1:02d}")
                 # Signature d'abord, notes gardées en place (S3, S7), puis
                 # longueur et résolution (resize, comportement inchangé)
                 if (num_beats, den) != (live._num_beats, live._denumerator):
@@ -489,8 +504,29 @@ class PatternMixin:
                 self._show_status(f"Pattern {self._cur_pattern_idx + 1:02d}: mis à jour — {sig_label}")
             if tempo is not None:
                 self._apply_properties_tempo(tempo, action)
+            if rack_changed:                        # après l'Undo de l'action (M2)
+                self._set_rack_mode(rack_mode)
             self._refresh_pattern_listbox()
         dlg.Destroy()
+
+    def _set_rack_mode(self, on):
+        """Mode Rack 16 canaux du pattern courant (Phase 8 étape 5d1,
+        docs/DESIGN.md § 5a M2) : pattern du store et pattern joué, routeur,
+        poursuite à la position courante, kit du pattern, slot courant et
+        libellés des pistes."""
+        pat  = self._pattern_list[self._cur_pattern_idx]
+        live = self._player._pattern
+        pat._rack_mode = live._rack_mode = bool(on)
+        self._pattern_cache_dirty.add(self._cur_pattern_idx)
+        self._router.stop_all_synth_voices()
+        self._router.rack_mode = bool(on)
+        self._router.chase(live._tape, self._player._current_offset())
+        msg = (f"Pattern {self._cur_pattern_idx + 1:02d}: mode Rack 16 canaux "
+               + ("activé — le canal N joue le slot N" if on else "désactivé"))
+        self._show_status(msg)
+        self._follow_track_slot()                   # slot, préécoute ou kit de la piste courante
+        if on:
+            self._apply_rack_kit(live._tape)        # kit du pattern, avertissements (M6)
 
     def _preview_properties_tempo(self, tempo):
         """Champ Tempo modifié, dialogue ouvert : tous les tempos d'origine

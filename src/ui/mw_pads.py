@@ -117,7 +117,12 @@ class PadMixin:
         print(msg)
         self._show_status(msg)
 
-    def _load_kit_slot(self, slot_idx):
+    def _load_kit_slot(self, slot_idx, rename=None):
+        """Charge le kit du slot. rename : donne aux pads les libellés du
+        kit ; par défaut, sauf en mode Rack, où les noms de pads tiennent
+        ceux des pistes (Phase 8 étape 5d1, docs/DESIGN.md § 5a M12)."""
+        if rename is None:
+            rename = not getattr(self._router, "rack_mode", False)
         slot = self._rack.get_slot(slot_idx)
         if slot.type != InstrumentType.KIT:
             return
@@ -125,7 +130,7 @@ class PadMixin:
         if kit_path and os.path.isfile(kit_path):
             try:
                 labels, wav_paths = self._snd.load_kit(kit_path)
-                for i, label in enumerate(labels):
+                for i, label in enumerate(labels if rename else []):
                     self._player.voice_manager.set_name(i, label)
                 for i, group in enumerate(self._snd.mute_groups):
                     self._player.voice_manager.set_mute_group(i, group)

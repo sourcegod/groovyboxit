@@ -10,6 +10,9 @@ class TrackMixin:
     def _assign_track_slot(self):
         track_idx = self._player._cur_track
         slot_idx  = self._cur_slot
+        if self._router.rack_mode:                  # Phase 8 étape 5d1, M7
+            self._assign_rack_channel(track_idx, slot_idx)
+            return
         # Choix de l'utilisateur : règle du canal (kit → 10, Phase 7 étape 10f1)
         self._router.assign_slot_by_user(track_idx, slot_idx)
         self._refresh_track_list()
@@ -18,6 +21,60 @@ class TrackMixin:
             f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name}), "
             f"canal {self._router.get_track_channel(track_idx) + 1}"
         )
+
+    # ------------------------------------------------------------------
+    # Mode Rack 16 canaux (Phase 8 étape 5d1, docs/DESIGN.md § 5a M7, M14,
+    # M16) : canal et slot ne font qu'un
+    # ------------------------------------------------------------------
+
+    def _rack_channel_desc(self, channel):
+        """Ce que joue un canal en mode Rack : « Slot_03 Piano WAV »,
+        « Slot_04 vide → banque GM (Slot_06 FluidR3) » ou « Slot_04 vide,
+        muet »."""
+        r    = self._router
+        slot = self._rack.get_slot(channel)
+        if not slot.is_empty:
+            return f"Slot_{channel + 1:02d} {slot.name}"
+        fallback = r.fallback_bank_idx()
+        if fallback is None:
+            return f"Slot_{channel + 1:02d} vide, muet"
+        return (f"Slot_{channel + 1:02d} vide → banque GM "
+                f"(Slot_{fallback + 1:02d} {self._rack.get_slot(fallback).name})")
+
+    def _assign_rack_channel(self, tidx, channel):
+        """Ctrl+T en mode Rack (M7) : la piste passe au canal du slot
+        choisi ; son entête, s'il existe, est réécrit sur ce canal (O3),
+        programme et banque gardés. Undo posé si le canal change."""
+        r = self._router
+        if channel == r.get_track_channel(tidx) and channel == r.track_channel_now(tidx):
+            self._show_status(f"Piste {tidx + 1}: déjà au canal {channel + 1} — "
+                              f"{self._rack_channel_desc(channel)}")
+            return
+        self._add_undo(f"Piste {tidx + 1} → canal {channel + 1}")
+        live = self._player._pattern
+        with live._lock:
+            header = bank_header(live._tape[tidx]) if tidx < len(live._tape) else None
+            if header is not None:
+                live._tape[tidx] = with_bank_header(live._tape[tidx], channel, *header[1:])
+        r.set_track_channel(tidx, channel)
+        r.chase(live._tape, self._player._current_offset())
+        self._follow_track_slot()
+        self._show_status(f"Piste {tidx + 1} → canal {channel + 1} — "
+                          f"{self._rack_channel_desc(channel)}")
+
+    def _follow_track_slot(self):
+        """Le slot courant suit le slot effectif de la piste courante (M16) :
+        liste des slots, préécoute ou kit (sans renommer les pads), libellés
+        des pistes."""
+        idx = self._router.slot_for_track(self._player._cur_track)
+        self._cur_slot = idx
+        self._slot_choice.SetSelection(idx)
+        slot = self._rack.get_slot(idx)
+        if slot.plays_notes:
+            self._router.load_slot_preview(idx)
+        elif slot.type == InstrumentType.KIT:
+            self._load_kit_slot(idx)
+        self._refresh_track_list()
 
     def _set_track_volume_undo(self, tidx, vol):
         """Volume de piste avec Undo regroupé (Phase 7 étape 13b1, D1/D2) :
@@ -69,6 +126,7 @@ class TrackMixin:
 
     def _track_properties_dialog(self):
         tidx = self._player._cur_track
+        rack_mode = self._router.rack_mode
         orig = dict(
             slot    = self._router.slot_for_track(tidx),
             volume  = self._router.get_track_volume(tidx),
@@ -77,10 +135,15 @@ class TrackMixin:
             solo    = self._router._track_solos[tidx],
             channel = self._router.get_track_channel(tidx),
         )
-        orig['program'] = self._rack.get_slot(orig['slot']).gm_program()
-        orig['transpose'], orig['gain_db'] = self._slot_gm_tuning(orig['slot'])   # 12a2 D6
+        # Mode Rack (Phase 8 étape 5d1, M15) : le slot choisi est le canal ;
+        # programme et réglages GM sont ceux du slot que joue le canal
+        played = self._router.rack_slot_idx(orig['channel']) if rack_mode else orig['slot']
+        if rack_mode:
+            orig['slot'] = orig['channel']
+        orig['program'] = self._rack.get_slot(played).gm_program()
+        orig['transpose'], orig['gain_db'] = self._slot_gm_tuning(played)   # 12a2 D6
         orig['msb'] = orig['lsb'] = None
-        if self._rack.get_slot(orig['slot']).type == InstrumentType.BANK:
+        if self._rack.get_slot(played).type == InstrumentType.BANK:
             # instrument du canal de la piste (17h1, § 17e3 O5)
             orig['program'], orig['msb'], orig['lsb'] = \
                 self._router.channel_instrument(self._router.track_channel_now(tidx))
@@ -109,7 +172,9 @@ class TrackMixin:
         def apply(slot, vol, pan, mute, solo, channel, program, transpose, gain_db,
                   msb=None, lsb=None):
             was_bank = self._router._bank_slot_of(tidx) is not None
-            if slot != self._router.slot_for_track(tidx):
+            if rack_mode:                            # slot = canal, _track_slots intact (M9)
+                slot = self._router.rack_slot_idx(channel)
+            elif slot != self._router.slot_for_track(tidx):
                 self._router.assign_slot(tidx, slot)
                 self._cur_slot = slot
                 self._slot_choice.SetSelection(slot)
@@ -118,6 +183,8 @@ class TrackMixin:
             self._router._track_mutes[tidx] = mute
             self._router._track_solos[tidx] = solo
             self._router.set_track_channel(tidx, channel)
+            if rack_mode:
+                self._follow_track_slot()
             slot_obj = self._rack.get_slot(slot)
             is_bank  = slot_obj.type == InstrumentType.BANK
             if is_bank or was_bank:
@@ -149,6 +216,9 @@ class TrackMixin:
             slot_gm_tuning=self._slot_gm_tuning,
             bank_info=lambda slot, ch, msb=None, lsb=None:
                 self._bank_info(slot, ch, msb, lsb, instruments),
+            rack_slot_of=self._router.rack_slot_idx if rack_mode else None,
+            channel_labels=[f"Canal {c + 1} — {self._rack_channel_desc(c)}" for c in range(16)]
+                           if rack_mode else None,
         )
         result = dlg.ShowModal()
         values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
@@ -226,13 +296,17 @@ class TrackMixin:
     def _track_label(self, idx):
         slot_idx  = self._router.slot_for_track(idx)
         # piste sur slot Banque : nom du preset de la piste (17f1, § 17e2 R7)
-        slot_name = self._router.bank_preset_name(idx) or self._router.slot_name(idx)
+        preset    = self._router.bank_preset_name(idx)
+        slot_name = preset or self._router.slot_name(idx)
         prefix    = "* " if self._track_editor.is_selected(idx) else "  "
         track_name = self._player.voice_manager.get_name(idx)
-        if track_name:
-            label = f"{prefix}Track_{idx + 1:02d} ({track_name}) - Slot_{slot_idx + 1:02d} - {slot_name}"
+        head = f"{prefix}Track_{idx + 1:02d}" + (f" ({track_name})" if track_name else "")
+        if self._router.rack_mode:                  # M14 : canal → ce qu'il joue
+            ch = self._router.track_channel_now(idx)
+            label = f"{head} - Canal {ch + 1} → {self._rack_channel_desc(ch)}" + (
+                f" - {preset}" if preset else "")
         else:
-            label = f"{prefix}Track_{idx + 1:02d} - Slot_{slot_idx + 1:02d} - {slot_name}"
+            label = f"{head} - Slot_{slot_idx + 1:02d} - {slot_name}"
         if self._player._cur_track == idx and self._player.recording:
             label += " [REC]"
         if self._router._track_mutes[idx]:
@@ -301,7 +375,7 @@ class TrackMixin:
         if slot.plays_notes:                        # synthé ou banque (17d1)
             self._router.load_slot_preview(self._cur_slot)
         elif slot.type == InstrumentType.KIT:
-            self._load_kit_slot(self._cur_slot)
+            self._load_kit_slot(self._cur_slot)     # mode Rack : sans renommer (M12)
         if self._midi_editor_window is not None:
             self._midi_editor_window.refresh()
 
