@@ -8851,3 +8851,86 @@ l'utilisateur : avec la normalisation à un niveau visé (avenants 1h6 et
 1h8), la différence entre le niveau d'écoute et celui de l'export est
 très faible, et elle s'ajuste facilement. La mesure de l'écrêtage du
 callback et un limiteur à l'écoute ne sont donc pas à faire.
+
+---
+
+## Phase 8 étape 4a — Export du song depuis la fenêtre principale et l'éditeur MIDI
+
+### Numérotation des commits de ce chantier
+
+`4a` = ce plan (doc seule). Le code commence à `4b1`. Une paire impl →
+tests ; `4a2`, `4b2`… pour un commit imprévu. Décisions notées **X1,
+X2…** (§ 4a).
+
+### Origine du besoin
+
+- Laissé hors périmètre en Phase 8 étape 2 : le song ne s'exporte que
+  depuis la fenêtre Songs (Alt+5).
+- Demande de l'utilisateur (2026-11-01) : pouvoir l'exporter aussi depuis
+  la fenêtre principale, **sans nouveau raccourci** : Alt+Shift+E et
+  Alt+Shift+W proposent un choix entre le pattern courant et le song
+  courant.
+
+### État des lieux constaté en code (2026-11-01, 3182 tests verts)
+
+- **Raccourcis** : Alt+Shift+E et Alt+Shift+W appellent `_export_midi()` et
+  `_export_audio()`, dans la fenêtre principale (`key_handler_alt.py:83`,
+  `:86`) et dans l'éditeur MIDI (`mew_keymap.py:350`, `:356`, avec la
+  fenêtre et le statut de l'éditeur).
+- **Exports du song** : `_export_song_midi(song_idx, parent, status)` et
+  `_export_song_audio(song_idx, parent, status)` (`mw_project.py`) ; ce
+  dernier vérifie lui-même « export déjà en cours » et met la lecture en
+  pause (`_audio_export_ready`). Un song vide est refusé.
+- **Song courant** : `MainWindow._cur_song_idx`, connu même fenêtre Songs
+  fermée.
+- **Tests** : `_export_midi` et `_export_audio` sont appelés directement 39
+  fois (`test_midi_export_ui.py`, `test_audio_export_ui.py`).
+
+### Décisions validées (utilisateur, 2026-11-01)
+
+- **X1 — Un choix, pas de nouveau raccourci** : Alt+Shift+E et
+  Alt+Shift+W ouvrent d'abord un choix « Pattern courant » ou « Song
+  courant ».
+- **X2 — Fenêtre principale et éditeur MIDI** ; la fenêtre Songs garde ses
+  raccourcis directs, sans ce choix.
+- **X3 — Dernier choix de la session** sélectionné à l'ouverture ;
+  « Pattern courant » au premier export.
+
+### Choix de conception proposés
+
+- **X4 — `ExportTargetDialog`** (`dialogs_simple.py`) : une liste de deux
+  lignes, au libellé complet pour le lecteur d'écran : « Exporter : Pattern
+  courant (Pat_02 Intro) » et « Exporter : Song courant (Song_01 Mon song,
+  3 patterns) ». Entrée sur la liste valide (GTK : EVT_LISTBOX_DCLICK),
+  Ok, Annuler. Titre « Exporter en MIDI » ou « Exporter en WAV ».
+- **X5 — Nouveaux points d'entrée** : `_export_midi_choose(parent, status)`
+  et `_export_audio_choose(parent, status)`, appelés par les raccourcis.
+  Ils ouvrent le choix, puis appellent l'export du pattern
+  (`_export_midi`, `_export_audio`, inchangés) ou du song
+  (`_export_song_midi`, `_export_song_audio`). Les 39 appels des tests
+  restent valables.
+- **X6 — Un seul choix gardé pour MIDI et WAV** (`_export_target`) :
+  exporter le song en MIDI puis en WAV ne demande qu'une fois de descendre
+  sur « Song courant ».
+- **X7 — Ordre** : pour le WAV, « export déjà en cours » est vérifié avant
+  le choix ; on ne pose pas une question pour refuser ensuite. Annuler le
+  choix annonce « Export MIDI annulé » ou « Export audio annulé », sans
+  changer le choix gardé.
+- **X8 — Song vide** : la ligne « Song courant » reste proposée (« Song
+  courant (Song_02, vide) ») ; la choisir donne le refus habituel « Song
+  vide — ajoutez des patterns dans la fenêtre Songs ».
+
+### Portée exclue
+
+- Alt+Shift+S (sélection, presse-papier) : il a déjà son propre choix de
+  source et ne concerne pas le song.
+- Choisir un autre song que le song courant.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **4a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **4b1** | Implémentation — `ExportTargetDialog`, `_export_midi_choose`, `_export_audio_choose`, choix gardé, raccourcis de la fenêtre principale et de l'éditeur MIDI (X1-X8). Essayé avec Orca. | `ui/dialogs_simple.py`, `ui/dialogs.py`, `ui/mw_project.py`, `ui/key_handler_alt.py`, `ui/mew_keymap.py` |
+| **4c1** | Tests — 4b1 (dialogue, choix pattern ou song, MIDI et WAV, choix gardé et partagé, annulation, déjà en cours, song vide, raccourcis des deux fenêtres, fenêtre Songs inchangée). | `tests/test_song_export_ui.py`, tests des raccourcis, `docs/SPECS.md` |
+| **4d1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
