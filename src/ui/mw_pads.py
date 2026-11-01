@@ -167,7 +167,7 @@ class PadMixin:
         if dlg.ShowModal() == wx.ID_OK:
             self._project_path = dlg.GetPath()
             self._load_project()
-            self._show_status(f"Projet chargé : {os.path.basename(self._project_path)}")
+            self._show_status(self._project_loaded_msg())
         dlg.Destroy()
 
     def _explorer_preset(self):

@@ -81,6 +81,7 @@ class ProjectMixin:
         self._cur_pattern_idx = 0
         self._pattern_cache       = [None] * len(self._pattern_list)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
+        self._apply_kit_rule()                         # kit → canal 10 (3b1, K2)
         self._song_list       = [Song(i) for i in range(Song.MAX_SONGS)]
         self._cur_song_idx    = 0
         self._player._pattern_list_ref = self._pattern_list
@@ -862,10 +863,38 @@ class ProjectMixin:
             return
         self._project_path = path
         self._load_project()
-        self._show_status(f"Projet chargé : {os.path.basename(self._project_path)}")
+        self._show_status(self._project_loaded_msg())
+
+    def _apply_kit_rule(self):
+        """Règle « kit → canal 10 » sur les 99 patterns, d'après le Rack
+        courant (Phase 8 étape 3b1, docs/DESIGN.md § 3a K4, K5) : appelée au
+        démarrage, à Ctrl+N et à Ctrl+O, avant que le pattern courant passe
+        au routeur. Ni Undo ni « modifié » (K6) ; les trois appelants
+        marquent déjà tout le cache de _capture_state comme à refaire.
+        Retourne le nombre de pistes mises au canal 10."""
+        is_kit_slot = lambda slot_idx: self._rack.get_slot(slot_idx).type == InstrumentType.KIT
+        return sum(len(pat.apply_kit_channels(is_kit_slot)) for pat in self._pattern_list)
+
+    def _project_loaded_msg(self):
+        """Message de Ctrl+O : fichier, et pistes kit mises au canal 10 s'il
+        y en a (3b1, K7)."""
+        msg = f"Projet chargé : {os.path.basename(self._project_path)}"
+        n = getattr(self, "_kit_rule_count", 0)
+        if n:
+            msg += f" — {n} piste{'s' if n > 1 else ''} kit mise{'s' if n > 1 else ''} au canal 10"
+        return msg
 
     def _load_project(self):
+        self._kit_rule_count = 0
         if not os.path.exists(self._project_path):
+            # Démarrage sans projet : patterns neufs mis en règle, et le
+            # routeur suit le pattern courant (3b1, K2, K5)
+            self._apply_kit_rule()
+            cur = self._pattern_list[self._cur_pattern_idx]
+            for t, ch in enumerate(cur._track_channels):
+                if t < len(self._router._track_channels) and \
+                        self._router.get_track_channel(t) != ch:
+                    self._router.set_track_channel(t, ch)
             self._project_modified = False
             self._update_title()
             return
@@ -879,13 +908,13 @@ class ProjectMixin:
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._update_slot_list()
-        is_kit_slot = lambda slot_idx: self._rack.get_slot(slot_idx).type == InstrumentType.KIT
         for i, p in enumerate(data.get("patterns", [])):
             if i >= len(self._pattern_list):
                 break
             self._pattern_list[i].from_dict(p)
-            # Projet d'avant les canaux : pistes kit → canal 10 (10h7)
-            self._pattern_list[i].apply_kit_channels(is_kit_slot)
+        # Pistes kit restées sur leur canal par défaut → canal 10, pour tous
+        # les patterns (Phase 8 étape 3b1, K1, K2 ; remplace 10h7)
+        self._kit_rule_count = self._apply_kit_rule()
         # Tous les patterns ont changé : le cache de _capture_state (Undo)
         # ne doit plus servir les dicts du projet précédent (Phase 7 étape 10h9)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
