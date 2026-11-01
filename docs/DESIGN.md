@@ -8685,3 +8685,105 @@ Essais concluants dans l'appli, à l'écoute et avec Orca :
 Tout ce que le chantier Phase 8 étape 2 avait laissé « à essayer » est
 donc confirmé. Reste seulement, pour mémoire, le comportement de Reaper et
 de Sonar sur le gain commun des stems, cité de mémoire au plan.
+
+---
+
+## Phase 8 étape 3a — Pistes kit au canal 10 dans les données des patterns
+
+### Numérotation des commits de ce chantier
+
+`3a` = ce plan (doc seule). Le code commence à `3b1`. Une paire impl →
+tests ; `3a2`, `3b2`… pour un commit imprévu. Les décisions sont notées
+**K1, K2…** (§ 3a).
+
+### Origine du besoin
+
+- Défaut trouvé à l'essai de l'export MIDI du song (2026-11-01, § 2p2) :
+  un pattern créé sans réglage a ses pistes sur le kit du slot 0, mais aux
+  canaux 1, 2, 3… Son `.mid` jouait la batterie sur un instrument
+  mélodique.
+- Décision de l'utilisateur (2026-11-01) : les deux remèdes. Le forçage à
+  l'export est fait (2p2). Ce chantier corrige les données elles-mêmes, pour
+  que le canal affiché par Alt+Entrée soit juste.
+
+### État des lieux constaté en code (2026-11-01, 3173 tests verts)
+
+- **Naissance des patterns** : les 99 patterns sont créés par `Pattern()`
+  au démarrage (`main_window.py:148`), à Ctrl+N (`mw_project.py:80`) et
+  réutilisés au chargement. Pistes sur le slot 0, canaux par défaut
+  `Pattern.default_channel(t)` (piste N au canal N). `Pattern` ne connaît
+  pas le Rack.
+- **Où la règle « kit → 10 » est posée aujourd'hui** :
+  - `TrackRouter.assign_slot_by_user` (`channel_after_slot`), quand
+    l'utilisateur assigne un slot à une piste ;
+  - `Pattern.apply_kit_channels`, migration des projets sans canaux
+    (Phase 7 étape 10h7) : une seule fois, et seulement si la clé
+    `track_channels` manque (`_needs_kit_channels`) ; appelée par
+    `_load_project` (`mw_project.py:888`) ;
+  - `ProjectMixin._midi_params`, à l'export MIDI (Phase 8 étape 2p2).
+- **Démarrage** : `_load_project` sort aussitôt si le fichier du projet
+  n'existe pas. Les patterns neufs ne passent alors par aucune règle.
+- **Ctrl+N** (`_new_project`) : 99 patterns neufs, rien n'est appliqué.
+- **Décision passée** : en Phase 7 étape 10h8, un canal enregistré est
+  intact, même un kit « laissé sur le canal 2 »
+  (`test_saved_channels_untouched`). Ce test met la piste 2 au canal 2,
+  son canal par défaut.
+
+### Décisions validées (utilisateur, 2026-11-01)
+
+- **K1 — Défaut corrigé, choix respecté** : une piste sur un slot Kit
+  **restée sur son canal par défaut** passe au canal 10. Un autre canal
+  est tenu pour un choix de l'utilisateur et respecté. Limite acceptée :
+  un canal choisi qui tombe sur le canal par défaut de la piste est
+  corrigé lui aussi.
+- **K2 — Moments** : au démarrage, à Ctrl+N et à Ctrl+O, pour les 99
+  patterns, d'après le Rack du projet.
+- **K3 — Forçage de l'export gardé** (2p2). Conséquence acceptée : une
+  piste kit mise exprès sur un autre canal garde ce canal dans le projet
+  et dans Alt+Entrée, mais sort toujours au canal 10 dans un `.mid`.
+
+### Choix de conception proposés
+
+- **K4 — Une règle dans `Pattern`** : `apply_kit_channels(is_kit_slot)`
+  applique désormais K1 à chaque appel. Une piste sur un kit, au canal
+  `default_channel(t)`, passe au canal 10. La méthode retourne les pistes
+  changées. Le drapeau `_needs_kit_channels` devient inutile : un projet
+  sans canaux a tous ses canaux par défaut, et la nouvelle règle donne le
+  même résultat que l'ancienne migration. Il est retiré, avec la lecture
+  qui le posait.
+- **K5 — Un seul point d'appel** : `ProjectMixin._apply_kit_rule()`
+  applique K4 aux 99 patterns d'après le Rack courant. Elle est appelée au
+  démarrage (projet absent compris), à Ctrl+N et à Ctrl+O, avant que le
+  pattern courant soit passé au routeur (`_apply_pattern_from_store`). Le
+  routeur reçoit donc des canaux justes.
+- **K6 — Ni Undo ni « modifié »** : c'est une mise en règle au chargement,
+  comme la migration de 10h7. L'historique vient d'être vidé, et le projet
+  n'est pas marqué modifié. Le fichier garde ses anciens canaux jusqu'au
+  prochain enregistrement, mais la règle est réappliquée à chaque
+  ouverture.
+- **K7 — Compte rendu discret** : le message de Ctrl+O ajoute le nombre de
+  pistes mises au canal 10, s'il y en a (« Projet chargé : x.gvp — 12
+  pistes kit mises au canal 10 »). Rien au démarrage ni à Ctrl+N : les
+  patterns neufs sont toujours concernés, et le message n'apprendrait
+  rien.
+
+### Portée exclue
+
+Les autres moments proposés n'ont pas été retenus par l'utilisateur :
+- un slot qui change de type (Alt+X charge un kit dans un slot utilisé,
+  ou le remplace par un synthé) ;
+- le changement de slot dans les propriétés de piste (Alt+Entrée), qui
+  appelle `assign_slot` sans la règle du canal.
+
+Un pattern dont le slot devient un kit en cours de session ne sera donc
+corrigé qu'à la prochaine ouverture du projet. L'export MIDI, lui, le
+force déjà (K3).
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **3a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **3b1** | Implémentation — `Pattern.apply_kit_channels` selon K1 (drapeau retiré), `_apply_kit_rule` au démarrage, à Ctrl+N et à Ctrl+O, compte rendu de Ctrl+O (K4-K7). | `src/pattern.py`, `ui/mw_project.py`, `ui/main_window.py` |
+| **3c1** | Tests — 3b1 : règle (défaut corrigé, choix respecté, synthé et banque intacts, projet sans canaux), démarrage avec et sans fichier, Ctrl+N, Ctrl+O, routeur, ni Undo ni « modifié », compte rendu ; tests de 10h8 revus (le kit au canal 2 de la piste 2 passe au canal 10). | `tests/test_kit_channel_migration.py`, `docs/SPECS.md` |
+| **3d1** | Doc — clôture (SPECS), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md` |
