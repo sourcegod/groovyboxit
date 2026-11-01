@@ -9177,3 +9177,37 @@ Rack).
 | **5f1** | Implémentation — import (M8, M17) et export MIDI / WAV (M18). Essayé sur de vrais `.mid`. | `ui/mw_project.py`, `ui/dialogs_simple.py`, `src/midi/midi_export.py` |
 | **5g1** | Tests — 5f1 (choix à l'import, aller-retour, export par slot effectif, rendu WAV). | `tests/test_midi_import_ui.py`, `tests/test_midi_export.py`, `tests/test_audio_export_ui.py` |
 | **5h1** | Doc — clôture (SPECS, raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 5 — Avancement (5b1)
+
+- **5b1** — moteur, conforme à M1, M3, M5, M6, M9-M13 :
+  - `Pattern._rack_mode` (`"rack_mode"` du `.gvp`, absent = False ;
+    copié par `copy_from`, donc par l'Undo et le song figé) ;
+    `TrackRouter.rack_mode`, posé avec les canaux au changement de
+    pattern, à l'avance du song et dans l'export WAV ; `render_copy` le
+    copie.
+  - Slot effectif `_slot_idx_of` / `_eff_slot` (M9), lu par
+    `_bank_slot_of`, `on_play`, `on_kit_tape`, `on_patch_tape`,
+    `on_bend_tape`, `on_mod_tape`, `slot_for_track`, `slot_name` ;
+    `rack_slot_idx(canal)` et `fallback_bank_idx()` (M5).
+  - Mode Rack : `track_channel_now` et `chase` couvrent toutes les
+    pistes (M10) ; `_rack_program_change` sans pont (M3) ; moteurs des
+    slots synthé des canaux joués chargés à la poursuite et au changement
+    de canal (`ensure_rack_synths`, `rack_channels_of` : canal des pistes
+    non vides et de leurs Program Change) ; une note KIT sur un slot synthé
+    y est jouée comme une note PATCH ; un slot vide sans repli est muet.
+  - Note PATCH sur un kit (M11, les deux modes) :
+    `SoundManager.kit_note_of_gm`, inverse de `gm_note_map`.
+  - Kit du pattern (M6, M12) : `rack_report(tape)` (kit à charger, autres
+    kits, canaux muets) et `_apply_rack_kit` (`mw_pads.py`), qui charge le
+    kit sans renommer les pads (`SoundManager.kit_path` évite de recharger
+    le même) et avertit dans la barre d'état. `_load_project` ne charge
+    plus les kits des slots des pistes d'un pattern Rack, et recharge les
+    moteurs des canaux après `clear_slot_synths`.
+  - **Précision** : `_load_project` met `_cur_slot` au slot effectif de la
+    piste courante (`slot_for_track`), comme le changement de piste.
+  - **Reste pour 5d1** : en mode Rack, le message d'un Program Change reçu
+    du contrôleur dit encore « → Slot N » (pont) ; le canal émis par le
+    contrôleur est déjà ignoré (M4).
+  - `pytest` : 3194 verts (mode normal inchangé) ; essai du routeur par
+    un script (fakes de `test_bank_slot.py`), avant les tests de 5c1.

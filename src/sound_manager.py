@@ -36,6 +36,9 @@ class SoundManager(object):
         # {note de kit: note GM} pour l'export MIDI (D2)
         self.pad_notes   = [self.kit_base + i for i in range(16)]
         self.gm_note_map = {}
+        # Fichier du kit chargé (None : sons media par défaut) — mode Rack,
+        # Phase 8 étape 5b1 (docs/DESIGN.md § 5a M6)
+        self.kit_path    = None
 
         self.sound_click1 = self._driver.load(click_name1)
         self.sound_click2 = self._driver.load(click_name2)
@@ -48,6 +51,7 @@ class SoundManager(object):
         self.drum_sounds = [self._driver.load(item) for item in self.media_lst]
         self.pad_notes   = [self.kit_base + i for i in range(16)]
         self.gm_note_map = {}
+        self.kit_path    = None
 
     def load_pad_sound(self, pad_idx, wav_path):
         """Remplace le son du pad pad_idx par le WAV donné."""
@@ -147,6 +151,7 @@ class SoundManager(object):
             self._group_sounds.setdefault(group, set()).add(sound)
 
         self._kit_name  = meta.get("name", "")
+        self.kit_path   = json_path
         self.kit_base   = meta.get("base_note", 36)
         self.kit_offset = 0
 
@@ -174,6 +179,14 @@ class SoundManager(object):
                         self.gm_note_map[note] = gm
             self.pad_notes.append(note)
         return labels, wav_paths
+
+    def kit_note_of_gm(self, gm_note):
+        """Note du kit chargé qui joue la note GM gm_note (inverse de
+        gm_note_map, Phase 8 étape 5b1, docs/DESIGN.md § 5a M11) : la plus
+        basse des notes du kit qui ont un son ; sinon gm_note telle quelle."""
+        notes = [n for n, gm in self.gm_note_map.items()
+                 if gm == gm_note and n in self.note_map]
+        return min(notes) if notes else gm_note
 
     @staticmethod
     def _entry_gm_note(entry, note, kit_is_gm):

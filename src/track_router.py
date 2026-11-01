@@ -152,6 +152,10 @@ class TrackRouter:
         self._preset_names  = {}        # {emplacement: {(banque, programme): nom}}
         self.master_pan     = 0
         self._bank_preview  = BankPreview(self)
+        # Mode Rack 16 canaux du pattern courant (Phase 8 étape 5b1,
+        # docs/DESIGN.md § 5a M1, M2, M13) : le canal courant N d'une piste
+        # joue le slot N ; posé au chargement du pattern, comme les canaux.
+        self.rack_mode      = False
 
     @staticmethod
     def _timer_schedule(delay_ms, fn, *args):
@@ -186,6 +190,7 @@ class TrackRouter:
         r._kb_scale           = self._kb_scale
         r._kb_root_midi       = self._kb_root_midi
         r.master_pan          = self.master_pan
+        r.rack_mode           = self.rack_mode
         copies = {}                     # un même moteur partagé par deux slots : une copie
         for slot_idx, engine in self._slot_synths.items():
             if engine is None:
@@ -257,10 +262,89 @@ class TrackRouter:
     # ------------------------------------------------------------------
 
     def slot_for_track(self, track_idx):
-        return self._track_slots[track_idx]
+        """Slot que joue la piste : le sien, ou en mode Rack celui de son
+        canal courant (M9)."""
+        return self._slot_idx_of(track_idx)
 
     def slot_name(self, track_idx):
-        return self._rack.get_slot(self._track_slots[track_idx]).name
+        return self._rack.get_slot(self._slot_idx_of(track_idx)).name
+
+    # ------------------------------------------------------------------
+    # Mode Rack 16 canaux (Phase 8 étape 5b1, docs/DESIGN.md § 5a M1, M5,
+    # M9) : slot effectif d'une piste
+    # ------------------------------------------------------------------
+
+    def fallback_bank_idx(self):
+        """Premier slot Banque du Rack (repli d'un canal au slot vide, M5),
+        ou None."""
+        for i in range(self._rack.NUM_SLOTS):
+            if self._rack.get_slot(i).type == InstrumentType.BANK:
+                return i
+        return None
+
+    def rack_slot_idx(self, channel):
+        """Slot joué par un canal en mode Rack : le slot de même numéro ;
+        vide, le premier slot Banque (M5) ; sans slot Banque, le slot vide
+        lui-même (canal muet)."""
+        channel = max(0, min(self._rack.NUM_SLOTS - 1, channel))
+        if not self._rack.get_slot(channel).is_empty:
+            return channel
+        fallback = self.fallback_bank_idx()
+        return channel if fallback is None else fallback
+
+    def _slot_idx_of(self, track_idx):
+        """Slot effectif de la piste (M9) : _track_slots en mode normal ; en
+        mode Rack, le slot de son canal courant (M1, M10)."""
+        if self.rack_mode:
+            return self.rack_slot_idx(self._track_cur_channels[track_idx])
+        return self._track_slots[track_idx]
+
+    def _eff_slot(self, track_idx):
+        """(indice, InstrumentSlot) du slot effectif de la piste."""
+        idx = self._slot_idx_of(track_idx)
+        return idx, self._rack.get_slot(idx)
+
+    def rack_channels_of(self, tape):
+        """Canaux joués par les pistes non vides de tape en mode Rack : leur
+        canal, et celui de chacun de leurs Program Change (O3), triés."""
+        chans = set()
+        for t, events in enumerate(tape[:self.NUM_TRACKS]):
+            if not events:
+                continue
+            chans.add(self._track_channels[t])
+            for ev in events:
+                if ev.etype == ETYPE_PGM:
+                    chans.add(max(0, min(15, ev.channel)))
+        return sorted(chans)
+
+    def rack_report(self, tape):
+        """État d'un pattern en mode Rack, pour l'UI (M5, M6) : dict avec
+        "kit" (slot kit à charger : celui du canal 10 s'il est joué et que
+        son slot est un kit, sinon le premier canal joué sur un kit ; None),
+        "other_kits" (autres slots kit joués, qui entendront ce kit) et
+        "muted" (canaux joués au slot vide, sans slot Banque de repli)."""
+        kits, muted = [], []
+        chans = self.rack_channels_of(tape)
+        if Pattern.KIT_CHANNEL in chans:            # canal 10 d'abord (M6)
+            chans = [Pattern.KIT_CHANNEL] + [c for c in chans if c != Pattern.KIT_CHANNEL]
+        for ch in chans:
+            idx  = self.rack_slot_idx(ch)
+            slot = self._rack.get_slot(idx)
+            if slot.is_empty:
+                muted.append(ch)
+            elif slot.type == InstrumentType.KIT and idx not in kits:
+                kits.append(idx)
+        return {"kit": kits[0] if kits else None, "other_kits": kits[1:],
+                "muted": sorted(muted)}
+
+    def ensure_rack_synths(self, tape):
+        """Mode Rack : moteur de chaque slot synthé que les canaux de tape
+        peuvent jouer, chargé en arrière-plan s'il ne l'est pas (comme
+        assign_slot en mode normal)."""
+        for ch in self.rack_channels_of(tape):
+            idx = self.rack_slot_idx(ch)
+            if self._rack.get_slot(idx).type == InstrumentType.SYNTH:
+                self._ensure_slot_synth(idx)
 
     def assign_slot(self, track_idx, slot_idx):
         """Assigne slot_idx à track_idx et ancre le SynthEngine si SYNTH."""
@@ -385,8 +469,8 @@ class TrackRouter:
         return self._cur_track_cb()
 
     def _bank_slot_of(self, track_idx):
-        """Slot Banque de la piste, ou None."""
-        slot = self._rack.get_slot(self._track_slots[track_idx])
+        """Slot Banque de la piste (slot effectif, M9), ou None."""
+        slot = self._rack.get_slot(self._slot_idx_of(track_idx))
         return slot if slot.type == InstrumentType.BANK else None
 
     def bank_slot_ready(self, slot_idx):
@@ -401,8 +485,9 @@ class TrackRouter:
 
     def track_channel_now(self, track_idx):
         """Canal courant de la piste : celui de son dernier Program Change
-        sur slot Banque (§ 17e3 O3), sinon son canal."""
-        if self._bank_slot_of(track_idx) is not None:
+        sur slot Banque (§ 17e3 O3) ou en mode Rack (Phase 8 étape 5b1, M10),
+        sinon son canal."""
+        if self.rack_mode or self._bank_slot_of(track_idx) is not None:
             return self._track_cur_channels[track_idx]
         return self._track_channels[track_idx]
 
@@ -560,7 +645,10 @@ class TrackRouter:
         Enfin, instruments et mixage envoyés au moteur, puis pédale, Pitch
         Bend et modulation de chaque canal : la dernière valeur avant pos,
         au canal courant de sa piste à son instant, sinon zéro (Event Chase
-        de Sonar, 18d3, § 18d2 P3)."""
+        de Sonar, 18d3, § 18d2 P3).
+        Mode Rack (Phase 8 étape 5b1, M10) : toutes les pistes sont
+        poursuivies, quel que soit leur slot, et les moteurs des slots
+        synthé que leurs canaux jouent sont chargés."""
         self._track_cur_channels = list(self._track_channels)
         self._chan_prog = [0] * 16
         self._chan_msb  = [0] * 16
@@ -569,7 +657,7 @@ class TrackRouter:
         chan_bend = [0] * 16
         found = []
         for t, events in enumerate(tape[:self.NUM_TRACKS]):
-            if self._bank_slot_of(t) is None:
+            if not self.rack_mode and self._bank_slot_of(t) is None:
                 continue
             for seq, ev in enumerate(events):
                 if ev.time > pos:
@@ -593,6 +681,8 @@ class TrackRouter:
             else:
                 chan_cc[ev.payload["cc_num"]][self._track_cur_channels[t]] = \
                     max(0, min(127, ev.payload.get("value", 0)))
+        if self.rack_mode:
+            self.ensure_rack_synths(tape)
         self.sync_banks(force=True)
         engine = self.bank_engine
         if engine is not None:
@@ -627,7 +717,12 @@ class TrackRouter:
         Piste sur slot Banque (§ 17e3 O1, O3) : l'instrument du canal change
         (channel, sinon le canal courant de la piste) et la piste passe sur
         ce canal. Sinon le pont provisoire assign_slot(program % 16).
+        Mode Rack (Phase 8 étape 5b1, M3) : pas de pont ; la piste passe
+        sur le canal du Program Change, donc sur son slot, et le programme
+        devient l'instrument GM du canal, entendu si ce slot est une banque.
         Retourne True si la piste est sur une banque."""
+        if self.rack_mode:
+            return self._rack_program_change(track_idx, program, channel)
         slot = self._bank_slot_of(track_idx)
         if slot is None:
             self.assign_slot(track_idx, program % 16)
@@ -641,6 +736,24 @@ class TrackRouter:
             self._chan_sel[ch] = None             # Program Change : toujours renvoyé
             self._select_channel(ch, slot, track_idx)
             if moved:
+                self._send_bank_mix(track_idx)
+        return True
+
+    def _rack_program_change(self, track_idx, program, channel):
+        """Program Change en mode Rack (M3, O3) : voir program_change."""
+        old = self._track_cur_channels[track_idx]
+        ch  = old if channel is None else max(0, min(15, channel))
+        self._chan_prog[ch] = max(0, min(127, program))
+        self._track_cur_channels[track_idx] = ch
+        idx, slot = self._eff_slot(track_idx)
+        if slot.type == InstrumentType.SYNTH:
+            self._ensure_slot_synth(idx)
+        if slot.type != InstrumentType.BANK:
+            return False
+        if self.bank_engine is not None:
+            self._chan_sel[ch] = None             # Program Change : toujours renvoyé
+            self._select_channel(ch, slot, track_idx)
+            if ch != old:
                 self._send_bank_mix(track_idx)
         return True
 
@@ -727,6 +840,10 @@ class TrackRouter:
         (§ 17e3 O5, choix B : le canal impose son instrument)."""
         self._track_channels[track_idx] = max(0, min(15, channel))
         self._track_cur_channels[track_idx] = self._track_channels[track_idx]
+        if self.rack_mode:                     # mode Rack : le slot suit le canal (M1)
+            idx, slot = self._eff_slot(track_idx)
+            if slot.type == InstrumentType.SYNTH:
+                self._ensure_slot_synth(idx)
         if self._bank_slot_of(track_idx) is not None:
             self.sync_banks()                  # instrument et mixage sur le nouveau canal
 
@@ -824,8 +941,9 @@ class TrackRouter:
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):
             return
-        slot_idx = self._track_slots[track_idx]
-        slot     = self._rack.get_slot(slot_idx)
+        slot_idx, slot = self._eff_slot(track_idx)
+        if self.rack_mode and slot.is_empty:      # canal muet (M5)
+            return
         if slot.type == InstrumentType.BANK:
             # D11 : vélocité de l'export (vel × volume du pad), volume et pan
             # de piste au canal (CC7, CC10) ; le pan du pad est ignoré.
@@ -848,13 +966,22 @@ class TrackRouter:
             self._snd.play_sound(pad_idx, vol_factor, pan)
 
     def on_kit_tape(self, track_idx, midi_note, velocity, duration_ms=0):
-        """Lecture d'un événement kit_tape : note MIDI brute, indépendante du kit_offset."""
+        """Lecture d'un événement kit_tape : note MIDI brute, indépendante du
+        kit_offset. Mode Rack (Phase 8 étape 5b1, M1) : sur un slot synthé,
+        jouée comme une note PATCH ; sur un slot vide, muette."""
         if not self._track_is_audible(track_idx):
             return
         if self._bank_slot_of(track_idx) is not None:          # 17d1 : note telle quelle
             self.bank_note(self._track_cur_channels[track_idx], midi_note, velocity,
                            duration_ms if duration_ms > 0 else 500)
             return
+        if self.rack_mode:
+            slot_idx, slot = self._eff_slot(track_idx)
+            if slot.type == InstrumentType.SYNTH:
+                self._play_synth_note(track_idx, slot_idx, midi_note, velocity, duration_ms)
+                return
+            if slot.type != InstrumentType.KIT:
+                return
         vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
         self._snd.play_note(midi_note, vol)
 
@@ -862,17 +989,27 @@ class TrackRouter:
         """Lecture d'un événement patch_tape : note MIDI brute pour un synth.
         Joue avec l'état de Pitch Bend courant du moteur (posé par
         on_bend_tape) — plus de bend propre à la note depuis la Phase 7
-        étape 7f1."""
+        étape 7f1. Sur un kit (Phase 8 étape 5b1, M11) : le son du kit
+        chargé dont la note GM est midi_note, sinon la note telle quelle,
+        sans durée (one-shot)."""
         if not self._track_is_audible(track_idx):
             return
-        slot_idx = self._track_slots[track_idx]
-        slot     = self._rack.get_slot(slot_idx)
+        slot_idx, slot = self._eff_slot(track_idx)
         if slot.type == InstrumentType.BANK:                   # 17d1
             self.bank_note(self._track_cur_channels[track_idx], midi_note, velocity,
                            duration_ms if duration_ms > 0 else 500)
             return
+        if slot.type == InstrumentType.KIT:                    # M11
+            vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
+            self._snd.play_note(self._snd.kit_note_of_gm(midi_note), vol)
+            return
         if slot.type != InstrumentType.SYNTH:
             return
+        self._play_synth_note(track_idx, slot_idx, midi_note, velocity, duration_ms)
+
+    def _play_synth_note(self, track_idx, slot_idx, midi_note, velocity, duration_ms):
+        """Note d'une piste sur le moteur du slot synthé slot_idx, coupée
+        après duration_ms (500 ms par défaut)."""
         engine = self._slot_synths.get(slot_idx)
         if engine and engine.is_loaded():
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
@@ -887,8 +1024,7 @@ class TrackRouter:
         """Applique un point d'automation pitch bend au moteur du slot de la piste."""
         if not self._track_is_audible(track_idx):
             return
-        slot_idx = self._track_slots[track_idx]
-        slot     = self._rack.get_slot(slot_idx)
+        slot_idx, slot = self._eff_slot(track_idx)
         if slot.type == InstrumentType.BANK:                   # 17d1 : état du canal
             if self.bank_engine is not None:
                 self.bank_engine.pitch_bend(self._track_cur_channels[track_idx], bend_value)
@@ -906,8 +1042,7 @@ class TrackRouter:
         """Applique un point d'automation mod wheel au moteur du slot de la piste."""
         if not self._track_is_audible(track_idx):
             return
-        slot_idx = self._track_slots[track_idx]
-        slot     = self._rack.get_slot(slot_idx)
+        slot_idx, slot = self._eff_slot(track_idx)
         if slot.type == InstrumentType.BANK:                   # 17d1
             if self.bank_engine is not None:
                 self.bank_engine.cc(self._track_cur_channels[track_idx], 1, mod_value)

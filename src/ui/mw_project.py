@@ -997,21 +997,25 @@ class ProjectMixin:
             slot = self._rack.get_slot(slot_idx)
             if slot.type == InstrumentType.SYNTH:
                 self._router.assign_slot(track_idx, slot_idx)
+        if new._rack_mode:                          # moteurs des canaux (5b1, M1)
+            self._router.ensure_rack_synths(new._tape)
         loaded_kit_slots = set()
-        for slot_idx in new._track_slots:
+        # Mode Rack : le kit du pattern est déjà chargé (_apply_rack_kit, M6)
+        for slot_idx in ([] if new._rack_mode else new._track_slots):
             if slot_idx not in loaded_kit_slots:
                 slot = self._rack.get_slot(slot_idx)
                 if slot.type == InstrumentType.KIT:
                     self._load_kit_slot(slot_idx)
                     loaded_kit_slots.add(slot_idx)
-        cur_slot = new._track_slots[self._player._cur_track] \
+        cur_slot = self._router.slot_for_track(self._player._cur_track) \
                    if self._player._cur_track < len(new._track_slots) else 0
         self._cur_slot = cur_slot
         self._slot_choice.SetSelection(cur_slot)
         slot = self._rack.get_slot(cur_slot)
         if slot.plays_notes:                        # synthé ou banque (17d1)
             self._router.load_slot_preview(cur_slot)
-        elif slot.type == InstrumentType.KIT and cur_slot not in loaded_kit_slots:
+        elif slot.type == InstrumentType.KIT and cur_slot not in loaded_kit_slots \
+                and not new._rack_mode:
             self._load_kit_slot(cur_slot)
         self._player._compute_offsets()
         self._refresh_grid()

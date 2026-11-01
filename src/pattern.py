@@ -207,6 +207,9 @@ class Pattern:
         self._track_channels = [Pattern.default_channel(t) for t in range(self._num_tracks)]
         # Pistes sur un kit : canal 10, posé par apply_kit_channels (le
         # Pattern ne connaît pas le Rack), Phase 8 étape 3b1
+        # Mode Rack 16 canaux : le canal N joue le slot N (Phase 8 étape
+        # 5b1, docs/DESIGN.md § 5a M2, M13)
+        self._rack_mode = False
 
         # état des voix par pad : name, volume, pan, mute, solo, duration_ms
         self._voices = [
@@ -403,6 +406,7 @@ class Pattern:
         self._num_beats   = other._num_beats                   # signature (20b1, S8)
         self._denumerator = other._denumerator
         self._tempo_changes = list(other._tempo_changes)       # 19b1, T2
+        self._rack_mode   = other._rack_mode                   # 5b1, M13
         with self._lock:
             self._tape = [list(track_list) for track_list in other._tape]
 
@@ -659,6 +663,7 @@ class Pattern:
             "track_volumes": self._track_volumes,
             "track_pans":    self._track_pans,
             "track_channels": self._track_channels,
+            "rack_mode":     self._rack_mode,                  # 5b1, M13
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
             "kb_root_midi":  self._kb_root_midi,
@@ -760,6 +765,8 @@ class Pattern:
         self._track_channels = list(d.get("track_channels") or
                                     [Pattern.default_channel(t) for t in range(self._num_tracks)])
         if "voices"        in d: self._voices        = d["voices"]
+        # Clé absente (projets d'avant 5b1) : mode normal (M13)
+        self._rack_mode    = d.get("rack_mode") is True
         self._kb_scale     = d.get("kb_scale",     "major")
         self._kb_root_midi = d.get("kb_root_midi", 48)
         for t, track_bends in enumerate(d.get("bend_tape", [])):

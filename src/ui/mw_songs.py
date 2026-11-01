@@ -157,8 +157,11 @@ class SongMixin:
         self._router._track_volumes[:] = new._track_volumes
         self._router._track_pans[:]    = new._track_pans
         self._router._track_channels[:] = new._track_channels
+        self._router.rack_mode = new._rack_mode        # Phase 8 étape 5b1, M13
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
         self._router.chase(new._tape, 0.0)  # instruments du nouveau pattern (17f1, § 17e3 O4)
+        if new._rack_mode:
+            self._apply_rack_kit(new._tape)             # M6, M12
         self._bpm_ctrl.SetValue(int(round(new._bpm)))
         self._show_status(f"Song → Pat_{next_pat_idx+1:02d}")
         if self._song_window:

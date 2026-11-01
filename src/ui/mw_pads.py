@@ -137,6 +137,42 @@ class PadMixin:
         self._snd.load_sounds()
         self._show_status("Kit: sons media par défaut")
 
+    def _apply_rack_kit(self, tape):
+        """Pattern en mode Rack (Phase 8 étape 5b1, docs/DESIGN.md § 5a M5,
+        M6, M12) : charge le kit que jouent ses canaux (slot 10 d'abord),
+        pour ses sons seulement — les noms de pads tiennent ceux des pistes —
+        et dit dans la barre d'état quels autres kits l'entendent et quels
+        canaux restent muets. Rien en mode normal."""
+        if not self._router.rack_mode:
+            return
+        report = self._router.rack_report(tape)
+        msgs   = []
+        kit_idx = report["kit"]
+        if kit_idx is not None:
+            path = self._rack.get_slot(kit_idx).config.get("kit", "")
+            if path and os.path.isfile(path):
+                if self._snd.kit_path != os.path.abspath(path):
+                    try:
+                        self._snd.load_kit(path)
+                        for i, group in enumerate(self._snd.mute_groups):
+                            self._player.voice_manager.set_mute_group(i, group)
+                    except Exception as e:
+                        msgs.append(f"Erreur kit JSON: {e}")
+            elif self._snd.kit_path is not None:
+                self._snd.load_sounds()               # sons media par défaut
+        if report["other_kits"]:
+            others = ", ".join(str(i + 1) for i in report["other_kits"])
+            msgs.append(f"Mode Rack : un seul kit à la fois — slot{'s' if len(report['other_kits']) > 1 else ''} "
+                        f"{others} joue{'nt' if len(report['other_kits']) > 1 else ''} "
+                        f"le kit du slot {kit_idx + 1}")
+        if report["muted"]:
+            chans = ", ".join(str(c + 1) for c in report["muted"])
+            plural = len(report["muted"]) > 1
+            msgs.append(f"Mode Rack : canal{'aux' if plural else ''} {chans} "
+                        f"muet{'s' if plural else ''} (slot vide, aucun slot Banque)")
+        if msgs:
+            self._show_status(" — ".join(msgs))
+
     def _open_explorer(self):
         dlg = ExplorerDialog(self)
         if dlg.ShowModal() != wx.ID_OK:

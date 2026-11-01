@@ -204,6 +204,7 @@ class _PatternState:
         router._track_volumes[:]  = p._track_volumes
         router._track_pans[:]     = p._track_pans
         router._track_channels[:] = p._track_channels
+        router.rack_mode          = p._rack_mode     # Phase 8 étape 5b1, M13
         router.set_playback_kb(p._kb_scale, p._kb_root_midi)
         if load:
             for slot_idx in sorted(set(p._track_slots)):
