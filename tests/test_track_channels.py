@@ -47,6 +47,9 @@ def _make_router():
     rack.set_slot(GUITAR, InstrumentType.SYNTH, "Guitar",      {"patch": "guitar_1"})
     router = TrackRouter(rack, "/fake/synths", _FakeSoundManager(), lambda msg: None)
     router._ensure_slot_synth = lambda slot_idx: None   # pas de chargement de patch
+    # ni de préécoute : Ctrl+T la charge depuis 5d3 ; un vrai SynthEngine
+    # ouvrirait un flux audio jamais fermé (Python plante à la sortie)
+    router.load_slot_preview = lambda slot_idx: None
     return router
 
 
@@ -216,6 +219,7 @@ class _FakeTrackWindow(TrackMixin):
         self.calls.append('_pop_last_undo')
         self._project_modified = self._modified_before.pop()
     def _update_title(self):        self.calls.append('_update_title')
+    def _load_kit_slot(self, idx, rename=None): self.calls.append(('kit', idx))   # Ctrl+T (5d3)
 
 
 def _fake_dialog(result, values=None, seen=None):

@@ -494,8 +494,9 @@ class _PadWindow(PadMixin):
     def _add_undo(self, title):     self.calls.append(("undo", title))
     def _pop_last_undo(self):       self.calls.append("pop")
     def _show_status(self, msg):    self.calls.append(("status", msg))
-    def _update_slot_list(self):    self.calls.append("slots")
+    def _update_slot_list(self, listed=None): self.calls.append("slots")
     def _refresh_track_list(self):  self.calls.append("tracks")
+    def _listed_slot(self):         return self._cur_slot      # slot listé = joué (5d3)
 
 
 def _stub_bank_dlg(result, bank_slot, path, seen=None):

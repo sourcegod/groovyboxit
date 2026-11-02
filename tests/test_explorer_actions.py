@@ -94,7 +94,8 @@ def make_win(tmp):
 
     win._load_preset      = lambda:    win._load_preset_calls.append(1)
     win._load_kit_slot    = lambda s:  win._load_kit_slot_calls.append(s)
-    win._update_slot_list = lambda:    win._update_slot_list_calls.append(1)
+    win._update_slot_list = lambda listed=None: win._update_slot_list_calls.append(1)
+    win._listed_slot      = lambda:    win._cur_slot     # slot listé = slot joué (5d3)
     win._refresh_pad_list = lambda:    win._refresh_pad_list_calls.append(1)
     win._show_status      = lambda msg: win._show_status_calls.append(msg)
     return win

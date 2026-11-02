@@ -9384,3 +9384,15 @@ Rack).
   effectivement constaté venait d'ailleurs : un vrai `SynthEngine` créé par
   la préécoute de Ctrl+T dans le routeur de `test_track_channels.py`
   (adapté en 5e4).
+- **5e4** — tests de 5d3 et 5d4, dans `tests/test_rack_mode_ui.py` (58
+  tests), sur une vraie liste des slots : parcourir un kit, un synthé ou
+  un slot vide ne charge rien (batterie, noms des pads et préécoute
+  inchangés) ; Ctrl+T assigne et charge le slot listé (kit renommant les
+  pads en mode normal, préécoute d'un synthé) ; Explorateur : kit dans un
+  slot listé non joué (rien chargé) ou joué (chargé), patch (pistes du
+  slot rechargées, clavier inchangé), banque (préécoute inchangée) ; liste
+  et curseur gardés sur le slot listé ; curseur au changement de piste.
+  Fakes adaptés : `_listed_slot` des fenêtres de `test_explorer_actions.py`
+  et `test_bank_dialogs.py`, `_load_kit_slot` et préécoute neutralisée du
+  routeur de `test_track_channels.py` (un vrai `SynthEngine` y faisait
+  planter Python à la sortie). 3334 verts.

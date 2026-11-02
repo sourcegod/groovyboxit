@@ -775,3 +775,162 @@ def test_controller_program_change_normal_mode_bridge_and_bank():
     _channels(win, [2])
     _send(_controller(win), 0xC0, 33)
     assert win._router.bank_engine.selects(2)[-1] == ("select", 2, 0, 0, 33)
+
+
+# ---------------------------------------------------------------------------
+# Parcourir la liste des slots sans les charger (Phase 8 étape 5e4, tests de
+# 5d3 : essai de l'utilisateur) — slot joué (_cur_slot) et slot listé
+# ---------------------------------------------------------------------------
+
+import ui.mw_pads as mw_pads_mod
+
+
+def _list_win(tmp_path, rack_mode=False):
+    """Fenêtre en mode normal, piste 1 sur la banque (slot joué), vraie liste
+    des slots ; kit du slot 10 = un vrai fichier."""
+    path = tmp_path / "808.json"
+    path.write_text("{}")
+    win = _RackWin(rack_mode=rack_mode, kit_path=str(path))
+    win._kit_status = lambda: "kit"
+    win._kits_dir = win._patches_dir = str(tmp_path)
+    win._gm_soundfont, win._soundfonts_dir = SF, "/fake"
+    frame = wx.Frame(None)
+    win._slot_choice = wx.ListBox(frame, choices=win._rack.labels())
+    select_with_cursor(win._slot_choice, win._cur_slot)
+    return win, frame, str(path)
+
+
+def _browse(win, idx):
+    win._slot_choice.SetSelection(idx)
+    win._on_slot_choice(_Evt())
+
+
+def test_browsing_kit_slot_loads_nothing(tmp_path):
+    win, frame, _ = _list_win(tmp_path)
+    win._player.voice_manager.set_name(0, "Batterie")
+    _browse(win, KIT)
+    assert win._snd.loaded == []                         # la batterie ne change pas
+    assert win._cur_slot == BANK and win._listed_slot() == KIT
+    assert win._player.voice_manager.get_name(0) == "Batterie"
+    assert win.statuses[-1] == "Slot 10: 808 (Ctrl+T pour assigner)"
+    frame.Destroy()
+
+
+def test_browsing_synth_slot_loads_no_preview(tmp_path):
+    win, frame, _ = _list_win(tmp_path)
+    _browse(win, SYNTH)
+    assert win._router._synth is None and SYNTH not in win._router._slot_synths
+    assert win.statuses[-1] == "Slot 02: Piano WAV (Ctrl+T pour assigner)"
+    frame.Destroy()
+
+
+def test_browsing_empty_slot_message(tmp_path):
+    win, frame, _ = _list_win(tmp_path)
+    _browse(win, 3)
+    assert win.statuses[-1] == "Slot 04: vide — Alt+X pour charger"
+    frame.Destroy()
+
+
+def test_ctrl_t_assigns_listed_slot_and_loads_it(tmp_path):
+    win, frame, path = _list_win(tmp_path)
+    _browse(win, KIT)
+    win._assign_track_slot()
+    assert win._router._track_slots[0] == KIT and win._cur_slot == KIT
+    assert win._snd.loaded == [path]                     # chargé à l'assignation
+    assert win._player.voice_manager.get_name(0) == "Kit pad 1"   # mode normal : renommés
+    assert win.statuses[-1] == "Piste 1 → Slot_10 (808), canal 10"
+    frame.Destroy()
+
+
+def test_ctrl_t_on_synth_loads_preview(tmp_path):
+    win, frame, _ = _list_win(tmp_path)
+    _browse(win, SYNTH)
+    win._assign_track_slot()
+    assert win._cur_slot == SYNTH and win._router._synth_slot_idx == SYNTH
+    frame.Destroy()
+
+
+def _fake_file_dlg(path):
+    class FakeDlg:
+        def __init__(self, *a, **kw): pass
+        def ShowModal(self): return wx.ID_OK
+        def GetPath(self):   return path
+        def Destroy(self):   pass
+    return FakeDlg
+
+
+def test_explorer_kit_into_listed_slot_not_played_keeps_drums(tmp_path, monkeypatch):
+    win, frame, path = _list_win(tmp_path)
+    _browse(win, 7)
+    monkeypatch.setattr(mw_pads_mod.wx, "FileDialog", _fake_file_dlg(path))
+    win._explorer_kit()
+    assert win._rack.get_slot(7).type == InstrumentType.KIT
+    assert win._snd.loaded == []                         # slot non joué : rien chargé
+    assert win._slot_choice.GetSelection() == 7          # la liste reste sur lui
+    assert win.statuses[-1] == "Slot 08: kit 808 (Ctrl+T pour assigner)"
+    frame.Destroy()
+
+
+def test_explorer_kit_into_played_slot_loads_it(tmp_path, monkeypatch):
+    win, frame, path = _list_win(tmp_path)
+    _browse(win, KIT)
+    win._assign_track_slot()                              # KIT devient le slot joué
+    win._snd.loaded.clear()
+    monkeypatch.setattr(mw_pads_mod.wx, "FileDialog", _fake_file_dlg(path))
+    win._explorer_kit()
+    assert win._snd.loaded == [path]
+    frame.Destroy()
+
+
+def test_explorer_patch_into_listed_slot_keeps_keyboard_sound(tmp_path, monkeypatch):
+    win, frame, _ = _list_win(tmp_path)
+    win._follow_track_slot()                             # préécoute : banque (slot joué)
+    _browse(win, 7)
+    monkeypatch.setattr(mw_pads_mod.wx, "FileDialog", _fake_file_dlg(str(tmp_path / "p.json")))
+    win._explorer_patch()
+    assert win._rack.get_slot(7).type == InstrumentType.SYNTH
+    assert 7 in win._router._slot_synths                 # patch rechargé pour ses pistes
+    assert win._router._synth_slot_idx == BANK           # le clavier garde son son
+    assert win._slot_choice.GetSelection() == 7
+    frame.Destroy()
+
+
+def test_explorer_bank_into_listed_slot_keeps_preview(tmp_path, monkeypatch):
+    win, frame, _ = _list_win(tmp_path)
+    win._router._track_slots[0] = SYNTH
+    win._follow_track_slot()                             # slot joué : synthé
+    _browse(win, 7)
+
+    class FakeBankDlg:
+        def __init__(self, parent, slot_idx, files, bank_slot, *a):
+            FakeBankDlg.slot_idx = slot_idx
+        def ShowModal(self):     return wx.ID_OK
+        def get_bank_slot(self): return 1
+        def get_path(self):      return "/fake/GeneralUser.sf2"
+        def Destroy(self):       pass
+    monkeypatch.setattr(mw_pads_mod, "BankSlotDialog", FakeBankDlg)
+    win._explorer_bank()
+    assert FakeBankDlg.slot_idx == 7
+    assert win._rack.get_slot(7).type == InstrumentType.BANK
+    assert win._router._synth_slot_idx == SYNTH and win._cur_slot == SYNTH
+    assert win.undos[-1] == "Banque slot 08"
+    frame.Destroy()
+
+
+@gtk_only
+def test_update_slot_list_keeps_listed_slot_with_cursor(tmp_path):
+    win, frame, _ = _list_win(tmp_path)
+    win._update_slot_list(7)
+    assert win._slot_choice.GetSelection() == 7 and cursor_row(win._slot_choice) == 7
+    win._update_slot_list()
+    assert win._slot_choice.GetSelection() == BANK and cursor_row(win._slot_choice) == BANK
+    frame.Destroy()
+
+
+@gtk_only
+def test_go_to_track_moves_slot_list_cursor(tmp_path):
+    win, frame, _ = _list_win(tmp_path)
+    win._router._track_slots[1] = SYNTH
+    win._go_to_track(1)
+    assert win._slot_choice.GetSelection() == SYNTH and cursor_row(win._slot_choice) == SYNTH
+    frame.Destroy()
