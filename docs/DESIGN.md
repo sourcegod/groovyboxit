@@ -9311,3 +9311,22 @@ Rack).
   synthé chargé au passage à blanc, écoute intacte, song) ; `SPECS.md`.
   3312 verts. Essais avec Orca (5d1) et sur de vrais `.mid` (5f1) : pas
   encore faits.
+- **Essai de l'utilisateur (2026-11-02)** — trois remarques :
+  1. propriétés de piste : changer de slot passe la piste au canal 10,
+     mais le curseur de la liste des canaux reste sur le canal 1 (Haut ne
+     remonte pas depuis le canal 10) → 5d2 ;
+  2. confusion de noms entre le slot 5, kit « GM (FluidR3) », et le slot
+     6, banque « FluidR3_GM » créée par l'import : le kit doit s'appeler
+     « Kit GM » (données de l'utilisateur, pas du code) ;
+  3. Program Change du contrôleur : pas facile à envoyer depuis le
+     contrôleur, à tester par le code → 5e2.
+- **5d2** — correctif de l'essai : `ui/gtk_listbox.py`,
+  `select_with_cursor(listbox, idx)`. Sous wxGTK 3.2, `SetSelection`
+  sélectionne sans placer le curseur du GtkTreeView ;
+  `gtk_tree_view_set_cursor` (ctypes, `GetGtkWidget()` → enfant
+  GtkTreeView du GtkScrolledWindow) le place, sans prendre le focus ni
+  émettre d'événement wx. Toutes les sélections faites par le code dans
+  `TrackPropertiesDialog` (slots, canaux, programmes) y passent, dans les
+  deux modes. Hors GTK : `SetSelection` seul. Vérifié par un script
+  (curseur au canal 10, focus resté sur la liste des slots, un seul
+  aperçu).

@@ -3,6 +3,8 @@ import wx
 from midi.midi_constants import GM_PATCH_NAMES, GM2_DRUMKITS
 from pattern import Pattern
 
+from .gtk_listbox import select_with_cursor
+
 
 class TrackPropertiesDialog(wx.Dialog):
     _LIST_H = 90   # hauteur fixe de la liste des canaux
@@ -52,7 +54,7 @@ class TrackPropertiesDialog(wx.Dialog):
 
         slot_label  = wx.StaticText(self, label="Slot :")
         self._slots = wx.ListBox(self, choices=rack.labels(), style=wx.LB_SINGLE)
-        self._slots.SetSelection(cur_slot_idx)
+        select_with_cursor(self._slots, cur_slot_idx)
 
         channel_label  = wx.StaticText(self, label="Canal :")
         self._channels = wx.ListBox(
@@ -61,9 +63,9 @@ class TrackPropertiesDialog(wx.Dialog):
             style=wx.LB_SINGLE,
             size=(-1, self._LIST_H),
         )
-        self._channels.SetSelection(channel)
+        select_with_cursor(self._channels, channel)
         if rack_slot_of is not None:                # mode Rack : slot N = canal N
-            self._slots.SetSelection(channel)
+            select_with_cursor(self._slots, channel)
             cur_slot_idx = channel
 
         self._program_label = wx.StaticText(self, label="Programme GM du slot :")
@@ -181,7 +183,7 @@ class TrackPropertiesDialog(wx.Dialog):
         self._program_values = [p for p, _ in entries]
         self._programs.Set([f"{p + 1} - {n}" for p, n in entries])
         if program in self._program_values:
-            self._programs.SetSelection(self._program_values.index(program))
+            select_with_cursor(self._programs, self._program_values.index(program))
         self._programs.Enable(bool(entries))
 
     def _show_bank(self, info, program):
@@ -194,7 +196,7 @@ class TrackPropertiesDialog(wx.Dialog):
         self._programs.Set([f"{p + 1} - {name or '(vide)'}"
                             for p, name in enumerate(info["names"])])
         if program is not None:
-            self._programs.SetSelection(max(0, min(127, program)))
+            select_with_cursor(self._programs, max(0, min(127, program)))
         self._programs.Enable(True)
         self._msb.Enable(not info["drums"])
         self._lsb.Enable(not info["drums"])
@@ -207,7 +209,7 @@ class TrackPropertiesDialog(wx.Dialog):
         Rack (M15) : le slot suit le canal, et programmes et réglages GM sont
         ceux du slot qu'il joue."""
         if self._rack_slot_of is not None:
-            self._slots.SetSelection(self._channels.GetSelection())
+            select_with_cursor(self._slots, self._channels.GetSelection())
             self._load_programs(self._played_slot())
             self._load_gm_tuning(self._played_slot())
         elif self._is_bank:
@@ -235,10 +237,10 @@ class TrackPropertiesDialog(wx.Dialog):
         programmes du nouveau slot, puis aperçu."""
         slot_idx = self._slots.GetSelection()
         if self._rack_slot_of is not None:          # mode Rack : le canal suit le slot (M7)
-            self._channels.SetSelection(slot_idx)
+            select_with_cursor(self._channels, slot_idx)
             slot_idx = self._played_slot()
         elif self._channel_after_slot:
-            self._channels.SetSelection(self._channel_after_slot(
+            select_with_cursor(self._channels, self._channel_after_slot(
                 slot_idx, self._channels.GetSelection()))
         self._load_programs(slot_idx)      # après le canal : instrument du canal (17h1)
         self._load_gm_tuning(slot_idx)

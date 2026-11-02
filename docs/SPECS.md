@@ -94,6 +94,7 @@ groovyboxit/
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
 │       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
+│       ├── gtk_listbox.py      # select_with_cursor : sélection d'une ListBox qui place aussi le curseur clavier GTK (Phase 8 étape 5d2)
 │       ├── key_handler_alt.py  # Raccourcis Alt+*
 │       ├── key_handler_chars.py # Raccourcis caractères (H, R, E, Q…)
 │       ├── key_handler_ctrl.py # Raccourcis Ctrl+*
