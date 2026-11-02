@@ -9330,3 +9330,20 @@ Rack).
   deux modes. Hors GTK : `SetSelection` seul. Vérifié par un script
   (curseur au canal 10, focus resté sur la liste des slots, un seul
   aperçu).
+- **5e2** — tests de 5d2 et remarque 3 de l'essai, dans
+  `tests/test_rack_mode_ui.py` (47 tests) :
+  - curseur clavier : défaut de `SetSelection` sous GTK constaté,
+    `select_with_cursor` sans événement wx, hors limites et hors GTK ;
+    propriétés de piste : curseur au canal 10 après un slot kit (le cas de
+    l'essai), mode Rack dans les deux sens, programme du canal ;
+  - **Program Change du contrôleur de bout en bout** : octets MIDI bruts
+    → `MidiManager._callback` → `MidiHandler` (sans `CallAfter`) →
+    routeur et moteur de banque : instrument du canal de la piste (le
+    canal émis par le contrôleur est ignoré, M4), Bank Select puis
+    programme, synthé sans pont, enregistrement au canal de la piste par
+    le vrai `record_program_change`, pont et banque en mode normal.
+  - **Précision des tests** : pas de `wx.Yield()` dans un test de liste ;
+    en pleine suite, il traitait des événements laissés par d'autres
+    fichiers et faisait planter Python à la sortie (assertion
+    `PyTuple_Check`). Le signal GTK est de toute façon synchrone.
+  - 3323 verts.

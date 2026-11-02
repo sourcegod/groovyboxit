@@ -606,3 +606,172 @@ def test_switch_back_to_normal_pattern_restores_track_slot():
     win._switch_pattern(1)
     assert win._router.rack_mode is False and win._cur_slot == BANK
     assert win.statuses[-1] == "Pattern 02"
+
+
+# ---------------------------------------------------------------------------
+# Curseur clavier des listes des propriétés de piste (Phase 8 étape 5e2,
+# tests de 5d2 : essai de l'utilisateur)
+# ---------------------------------------------------------------------------
+
+from ui.gtk_listbox import select_with_cursor, cursor_row
+import ui.gtk_listbox as gtk_listbox
+
+gtk_only = pytest.mark.skipif("__WXGTK__" not in wx.PlatformInfo, reason="curseur GTK")
+
+
+def _listbox(n=16):
+    frame = wx.Frame(None)
+    lb = wx.ListBox(frame, choices=[f"Canal {c + 1}" for c in range(n)])
+    return frame, lb
+
+
+@gtk_only
+def test_set_selection_alone_leaves_gtk_cursor_behind():
+    """Le défaut de wxGTK que 5d2 contourne."""
+    frame, lb = _listbox()
+    lb.SetSelection(9)
+    assert cursor_row(lb) != 9
+    frame.Destroy()
+
+
+@gtk_only
+def test_select_with_cursor_moves_selection_and_cursor_without_event():
+    frame, lb = _listbox()
+    events = []
+    lb.Bind(wx.EVT_LISTBOX, lambda e: events.append(e.GetSelection()))
+    select_with_cursor(lb, 9)
+    assert lb.GetSelection() == 9 and cursor_row(lb) == 9
+    select_with_cursor(lb, 2)
+    assert lb.GetSelection() == 2 and cursor_row(lb) == 2
+    # Le signal GTK « changed » serait émis tout de suite, pendant
+    # set_cursor : pas de wx.Yield (il traiterait en pleine suite les
+    # événements laissés par d'autres fichiers de tests).
+    assert events == []
+    lb.Unbind(wx.EVT_LISTBOX)
+    frame.Destroy()
+
+
+def test_select_with_cursor_out_of_range_and_without_gtk(monkeypatch):
+    frame, lb = _listbox()
+    select_with_cursor(lb, wx.NOT_FOUND)                 # désélection, pas de curseur
+    assert lb.GetSelection() == wx.NOT_FOUND
+    monkeypatch.setattr(gtk_listbox, "_tree_view", lambda listbox: None)
+    select_with_cursor(lb, 4)                            # hors GTK : SetSelection seul
+    assert lb.GetSelection() == 4
+    frame.Destroy()
+
+
+@gtk_only
+def test_track_dialog_slot_change_moves_channel_cursor_normal_mode():
+    """Essai : canal 1, choix d'un kit → canal 10, curseur au canal 10."""
+    rack = Rack()
+    rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    rack.set_slot(1, InstrumentType.SYNTH, "Piano", {})
+    frame = wx.Frame(None)
+    dlg = TrackPropertiesDialog(
+        frame, 0, rack, 1, 100, 0, False, False, channel=0,
+        channel_after_slot=lambda s, c: Pattern.KIT_CHANNEL
+        if rack.get_slot(s).type == InstrumentType.KIT else c,
+        slot_program=lambda s: (None, None))
+    assert cursor_row(dlg._channels) == 0 and cursor_row(dlg._slots) == 1
+    dlg._slots.SetSelection(0)
+    dlg._on_slot_change(_Evt())
+    assert dlg.get_channel() == Pattern.KIT_CHANNEL
+    assert cursor_row(dlg._channels) == Pattern.KIT_CHANNEL
+    dlg.Destroy()
+    frame.Destroy()
+
+
+@gtk_only
+def test_track_dialog_rack_mode_cursors_follow_both_ways():
+    win = _RackWin()
+    _channels(win, [SYNTH])
+    frame, dlg = _track_dlg(win, SYNTH)
+    dlg._slots.SetSelection(7)
+    dlg._on_slot_change(_Evt())
+    assert cursor_row(dlg._channels) == 7
+    dlg._channels.SetSelection(KIT)
+    dlg._on_channel_change(_Evt())
+    assert cursor_row(dlg._slots) == KIT
+    dlg.Destroy()
+    frame.Destroy()
+
+
+@gtk_only
+def test_track_dialog_bank_program_cursor_on_channel_instrument():
+    win = _RackWin()
+    _channels(win, [3])
+    win._router.program_change(0, 33, 3)                 # canal 4 : programme 34
+    frame, dlg = _track_dlg(win, 3)
+    assert dlg.get_program() == 33 and cursor_row(dlg._programs) == 33
+    dlg.Destroy()
+    frame.Destroy()
+
+
+# ---------------------------------------------------------------------------
+# Program Change du contrôleur, de bout en bout (Phase 8 étape 5e2 ;
+# remarque 3 de l'essai) : octets MIDI → MidiManager → MidiHandler →
+# routeur et moteur de banque, comme dans main_window (CallAfter ôté)
+# ---------------------------------------------------------------------------
+
+from midi.midi_manager import MidiManager
+from pattern import ETYPE_PGM, ETYPE_CC
+
+
+def _controller(win):
+    handler = _handler(win)
+    return MidiManager(on_program_change=handler.on_program_change, on_cc=handler.on_cc)
+
+
+def _send(midi, *data):
+    midi._callback((list(data), 0.0), None)
+
+
+def test_controller_program_change_on_bank_channel_selects_instrument():
+    win = _RackWin()
+    _channels(win, [3])                                   # canal 4 → banque de repli
+    _send(_controller(win), 0xC5, 33)                     # contrôleur sur le canal 6
+    eng = win._router.bank_engine
+    assert eng.selects(3)[-1] == ("select", 3, 0, 0, 33)  # canal de la piste (M4)
+    assert eng.selects(5) == []
+    assert win._router.channel_instrument(3)[0] == 33
+    assert "Program Change 33 — canal 4" in win.statuses[-1]
+
+
+def test_controller_bank_select_then_program_change():
+    win = _RackWin()
+    _channels(win, [3])
+    midi = _controller(win)
+    _send(midi, 0xB0, 0, 8)                               # CC0 = 8
+    _send(midi, 0xC0, 1)
+    assert win._router.channel_instrument(3) == (1, 8, 0)
+    assert win._router.bank_engine.selects(3)[-1] == ("select", 3, 0, 8, 1)
+
+
+def test_controller_program_change_on_synth_channel_keeps_slot():
+    win = _RackWin()
+    _channels(win, [SYNTH])
+    _send(_controller(win), 0xC0, 40)
+    assert win._router._track_slots[0] == BANK and win._router.slot_for_track(0) == SYNTH
+    assert win._router.bank_engine.selects(SYNTH) == []
+    assert win.statuses[-1].endswith("(programme sans effet sur ce slot)")
+
+
+def test_controller_program_change_recorded_on_track_channel():
+    win = _RackWin()
+    _channels(win, [3])
+    win._player.recording = True
+    _send(_controller(win), 0xC9, 12)                     # contrôleur sur le canal 10
+    pgms = [ev for ev in win._player._pattern._tape[0] if ev.etype == ETYPE_PGM]
+    assert [(ev.channel, ev.payload["program"]) for ev in pgms] == [(3, 12)]
+
+
+def test_controller_program_change_normal_mode_bridge_and_bank():
+    win = _RackWin(rack_mode=False)
+    win._router._track_slots[0] = KIT
+    _send(_controller(win), 0xC0, 17)
+    assert win._router._track_slots[0] == 1              # pont : 17 % 16
+    win._router._track_slots[0] = BANK
+    _channels(win, [2])
+    _send(_controller(win), 0xC0, 33)
+    assert win._router.bank_engine.selects(2)[-1] == ("select", 2, 0, 0, 33)
