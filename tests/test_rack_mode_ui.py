@@ -340,7 +340,8 @@ def test_ctrl_t_normal_mode_assigns_slot():
     win._refresh_track_list = lambda: None
     win._cur_slot = SYNTH
     win._assign_track_slot()
-    assert win._router._track_slots[0] == SYNTH and win.undos == []
+    # Undo posé depuis 5d5 (essai de l'utilisateur)
+    assert win._router._track_slots[0] == SYNTH and win.undos == ["Piste 1 → Slot_02"]
 
 
 # ---------------------------------------------------------------------------
@@ -934,3 +935,90 @@ def test_go_to_track_moves_slot_list_cursor(tmp_path):
     win._go_to_track(1)
     assert win._slot_choice.GetSelection() == SYNTH and cursor_row(win._slot_choice) == SYNTH
     frame.Destroy()
+
+
+# ---------------------------------------------------------------------------
+# Undo de Ctrl+T (Phase 8 étape 5e5, tests de 5d5 : essai de l'utilisateur),
+# de bout en bout : vrai UndoManager, capture et restauration de l'état
+# ---------------------------------------------------------------------------
+
+from ui.mw_project import ProjectMixin
+from undo_manager import UndoManager
+from song import Song
+
+
+class _UndoWin(ProjectMixin, _RackWin):
+    """_RackWin + vraie capture / restauration d'état et vrai Undo."""
+
+    def __init__(self, tmp_path):
+        path = tmp_path / "808.json"
+        path.write_text("{}")
+        super().__init__(rack_mode=False, kit_path=str(path))
+        self.kit_path    = str(path)
+        self._kit_status = lambda: "kit"
+        self._song_list  = [Song(i) for i in range(2)]
+        self._cur_song_idx = 0
+        self._song_window  = None
+        self._undo = UndoManager()
+        self._pattern_cache       = [None] * len(self._pattern_list)
+        self._pattern_cache_dirty = set(range(len(self._pattern_list)))
+        self._pattern_listbox = MagicMock()
+        self._take = None
+        self._frame = wx.Frame(None)
+        self._slot_choice = wx.ListBox(self._frame, choices=self._rack.labels())
+        select_with_cursor(self._slot_choice, self._cur_slot)
+
+    _add_undo = ProjectMixin._add_undo          # le vrai (capture l'état)
+    def _clipboard_to_dict(self):        return None
+    def _clipboard_from_dict(self, d):   pass
+    def _master_dict(self):              return {}
+    def _master_from_dict(self, d):      return (100, 0)
+    def _apply_master(self, *a):         pass
+    def _update_title(self):             pass
+    def _update_bpm_display(self):       pass
+
+    def close(self):
+        self._frame.Destroy()
+
+
+def _ctrl_t(win, slot_idx):
+    win._slot_choice.SetSelection(slot_idx)
+    win._assign_track_slot()
+
+
+def test_ctrl_t_undo_and_redo_restore_slot_channel_and_sound(tmp_path):
+    win = _UndoWin(tmp_path)
+    r = win._router
+    _ctrl_t(win, KIT)
+    assert r._track_slots[0] == KIT and r.get_track_channel(0) == Pattern.KIT_CHANNEL
+    assert win._snd.loaded == [win.kit_path] and win._cur_slot == KIT
+    win._undo_action()
+    assert r._track_slots[0] == BANK and r.get_track_channel(0) == 0
+    assert win._cur_slot == BANK and r.synth is r._bank_preview      # son du slot rétabli
+    assert win._slot_choice.GetSelection() == BANK
+    assert win.statuses[-1].startswith("Undo: Piste 1 → Slot_10")
+    win._redo_action()
+    assert r._track_slots[0] == KIT and r.get_track_channel(0) == Pattern.KIT_CHANNEL
+    assert win._cur_slot == KIT and win._snd.loaded == [win.kit_path] * 2
+    assert win.statuses[-1].startswith("Redo: Piste 1 → Slot_10")
+    win.close()
+
+
+def test_ctrl_t_same_slot_and_channel_adds_no_undo(tmp_path):
+    win = _UndoWin(tmp_path)
+    _ctrl_t(win, KIT)
+    n = len(win._undo.history_list())
+    _ctrl_t(win, KIT)
+    assert len(win._undo.history_list()) == n
+    assert win.statuses[-1] == "Piste 1: déjà sur Slot_10 (808), canal 10"
+    win.close()
+
+
+def test_undo_of_other_action_does_not_reload_kit(tmp_path):
+    win = _UndoWin(tmp_path)
+    _ctrl_t(win, KIT)
+    win._add_undo("Autre action")
+    win._undo_action()
+    assert win._router._track_slots[0] == KIT
+    assert win._snd.loaded == [win.kit_path]           # kit (et noms des pads) non rechargé
+    win.close()

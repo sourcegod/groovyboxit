@@ -9412,3 +9412,13 @@ Rack).
     (fenêtres factices sans `_cur_slot`), et
     `test_ctrl_t_normal_mode_assigns_slot` (`test_rack_mode_ui.py`), qui
     vérifiait l'absence d'Undo.
+- **5e5** — tests de 5d5 : Undo de Ctrl+T de bout en bout dans
+  `tests/test_rack_mode_ui.py` (61 tests ; vrai `UndoManager`, vraie
+  capture et restauration de l'état) : Undo puis Redo rétablissent slot,
+  canal (10 ↔ 1) et son du slot joué (préécoute de la banque, kit
+  rechargé) ; même slot et même canal sans Undo ; Undo d'une autre action
+  sans recharger le kit. Fakes des 24 tests rouges adaptés : `_cur_slot`,
+  `slot_for_track` et `_follow_track_slot` de la fenêtre de
+  `test_master_mix.py` (dont héritent celles de `test_loop_undo.py` et
+  `test_undo_clean_point.py`) ; Undo attendu dans
+  `test_ctrl_t_normal_mode_assigns_slot`. 3337 verts.

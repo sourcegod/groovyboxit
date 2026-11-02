@@ -57,6 +57,8 @@ class _Win(ProjectMixin):
         self._song_window     = None
         self._player          = DrumPlayer(sound_manager=MagicMock())
         self._router          = MagicMock()
+        self._router.slot_for_track.return_value = 0   # slot joué inchangé à l'Undo (5d5)
+        self._cur_slot        = 0
         self._slot_choice     = MagicMock()
         self._pattern_listbox = MagicMock()
         self._volume_ctrl     = _Spin(self._player.volume)
@@ -77,6 +79,7 @@ class _Win(ProjectMixin):
     def _clipboard_from_dict(self, d):          pass
     def _update_slot_list(self):                pass
     def _load_kit_slot(self, idx):              pass
+    def _follow_track_slot(self):               self._cur_slot = self._router.slot_for_track(0)
     def _refresh_pattern_listbox(self):         pass
     def _refresh_grid(self):                    pass
     def _refresh_all_voice_display(self):       pass
