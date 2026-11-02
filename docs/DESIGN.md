@@ -9377,3 +9377,10 @@ Rack).
   - `pytest` : **12 tests rouges jusqu'à 5e4**, dus aux fenêtres
     factices (`_PadWindow`, `FakeWindow` sans `_listed_slot` ;
     `_FakeTrackWindow` sans `_load_kit_slot`).
+- **5d4** — robustesse trouvée en écrivant les tests de 5d3 :
+  `select_with_cursor` ne parle à GTK que pour une vraie `wx.ListBox`. Un
+  objet factice (`MagicMock`) répond à `GetGtkWidget()`, et `int()` lui
+  donne 1 : GTK aurait reçu l'adresse 1 (segfault). Le plantage
+  effectivement constaté venait d'ailleurs : un vrai `SynthEngine` créé par
+  la préécoute de Ctrl+T dans le routeur de `test_track_channels.py`
+  (adapté en 5e4).

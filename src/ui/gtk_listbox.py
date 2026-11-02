@@ -45,7 +45,9 @@ def _lib():
 def _tree_view(listbox):
     """GtkTreeView d'une wx.ListBox (enfant de son GtkScrolledWindow), ou None."""
     lib = _lib()
-    if not lib or "__WXGTK__" not in wx.PlatformInfo or not hasattr(listbox, "GetGtkWidget"):
+    # Une vraie wx.ListBox seulement : un objet factice qui répondrait à
+    # GetGtkWidget donnerait à GTK une adresse invalide (segfault, 5d4)
+    if not lib or "__WXGTK__" not in wx.PlatformInfo or not isinstance(listbox, wx.ListBox):
         return None
     widget = listbox.GetGtkWidget()
     if not widget:
@@ -59,11 +61,8 @@ def _tree_view(listbox):
 def select_with_cursor(listbox, idx):
     """Sélectionne la ligne idx de listbox et y place le curseur clavier."""
     listbox.SetSelection(idx)
-    try:
-        if not 0 <= idx < listbox.GetCount():
-            return
-    except TypeError:                     # liste factice des tests
-        return
+    if not isinstance(listbox, wx.ListBox) or not 0 <= idx < listbox.GetCount():
+        return                            # liste factice des tests, ou hors limites
     tree = _tree_view(listbox)
     if tree is None:
         return
