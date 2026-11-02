@@ -28,8 +28,18 @@ class TrackMixin:
         if self._router.rack_mode:                  # Phase 8 étape 5d1, M7
             self._assign_rack_channel(track_idx, slot_idx)
             return
+        r = self._router
+        channel = r.channel_after_slot(track_idx, slot_idx, r.get_track_channel(track_idx))
+        if slot_idx == r.slot_for_track(track_idx) and channel == r.get_track_channel(track_idx):
+            slot = self._rack.get_slot(slot_idx)
+            self._show_status(f"Piste {track_idx + 1}: déjà sur Slot_{slot_idx + 1:02d} "
+                              f"({slot.name}), canal {channel + 1}")
+            return
+        # Undo (Phase 8 étape 5d5, essai de l'utilisateur) : slot et canal de
+        # la piste sont dans l'état capturé ; l'Undo recharge le slot joué
+        self._add_undo(f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d}")
         # Choix de l'utilisateur : règle du canal (kit → 10, Phase 7 étape 10f1)
-        self._router.assign_slot_by_user(track_idx, slot_idx)
+        r.assign_slot_by_user(track_idx, slot_idx)
         # Le slot assigné devient le slot joué, chargé maintenant (5d3)
         self._follow_track_slot()
         slot = self._rack.get_slot(slot_idx)

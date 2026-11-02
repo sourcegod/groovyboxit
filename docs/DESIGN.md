@@ -9396,3 +9396,19 @@ Rack).
   et `test_bank_dialogs.py`, `_load_kit_slot` et préécoute neutralisée du
   routeur de `test_track_channels.py` (un vrai `SynthEngine` y faisait
   planter Python à la sortie). 3334 verts.
+- **Essai de l'utilisateur (2026-11-03), remarque 5** : Ctrl+T
+  (assigner une piste à un slot) ne pose pas d'Undo en mode normal ; on ne
+  peut pas revenir en arrière → 5d5.
+- **5d5** — correctif : Ctrl+T / Entrée en mode normal posent un Undo
+  « Piste 4 → Slot_10 » avant l'assignation ; slot et canal de la piste
+  sont déjà dans l'état capturé (pattern courant recopié du routeur).
+  Même slot et même canal : rien n'est fait, « Piste 4: déjà sur Slot_10
+  (808), canal 10 », sans Undo. `_restore_state` (Undo / Redo) rétablit
+  le slot joué s'il a changé (`_follow_track_slot` : préécoute ou kit
+  rechargés), et seulement dans ce cas, pour ne pas recharger un kit (et
+  renommer ses pads) à chaque Undo.
+  - `pytest` : **24 tests rouges jusqu'à 5e5** : 23 dans
+    `test_loop_undo.py`, `test_master_mix.py`, `test_undo_clean_point.py`
+    (fenêtres factices sans `_cur_slot`), et
+    `test_ctrl_t_normal_mode_assigns_slot` (`test_rack_mode_ui.py`), qui
+    vérifiait l'absence d'Undo.

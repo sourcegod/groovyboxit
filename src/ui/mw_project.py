@@ -1285,6 +1285,11 @@ class ProjectMixin:
             p._quant_durations   = qp.get("quant_durations", False)
             p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
         self._player._event_filter_state = state.get("event_filter_params")
+        # Slot joué rétabli s'il a changé (Undo de Ctrl+T, Phase 8 étape
+        # 5d5) : préécoute ou kit rechargés ; sinon rien, pour ne pas
+        # recharger un kit (et renommer ses pads) à chaque Undo
+        if self._router.slot_for_track(self._player._cur_track) != self._cur_slot:
+            self._follow_track_slot()
         self._pattern_listbox.SetSelection(self._cur_pattern_idx)
         self._refresh_pattern_listbox()
         self._refresh_grid()
