@@ -9347,3 +9347,9 @@ Rack).
     fichiers et faisait planter Python à la sortie (assertion
     `PyTuple_Check`). Le signal GTK est de toute façon synchrone.
   - 3323 verts.
+- **Remarque 2 de l'essai, faite dans les données de l'utilisateur
+  (2026-11-03, pas de code)** : le kit « GM (FluidR3) » est renommé
+  « Kit GM » dans `KITS/gm.json` (champ `"name"`) et comme nom du slot 5
+  des cinq projets de `PROJECTS/` (project_01 à 03, essai_banque_17d1,
+  essai_banque_17f1), chaque fichier copié d'abord en `.bak`. L'appli n'a
+  pas de commande pour renommer un slot (hors périmètre).
