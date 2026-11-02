@@ -9353,3 +9353,27 @@ Rack).
   des cinq projets de `PROJECTS/` (project_01 à 03, essai_banque_17d1,
   essai_banque_17f1), chaque fichier copié d'abord en `.bak`. L'appli n'a
   pas de commande pour renommer un slot (hors périmètre).
+- **Essai de l'utilisateur (2026-11-03), remarque 4** : après l'ouverture
+  d'un projet, le simple passage du curseur sur le Slot_05 (un kit) dans
+  la liste des slots chargeait ce kit à la place du TR-707, donc changeait
+  la batterie du pattern. Il faut pouvoir parcourir les slots sans les
+  charger → 5d3.
+- **5d3** — correctif : `_cur_slot` garde un seul rôle, le **slot joué**
+  (celui de la piste courante, lu par l'entrée MIDI, les pads, le clavier
+  virtuel et l'éditeur MIDI) ; le **slot listé** (`_listed_slot()`, la
+  sélection de la liste) est la cible de Ctrl+T, d'Entrée et de
+  l'Explorateur (Alt+X).
+  - Parcourir la liste (`_on_slot_choice`) n'affiche que le nom du slot :
+    plus de chargement de kit ni de préécoute.
+  - Ctrl+T / Entrée : assignation, puis `_follow_track_slot` (le slot
+    assigné devient le slot joué, chargé à ce moment).
+  - Explorateur : kit, patch ou banque chargé dans le slot listé ; la
+    liste reste sur lui (`_update_slot_list(listed)`) ; ses sons ne sont
+    chargés (kit, préécoute) que si c'est le slot joué ; un patch recharge
+    toujours les pistes de ce slot, le clavier garde son son.
+  - Sélections de la liste des slots faites par le code (changement de
+    piste, slot suivi) : curseur clavier placé aussi (`select_with_cursor`,
+    tolérant aux listes factices des tests).
+  - `pytest` : **12 tests rouges jusqu'à 5e4**, dus aux fenêtres
+    factices (`_PadWindow`, `FakeWindow` sans `_listed_slot` ;
+    `_FakeTrackWindow` sans `_load_kit_slot`).

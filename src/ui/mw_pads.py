@@ -237,12 +237,16 @@ class PadMixin:
                             wildcard="Kit JSON (*.json)|*.json",
                             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         if dlg.ShowModal() == wx.ID_OK:
+            target    = self._listed_slot()           # slot visé dans la liste (5d3)
             json_path = dlg.GetPath()
             kit_name  = os.path.splitext(os.path.basename(json_path))[0]
-            self._rack.set_slot(self._cur_slot, InstrumentType.KIT,
+            self._rack.set_slot(target, InstrumentType.KIT,
                                 kit_name, {"kit": json_path})
-            self._update_slot_list()
-            self._load_kit_slot(self._cur_slot)
+            self._update_slot_list(target)
+            if target == self._cur_slot:             # le slot joué : sons chargés
+                self._load_kit_slot(target)
+            else:                                    # sinon la batterie ne change pas
+                self._show_status(f"Slot {target + 1:02d}: kit {kit_name} (Ctrl+T pour assigner)")
         dlg.Destroy()
 
     def _explorer_patch(self):
@@ -252,26 +256,31 @@ class PadMixin:
                             wildcard="Patch JSON (*.json)|*.json",
                             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         if dlg.ShowModal() == wx.ID_OK:
+            target     = self._listed_slot()          # slot visé dans la liste (5d3)
             json_path  = dlg.GetPath()
             patch_name = os.path.splitext(os.path.basename(json_path))[0]
-            self._rack.set_slot(self._cur_slot, InstrumentType.SYNTH,
+            self._rack.set_slot(target, InstrumentType.SYNTH,
                                 patch_name, {"patch": json_path})
-            self._update_slot_list()
-            self._router.reload_slot(self._cur_slot)
+            self._update_slot_list(target)
+            self._router.reload_slot(target)         # pistes de ce slot : nouveau patch
+            if target != self._cur_slot and self._rack.get_slot(self._cur_slot).plays_notes:
+                self._router.load_slot_preview(self._cur_slot)   # le clavier garde son son
         dlg.Destroy()
 
     def _explorer_bank(self):
         """Slot courant en slot Banque : fichier et emplacement (Phase 7
         étape 17h1, docs/DESIGN.md § 17e2 R9). Undo posé avant, retiré si
-        Annuler ou rien changé ; nom du slot = nom du fichier."""
-        slot = self._rack.get_slot(self._cur_slot)
+        Annuler ou rien changé ; nom du slot = nom du fichier. Slot visé :
+        celui de la liste (5d3) ; préécoute seulement si c'est le slot joué."""
+        target = self._listed_slot()
+        slot = self._rack.get_slot(target)
         files = self._rack.bank_files
         if slot.type == InstrumentType.BANK:
             bank_slot = slot.bank_slot()
         else:   # premier emplacement vide, sinon le premier
             bank_slot = next((i for i, f in enumerate(files) if f is None), 0)
-        self._add_undo(f"Banque slot {self._cur_slot + 1:02d}")
-        dlg = BankSlotDialog(self, self._cur_slot, files, bank_slot,
+        self._add_undo(f"Banque slot {target + 1:02d}")
+        dlg = BankSlotDialog(self, target, files, bank_slot,
                              self._gm_soundfont, self._soundfonts_dir)
         if dlg.ShowModal() != wx.ID_OK:
             dlg.Destroy()
@@ -288,17 +297,18 @@ class PadMixin:
             self._show_status("Banque : inchangé" if path else "Banque : aucun fichier")
             return
         others = (self._rack.get_slot(i) for i in range(self._rack.NUM_SLOTS)
-                  if i != self._cur_slot)
+                  if i != target)
         shared = [s.index + 1 for s in others
                   if s.type == InstrumentType.BANK and s.bank_slot() == bank_slot]
         replaced = files[bank_slot] not in (None, path)
         self._rack.set_bank_file(bank_slot, path)
-        self._rack.set_slot(self._cur_slot, InstrumentType.BANK, name, config)
-        self._update_slot_list()
+        self._rack.set_slot(target, InstrumentType.BANK, name, config)
+        self._update_slot_list(target)
         self._router.sync_banks()
-        self._router.load_slot_preview(self._cur_slot)
+        if target == self._cur_slot:
+            self._router.load_slot_preview(target)
         self._refresh_track_list()
-        msg = f"Slot {self._cur_slot + 1:02d}: banque {name}, emplacement {bank_slot + 1}"
+        msg = f"Slot {target + 1:02d}: banque {name}, emplacement {bank_slot + 1}"
         if replaced and shared:
             msg += " — son changé aussi pour les slots " + ", ".join(f"{i:02d}" for i in shared)
         self._show_status(msg)

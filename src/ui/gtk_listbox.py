@@ -59,7 +59,10 @@ def _tree_view(listbox):
 def select_with_cursor(listbox, idx):
     """Sélectionne la ligne idx de listbox et y place le curseur clavier."""
     listbox.SetSelection(idx)
-    if not 0 <= idx < listbox.GetCount():
+    try:
+        if not 0 <= idx < listbox.GetCount():
+            return
+    except TypeError:                     # liste factice des tests
         return
     tree = _tree_view(listbox)
     if tree is None:

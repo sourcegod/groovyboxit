@@ -2,20 +2,36 @@ import wx
 from rack import InstrumentType
 from pattern import Pattern, bank_header, with_bank_header
 from .dialogs import TrackPropertiesDialog
+from .gtk_listbox import select_with_cursor
 
 
 class TrackMixin:
     """Méthodes MainWindow relatives aux pistes (tracks), slots et sélection."""
 
+    def _listed_slot(self):
+        """Slot sélectionné dans la liste des slots : cible de Ctrl+T, Entrée
+        et de l'Explorateur. Il peut différer du slot joué (_cur_slot, celui
+        de la piste courante) : parcourir la liste ne charge rien (Phase 8
+        étape 5d3, essai de l'utilisateur). _cur_slot si la liste n'en dit
+        rien."""
+        try:
+            sel = self._slot_choice.GetSelection()
+        except AttributeError:
+            sel = None
+        if isinstance(sel, int) and 0 <= sel < self._rack.NUM_SLOTS:
+            return sel
+        return self._cur_slot
+
     def _assign_track_slot(self):
         track_idx = self._player._cur_track
-        slot_idx  = self._cur_slot
+        slot_idx  = self._listed_slot()
         if self._router.rack_mode:                  # Phase 8 étape 5d1, M7
             self._assign_rack_channel(track_idx, slot_idx)
             return
         # Choix de l'utilisateur : règle du canal (kit → 10, Phase 7 étape 10f1)
         self._router.assign_slot_by_user(track_idx, slot_idx)
-        self._refresh_track_list()
+        # Le slot assigné devient le slot joué, chargé maintenant (5d3)
+        self._follow_track_slot()
         slot = self._rack.get_slot(slot_idx)
         self._show_status(
             f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name}), "
@@ -68,7 +84,7 @@ class TrackMixin:
         des pistes."""
         idx = self._router.slot_for_track(self._player._cur_track)
         self._cur_slot = idx
-        self._slot_choice.SetSelection(idx)
+        select_with_cursor(self._slot_choice, idx)
         slot = self._rack.get_slot(idx)
         if slot.plays_notes:
             self._router.load_slot_preview(idx)
@@ -367,7 +383,7 @@ class TrackMixin:
             return
         self._player._cur_track = idx
         self._cur_slot = self._router.slot_for_track(idx)
-        self._slot_choice.SetSelection(self._cur_slot)
+        select_with_cursor(self._slot_choice, self._cur_slot)
         self._router.reset_kit_pad()
         self._refresh_grid()
         slot = self._rack.get_slot(self._cur_slot)
@@ -380,20 +396,19 @@ class TrackMixin:
             self._midi_editor_window.refresh()
 
     def _on_slot_choice(self, event):
-        from rack import InstrumentType
-        self._cur_slot = self._slot_choice.GetSelection()
-        slot = self._rack.get_slot(self._cur_slot)
+        """Curseur sur un slot de la liste : son nom seulement. Rien n'est
+        chargé — un kit remplacerait la batterie du pattern (essai de
+        l'utilisateur, Phase 8 étape 5d3) ; Ctrl+T ou Entrée l'assigne et le
+        charge."""
+        idx  = self._listed_slot()
+        slot = self._rack.get_slot(idx)
         if slot.is_empty:
-            self._show_status(f"Slot {self._cur_slot + 1:02d}: vide — Alt+X pour charger")
+            self._show_status(f"Slot {idx + 1:02d}: vide — Alt+X pour charger")
         else:
-            self._show_status(
-                f"Slot {self._cur_slot + 1:02d}: {slot.name} (Ctrl+T pour assigner)"
-            )
-            if slot.plays_notes:                    # synthé ou banque (17d1)
-                self._router.load_slot_preview(self._cur_slot)
-            elif slot.type == InstrumentType.KIT:
-                self._load_kit_slot(self._cur_slot)
+            self._show_status(f"Slot {idx + 1:02d}: {slot.name} (Ctrl+T pour assigner)")
 
-    def _update_slot_list(self):
+    def _update_slot_list(self, listed=None):
+        """Libellés de la liste des slots ; la sélection reste sur listed
+        (slot visé par l'Explorateur), sinon sur le slot joué."""
         self._slot_choice.Set(self._rack.labels())
-        self._slot_choice.SetSelection(self._cur_slot)
+        select_with_cursor(self._slot_choice, self._cur_slot if listed is None else listed)
