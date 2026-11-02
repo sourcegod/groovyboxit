@@ -9422,3 +9422,61 @@ Rack).
   `test_master_mix.py` (dont héritent celles de `test_loop_undo.py` et
   `test_undo_clean_point.py`) ; Undo attendu dans
   `test_ctrl_t_normal_mode_assigns_slot`. 3337 verts.
+
+### Clôture (5h1)
+
+**5a-5e5 FAITS** (commits `22af5bc` à `23979c5`, et ce commit de
+clôture ; 3337 tests verts) : **chantier Phase 8 étape 5 complet**. Un
+pattern en mode Rack 16 canaux joue chaque canal avec le slot de même
+numéro : un `.mid` importé sonne avec les sons du Rack (synthés WAV, kit,
+banques), les canaux vides avec la banque GM.
+
+**Ce que le chantier a livré** :
+- **Moteur** : `Pattern._rack_mode` (`.gvp`) ; slot effectif du routeur
+  (canal N → slot N, repli sur le premier slot Banque, slot vide muet) ;
+  canal courant et poursuite de toutes les pistes ; Program Change sans
+  pont ; moteurs des slots synthé des canaux joués ; note PATCH sur un
+  kit par sa note GM (deux modes) ; un kit par pattern, chargé sans
+  renommer les pads, avec avertissements.
+- **Interface** : case des propriétés du pattern et Undo ; libellé
+  « Canal N → slot » ; Ctrl+T = canal du slot ; entrée MIDI sur la piste
+  courante comme Sonar ; propriétés de piste où le slot est le canal.
+- **Import et export** : choix « Banque GM / Rack 16 canaux » à l'import ;
+  export MIDI où le canal suit les Program Change et où chaque piste est
+  décrite par le slot de son canal ; rendu WAV par le même routeur.
+- **Correctifs de l'essai de l'utilisateur** (2026-11-02 et 03), utiles
+  aux deux modes : curseur clavier des listes liées sous GTK
+  (`ui/gtk_listbox.py`, 5d2, 5d4) ; parcourir la liste des slots ne charge
+  plus rien, slot joué et slot listé séparés (5d3) ; Undo de Ctrl+T et
+  slot joué rétabli par l'Undo (5d5) ; kit « GM (FluidR3) » renommé
+  « Kit GM » dans les données de l'utilisateur (5e3) ; Program Change du
+  contrôleur testé de bout en bout par le code (5e2).
+
+**Écarts au plan** : Rack plein sans slot Banque accepté à l'import en
+mode Rack ; notes PATCH d'un kit exportées dans les deux modes ; Ctrl+T
+pose un Undo dans les deux modes ; `dp_playback.py` inchangé ;
+correctifs imprévus 5b2, 5f2 (trouvés par les tests) et 5d2-5d5 (trouvés
+à l'essai), avec leurs tests 5e2-5e5.
+
+**`docs/SPECS.md`** : ligne Phase 8, arborescence (`gtk_listbox.py`,
+`test_rack_mode.py`, `test_rack_mode_ui.py`), section « Mode Rack 16
+canaux », Program Change, TrackRouter, Export MIDI, Import MIDI, format
+`.gvp` (`rack_mode`), liste des slots, boîtes de dialogue
+(`ImportModeDialog`, propriétés du pattern et de la piste), tests.
+**`docs/shortcuts.md`** : Alt+Shift+I (choix), propriétés du pattern
+(mode Rack), liste des slots (parcourir, Entrée, Alt+X), Ctrl+T (slot
+listé, Undo, mode Rack), propriétés de piste en mode Rack.
+
+**Essais de l'utilisateur** (2026-11-02, 03) : cinq remarques, toutes
+traitées (propriétés de piste, noms de slots, Program Change, liste des
+slots, Undo de Ctrl+T). Le
+Program Change envoyé du contrôleur n'a pas pu être essayé (fonction peu
+accessible sur le contrôleur) : couvert par les tests de bout en bout.
+
+**Laissé hors périmètre** :
+- plusieurs kits joués ensemble (chantier 128 pads / AudioSampler) ;
+- le pont `program % 16` en mode normal ;
+- les réglages GM d'une piste qui change de type de slot en cours de
+  morceau (export) ;
+- une commande pour renommer un slot ;
+- filtre de canal d'entrée par piste, notes en temps flottant, SFZ.

@@ -26,7 +26,9 @@ Alt+Shift+S      Exporter en audio la sélection ou le presse-papier : source, p
                  sélectionnées (ou piste courante), ou toutes les pistes (liste
                  Pistes), entre les limiteurs gauche et droit
                  (champs mesure:temps:pas, préremplis) ; presse-papier des pistes
-Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace)
+Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace) ;
+                 après le fichier, choix « Banque GM » ou « Rack 16 canaux » (dernier
+                 choix gardé)
 Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer, Tap Tempo, Click
                  (dialogue Tempo ; Entrée ou Espace sur « Tap Tempo » = une frappe)
 Ctrl+P           Charger le pattern de démonstration
@@ -172,17 +174,26 @@ Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banq
 --- Patterns (focus liste des patterns) ---
 Alt+Entrée       Ouvrir les propriétés du pattern sélectionné : nom, début, longueur,
                  tempo (tous les tempos en proportion), signature (temps par mesure,
-                 valeur du temps), résolution, boucle, action ; tempo et signature
+                 valeur du temps), résolution, boucle, mode Rack 16 canaux (le canal
+                 N d'une piste joue le slot N), action ; tempo et signature
                  s'entendent en direct, Annuler les rétablit
 Double-clic      Ouvrir les propriétés du pattern (liste des patterns)
 Ctrl+P           Lecture / Pause (depuis la boite de dialogue des propriétés)
 
 --- Slots (liste des slots) ---
+Haut / Bas       Parcourir les slots : nom annoncé, rien n'est chargé (la batterie
+                 et le son du clavier restent ceux de la piste courante)
+Entrée           Assigner le slot sélectionné à la piste courante et le charger
 Double-clic      Assigner le slot sélectionné à la piste courante (≡ Ctrl+T)
+Alt+X            Explorateur : charger un kit, un patch ou une banque dans le slot
+                 sélectionné (sons chargés si c'est le slot de la piste courante)
 
 --- Pistes (focus liste des pistes) ---
-Ctrl+T / Entrée  Assigner le slot courant à la piste courante (un kit met la piste
-                 sur le canal MIDI 10 ; un autre slot la ramène à son canal par défaut)
+Ctrl+T / Entrée  Assigner le slot sélectionné dans la liste des slots à la piste
+                 courante (un kit met la piste sur le canal MIDI 10 ; un autre slot
+                 la ramène à son canal par défaut), avec Undo « Piste N → Slot_NN » ;
+                 en mode Rack 16 canaux : passer la piste au canal du slot
+                 (Undo « Piste N → canal M »)
 Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  Mute, Solo, Slot, Canal MIDI (1 à 16), Programme GM du slot
@@ -191,6 +202,8 @@ Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  soundfont), Banque MSB et LSB ; changer de canal fait entendre
                  l'instrument de ce canal ; note d'aperçu ; Ok écrit l'entête
                  de la piste (CC0, CC32, Program Change à 1.1.1)
+                 En mode Rack 16 canaux : le slot est le canal (choisir l'un
+                 choisit l'autre) ; chaque canal dit le slot qu'il joue
 Double-clic      Jouer le pad courant
 Double-clic+Alt  Ouvrir les propriétés de la piste
 X / Shift+X      Mute piste / Démuter toutes

@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) | en cours |
 
 ---
 
@@ -367,6 +367,61 @@ habitudes d'un séquenceur comme Sonar devant un module General MIDI.
 
 ---
 
+## Mode Rack 16 canaux
+
+Phase 8 étape 5 (docs/DESIGN.md § Phase 8 étape 5a, M1-M18). But : jouer
+un fichier `.mid` sur 16 canaux avec **les sons du Rack** (synthés WAV,
+kits, banques), comme un module dont les 16 slots seraient les 16 canaux.
+
+- **Par pattern** : case « Mode Rack 16 canaux (canal N → slot N) » des
+  propriétés du pattern (Alt+Entrée sur la liste des patterns), sauvée
+  dans le `.gvp` (`"rack_mode"`, absent = mode normal). Undo « Mode Rack
+  pattern 03 : activé / désactivé ». Un song peut mêler les deux modes.
+- **Le canal N joue le slot N** : toute piste joue le slot dont le numéro
+  est son **canal courant** (celui de son dernier Program Change, sinon
+  son canal), quel que soit son propre slot, qui reste dans les données :
+  décocher le mode le lui rend. Lecture, poursuite, export WAV et jeu
+  direct suivent cette règle.
+- **Slot vide** : le canal joue le **premier slot Banque** du Rack, avec
+  l'instrument GM du canal ; sans slot Banque, il est muet (message au
+  chargement du pattern).
+- **Program Change** : il fait passer la piste sur son canal, donc sur
+  son slot (O3), et devient l'instrument GM du canal ; il ne s'entend que
+  si ce slot est une banque (repli compris). Sur un synthé WAV ou un kit,
+  le son ne change pas. **Pas de pont `program % 16`** dans ce mode.
+- **Entrée MIDI, comme Sonar** : le contrôleur joue la **piste courante**
+  avec le son de son canal ; l'enregistrement va sur elle, au canal de la
+  piste ; le canal émis par le contrôleur ne choisit pas le son. Changer
+  de piste change le son du clavier.
+- **Un seul kit à la fois** : au chargement du pattern, le kit du slot 10
+  (s'il est joué), sinon celui du premier canal joué sur un kit, est
+  chargé **sans renommer les pads** (ils tiennent les noms des pistes) ;
+  un autre slot kit joué est signalé au statut.
+- **Note PATCH sur un kit** (les deux modes) : jouée par le son du kit
+  dont la note GM est cette note (`SoundManager.kit_note_of_gm`, inverse
+  de `gm_note_map`), sinon la note telle quelle ; one-shot. C'est ainsi
+  que sonne la batterie d'un `.mid` importé.
+- **Libellé de piste** : « Track_01 (Basse) - Canal 4 → Slot_04 Piano
+  WAV », « … → Slot_04 vide → banque GM (Slot_06 FluidR3) - Fingered
+  Bass », « … → Slot_04 vide, muet ».
+- **Ctrl+T** passe la piste au canal du slot choisi (son entête est
+  réécrit sur ce canal), avec Undo « Piste 2 → canal 3 ».
+- **Propriétés de piste** : le slot choisi est le canal (choisir l'un
+  choisit l'autre) ; chaque canal dit ce qu'il joue (« Canal 3 — Slot_03
+  Piano WAV ») ; programme, banque et réglages GM sont ceux du slot que
+  joue le canal.
+- **Import** (Alt+Shift+I) : choix « Banque GM » ou « Rack 16 canaux » ;
+  voir « Import MIDI ». **Export MIDI** : voir « Export MIDI ».
+- Code : `TrackRouter.rack_mode`, slot effectif `_slot_idx_of` /
+  `rack_slot_idx(canal)`, `fallback_bank_idx`, `rack_report`,
+  `ensure_rack_synths` (`src/track_router.py`) ; `Pattern._rack_mode` ;
+  `_apply_rack_kit` / `_rack_kit_messages` (`ui/mw_pads.py`) ;
+  `_set_rack_mode` (`ui/mw_patterns.py`) ; `_rack_channel_desc`,
+  `_assign_rack_channel`, `_follow_track_slot` (`ui/mw_tracks.py`).
+- Pas encore : plusieurs kits joués ensemble (chantier 128 pads).
+
+---
+
 ## Kits (type KIT)
 
 ### Fichier kit JSON
@@ -580,7 +635,8 @@ Deux comportements selon le type du slot courant :
 TrackRouter
   ├── _track_slots[16]    slot assigné à chaque piste (défaut : slot 0)
   ├── _track_channels[16] canal MIDI de chaque piste (0..15, export MIDI)
-  ├── _track_cur_channels[16] canal courant d'une piste Banque (dernier Program Change)
+  ├── _track_cur_channels[16] canal courant d'une piste Banque, ou de toute piste en mode Rack (dernier Program Change)
+  ├── rack_mode           pattern courant en mode Rack 16 canaux : la piste joue le slot de son canal (Phase 8 étape 5)
   ├── _chan_prog/_msb/_lsb[16] instrument de chaque canal (slot Banque)
   ├── bank_engine         moteur de banque (FluidSynthEngine ou None)
   ├── _slot_synths        {slot_idx: SynthEngine} — un moteur par slot SYNTH commis
@@ -837,13 +893,14 @@ la structure historique dédiée `_mod_tape` a été supprimée (Phase 7 étape 
 
 ### Program Change
 
-Capturé dans `_tape` (etype `ETYPE_PGM`, payload `{"program"}`). Effet
-**provisoire**, live et à la lecture : réassigne le slot du Rack de la piste
-(`assign_slot(track, program % 16)`), en attendant le mode Rack Synth/GM
-(16 canaux MIDI → 16 slots avec leurs patchs, lecture de fichiers `.mid`),
-où le format MIDI permet un Program Change à tout moment pendant la lecture.
-Sur une piste **Banque** (Phase 7 étape 17), le Program Change change
-l'instrument de son canal, où passe la piste ; voir « Banques de sons ».
+Capturé dans `_tape` (etype `ETYPE_PGM`, payload `{"program"}`). En mode
+normal, sur un synthé WAV ou un kit, effet **provisoire**, live et à la
+lecture : réassigne le slot du Rack de la piste (`assign_slot(track,
+program % 16)`). Sur une piste **Banque** (Phase 7 étape 17), le Program
+Change change l'instrument de son canal, où passe la piste ; voir
+« Banques de sons ». Dans un pattern en **mode Rack 16 canaux** (Phase 8
+étape 5), pas de pont : la piste passe sur le canal du Program Change,
+donc sur son slot ; voir « Mode Rack 16 canaux ».
 
 ### Pitch Bend temps réel
 
@@ -1072,6 +1129,16 @@ directement le song courant, sans ce choix.
   de ses événements (entête) ; à tick égal, CC0 et CC32 avant le Program
   Change ; chaque événement sur le canal courant de la piste ; nom de
   piste = nom du preset ; notes KIT non converties
+- Notes PATCH d'une piste sur un kit : écrites telles quelles (notes GM),
+  dans les deux modes, puisqu'elles sonnent (Phase 8 étape 5f1).
+- Pattern en **mode Rack 16 canaux** (Phase 8 étape 5f1, § 5a M18) : le
+  canal de chaque piste suit ses Program Change quel que soit son slot
+  (Program Change, CC0 et CC32 sur leur propre canal) ; chaque piste est
+  décrite par le slot que joue son canal à 1.1.1 (canal de son entête,
+  sinon le sien) : programme de tête, transposition, gain, conversion du
+  kit ; elle garde son canal, kit compris (pas de « kit → 10 »). Limite :
+  une piste qui passe en cours de morceau sur un canal d'un autre type de
+  slot garde les réglages GM de son slot de départ.
 
 **Export d'un song** (Phase 8 étape 2, docs/DESIGN.md § 2a E5-E10, E15) :
 Alt+Shift+E dans la fenêtre Songs exporte le song courant, comme « Song
@@ -1241,7 +1308,13 @@ pattern (pan à ±1 près).
   du Rack ; sans slot Banque, l'import en crée un dans le premier slot
   vide, avec `gm_soundfont` (emplacement qui la tient déjà, sinon premier
   emplacement libre, sinon le premier) ; Rack plein sans slot Banque :
-  import refusé.
+  import refusé en Banque GM, accepté en mode Rack.
+- **Choix « Banque GM / Rack 16 canaux »** (Phase 8 étape 5f1,
+  `ImportModeDialog`) après la lecture du fichier, avant la confirmation ;
+  dernier choix gardé pour la session ; Annuler = « Import MIDI annulé ».
+  Rack 16 canaux : mêmes pistes et même slot Banque, pattern en mode Rack
+  (chaque canal joue son slot, voir « Mode Rack 16 canaux ») ; le compte
+  rendu finit par « mode Rack 16 canaux » et les avertissements du kit.
 - **Pistes** : une piste par couple (piste SMF, canal), dans l'ordre du
   fichier (un type 0 donne une piste par canal) ; au-delà de 16, les
   pistes d'un même canal sont fusionnées. Canal de la piste = canal MIDI ;
@@ -1476,6 +1549,7 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
       "num_steps": 16,
       "num_beats": 4,
       "denominator": 4,
+      "rack_mode": false,
       "start_bar": 0,
       "looping": true,
       "loop_start": null,
@@ -1552,7 +1626,7 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
 | Liste Patterns | ListBox | 99 patterns (Pattern 01–99) |
 | Liste Mode | ListBox | Mode Pad / Mode Keyboard |
 | Liste Gammes | ListBox | Gammes disponibles |
-| Liste Slots | ListBox | 16 slots du Rack |
+| Liste Slots | ListBox | 16 slots du Rack ; parcourir la liste n'en charge aucun (Phase 8 étape 5d3) : Ctrl+T, Entrée ou double-clic assigne le slot listé à la piste et le charge, Alt+X y charge un kit, un patch ou une banque (sons chargés seulement si c'est le slot de la piste courante) |
 | Liste Pistes | ListBox | 16 pistes du pattern courant |
 | Liste Pads | ListBox | 16 pads de la piste courante |
 | Liste Vel Level | ListBox | Niveaux de quantification vélocité MIDI |
@@ -1843,9 +1917,9 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `EventFilterDialog` | dialogs_temporal | Ctrl+Shift+F | Filtre/sélection d'événements MIDI par type (dont Tempo, Phase 7 étape 19f1), note, vélocité, pitch bend, position |
 | `SavePatternDialog` | dialogs_simple | (interne) | Sauvegarder le pattern sous un nouveau nom |
 | `RenameDialog` | dialogs_simple | F2 | Renommer piste, pattern ou song |
-| `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo ; sur une banque : programme du canal, banque MSB / LSB, en direct) |
+| `TrackPropertiesDialog` | dialogs_properties | Alt+Entrée (ou Ctrl+Maj+T) sur piste | Propriétés de la piste (slot, canal, programme, transposition et gain GM du slot, volume, pan, mute, solo ; sur une banque : programme du canal, banque MSB / LSB, en direct ; en mode Rack, le slot est le canal, Phase 8 étape 5d1) ; liste sélectionnée par le code = curseur clavier placé aussi (5d2) |
 | `TrackSelectDialog` | dialogs_properties | Ctrl+Entrée (liste pistes) | Sélection de pistes + plage BBT |
-| `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, début, longueur, tempo, signature, résolution ; tempo et signature en direct, Phase 7 étape 20) |
+| `PatternPropertiesDialog` | dialogs_properties | Alt+Entrée sur pattern | Propriétés du pattern (nom, début, longueur, tempo, signature, résolution ; tempo et signature en direct, Phase 7 étape 20 ; case Mode Rack 16 canaux, Phase 8 étape 5d1) |
 | `TempoDialog` | dialogs_tempo | Alt+Shift+T | Liste des tempos du pattern : insérer, modifier, supprimer (Phase 7 étape 19f1) ; Tap Tempo et case Click (19i1) |
 | `TempoEditDialog` | dialogs_tempo | Insérer / Modifier, Entrée sur une ligne Tempo | Position, BPM et portée d'un tempo |
 | `PadPropertiesDialog` | dialogs_properties | Alt+Entrée sur grille | Propriétés du pad (volume, pan, mute, solo, durée, mute_group) |
@@ -1853,6 +1927,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |
 | `BankSlotDialog` | dialogs_bank | Alt+X → Banque | Emplacement (1 à 4) et fichier SF2/SF3 du slot courant |
 | `ExportTargetDialog` | dialogs_simple | Alt+Shift+E, Alt+Shift+W (fenêtre principale, éditeur MIDI) | Ce qu'on exporte : pattern courant ou song courant ; dernier choix gardé (Phase 8 étape 4) |
+| `ImportModeDialog` | dialogs_simple | Alt+Shift+I, après le fichier | Import en Banque GM ou en Rack 16 canaux ; dernier choix gardé (Phase 8 étape 5f1) |
 | `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1 et 2) |
 | `SelectionExportDialog` | dialogs_temporal | Alt+Shift+S | Source de l'export audio : sélection (pistes sélectionnées ou toutes, limiteurs mesure:temps:pas) ou presse-papier |
 
