@@ -39,13 +39,15 @@ class _Synth:
     """Moteur synthé factice : chargé, coupures notées."""
     def __init__(self, *a, **kw):
         self.cuts, self.sustain, self.patch = 0, True, None
+        self.plays, self.stops = [], []
+        self.pitch_bend, self.pitch_bend_semitones = 0, 0.0
     def load_patch(self, name):     self.patch = name
     def is_loaded(self):            return True
     def has_full_range(self):       return True
     def precompute(self, notes):    pass
     def stop_all_voices(self):      self.cuts += 1
-    def play(self, *a):             pass
-    def stop(self, *a):             pass
+    def play(self, note, *a):       self.plays.append(note)
+    def stop(self, note):           self.stops.append(note)
 
 
 class _Snd:
@@ -359,3 +361,110 @@ def test_controller_program_change_cuts_track_notes():
     win._input_mode = "pads"
     mh.MidiHandler(win).on_program_change(33, 0)
     assert log == [("track", 0, 3, BANK)]
+
+
+# ---------------------------------------------------------------------------
+# Le relâchement va là où la note a été jouée (Phase 8 étape 6c2, tests de
+# 6b2 : essai de l'utilisateur, note tenue pendant la navigation des pistes)
+# ---------------------------------------------------------------------------
+
+def test_bank_preview_stops_held_note_on_its_own_channel():
+    r = _router()
+    r._track_slots[:2] = [BANK, BANK]
+    r._track_channels[:2] = r._track_cur_channels[:2] = [3, 5]
+    cur = [0]
+    r._cur_track_cb = lambda: cur[0]
+    r.load_slot_preview(BANK)
+    r.synth.play(64, 1.0, 0, 0)                  # tenue, canal 4
+    cur[0] = 1                                   # piste suivante, canal 6
+    r.synth.stop(64)
+    assert r.bank_engine.of("note_off") == [("note_off", 3, 64)]
+
+
+def test_bank_preview_unheld_note_stops_on_current_channel():
+    r = _router()
+    r._track_slots[0] = BANK
+    r._track_channels[0] = r._track_cur_channels[0] = 3
+    r._cur_track_cb = lambda: 0
+    r.load_slot_preview(BANK)
+    r.synth.play(64, 1.0, 0, 300)                # durée : pas retenue
+    assert r.synth._held == {}
+    r.synth.stop(64)
+    assert r.bank_engine.of("note_off")[-1] == ("note_off", 3, 64)
+
+
+def _live_window(rack_mode=False):
+    win = _RackWin(rack_mode=rack_mode)
+    win._router._cur_track_cb = lambda: win._player._cur_track
+    win._input_mode = "keyboard"
+    win._kb_root_midi = win._kb_play_root = 60
+    win._note_repeat, win._vel_level, win._cur_row = False, 0, 0
+    win._player.erasing = False
+    win.ROWS = win.COLS = 16
+    win._shift_pad = 0
+    return win, mh.MidiHandler(win)
+
+
+def test_held_note_released_on_previous_track_channel_after_navigation():
+    """Le cas de l'essai : la note jouée sur la piste 1 (canal 4) est
+    arrêtée sur le canal 4, même si la piste 2 (canal 6) est devenue
+    courante entre l'appui et le relâchement."""
+    win, h = _live_window()
+    r = win._router
+    _channels(win, [3, 5])
+    win._go_to_track(0)
+    h.on_note_on(64, 100, 0)
+    win._go_to_track(1)
+    h.on_note_off(64, 0)
+    notes = [c for c in r.bank_engine.calls if c[0] in ("note_on", "note_off")]
+    assert notes == [("note_on", 3, 64, 127), ("note_off", 3, 64)]
+    assert h._live_held == {}
+
+
+def test_held_note_released_on_previous_synth_after_navigation():
+    win, h = _live_window()
+    r = win._router
+    win._rack.set_slot(SYNTH2, InstrumentType.SYNTH, "Orgue", {"patch": "o"})
+    r.assign_slot(0, SYNTH)                      # chaque synthé a son moteur
+    r.assign_slot(1, SYNTH2)
+    r.wait_loaded()
+    win._go_to_track(0)
+    first = r.synth
+    h.on_note_on(64, 100, 0)
+    win._go_to_track(1)                          # préécoute : l'autre synthé
+    second = r.synth
+    h.on_note_off(64, 0)
+    assert first is not second
+    assert first.plays == [64] and first.stops == [64]
+    assert second.stops == []
+
+
+def test_held_note_off_recorded_with_played_note():
+    win, h = _live_window()
+    r = win._router
+    r._track_slots[:2] = [SYNTH, SYNTH2]
+    win._go_to_track(0)
+    win._player.recording = True
+    played = []
+    win._player.record_patch_note = lambda note, vel, **kw: None
+    win._player.record_patch_note_off = lambda note: played.append(note)
+    h.on_note_on(64, 100, 0)
+    win._kb_root_midi = 72                       # transposition changée entre-temps
+    h.on_note_off(64, 0)
+    assert played == [64]                        # la note jouée, pas 76
+
+
+def test_held_pad_note_released_with_its_drum_note():
+    """Mode pads : au canal 10 d'une banque, le pad joue 36 + pad ; après
+    passage sur une piste en gamme, l'arrêt vise toujours cette note."""
+    win, h = _live_window()
+    win._input_mode = "pads"
+    r = win._router
+    _channels(win, [Pattern.KIT_CHANNEL, 3])
+    r.update_kb_notes("major", 48)
+    win._go_to_track(0)
+    h.on_note_on(36, 100, 0)                     # pad 1 → note 36 sur le canal 10
+    win._go_to_track(1)
+    h.on_note_off(36, 0)
+    offs = r.bank_engine.of("note_off")
+    assert offs and offs[-1][1] == Pattern.KIT_CHANNEL

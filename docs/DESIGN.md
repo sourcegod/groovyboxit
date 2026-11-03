@@ -9684,3 +9684,10 @@ exclusif : Off ».
   - Reproduit par un script avant la correction (note jouée canal 4,
     arrêt envoyé canal 6), puis corrigé (arrêt canal 4). 3366 verts ; tests
     en 6c2.
+- **6c2** — tests de 6b2 dans `tests/test_note_cuts.py` (33 tests) :
+  `BankPreview` arrête une note tenue sur son canal après un changement de
+  piste, une note à durée n'est pas retenue ; note tenue au contrôleur
+  pendant la navigation arrêtée sur le canal de la piste précédente (le
+  cas de l'essai) ou sur son synthé ; fin de note enregistrée avec la note
+  jouée malgré une transposition changée ; pad de batterie au canal 10.
+  Les six échouent sur le code d'avant 6b2. 3372 verts.
