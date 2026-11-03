@@ -9480,3 +9480,148 @@ accessible sur le contrôleur) : couvert par les tests de bout en bout.
   morceau (export) ;
 - une commande pour renommer un slot ;
 - filtre de canal d'entrée par piste, notes en temps flottant, SFZ.
+
+## Phase 8 étape 6a — Notes coupées avant un changement de son, Mute/Solo exclusifs (F3, F4)
+
+### Numérotation des commits de ce chantier
+
+`6a` = ce plan (doc seule). Le code commence à `6b1`. Une paire impl →
+tests par sous-chantier ; `6a2`, `6b2`… pour un commit imprévu. Décisions
+notées **N1, N2…** (§ 6a).
+
+### Origine du besoin (utilisateur, 2026-11-03)
+
+- Des notes MIDI restent bloquées et jouent sans fin. Avant un changement
+  de slot, de canal ou de Program Change, il faut un « Panic » ; de même
+  avant un Mute ou un Solo de piste.
+- Deux nouveaux modes, **Mute exclusif** et **Solo exclusif** : seule la
+  piste courante est en Mute (ou en Solo), sans tenir compte des autres ;
+  naviguer dans la liste des pistes (Haut / Bas) y met la nouvelle piste ;
+  **F3** bascule le Mute exclusif, **F4** le Solo exclusif. L'utilisateur
+  doutait de l'utilité du Mute exclusif (doublon du Mute ?) : gardé (N6).
+- Shift+X / Shift+S doivent toujours désactiver tous les Mute / Solo,
+  modes exclusifs compris (N15).
+
+### État des lieux constaté en code (2026-11-03, 3337 tests verts)
+
+- **Cause des notes sans fin** : une note jouée au contrôleur est tenue
+  jusqu'au relâchement (`bank_note(..., duration 0)`, `synth.play(..., 0)`).
+  Au relâchement, l'arrêt part vers le canal **actuel** de la piste
+  (`BankPreview.stop`, `track_router.py:44`) ou vers le moteur de
+  préécoute **actuel** (`router.synth.stop`, `on_note_off` de
+  `midi_handler_window.py`). Un changement de slot, de canal ou de
+  programme entre l'appui et le relâchement envoie l'arrêt ailleurs : la
+  note reste tenue. À la lecture, pas ce défaut : chaque fin de note est
+  programmée avec le canal et le moteur de son début (`bank_note`,
+  `_play_synth_note`).
+- **Coupures existantes** : `stop_all_synth_voices` (banques
+  `all_notes_off`, moteurs synthé ; All Notes Off, CC123), `stop_all_sounds`
+  (plus kit et banque `all_sounds_off` ; CC120), `panic` (Ctrl+F12 : plus
+  Reset All Controllers). `BankEngine.all_notes_off` / `all_sounds_off`
+  valent pour les 16 canaux, sans canal (`bank_engine.py:81`, `:84`) ; un
+  All Notes Off laisse sonner les notes tenues par la pédale.
+- **Mute / Solo de piste** : `toggle_track_mute`, `toggle_track_solo`,
+  `unmute_all_tracks`, `unsolo_all_tracks` (`track_router.py`), appelés par
+  X, Shift+X, S, Shift+S de la fenêtre principale
+  (`key_handler_chars.py:124-185`) et de l'éditeur MIDI
+  (`mew_playback.py:23-52`), et par les cases Mute / Solo des propriétés
+  de piste ; Undo `_add_mix_undo` (`mw_project.py:1359`), regroupé en
+  moins d'une seconde pour une même clé. Règle d'écoute `track_audible` :
+  une piste muette se tait ; s'il y a un solo, seules les pistes en solo
+  jouent. Mute et Solo sont sauvés dans le `.gvp` et suivis par l'export.
+- **Changement de piste** : `_on_track_select` → `_go_to_track`
+  (`mw_tracks.py`), interdit pendant l'enregistrement.
+- **Touches** : F1 (aide) et F2 (renommer) dans `key_manager.py:58-66` ;
+  **F3 et F4 libres**.
+
+### Décisions validées (utilisateur, 2026-11-03)
+
+**N1 — Mute / Solo : toutes les notes coupées.** Avant tout changement de
+Mute ou de Solo de piste (X, Shift+X, S, Shift+S dans la fenêtre
+principale et l'éditeur MIDI, cases des propriétés de piste, modes
+exclusifs et leur navigation), en lecture comme à l'arrêt : toutes les
+notes de tous les moteurs sont coupées.
+
+**N2 — Slot, canal, programme : les notes de la piste seule.** Avant un
+changement de slot, de canal ou de programme fait par l'utilisateur
+(propriétés de piste, Ctrl+T, Entrée ou double-clic sur un slot, Program
+Change reçu du contrôleur) : seules les notes de cette piste sont coupées.
+
+**N3 — Un Program Change rejoué par le pattern ne coupe rien** : la note
+précédente finit à sa durée, comme aujourd'hui.
+
+**N4 — Les modes exclusifs écrivent vraiment Mute et Solo.** Les drapeaux
+Mute / Solo des pistes sont modifiés (sauvés dans le `.gvp`, Undo, suivis
+par l'export) ; en quittant le mode, l'état reste celui de la dernière
+piste.
+
+**N5 — F3 bascule le Mute exclusif, F4 le Solo exclusif** ; Haut / Bas
+dans la liste des pistes y met la nouvelle piste courante.
+
+**N6 — Les deux modes sont gardés** (avis donné : le Mute exclusif fait
+entendre « tout sauf la piste courante » en naviguant, ce que le Mute
+normal, fixe, ne fait pas).
+
+**N15 — Shift+X et Shift+S désactivent toujours tout** : Shift+X démute
+toutes les pistes et quitte le Mute exclusif ; Shift+S retire tous les
+solos et quitte le Solo exclusif ; dans n'importe quel mode, avec Undo et
+coupure des notes (N1). Annonce : « Toutes les Pistes: Démutées — Mute
+exclusif : Off ».
+
+### Choix de conception proposés
+
+- **N7 — Coupure des notes = notes seules.** All Sounds Off (coupure nette,
+  y compris les notes tenues par la pédale) et pédale relâchée (CC64 à 0) ;
+  Pitch Bend et modulation **gardés**, pour ne pas casser l'automation en
+  lecture. Ce n'est pas le Panic de Ctrl+F12, qui remet aussi les
+  contrôleurs à zéro.
+- **N8 — `TrackRouter.cut_all_notes()`** (N1) : moteurs synthé et
+  préécoute (`stop_all_voices`), sons du kit (`stop_all`), banque
+  (`all_sounds_off`, CC64 à 0 sur les 16 canaux).
+- **N9 — `TrackRouter.cut_track_notes(t)`** (N2), appelé **avant** le
+  changement : banque → All Sounds Off et CC64 à 0 sur le canal courant de
+  la piste (nouveau `BankEngine.channel_sounds_off(channel)`, CC120 du
+  canal ; FluidSynth `fluid_synth_all_sounds_off(synth, chan)`) ; synthé →
+  `stop_all_voices` du moteur de son slot ; et toujours le moteur de
+  préécoute (les notes tenues au clavier). Un kit n'a que des one-shots :
+  rien à couper. Les pistes qui partagent ce canal ou ce moteur perdent
+  aussi leurs notes en cours : accepté (un moteur ne sait pas à quelle
+  piste appartient une voix).
+- **N10 — État du mode** : `MainWindow._exclusive` ∈ {None, "mute",
+  "solo"}, de session (non sauvé). F3 et F4 s'excluent : F4 en Mute
+  exclusif passe en Solo exclusif. F3 / F4 agissent dans la fenêtre
+  principale, quel que soit le focus ; F3 en Mute exclusif (F4 en Solo
+  exclusif) quitte le mode.
+- **N11 — Application** sur la piste courante t : Solo exclusif → solo de
+  t seul (les autres solos retirés), mute de t retiré ; Mute exclusif →
+  mute de t seul (les autres mutes retirés), tous les solos retirés. À
+  l'activation, puis à chaque changement de piste courante (Haut / Bas
+  dans la liste des pistes, et tout passage par `_go_to_track`).
+- **N12 — Undo** : un par activation (« Solo exclusif : piste 3 ») ; la
+  navigation passe par `_add_mix_undo` avec la clé `("exclusive", mode)` :
+  une navigation rapide ne donne qu'une entrée, titrée de la dernière
+  piste. Quitter le mode par F3 / F4 ne change rien, donc pas d'Undo.
+- **N13 — Annonces** : « Solo exclusif : On — piste 3 », « Solo exclusif :
+  Off », et à la navigation le libellé de piste, qui porte déjà [S] / [M].
+- **N14 — X / S pendant un mode exclusif** : ils restent des bascules
+  normales, et quittent le mode (le mode ne survivrait pas à un état
+  qu'il n'a pas posé) ; annonce « … — Solo exclusif : Off ».
+
+### Portée exclue
+
+- Mute / Solo exclusifs dans l'éditeur MIDI (Alt+4) : F3 / F4 de la
+  fenêtre principale seulement ;
+- Mute / Solo des pads ;
+- une coupure au Program Change rejoué par le pattern (N3) ;
+- un suivi des notes par piste dans les moteurs (N9).
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **6a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **6b1** | Implémentation — N1-N3, N7-N9 : `cut_all_notes`, `cut_track_notes`, `channel_sounds_off` ; appels avant Mute / Solo (fenêtre principale, éditeur MIDI, propriétés de piste) et avant slot / canal / programme (propriétés de piste, Ctrl+T, Program Change du contrôleur). Essayé au contrôleur. | `src/engines/bank_engine.py`, `src/engines/fluidsynth_engine.py`, `src/track_router.py`, `ui/key_handler_chars.py`, `ui/mew_playback.py`, `ui/mw_tracks.py`, `ui/midi_handler_window.py` |
+| **6c1** | Tests — 6b1 (coupures, ce qui est gardé, quels gestes coupent, Program Change rejoué sans coupure, note tenue au contrôleur coupée). | `tests/test_note_cuts.py` (nouveau), `docs/SPECS.md` |
+| **6d1** | Implémentation — N4-N6, N10-N15 : F3 / F4, application, navigation, Undo, annonces, Shift+X / Shift+S. Essayé avec Orca. | `ui/key_manager.py`, `ui/mw_tracks.py`, `ui/key_handler_chars.py` |
+| **6e1** | Tests — 6d1. | `tests/test_exclusive_mute_solo.py` (nouveau), `docs/SPECS.md` |
+| **6f1** | Doc — clôture (SPECS, raccourcis, aide F1), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
