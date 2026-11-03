@@ -9691,3 +9691,9 @@ exclusif : Off ».
   cas de l'essai) ou sur son synthé ; fin de note enregistrée avec la note
   jouée malgré une transposition changée ; pad de batterie au canal 10.
   Les six échouent sur le code d'avant 6b2. 3372 verts.
+- **Essai de 6b2 (utilisateur, 2026-11-03)** : concluant. Fichier MIDI
+  importé en Banque GM, plusieurs notes tenues pendant la navigation des
+  pistes : toutes s'arrêtent au relâchement. **Conséquence non recherchée,
+  utile** : on peut jouer un accord dont chaque note appartient à un canal
+  différent (une note, puis changer de piste, puis une autre…), sans note
+  bloquée, puisque chaque relâchement va au canal où sa note a été jouée.
