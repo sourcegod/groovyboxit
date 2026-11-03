@@ -9752,3 +9752,52 @@ exclusif : Off ».
   lieu) ; touches F3 / F4 / F5 par le vrai `KeyManager`, F4 avec
   modificateur sans effet. `SPECS.md`. 3399 verts. Non testé : la remise
   à zéro du mode par Ctrl+N / Ctrl+O (deux affectations).
+
+### Clôture (6f1)
+
+**6a-6e1 FAITS** (commits `053ec96` à `c0403f4`, et ce commit de
+clôture ; 3399 tests verts) : **chantier Phase 8 étape 6 complet**. Plus
+de note qui joue sans fin : les changements de son et les Mute / Solo
+coupent les notes, et une note tenue au contrôleur s'arrête toujours là
+où elle a été jouée. Mute et Solo exclusifs (F3, F4) et F5.
+
+**Ce que le chantier a livré** :
+- **Coupures** : `TrackRouter.cut_all_notes` (avant tout Mute / Solo),
+  `cut_track_notes` (avant un changement de slot, canal, programme ou
+  banque fait par l'utilisateur), `BankEngine.channel_sounds_off` ; notes
+  seules, pédale relâchée, Pitch Bend et modulation gardés ; rien au
+  Program Change rejoué.
+- **Notes tenues au contrôleur** (6b2, trouvé à l'essai) : le
+  relâchement va là où la note a été jouée (`MidiHandler._live_held`,
+  `BankPreview._held`) ; effet utile, un accord sur plusieurs canaux.
+- **Mute / Solo exclusifs** : F3, F4 ; la navigation des pistes suit ;
+  drapeaux réels ; Undo à l'activation, groupé pendant la navigation ;
+  second F3 / F4 = retour à l'état d'avant (6d2, à l'essai) ; X, S,
+  Shift+X, Shift+S quittent le mode ; **F5** réinitialise tout (6d2).
+- **5h2** : slot kit de démarrage « Kit GM » dans le code.
+
+**Écarts au plan** : correctif 6b2 (relâchement des notes tenues) ;
+révision de N4 en 6d2 (la sortie du mode rétablit l'état d'avant) ; F5
+ajouté ; aide F1 mise à jour dès 6d1 pour les essais.
+
+**Essais de l'utilisateur** (2026-11-03) : coupures (Mute / Solo pendant
+la navigation, propriétés de piste) concluantes ; notes tenues pendant
+la navigation, après 6b2, concluant (Banque GM, plusieurs notes) ; F3, F4
+et F5, après 6d2, concluants.
+
+**`docs/SPECS.md`** : ligne Phase 8, section « Notes coupées et notes
+tenues », Program Change, Mute / Solo par piste (modes exclusifs, F5),
+tests (`test_note_cuts.py`, `test_exclusive_mute_solo.py`).
+**`docs/shortcuts.md`** (aide F1) : Panic (rarement utile désormais),
+Mute / Solo des pistes (F3, F4, F5, coupure), « Pistes » (X, S, Shift+X,
+Shift+S, F3, F4, F5 en détail ; Ctrl+T et propriétés de piste qui coupent
+les notes), éditeur MIDI (X, S), contrôleur (notes tenues, Program
+Change), aide (F3 / F4, F5).
+
+**Laissé hors périmètre** :
+- Mute / Solo exclusifs dans l'éditeur MIDI (F3 / F4 de la fenêtre
+  principale seulement) ;
+- Mute / Solo des pads ;
+- un suivi des notes par piste dans les moteurs (une coupure de canal ou
+  de moteur touche les autres pistes qui le partagent) ;
+- le test de la sortie du mode par Ctrl+N / Ctrl+O.

@@ -71,6 +71,9 @@ U                Afficher l'état du player et la position (Lecture|Pause|Arrêt
 Ctrl+G           Aller à une position (boîte de dialogue Unité + Valeur + bar:beat:tick)
 Ctrl+Shift+G     Ouvrir la boîte de grille (résolution de navigation et quantisation)
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
+                 (rarement utile : les Mute / Solo et les changements de son
+                 coupent déjà les notes, et une note tenue au contrôleur
+                 s'arrête toujours au relâchement)
 
 --- Mute / Solo (Pads — focus grille) ---
 X                Bascule le Mute du Pad courant
@@ -83,6 +86,12 @@ X                Bascule le Mute de la Piste sélectionnée
 Shift+X          Démuter toutes les Pistes
 S                Bascule le Solo de la Piste sélectionnée
 Shift+S          Désolo toutes les Pistes
+F3               Mute exclusif On / Off (fenêtre principale, quel que soit le focus)
+F4               Solo exclusif On / Off (fenêtre principale, quel que soit le focus)
+F5               Réinitialiser tous les Mute et Solo de piste
+                 Chaque Mute / Solo de piste coupe d'abord toutes les notes en cours
+                 (pédale relâchée ; Pitch Bend et modulation gardés) ; détails des
+                 modes exclusifs dans « Pistes »
 
 --- Volume / Pan par Pad ---
 Alt+↑            Volume du Pad courant +5
@@ -193,7 +202,8 @@ Ctrl+T / Entrée  Assigner le slot sélectionné dans la liste des slots à la p
                  courante (un kit met la piste sur le canal MIDI 10 ; un autre slot
                  la ramène à son canal par défaut), avec Undo « Piste N → Slot_NN » ;
                  en mode Rack 16 canaux : passer la piste au canal du slot
-                 (Undo « Piste N → canal M »)
+                 (Undo « Piste N → canal M ») ; les notes de la piste sont
+                 coupées avant
 Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  Mute, Solo, Slot, Canal MIDI (1 à 16), Programme GM du slot
@@ -204,6 +214,8 @@ Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  de la piste (CC0, CC32, Program Change à 1.1.1)
                  En mode Rack 16 canaux : le slot est le canal (choisir l'un
                  choisit l'autre) ; chaque canal dit le slot qu'il joue
+                 Changer le slot, le canal, le programme ou la banque coupe d'abord
+                 les notes de la piste ; changer Mute ou Solo coupe toutes les notes
 Double-clic      Jouer le pad courant
 Double-clic+Alt  Ouvrir les propriétés de la piste
 X / Shift+X      Mute piste / Démuter toutes (toutes les notes coupées avant ;
@@ -263,6 +275,11 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
 Alt+M            Connecter / déconnecter le port MIDI sélectionné
 Alt+Shift+M      Actualiser la liste des ports MIDI
 Double-clic      Connecter le port MIDI sélectionné (liste des ports)
+Contrôleur       Une note tenue s'arrête au relâchement là où elle a été jouée, même
+                 après un changement de piste, de slot, de canal ou de programme :
+                 on peut tenir une note, changer de piste et en jouer une autre
+                 (accord sur plusieurs canaux) ; un Program Change reçu coupe d'abord
+                 les notes de la piste courante
 
 --- Éditeur MIDI (Alt+4) ---
 Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
@@ -325,6 +342,8 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
                  depuis la fenêtre principale pendant que l'éditeur est ouvert)
   S / Shift+S    Solo piste(s) sélectionnée(s) / Désolo toutes
   X / Shift+X    Mute piste(s) sélectionnée(s) / Démuter toutes
+                 (toutes les notes coupées avant ; S et X quittent le Mute / Solo
+                 exclusif de la fenêtre principale)
 
   -- Limiteurs temporels --
   i              Poser le limiteur gauche (In) à la position courante du playhead

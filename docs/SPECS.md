@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 | en cours |
 
 ---
 
@@ -871,6 +871,32 @@ Le transport est partagé entre la fenêtre principale, l'éditeur MIDI (Alt+4) 
 
 Arrêt immédiat de tous les sons + envoi CC#120 (All Sounds Off) + CC#121 (Reset All Controllers).
 
+### Notes coupées et notes tenues (Phase 8 étape 6)
+
+docs/DESIGN.md § Phase 8 étape 6a (N1-N3, N7-N9), 6b2.
+
+- **Avant un Mute ou un Solo de piste** (X, Shift+X, S, Shift+S de la
+  fenêtre principale et de l'éditeur MIDI, cases des propriétés de piste,
+  F3, F4, F5 et la navigation en mode exclusif), en lecture comme à
+  l'arrêt : **toutes les notes** de tous les moteurs sont coupées
+  (`TrackRouter.cut_all_notes` : synthés, préécoute, kit, banque sur ses
+  16 canaux).
+- **Avant un changement de slot, de canal, de programme ou de banque**
+  fait par l'utilisateur (propriétés de piste, Ctrl+T, Entrée ou
+  double-clic sur un slot, Program Change reçu du contrôleur) : **les notes
+  de la piste** (`cut_track_notes` : son canal courant sur une banque,
+  `BankEngine.channel_sounds_off` ; le moteur de son slot sur un synthé ;
+  la préécoute). Les pistes du même canal ou du même moteur perdent aussi
+  leurs notes en cours.
+- Un Program Change **rejoué par le pattern** ne coupe rien.
+- Une coupure ne touche que les notes : All Sounds Off et pédale
+  relâchée ; Pitch Bend et modulation sont gardés (contrairement au Panic).
+- **Note tenue au contrôleur** : son relâchement va là où elle a été
+  jouée (`MidiHandler._live_held`, `BankPreview._held` : moteur, canal et
+  note retenus), même si la piste, le slot ou le canal ont changé
+  entre-temps. On peut ainsi jouer un accord dont chaque note est sur un
+  canal différent (une note, changer de piste, une autre…).
+
 ### MIDI CC supportés
 
 | CC | Nom | Comportement |
@@ -902,7 +928,10 @@ program % 16)`). Sur une piste **Banque** (Phase 7 étape 17), le Program
 Change change l'instrument de son canal, où passe la piste ; voir
 « Banques de sons ». Dans un pattern en **mode Rack 16 canaux** (Phase 8
 étape 5), pas de pont : la piste passe sur le canal du Program Change,
-donc sur son slot ; voir « Mode Rack 16 canaux ».
+donc sur son slot ; voir « Mode Rack 16 canaux ». Reçu du contrôleur, il
+coupe d'abord les notes de la piste courante (Phase 8 étape 6 ; voir
+« Notes coupées et notes tenues ») ; rejoué par le pattern, il ne coupe
+rien.
 
 ### Pitch Bend temps réel
 
@@ -954,7 +983,19 @@ donc sur son slot ; voir « Mode Rack 16 canaux ».
 ### Par piste (TrackRouter)
 - Volume : 0..100 (Alt+↑/↓ depuis la liste des pistes)
 - Pan : -100..+100 (Alt+←/→)
-- Mute (X) / Solo (S) par piste
+- Mute (X) / Solo (S) par piste ; F5 les retire tous
+- **Mute / Solo exclusifs** (Phase 8 étape 6, F3 / F4) : seule la piste
+  courante est muette (ou en solo), les autres Mute (ou Solo) retirés ;
+  Haut / Bas dans la liste des pistes y met la nouvelle piste. Les
+  drapeaux Mute / Solo sont vraiment écrits (`.gvp`, Undo, export). Undo à
+  l'activation, puis groupé pendant la navigation (moins d'une seconde).
+  F4 en Mute exclusif passe en Solo exclusif, et inversement ; un second
+  F3 / F4 quitte le mode et rétablit les Mute / Solo d'avant son
+  activation (avec Undo). X / S quittent le mode (leur bascule
+  s'applique) ; Shift+X quitte le Mute exclusif, Shift+S le Solo
+  exclusif ; F5 quitte tout. Refusé pendant l'enregistrement ; quitté par
+  Ctrl+N et Ctrl+O. État du mode : `MainWindow._exclusive`,
+  `_exclusive_saved` (`ui/mw_tracks.py`).
 - Appliqués en facteur multiplicatif lors du dispatch audio
 - Canal MIDI : Alt+Entrée sur la piste (propriétés), liste Canal ; piste N →
   canal N par défaut, un slot kit assigné met la piste sur le canal 10
