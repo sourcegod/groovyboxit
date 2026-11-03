@@ -48,6 +48,16 @@ class MidiHandler:
         self._win          = win
         self._erase_held    = set()   # notes MIDI tenues en mode Erase (pad mode)
         self._erase_held_kb = set()  # notes MIDI tenues en mode Erase (keyboard mode)
+        # Touche du contrôleur → (moteur, note jouée) : le relâchement va là
+        # où la note a été jouée, même après un changement de piste, de slot
+        # ou de canal (Phase 8 étape 6b2, essai de l'utilisateur)
+        self._live_held = {}
+
+    def _live_play(self, note, played, vol, pan):
+        """Joue une note tenue sur le moteur de préécoute et la retient."""
+        engine = self._win._router.synth
+        engine.play(played, vol, pan, 0)
+        self._live_held[note] = (engine, played)
 
     # ------------------------------------------------------------------
     # Connexion MIDI
@@ -343,7 +353,7 @@ class MidiHandler:
             vol_factor = velocity / 127.0
             v   = win._player.voice_manager.get_voice(win._cur_row)
             pan = win._player._mix_pan(v.pan)
-            win._router.synth.play(transposed, vol_factor, pan, 0)
+            self._live_play(note, transposed, vol_factor, pan)
             win._router.kb_last_midi = transposed
             if win._player.recording and 0 <= play_idx < win.ROWS:
                 bar_idx, step_idx = win._player.record_hit(play_idx, velocity, channel=channel)
@@ -368,7 +378,7 @@ class MidiHandler:
             vol_factor = velocity / 127.0
             v   = win._player.voice_manager.get_voice(win._cur_row)
             pan = win._player._mix_pan(v.pan)
-            win._router.synth.play(transposed, vol_factor, pan, 0)
+            self._live_play(note, transposed, vol_factor, pan)
             win._router.kb_last_midi = transposed
             if win._player.recording:
                 synth = win._router.synth if win._router.synth_ready() else None
@@ -398,7 +408,7 @@ class MidiHandler:
                 vol    = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
                 pan    = win._player._mix_pan(v.pan)
                 midi_n = win._router.input_note(pad_idx)
-                win._router.synth.play(midi_n, vol, pan, 0)
+                self._live_play(note, midi_n, vol, pan)
                 win._router.kb_last_midi    = midi_n
                 win._player.last_played_pad = pad_idx
                 if win._player.recording:
@@ -436,7 +446,7 @@ class MidiHandler:
             vol = min(1.0, vm.get_volume_factor(pad_idx) * velocity / 100.0)
             pan = win._player._mix_pan(v.pan)
             midi_n = win._router.input_note(pad_idx)
-            win._router.synth.play(midi_n, vol, pan, 0)
+            self._live_play(note, midi_n, vol, pan)
             win._router.kb_last_midi    = midi_n
             win._player.last_played_pad = pad_idx
             win._debug_pad_status(pad_idx, note)
@@ -475,7 +485,16 @@ class MidiHandler:
                 f"Note Repeat: ON — {mode} — {Pattern.QUANT_LIST[win._nr_rate_idx]}"
             )
         slot = win._rack.get_slot(win._cur_slot)
-        if win._router.synth_ready() and slot.plays_notes:
+        held = self._live_held.pop(note, None)
+        if held is not None:                       # là où la note a été jouée (6b2)
+            engine, played = held
+            engine.stop(played)
+            if win._input_mode == "keyboard":
+                self._erase_held_kb.discard(played)
+                self._update_erase_midi_range()
+                if win._player.recording:
+                    win._player.record_patch_note_off(played)
+        elif win._router.synth_ready() and slot.plays_notes:
             if win._input_mode == "keyboard":
                 offset     = win._kb_root_midi - win._kb_play_root
                 transposed = max(0, min(127, note + offset))

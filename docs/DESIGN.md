@@ -9663,3 +9663,24 @@ exclusif : Off ».
   (`cut_all_notes` / `cut_track_notes` des routeurs factices, moteurs du
   `TrackRouter` sans `__init__` de `test_mix_undo.py`, `stop_all_voices`
   du synthé factice de `test_bank_slot.py`) ; `SPECS.md`. 3366 verts.
+- **Essai de l'utilisateur (2026-11-03)** : concluant pour le Mute / Solo
+  pendant la navigation des pistes et pour les changements de slot, canal
+  et Program Change des propriétés de piste. **Défaut** : une note tenue
+  au contrôleur pendant la navigation des pistes reste bloquée sur le
+  canal de la piste précédente ; elles s'accumulent, seul Ctrl+F12 les
+  arrête → 6b2.
+- **6b2** — correctif : le relâchement va **là où la note a été jouée**.
+  La cause est celle de l'état des lieux (arrêt vers le canal ou le moteur
+  de préécoute actuels), déclenchée par le changement de piste, que N2 ne
+  couvre pas. Plutôt qu'une coupure à chaque changement de piste (qui
+  couperait la musique en lecture) :
+  - `BankPreview` retient le canal de chaque note tenue (`_held`) et
+    l'arrête sur ce canal ;
+  - `MidiHandler._live_play` retient, pour chaque touche du contrôleur, le
+    moteur de préécoute et la note jouée (`_live_held`) ; `on_note_off` les
+    reprend (enregistrement de la fin de note et Erase compris), quels que
+    soient la piste, le slot ou le canal courants. Les quatre jeux directs
+    tenus (clavier et pads, avec ou sans Note Repeat) y passent.
+  - Reproduit par un script avant la correction (note jouée canal 4,
+    arrêt envoyé canal 6), puis corrigé (arrêt canal 4). 3366 verts ; tests
+    en 6c2.

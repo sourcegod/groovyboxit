@@ -25,6 +25,9 @@ class BankPreview:
         self.slot_idx   = None
         self.pitch_bend = 0           # -8192..+8191, comme SynthEngine
         self.sustain    = False
+        # Canal de chaque note tenue (Phase 8 étape 6b2) : son arrêt part sur
+        # ce canal, même si la piste courante ou son canal ont changé
+        self._held      = {}
 
     def _channel(self):
         return self._router.track_channel_now(self._router.cur_track())
@@ -39,12 +42,16 @@ class BankPreview:
         if not self.is_loaded():
             return
         vel = max(1, min(127, round(127 * min(1.0, volume_factor))))
-        self._router.bank_note(self._channel(), midi_note, vel, maxtime_ms)
+        channel = self._channel()
+        if maxtime_ms <= 0:
+            self._held[midi_note] = channel
+        self._router.bank_note(channel, midi_note, vel, maxtime_ms)
 
     def stop(self, midi_note):
+        channel = self._held.pop(midi_note, None)
         engine = self._router.bank_engine
         if engine is not None:
-            engine.note_off(self._channel(), midi_note)
+            engine.note_off(self._channel() if channel is None else channel, midi_note)
 
     def apply_pitch_bend(self):
         engine = self._router.bank_engine
