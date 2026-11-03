@@ -31,6 +31,11 @@ class _FakeRouter:
         self._mutes = [False] * num_tracks
         self._solos = [False] * num_tracks
 
+    cuts = 0                              # coupures des notes (Phase 8 étape 6b1)
+
+    def cut_all_notes(self):
+        self.cuts += 1
+
     def toggle_track_mute(self, track_idx):
         self._mutes[track_idx] = not self._mutes[track_idx]
         return self._mutes[track_idx]
@@ -1229,3 +1234,33 @@ def test_delete_empty_pattern_deletes_nothing(monkeypatch):
     win._delete_event()
     assert win.statuses == ["Le tempo de départ ne se supprime pas"]
     assert win._parent.undo_labels == [] and bells == [True]
+
+
+# ---------------------------------------------------------------------------
+# Notes coupées avant Mute / Solo (Phase 8 étape 6c1, tests de 6b1, § 6a N1)
+# ---------------------------------------------------------------------------
+
+def _record_cuts(win):
+    router, seen = win._parent._router, []
+    router.cut_all_notes = lambda: seen.append((list(router._mutes), list(router._solos)))
+    return seen
+
+
+def test_toggle_mute_cuts_all_notes_before_change():
+    win = _FakeMidiEditorWindow()
+    win._parent._player._cur_track = 1
+    seen = _record_cuts(win)
+    win._toggle_track_mute()
+    assert len(seen) == 1 and seen[0][0][1] is False      # coupé avant la bascule
+    assert win._parent._router._mutes[1] is True
+
+
+def test_toggle_solo_multi_selection_cuts_once():
+    win = _FakeMidiEditorWindow()
+    te = win._parent._track_editor
+    te.select_one(0)
+    te.toggle_track(2)                                    # sélection = {0, 2}
+    seen = _record_cuts(win)
+    win._toggle_track_solo()
+    assert len(seen) == 1                                 # une coupure pour deux pistes
+    assert win._parent._router._solos[0] and win._parent._router._solos[2]

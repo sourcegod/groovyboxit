@@ -17,6 +17,7 @@
     Author: Coolbrother
 """
 import sys
+from types import SimpleNamespace
 import os
 import copy
 import types
@@ -62,6 +63,10 @@ def _make_router():
     r._track_volumes = [100] * n
     r._track_pans    = [0] * n
     r.bank_engine    = None          # sans moteur de banque (17d1)
+    # coupure des notes avant Mute / Solo (Phase 8 étape 6b1) : aucun moteur
+    r._slot_synths   = {}
+    r._synth = r._kit_synth = r._bank_preview = None
+    r._snd           = SimpleNamespace(stop_all=lambda: None)
     return r
 
 

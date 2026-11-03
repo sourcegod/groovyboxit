@@ -9649,3 +9649,17 @@ exclusif : Off ».
     factices sans `cut_all_notes` / `cut_track_notes`, `TrackRouter` sans
     `__init__` dans `test_mix_undo.py`, synthé factice sans
     `stop_all_voices`).
+- **6c1** — `tests/test_note_cuts.py` (27 tests) : CC120 d'un canal
+  (défaut et FluidSynth) ; `cut_all_notes` (tous les moteurs une fois,
+  kit, banque et pédale sur 16 canaux, Pitch Bend et modulation gardés,
+  sans banque) ; `cut_track_notes` (canal courant d'une banque, préécoute
+  une fois, note tenue au contrôleur coupée avant le changement de canal,
+  synthé et préécoute, autres moteurs intacts, kit, mode Rack) ; Program
+  Change rejoué sans coupure ; gestes : X, S, Shift+X, Shift+S (coupure
+  avant la bascule), pads sans coupure, propriétés de piste (canal, slot,
+  volume sans coupure, Mute, Annuler), Ctrl+T (deux modes, même slot sans
+  coupure), Program Change du contrôleur ; 2 tests de l'éditeur MIDI
+  (`test_midi_editor_window.py`). Fakes des 21 tests rouges adaptés
+  (`cut_all_notes` / `cut_track_notes` des routeurs factices, moteurs du
+  `TrackRouter` sans `__init__` de `test_mix_undo.py`, `stop_all_voices`
+  du synthé factice de `test_bank_slot.py`) ; `SPECS.md`. 3366 verts.

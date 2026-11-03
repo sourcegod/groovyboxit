@@ -127,6 +127,9 @@ class _FakeRouter:
 
     on_bank      = False   # piste courante sur un slot Banque (17f1)
     rack_mode    = False   # pattern en mode Rack (Phase 8 étape 5d1)
+
+    def cut_track_notes(self, track):     # coupure avant le Program Change (6b1)
+        self.cut_tracks = getattr(self, "cut_tracks", []) + [track]
     track_chan   = 6       # canal courant de la piste (track_channel_now)
 
     def program_change(self, track, program):

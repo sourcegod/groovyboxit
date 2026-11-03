@@ -174,6 +174,7 @@ groovyboxit/
     ├── test_mixer.py
     ├── test_multitrack.py
     ├── test_mute_groups.py
+    ├── test_note_cuts.py
     ├── test_pad_properties_dialog.py
     ├── test_pattern.py
     ├── test_pattern_grid_api.py
@@ -2068,7 +2069,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_constants.py` | midi_constants : tables CC/GM/GM2, noms des percussions GM, note GM devinée, courbe gm_gain |
 | `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
 | `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/CC/program/position (30 tests) |
-| `test_midi_editor_window.py` | MidiEditorWindow : solo/mute des pistes (avec Undo), statut MIDI live |
+| `test_midi_editor_window.py` | MidiEditorWindow : solo/mute des pistes (avec Undo, notes coupées avant, Phase 8 étape 6c1), statut MIDI live |
 | `test_midi_export.py` | Export MIDI : fichier relu par mido, pistes, canaux, notes GRID/KIT/PATCH, CC/PGM/BEND, conversion GM, mute/solo, fin pile ; song (Phase 8 étape 2e1) : pattern identique à l'octet, marqueurs, tempo et signature au changement, état des pistes réécrit au changement, canal par pattern, notes qui débordent au tempo suivant, pistes muettes par pattern, banque ; mode Rack 16 canaux (Phase 8 étape 5g1 : canal qui suit les Program Change quel que soit le slot, mode normal inchangé, case de grille d'un kit, notes PATCH d'un kit exportées dans les deux modes, fichier identique sans le mode) |
 | `test_midi_export_mix.py` | Export MIDI : volume et pan de piste (CC7/CC10), notes PATCH sans synthé omises, CC91/CC93 à 0 |
 | `test_midi_export_ui.py` | Interface de l'export MIDI : exports_dir, paramètres, nom de fichier, FileDialog, Alt+Shift+E ; piste sur un slot Kit au canal 10 (Phase 8 étape 2p3) |
@@ -2082,6 +2083,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_mixer.py` | Mixer (Phase 8 étape 1c1) : mélange sans carte son ni écrêtage, volume global, pan, sources externes, voix qui avancent d'un appel à l'autre, découpage en blocs sans effet, release, callback du driver = mix puis écrêtage |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
+| `test_note_cuts.py` | Notes coupées avant un changement de son (Phase 8 étape 6c1) : CC120 d'un canal (défaut et FluidSynth), cut_all_notes (tous les moteurs une fois, kit, banque et pédale sur 16 canaux, Pitch Bend et modulation gardés, sans banque), cut_track_notes (canal courant d'une banque, préécoute une fois, note tenue au contrôleur coupée avant le changement de canal, moteur du synthé et préécoute, autres moteurs intacts, kit, mode Rack), Program Change rejoué sans coupure ; gestes : X / S / Shift+X / Shift+S (avant la bascule), pads sans coupure, propriétés de piste (canal, slot, volume sans coupure, Mute, Annuler), Ctrl+T (deux modes, même slot sans coupure), Program Change du contrôleur (27 tests) |
 | `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |
 | `test_pattern.py` | Pattern : création, reset, resize, double/halve, random |
 | `test_pattern_grid_api.py` | API grille de Pattern (get_cell, set_cell, iter_grid, copy_from…) au-dessus de _tape ; grid_row en un passage |

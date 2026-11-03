@@ -169,6 +169,9 @@ class FakeSynthEngine:
     def precompute(self, notes):
         pass
 
+    def stop_all_voices(self):           # coupure des notes (Phase 8 étape 6b1)
+        pass
+
 
 @pytest.fixture(autouse=True)
 def _fake_timer_and_synth(monkeypatch):
