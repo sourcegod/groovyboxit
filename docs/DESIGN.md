@@ -9734,3 +9734,7 @@ exclusif : Off ».
   quelque chose à défaire, notes coupées, tous les Mute et Solo retirés,
   mode quitté (« … — Solo exclusif : Off »). Aide F1 à jour. Vérifié par
   un script.
+- **5h2** (Phase 8 étape 5, après sa clôture) — remarque 2 de l'essai de
+  la Phase 8 étape 5, côté code : le slot 5 créé au démarrage sans projet
+  (`main_window.py`) s'appelle « Kit GM » au lieu de « GM (FluidR3) ».
+  Même programme GM deviné (0, kit standard).
