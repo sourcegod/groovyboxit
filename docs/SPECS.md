@@ -143,6 +143,7 @@ groovyboxit/
     ├── test_cc_event_edit_dialog.py
     ├── test_check_specs_tests.py
     ├── test_event_filter_dialog.py
+    ├── test_exclusive_mute_solo.py
     ├── test_explorer_actions.py
     ├── test_explorer_dialog.py
     ├── test_fluidsynth_engine.py
@@ -2052,6 +2053,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change, champ Canal + dispatch d'édition, piste Banque suivie (19 tests) |
 | `test_check_specs_tests.py` | tools/check_specs_tests.py sur un faux dépôt : absents, disparus, ligne proposée, code de sortie |
 | `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
+| `test_exclusive_mute_solo.py` | Mute / Solo exclusifs et F5 (Phase 8 étape 6e1) : F4 / F3 (solo ou mute de la piste courante seule, notes coupées avant, Undo, annonce, passage d'un mode à l'autre, refusé pendant l'enregistrement), navigation (le mode suit, Undo groupé en moins d'une seconde, notes coupées, sans mode rien, même piste rien), second F3 / F4 (état d'avant rétabli, même après changement de mode, Undo dans les deux sens), drapeaux réels (écoute), X / S / Shift+X / Shift+S pendant un mode, X de l'éditeur MIDI, F5 (tout retiré, mode quitté, Undo s'il y a lieu), touches F3 / F4 / F5 par le KeyManager, F4 avec modificateur sans effet (27 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
 | `test_explorer_dialog.py` | ExplorerDialog : ITEMS, sélection, double-clic |
 | `test_fluidsynth_engine.py` | Moteur de banque : BankEngine (GS/MMA), FluidSynthEngine sur FluidR3_GM (TimGM6mb en repli : emplacements, presets, canaux, rendu), branchement MainWindow ; sautés sans libfluidsynth |

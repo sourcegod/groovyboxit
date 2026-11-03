@@ -9740,3 +9740,15 @@ exclusif : Off ».
   Même programme GM deviné (0, kit standard).
 - **Essai de 6d2 (utilisateur, 2026-11-03)** : concluant pour F3, F4
   (bascule, état d'avant rétabli) et F5 (réinitialisation).
+- **6e1** — `tests/test_exclusive_mute_solo.py` (27 tests, vrai Undo,
+  vraie liste des pistes) : activation par F4 / F3 (piste courante seule,
+  notes coupées avant, Undo, annonce, passage d'un mode à l'autre, refus
+  pendant l'enregistrement) ; navigation (le mode suit, Undo groupé en
+  moins d'une seconde, notes coupées, rien sans mode ou sur la même
+  piste) ; second F3 / F4 (état d'avant rétabli, même après un changement
+  de mode ; Undo de la sortie et de l'activation) ; drapeaux réels suivis
+  par l'écoute ; X / S / Shift+X / Shift+S pendant un mode ; X de
+  l'éditeur MIDI ; F5 (tout retiré, mode quitté, Undo seulement s'il y a
+  lieu) ; touches F3 / F4 / F5 par le vrai `KeyManager`, F4 avec
+  modificateur sans effet. `SPECS.md`. 3399 verts. Non testé : la remise
+  à zéro du mode par Ctrl+N / Ctrl+O (deux affectations).
