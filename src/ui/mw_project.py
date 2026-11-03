@@ -77,7 +77,7 @@ class ProjectMixin:
             if resp == wx.ID_YES:
                 self._save_project()
         self._undo.clear()                 # l'historique appartient au projet (16d1, D3)
-        self._exclusive = None             # Mute / Solo exclusif quitté (6d1)
+        self._exclusive = self._exclusive_saved = None   # Mute / Solo exclusif quitté (6d1)
         self._player.stop_all()
         self._router.stop_all_synth_voices()
         self._pattern_list    = [Pattern() for _ in range(99)]
@@ -1015,7 +1015,7 @@ class ProjectMixin:
             self._show_status(f"ERREUR chargement : {e}")
             return
         self._undo.clear()                     # l'historique appartient au projet (16d1, D3)
-        self._exclusive = None                 # Mute / Solo exclusif quitté (6d1)
+        self._exclusive = self._exclusive_saved = None   # Mute / Solo exclusif quitté (6d1)
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._update_slot_list()

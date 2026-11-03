@@ -409,15 +409,27 @@ class TrackMixin:
     def _toggle_exclusive(self, mode):
         """F3 (mode "mute") / F4 (mode "solo") : active le mode, ou le
         quitte s'il est déjà actif ; F4 en Mute exclusif passe en Solo
-        exclusif (N10). Activer pose un Undo et l'applique (N12)."""
+        exclusif (N10). Activer pose un Undo et l'applique (N12). Quitter
+        rétablit les Mute / Solo d'avant l'activation, avec Undo : une
+        vraie bascule (Phase 8 étape 6d2, essai de l'utilisateur ; révise
+        N4, où l'état restait)."""
         name = self.EXCLUSIVE_NAMES[mode]
-        if getattr(self, "_exclusive", None) == mode:
-            self._exclusive = None                   # l'état reste (N4)
-            self._show_status(f"{name} exclusif : Off")
-            return
         if self._player.recording or self._player._count_in > 0:
             self._show_status(f"{name} exclusif : impossible pendant l'enregistrement")
             return
+        r = self._router
+        if getattr(self, "_exclusive", None) == mode:
+            self._add_mix_undo(f"{name} exclusif : Off")
+            r.cut_all_notes()
+            saved = getattr(self, "_exclusive_saved", None)
+            if saved is not None:
+                r._track_mutes, r._track_solos = list(saved[0]), list(saved[1])
+            self._exclusive = self._exclusive_saved = None
+            self._refresh_track_list()
+            self._show_status(f"{name} exclusif : Off — Mute et Solo d'avant rétablis")
+            return
+        if getattr(self, "_exclusive", None) is None:   # état d'avant le mode
+            self._exclusive_saved = (list(r._track_mutes), list(r._track_solos))
         self._exclusive = mode
         t = self._player._cur_track
         self._add_mix_undo(f"{name} exclusif : piste {t + 1}")
@@ -444,8 +456,22 @@ class TrackMixin:
         mode = getattr(self, "_exclusive", None)
         if mode is None or mode not in modes:
             return ""
-        self._exclusive = None
+        self._exclusive = self._exclusive_saved = None
         return f" — {self.EXCLUSIVE_NAMES[mode]} exclusif : Off"
+
+    def _reset_mute_solo(self):
+        """F5 : tous les Mute et Solo de piste retirés, et le mode exclusif
+        quitté — Shift+X et Shift+S à la fois (Phase 8 étape 6d2). Undo
+        s'il y a quelque chose à défaire ; toutes les notes coupées."""
+        r = self._router
+        if any(r._track_mutes) or any(r._track_solos):
+            self._add_mix_undo("Réinitialiser Mute / Solo")
+        r.cut_all_notes()
+        r.unmute_all_tracks()
+        r.unsolo_all_tracks()
+        quit_ = self._quit_exclusive()
+        self._refresh_track_list()
+        self._show_status("Toutes les Pistes: Mute et Solo réinitialisés" + quit_)
 
     def _go_to_track(self, idx):
         from rack import InstrumentType

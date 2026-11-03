@@ -9718,3 +9718,19 @@ exclusif : Off ».
   - Vérifié par un script : activation, navigation (deux pas rapprochés,
     une entrée d'Undo), passage de F4 à F3, sortie. 3372 verts ; tests en
     6e1.
+- **Essai de 6d1 (utilisateur, 2026-11-03)** : F3 / F4 marchent, mais ne
+  font pas une bascule : en quittant le mode, l'état restait (N4), donc à
+  l'oreille rien ne changeait. Demandes : une vraie bascule (choix :
+  revenir à l'état d'avant le mode), et **F5** pour tout réinitialiser
+  (Shift+X et Shift+S à la fois). Renommer aussi « GM (FluidR3) » en
+  « Kit GM » dans le code (slot 5 créé au démarrage) → 5h2.
+- **6d2** — révision de N4 : à l'activation depuis aucun mode,
+  `_exclusive_saved` garde les Mute / Solo de toutes les pistes ; un
+  second F3 / F4 (même après un passage de F4 à F3) pose un Undo
+  « Solo exclusif : Off », coupe les notes et les rétablit ; annonce
+  « Solo exclusif : Off — Mute et Solo d'avant rétablis ». X / S / Shift+X /
+  Shift+S quittent sans rétablir (leur effet s'applique). **F5**
+  (`_reset_mute_solo`) : Undo « Réinitialiser Mute / Solo » s'il y a
+  quelque chose à défaire, notes coupées, tous les Mute et Solo retirés,
+  mode quitté (« … — Solo exclusif : Off »). Aide F1 à jour. Vérifié par
+  un script.

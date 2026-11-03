@@ -127,6 +127,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
                             {"kit": os.path.join(self._kits_dir, "gm.json")})
         self._cur_slot = 0
         self._exclusive = None      # Mute / Solo exclusif : None, "mute", "solo" (6d1)
+        self._exclusive_saved = None  # (mutes, solos) d'avant le mode, rétablis en le quittant (6d2)
         self._router = TrackRouter(
             self._rack, self._synths_dir, self._snd,
             lambda msg: wx.CallAfter(self._show_status, msg),

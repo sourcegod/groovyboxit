@@ -215,7 +215,10 @@ F3               Mute exclusif On / Off : seule la piste courante est muette ;
 F4               Solo exclusif On / Off : seule la piste courante est en solo ;
                  Haut / Bas dans la liste des pistes y met la nouvelle piste
                  (F4 en Mute exclusif passe en Solo exclusif, et inversement ;
-                 en quittant le mode, Mute et Solo restent tels quels)
+                 un second F3 / F4 quitte le mode et rétablit les Mute et Solo
+                 d'avant son activation)
+F5               Réinitialiser tous les Mute et Solo de piste et quitter le mode
+                 exclusif (Shift+X et Shift+S à la fois)
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
 Alt+← / Alt+→   Pan piste ±10 (-100..+100)
 Alt+0            Recentrer le pan de la piste (Pan 0)
@@ -394,6 +397,7 @@ Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
 --- Aide ---
 F1               Afficher cette aide
 F3 / F4          Mute exclusif / Solo exclusif (voir « Pistes »)
+F5               Réinitialiser tous les Mute et Solo de piste
 F2               Renommer l'élément courant :
                    focus liste des pistes  → renommer la piste
                    focus ailleurs          → renommer le pattern courant

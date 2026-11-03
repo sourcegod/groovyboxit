@@ -68,6 +68,10 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if key in (wx.WXK_F3, wx.WXK_F4) and not (ctx.ctrl or ctx.alt or ctx.shift):
             win._toggle_exclusive("mute" if key == wx.WXK_F3 else "solo")
             return
+        # F5 : tous les Mute / Solo réinitialisés, mode exclusif quitté (6d2)
+        if key == wx.WXK_F5 and not (ctx.ctrl or ctx.alt or ctx.shift):
+            win._reset_mute_solo()
+            return
         if ctx.alt and self._handle_alt(event, ctx):
             return
         if ctx.ctrl and self._handle_ctrl(event, ctx):
