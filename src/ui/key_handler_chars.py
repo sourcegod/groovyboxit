@@ -129,7 +129,8 @@ class CharHandler:
                 win._router.cut_all_notes()          # Phase 8 étape 6b1, § 6a N1
                 muted = win._router.toggle_track_mute(tidx)
                 win._refresh_track_list()
-                win._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}")
+                win._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}"
+                                 + win._quit_exclusive())        # N14
             else:
                 win._add_mix_undo(f"Mute pad {win._cur_row + 1}")
                 muted = win._player.voice_manager.toggle_mute(win._cur_row)
@@ -145,7 +146,8 @@ class CharHandler:
                 win._router.cut_all_notes()          # N1
                 win._router.unmute_all_tracks()
                 win._refresh_track_list()
-                win._show_status("Toutes les Pistes: Démutées")
+                win._show_status("Toutes les Pistes: Démutées"
+                                 + win._quit_exclusive(("mute",)))  # N15
             else:
                 if win._player.voice_manager.any_mute():
                     win._add_mix_undo("Démuter tous les pads")
@@ -162,7 +164,8 @@ class CharHandler:
                 win._router.cut_all_notes()          # N1
                 soloed = win._router.toggle_track_solo(tidx)
                 win._refresh_track_list()
-                win._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}")
+                win._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}"
+                                 + win._quit_exclusive())        # N14
             else:
                 win._add_mix_undo(f"Solo pad {win._cur_row + 1}")
                 soloed = win._player.voice_manager.toggle_solo(win._cur_row)
@@ -178,7 +181,8 @@ class CharHandler:
                 win._router.cut_all_notes()          # N1
                 win._router.unsolo_all_tracks()
                 win._refresh_track_list()
-                win._show_status("Toutes les Pistes: Désolées")
+                win._show_status("Toutes les Pistes: Désolées"
+                                 + win._quit_exclusive(("solo",)))  # N15
             else:
                 if win._player.voice_manager.any_solo():
                     win._add_mix_undo("Désolo tous les pads")

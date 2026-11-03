@@ -206,8 +206,16 @@ Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  choisit l'autre) ; chaque canal dit le slot qu'il joue
 Double-clic      Jouer le pad courant
 Double-clic+Alt  Ouvrir les propriétés de la piste
-X / Shift+X      Mute piste / Démuter toutes
-S / Shift+S      Solo piste / Désolo toutes
+X / Shift+X      Mute piste / Démuter toutes (toutes les notes coupées avant ;
+                 X quitte le mode exclusif, Shift+X quitte le Mute exclusif)
+S / Shift+S      Solo piste / Désolo toutes (toutes les notes coupées avant ;
+                 S quitte le mode exclusif, Shift+S quitte le Solo exclusif)
+F3               Mute exclusif On / Off : seule la piste courante est muette ;
+                 Haut / Bas dans la liste des pistes y met la nouvelle piste
+F4               Solo exclusif On / Off : seule la piste courante est en solo ;
+                 Haut / Bas dans la liste des pistes y met la nouvelle piste
+                 (F4 en Mute exclusif passe en Solo exclusif, et inversement ;
+                 en quittant le mode, Mute et Solo restent tels quels)
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
 Alt+← / Alt+→   Pan piste ±10 (-100..+100)
 Alt+0            Recentrer le pan de la piste (Pan 0)
@@ -385,6 +393,7 @@ Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
 
 --- Aide ---
 F1               Afficher cette aide
+F3 / F4          Mute exclusif / Solo exclusif (voir « Pistes »)
 F2               Renommer l'élément courant :
                    focus liste des pistes  → renommer la piste
                    focus ailleurs          → renommer le pattern courant

@@ -398,19 +398,76 @@ class TrackMixin:
         self._refresh_track_list()
         self._go_to_track(idx)
 
+    # ------------------------------------------------------------------
+    # Mute / Solo exclusifs (Phase 8 étape 6d1, docs/DESIGN.md § 6a N4-N6,
+    # N10-N15) : F3 / F4 ; seule la piste courante est en Mute (Solo), et
+    # la navigation l'y met. Les drapeaux Mute / Solo sont vraiment écrits.
+    # ------------------------------------------------------------------
+
+    EXCLUSIVE_NAMES = {"mute": "Mute", "solo": "Solo"}
+
+    def _toggle_exclusive(self, mode):
+        """F3 (mode "mute") / F4 (mode "solo") : active le mode, ou le
+        quitte s'il est déjà actif ; F4 en Mute exclusif passe en Solo
+        exclusif (N10). Activer pose un Undo et l'applique (N12)."""
+        name = self.EXCLUSIVE_NAMES[mode]
+        if getattr(self, "_exclusive", None) == mode:
+            self._exclusive = None                   # l'état reste (N4)
+            self._show_status(f"{name} exclusif : Off")
+            return
+        if self._player.recording or self._player._count_in > 0:
+            self._show_status(f"{name} exclusif : impossible pendant l'enregistrement")
+            return
+        self._exclusive = mode
+        t = self._player._cur_track
+        self._add_mix_undo(f"{name} exclusif : piste {t + 1}")
+        self._apply_exclusive(t)
+        self._show_status(f"{name} exclusif : On — piste {t + 1}")
+
+    def _apply_exclusive(self, t):
+        """Solo exclusif : solo de t seul, t démutée ; Mute exclusif : mute
+        de t seul, aucun solo (N11). Toutes les notes coupées avant (N1)."""
+        r = self._router
+        r.cut_all_notes()
+        n = len(r._track_mutes)
+        if self._exclusive == "solo":
+            r._track_solos = [i == t for i in range(n)]
+            r._track_mutes[t] = False
+        else:
+            r._track_mutes = [i == t for i in range(n)]
+            r._track_solos = [False] * n
+        self._refresh_track_list()
+
+    def _quit_exclusive(self, modes=("mute", "solo")):
+        """Quitte le mode exclusif s'il est parmi modes (X, S, Shift+X,
+        Shift+S : N14, N15) ; retourne la fin d'annonce, ou ""."""
+        mode = getattr(self, "_exclusive", None)
+        if mode is None or mode not in modes:
+            return ""
+        self._exclusive = None
+        return f" — {self.EXCLUSIVE_NAMES[mode]} exclusif : Off"
+
     def _go_to_track(self, idx):
         from rack import InstrumentType
         if self._player.recording or self._player._count_in > 0:
             self._track_list.SetSelection(self._player._cur_track)
             self._show_status("Changement de piste interdit pendant l'enregistrement")
             return
+        old = self._player._cur_track
         self._player._cur_track = idx
         self._cur_slot = self._router.slot_for_track(idx)
         select_with_cursor(self._slot_choice, self._cur_slot)
         self._router.reset_kit_pad()
         self._refresh_grid()
         slot = self._rack.get_slot(self._cur_slot)
-        self._show_status(f"Piste {idx + 1} — {slot.name}")
+        status = f"Piste {idx + 1} — {slot.name}"
+        mode = getattr(self, "_exclusive", None)
+        if mode is not None and idx != old:          # la navigation suit (N5, N11, N12)
+            name = self.EXCLUSIVE_NAMES[mode]
+            self._add_mix_undo(f"{name} exclusif : piste {idx + 1}", ("exclusive", mode))
+            self._apply_exclusive(idx)
+            status += f" — {name} exclusif"
+        self._show_status(status)
         if slot.plays_notes:                        # synthé ou banque (17d1)
             self._router.load_slot_preview(self._cur_slot)
         elif slot.type == InstrumentType.KIT:

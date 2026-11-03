@@ -9697,3 +9697,24 @@ exclusif : Off ».
   utile** : on peut jouer un accord dont chaque note appartient à un canal
   différent (une note, puis changer de piste, puis une autre…), sans note
   bloquée, puisque chaque relâchement va au canal où sa note a été jouée.
+- **6d1** — Mute / Solo exclusifs, conforme à N4-N6, N10-N15 :
+  - `MainWindow._exclusive` (None, "mute", "solo"), remis à None par
+    Ctrl+N et Ctrl+O ; F3 / F4 sans modificateur (`key_manager.py`,
+    après F2) → `_toggle_exclusive` (`mw_tracks.py`) : active (Undo « Solo
+    exclusif : piste 3 », application, annonce « Solo exclusif : On —
+    piste 3 ») ou quitte (« Solo exclusif : Off », état gardé) ; refusé
+    pendant l'enregistrement ;
+  - `_apply_exclusive(t)` : toutes les notes coupées, puis Solo exclusif
+    → solo de t seul et t démutée ; Mute exclusif → mute de t seul, aucun
+    solo ;
+  - `_go_to_track` : en mode exclusif et si la piste change, Undo groupé
+    (`_add_mix_undo`, clé `("exclusive", mode)`) puis application ;
+    annonce « Piste 3 — Piano — Solo exclusif » ;
+  - X / S (fenêtre principale et éditeur MIDI) quittent le mode,
+    Shift+X le Mute exclusif, Shift+S le Solo exclusif
+    (`_quit_exclusive`) : « … — Solo exclusif : Off » ;
+  - `docs/shortcuts.md` (aide F1) : F3, F4, X / S / Shift+X / Shift+S,
+    pour l'essai.
+  - Vérifié par un script : activation, navigation (deux pas rapprochés,
+    une entrée d'Undo), passage de F4 à F3, sortie. 3372 verts ; tests en
+    6e1.

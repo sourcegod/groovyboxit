@@ -126,6 +126,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._rack.set_slot(4, InstrumentType.KIT, "GM (FluidR3)",
                             {"kit": os.path.join(self._kits_dir, "gm.json")})
         self._cur_slot = 0
+        self._exclusive = None      # Mute / Solo exclusif : None, "mute", "solo" (6d1)
         self._router = TrackRouter(
             self._rack, self._synths_dir, self._snd,
             lambda msg: wx.CallAfter(self._show_status, msg),

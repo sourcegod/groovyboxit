@@ -13,6 +13,13 @@ def _tracks_title(kind, tracks):
     return f"{kind} pistes " + ", ".join(str(t + 1) for t in tracks)
 
 
+
+def _quit_exclusive_of(parent):
+    """X / S de l'éditeur MIDI quittent le Mute / Solo exclusif de la
+    fenêtre principale (Phase 8 étape 6d1, § 6a N14) ; fin d'annonce, ou ""."""
+    quit_ = getattr(parent, "_quit_exclusive", None)
+    return quit_() if callable(quit_) else ""
+
 class PlaybackMixin:
     """MidiEditorWindow — solo/mute piste, lecture preview et annonces de statut."""
 
@@ -30,11 +37,12 @@ class PlaybackMixin:
         router.cut_all_notes()                       # Phase 8 étape 6b1, § 6a N1
         states = [router.toggle_track_solo(t) for t in tracks]
         self._parent._refresh_track_list()
+        quit_ = _quit_exclusive_of(self._parent)
         if len(tracks) == 1:
-            self._set_status(f"Piste {tracks[0] + 1}: Solo {'On' if states[0] else 'Off'}")
+            self._set_status(f"Piste {tracks[0] + 1}: Solo {'On' if states[0] else 'Off'}" + quit_)
         else:
             noms = ", ".join(str(t + 1) for t in tracks)
-            self._set_status(f"Pistes {noms}: Solo basculé")
+            self._set_status(f"Pistes {noms}: Solo basculé" + quit_)
 
     def _toggle_track_mute(self):
         """X : bascule le mute des pistes sélectionnées, sinon de la piste courante."""
@@ -46,11 +54,12 @@ class PlaybackMixin:
         router.cut_all_notes()                       # N1
         states = [router.toggle_track_mute(t) for t in tracks]
         self._parent._refresh_track_list()
+        quit_ = _quit_exclusive_of(self._parent)
         if len(tracks) == 1:
-            self._set_status(f"Piste {tracks[0] + 1}: Mute {'On' if states[0] else 'Off'}")
+            self._set_status(f"Piste {tracks[0] + 1}: Mute {'On' if states[0] else 'Off'}" + quit_)
         else:
             noms = ", ".join(str(t + 1) for t in tracks)
-            self._set_status(f"Pistes {noms}: Mute basculé")
+            self._set_status(f"Pistes {noms}: Mute basculé" + quit_)
 
     # ------------------------------------------------------------------
     # Lecture sonore (preview)
