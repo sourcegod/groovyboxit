@@ -126,6 +126,7 @@ class CharHandler:
             if on_track_list:
                 tidx  = win._player._cur_track
                 win._add_mix_undo(f"Mute piste {tidx + 1}")
+                win._router.cut_all_notes()          # Phase 8 étape 6b1, § 6a N1
                 muted = win._router.toggle_track_mute(tidx)
                 win._refresh_track_list()
                 win._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}")
@@ -141,6 +142,7 @@ class CharHandler:
             if on_track_list:
                 if any(win._router._track_mutes):
                     win._add_mix_undo("Démuter toutes les pistes")
+                win._router.cut_all_notes()          # N1
                 win._router.unmute_all_tracks()
                 win._refresh_track_list()
                 win._show_status("Toutes les Pistes: Démutées")
@@ -157,6 +159,7 @@ class CharHandler:
             if on_track_list:
                 tidx   = win._player._cur_track
                 win._add_mix_undo(f"Solo piste {tidx + 1}")
+                win._router.cut_all_notes()          # N1
                 soloed = win._router.toggle_track_solo(tidx)
                 win._refresh_track_list()
                 win._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}")
@@ -172,6 +175,7 @@ class CharHandler:
             if on_track_list:
                 if any(win._router._track_solos):
                     win._add_mix_undo("Désolo toutes les pistes")
+                win._router.cut_all_notes()          # N1
                 win._router.unsolo_all_tracks()
                 win._refresh_track_list()
                 win._show_status("Toutes les Pistes: Désolées")

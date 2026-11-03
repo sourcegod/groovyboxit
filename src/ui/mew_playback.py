@@ -27,6 +27,7 @@ class PlaybackMixin:
         tracks = te.get_effective_tracks(track)
         router = self._parent._router
         self._parent._add_mix_undo(_tracks_title("Solo", tracks))
+        router.cut_all_notes()                       # Phase 8 étape 6b1, § 6a N1
         states = [router.toggle_track_solo(t) for t in tracks]
         self._parent._refresh_track_list()
         if len(tracks) == 1:
@@ -42,6 +43,7 @@ class PlaybackMixin:
         tracks = te.get_effective_tracks(track)
         router = self._parent._router
         self._parent._add_mix_undo(_tracks_title("Mute", tracks))
+        router.cut_all_notes()                       # N1
         states = [router.toggle_track_mute(t) for t in tracks]
         self._parent._refresh_track_list()
         if len(tracks) == 1:

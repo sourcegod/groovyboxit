@@ -932,6 +932,66 @@ class TrackRouter:
             if not on:
                 self._synth.release_sustain()
 
+    # ------------------------------------------------------------------
+    # Coupure des notes avant un changement de son (Phase 8 étape 6b1,
+    # docs/DESIGN.md § 6a N1, N2, N7-N9) : notes seules, pédale relâchée ;
+    # Pitch Bend et modulation gardés (contrairement à panic)
+    # ------------------------------------------------------------------
+
+    def _synth_engines(self):
+        """Moteurs synthé distincts : slots, préécoute, Kit pitché (pas la
+        préécoute de banque, coupée par le moteur de banque)."""
+        seen, out = set(), []
+        for eng in list(self._slot_synths.values()) + [self._synth, self._kit_synth]:
+            if eng is None or eng is self._bank_preview or id(eng) in seen:
+                continue
+            seen.add(id(eng))
+            out.append(eng)
+        return out
+
+    @staticmethod
+    def _cut_synth(engine):
+        """Toutes les voix du moteur coupées, pédale relâchée."""
+        engine.sustain = False
+        engine.stop_all_voices()
+
+    def _cut_bank_channel(self, channel):
+        if self.bank_engine is not None:
+            self.bank_engine.channel_sounds_off(channel)
+            self.bank_engine.cc(channel, 64, 0)
+
+    def cut_all_notes(self):
+        """Avant un Mute ou un Solo (N1, N8) : toutes les notes de tous les
+        moteurs (synthés, préécoute, kit, banque sur ses 16 canaux)."""
+        for eng in self._synth_engines():
+            self._cut_synth(eng)
+        self._snd.stop_all()
+        if self.bank_engine is not None:
+            self.bank_engine.all_sounds_off()
+            for ch in range(16):
+                self.bank_engine.cc(ch, 64, 0)
+
+    def cut_track_notes(self, track_idx):
+        """Avant un changement de slot, de canal ou de programme de la piste
+        (N2, N9) : son canal courant sur une banque, le moteur de son slot
+        sur un synthé, et toujours la préécoute (notes tenues au clavier,
+        dont l'arrêt partirait sinon ailleurs). Un kit n'a que des
+        one-shots : rien à couper."""
+        slot_idx, slot = self._eff_slot(track_idx)
+        channels, engines = [], []
+        if slot.type == InstrumentType.BANK:
+            channels.append(self._track_cur_channels[track_idx])
+        elif slot.type == InstrumentType.SYNTH and self._slot_synths.get(slot_idx) is not None:
+            engines.append(self._slot_synths[slot_idx])
+        if self._synth is self._bank_preview:
+            channels.append(self._bank_preview._channel())
+        elif self._synth is not None:
+            engines.append(self._synth)
+        for ch in dict.fromkeys(channels):           # une fois par canal
+            self._cut_bank_channel(ch)
+        for engine in {id(e): e for e in engines}.values():
+            self._cut_synth(engine)
+
     def panic(self):
         """Coupure d'urgence : All Sounds Off + Reset All Controllers."""
         self.stop_all_sounds()

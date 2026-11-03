@@ -84,6 +84,12 @@ class BankEngine:
     def all_sounds_off(self):
         raise NotImplementedError
 
+    def channel_sounds_off(self, channel):
+        """Coupe net les sons d'un seul canal, notes tenues par la pédale
+        comprises (CC120, All Sounds Off ; Phase 8 étape 6b1, docs/DESIGN.md
+        § 6a N9). Par défaut par cc() : un moteur MIDI le traite comme tel."""
+        self.cc(channel, 120, 0)
+
     def reset_controllers(self):
         raise NotImplementedError
 

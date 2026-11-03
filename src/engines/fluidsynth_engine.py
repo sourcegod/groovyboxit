@@ -204,6 +204,10 @@ class FluidSynthEngine(BankEngine):
     def all_sounds_off(self):
         self._lib.fluid_synth_all_sounds_off(self._synth, -1)
 
+    def channel_sounds_off(self, channel):
+        """Sons d'un canal coupés net (Phase 8 étape 6b1, § 6a N9)."""
+        self._lib.fluid_synth_all_sounds_off(self._synth, channel)
+
     def reset_controllers(self):
         for ch in range(self.NUM_CHANNELS):
             self._lib.fluid_synth_cc(self._synth, ch, 121, 0)

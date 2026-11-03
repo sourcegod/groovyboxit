@@ -38,6 +38,7 @@ class TrackMixin:
         # Undo (Phase 8 étape 5d5, essai de l'utilisateur) : slot et canal de
         # la piste sont dans l'état capturé ; l'Undo recharge le slot joué
         self._add_undo(f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d}")
+        r.cut_track_notes(track_idx)                 # Phase 8 étape 6b1, § 6a N2
         # Choix de l'utilisateur : règle du canal (kit → 10, Phase 7 étape 10f1)
         r.assign_slot_by_user(track_idx, slot_idx)
         # Le slot assigné devient le slot joué, chargé maintenant (5d3)
@@ -77,6 +78,7 @@ class TrackMixin:
                               f"{self._rack_channel_desc(channel)}")
             return
         self._add_undo(f"Piste {tidx + 1} → canal {channel + 1}")
+        r.cut_track_notes(tidx)                      # Phase 8 étape 6b1, § 6a N2
         live = self._player._pattern
         with live._lock:
             header = bank_header(live._tape[tidx]) if tidx < len(live._tape) else None
@@ -195,8 +197,19 @@ class TrackMixin:
         # « modifié » (16d1).
         self._add_undo(f"Propriétés piste {tidx + 1}")
 
+        # Dernier son appliqué (slot, canal, programme, banque) : ses
+        # notes sont coupées avant un changement (Phase 8 étape 6b1, § 6a N2)
+        last_sound = [(orig['slot'], orig['channel'], orig['program'], orig['msb'], orig['lsb'])]
+
         def apply(slot, vol, pan, mute, solo, channel, program, transpose, gain_db,
                   msb=None, lsb=None):
+            r = self._router
+            if (mute, solo) != (r._track_mutes[tidx], r._track_solos[tidx]):
+                r.cut_all_notes()                    # Mute / Solo (N1)
+            sound = (slot, channel, program, msb, lsb)
+            if sound != last_sound[0]:
+                r.cut_track_notes(tidx)              # slot, canal, programme (N2)
+                last_sound[0] = sound
             was_bank = self._router._bank_slot_of(tidx) is not None
             if rack_mode:                            # slot = canal, _track_slots intact (M9)
                 slot = self._router.rack_slot_idx(channel)

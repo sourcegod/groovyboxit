@@ -9625,3 +9625,27 @@ exclusif : Off ».
 | **6d1** | Implémentation — N4-N6, N10-N15 : F3 / F4, application, navigation, Undo, annonces, Shift+X / Shift+S. Essayé avec Orca. | `ui/key_manager.py`, `ui/mw_tracks.py`, `ui/key_handler_chars.py` |
 | **6e1** | Tests — 6d1. | `tests/test_exclusive_mute_solo.py` (nouveau), `docs/SPECS.md` |
 | **6f1** | Doc — clôture (SPECS, raccourcis, aide F1), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 6 — Avancement (6b1)
+
+- **6b1** — coupures des notes, conforme à N1-N3, N7-N9 :
+  - `BankEngine.channel_sounds_off(canal)` (par défaut CC120 du canal ;
+    `FluidSynthEngine` : `fluid_synth_all_sounds_off(synth, canal)`) ;
+  - `TrackRouter.cut_all_notes()` : moteurs synthé, préécoute et Kit
+    pitché (voix coupées, pédale relâchée), sons du kit, banque (All
+    Sounds Off, CC64 à 0 sur les 16 canaux) ;
+  - `TrackRouter.cut_track_notes(t)` : canal courant de la piste sur une
+    banque, moteur de son slot sur un synthé, et la préécoute (son canal
+    ou son moteur) ; une fois par canal et par moteur ;
+  - appels : X, Shift+X, S, Shift+S sur la liste des pistes, X et S de
+    l'éditeur MIDI → `cut_all_notes` ; propriétés de piste → Mute / Solo
+    changés : `cut_all_notes`, son changé (slot, canal, programme, MSB,
+    LSB, Annuler compris) : `cut_track_notes` ; Ctrl+T et Entrée (deux
+    modes), Program Change reçu du contrôleur → `cut_track_notes`. Rien au
+    rejeu du pattern (N3).
+  - Vérifié par un script : note tenue sur une banque coupée sur son canal
+    avant le Program Change ; Pitch Bend et modulation non touchés.
+  - `pytest` : **21 tests rouges jusqu'à 6c1**, dus aux fakes (routeurs
+    factices sans `cut_all_notes` / `cut_track_notes`, `TrackRouter` sans
+    `__init__` dans `test_mix_undo.py`, synthé factice sans
+    `stop_all_voices`).

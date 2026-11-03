@@ -281,6 +281,9 @@ class MidiHandler:
             # Program Change enregistré ne change pas la piste de canal
             win._player.record_program_change(program, win._router.track_channel_now(track))
         old_channel = win._router.track_channel_now(track)
+        # notes de la piste coupées avant le changement de son (Phase 8
+        # étape 6b1, § 6a N2) ; pas au rejeu du pattern (N3)
+        win._router.cut_track_notes(track)
         is_bank = win._router.program_change(track, program)
         if win._router.rack_mode:
             # Mode Rack (Phase 8 étape 5d1, M3, M4, M16) : pas de pont ; la
