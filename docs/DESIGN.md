@@ -9738,3 +9738,5 @@ exclusif : Off ».
   la Phase 8 étape 5, côté code : le slot 5 créé au démarrage sans projet
   (`main_window.py`) s'appelle « Kit GM » au lieu de « GM (FluidR3) ».
   Même programme GM deviné (0, kit standard).
+- **Essai de 6d2 (utilisateur, 2026-11-03)** : concluant pour F3, F4
+  (bascule, état d'avant rétabli) et F5 (réinitialisation).
