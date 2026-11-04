@@ -4,7 +4,9 @@
     Clés de data/config.json du slot Banque (Phase 7 étape 17c1,
     docs/DESIGN.md § 17a1 D7, D17, écart de gain de 17b1) :
     soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain —
-    défauts, chemins absolus et relatifs, valeurs invalides, bornes.
+    défauts, chemins absolus et relatifs, valeurs invalides, bornes. Slot
+    Synth SFZ et moteurs optionnels (Phase 8 étape 7c1, § 7a2 Z7, Z13) :
+    sfz_dir, sfizz_gain, fluidsynth / sfizz.
     Les clés master_volume / master_pan sont testées dans
     test_master_mix.py.
     Date: Mon, 26/10/2026
@@ -101,3 +103,65 @@ def test_fluidsynth_gain_read_and_clamped(tmp_path, value, expected):
 @pytest.mark.parametrize("bad", ["0.5", None, True, [1]])
 def test_fluidsynth_gain_invalid_gives_default(tmp_path, bad):
     assert _cfg(tmp_path, {"fluidsynth_gain": bad}).fluidsynth_gain == 0.4
+
+
+# ---------------------------------------------------------------------------
+# sfz_dir, sfizz_gain, moteurs optionnels (Phase 8 étape 7c1, docs/DESIGN.md
+# § 7a2 Z7, Z13, avancement 7b1)
+# ---------------------------------------------------------------------------
+
+def test_sfz_dir_default_next_to_projects_dir(tmp_path):
+    # projects_dir par défaut : /home/com/groovybox/PROJECTS
+    assert _cfg(tmp_path).sfz_dir == "/home/com/groovybox/media/sfz"
+
+
+def test_sfz_dir_default_follows_projects_dir(tmp_path):
+    cfg = _cfg(tmp_path, {"projects_dir": "/data/gb/PROJECTS"})
+    assert cfg.sfz_dir == "/data/gb/media/sfz"
+
+
+def test_sfz_dir_absolute(tmp_path):
+    assert _cfg(tmp_path, {"sfz_dir": "/srv/sfz"}).sfz_dir == "/srv/sfz"
+
+
+def test_sfz_dir_relative_to_base_dir(tmp_path):
+    assert _cfg(tmp_path, {"sfz_dir": "instruments/sfz"}).sfz_dir == \
+        os.path.join(str(tmp_path), "instruments/sfz")
+
+
+@pytest.mark.parametrize("bad", ["", "   ", None, 3])
+def test_sfz_dir_empty_or_invalid_gives_default(tmp_path, bad):
+    assert _cfg(tmp_path, {"sfz_dir": bad}).sfz_dir == "/home/com/groovybox/media/sfz"
+
+
+def test_sfizz_gain_default(tmp_path):
+    assert _cfg(tmp_path).sfizz_gain == 1.0
+
+
+@pytest.mark.parametrize("value, expected", [
+    (1.5, 1.5), (2, 2.0), (0, 0.0), (15, 10.0), (-1, 0.0),
+])
+def test_sfizz_gain_read_and_clamped(tmp_path, value, expected):
+    assert _cfg(tmp_path, {"sfizz_gain": value}).sfizz_gain == expected
+
+
+@pytest.mark.parametrize("bad", ["1.5", None, True, [1]])
+def test_sfizz_gain_invalid_gives_default(tmp_path, bad):
+    assert _cfg(tmp_path, {"sfizz_gain": bad}).sfizz_gain == 1.0
+
+
+def test_engines_enabled_by_default(tmp_path):
+    cfg = _cfg(tmp_path)
+    assert cfg.fluidsynth_enabled and cfg.sfizz_enabled
+
+
+def test_engines_disabled_by_config(tmp_path):
+    cfg = _cfg(tmp_path, {"fluidsynth": False, "sfizz": False})
+    assert not cfg.fluidsynth_enabled and not cfg.sfizz_enabled
+
+
+@pytest.mark.parametrize("bad", ["false", 0, None, "no"])
+def test_engine_switch_needs_a_real_boolean(tmp_path, bad):
+    # Seul false coupe un moteur : une valeur douteuse le laisse actif.
+    cfg = _cfg(tmp_path, {"fluidsynth": bad, "sfizz": bad})
+    assert cfg.fluidsynth_enabled and cfg.sfizz_enabled

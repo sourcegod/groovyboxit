@@ -51,9 +51,10 @@ groovyboxit/
 │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
 │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
 │   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
-│   ├── engines/          # Moteurs de banque (Phase 7 étape 17)
+│   ├── engines/          # Moteurs de banque (Phase 7 étape 17) et SFZ (Phase 8 étape 7)
 │   │   ├── bank_engine.py      # BankEngine : interface (emplacements, canaux, rendu)
-│   │   └── fluidsynth_engine.py # FluidSynthEngine : FluidSynth par ctypes (SF2/SF3)
+│   │   ├── fluidsynth_engine.py # FluidSynthEngine : FluidSynth par ctypes (SF2/SF3)
+│   │   └── sfizz_engine.py      # SfzEngine : sfizz par ctypes (SFZ), une instance par canal
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
 │   ├── metronome.py      # Classe Metronome isolée
@@ -146,6 +147,7 @@ groovyboxit/
     ├── test_bend_log.py
     ├── test_cc_event_edit_dialog.py
     ├── test_check_specs_tests.py
+    ├── test_engine_options.py
     ├── test_event_filter_dialog.py
     ├── test_exclusive_mute_solo.py
     ├── test_explorer_actions.py
@@ -194,6 +196,7 @@ groovyboxit/
     ├── test_rename.py
     ├── test_render_copy.py
     ├── test_save_confirm_dialog.py
+    ├── test_sfizz_engine.py
     ├── test_sixteen_tracks.py
     ├── test_song.py
     ├── test_song_export_ui.py
@@ -2099,7 +2102,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 
 | Fichier | Couvre |
 |---|---|
-| `test_app_config.py` | Clés de config.json du slot Banque : soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain |
+| `test_app_config.py` | Clés de config.json du slot Banque : soundfonts_dir, gm_soundfont, midi_bank_select, fluidsynth_gain ; du slot Synth SFZ et des moteurs optionnels (Phase 8 étape 7c1) : sfz_dir, sfizz_gain, fluidsynth, sfizz |
 | `test_app_launch.py` | Démarrage de l'application |
 | `test_audio_export.py` | Export audio WAV, Phase 8 étape 1g1 : positions à l'échantillon, carte de tempo et signature, longueur exacte, régime établi (passages identiques, repli, charleston coupée à la jonction), fin de la résonance et plafond, fins de note avant les notes, passage à blanc et chargements à la volée, banque, écoute intacte, mixage, progression et annulation, limiteur (seuil, niveau gardé hors des crêtes, anticipation, retour, stéréo liée, boucle circulaire), mesures (crête, RMS, LUFS-I étalonné BS.1770-4, pondération K, portes), normalisation au niveau visé puis limiteur, dialogue (Mesure, Niveau visé −24 à 0), dither, formats, compte rendu, sélection (fenêtre, tempo, poursuite à G, pistes filtrées, boucle sur la fenêtre) et presse-papiers (pistes d'origine sauvegardées, résolution, notes alignées sur la mesure) ; song (Phase 8 étape 2i1 : longueur et positions, tempo et signature par pattern, voix qui continuent, état appliqué à la frontière — mix, mute, solo, voix des pads, slot, patch chargé au passage à blanc —, charleston coupée à la frontière, deux fins, état du premier pattern rétabli à la reprise, écoute intacte) ; pistes séparées (Phase 8 étape 2m1 : enveloppe du limiteur, gain calculé puis appliqué, gain du mix passé aux stems, somme des stems égale au mix — pattern, boucle, song —, longueur alignée, noms et dossier, pistes non vides, stems silencieux, champ Sortie) ; mode Rack 16 canaux (Phase 8 étape 5g1 : slot du canal joué, synthé chargé au passage à blanc, écoute intacte, mode normal, song qui suit le mode du pattern) (130 tests) |
 | `test_audio_export_ui.py` | Interface des exports audio, Phase 8 étape 1i1 : Alt+Shift+W et Alt+Shift+S (fenêtre principale, éditeur MIDI), fichier puis paramètres, annulations, extension, nom proposé, dossier et options gardés, pause de la lecture, export déjà en cours, statut et compte rendu, erreur, source sélection ou presse-papier de la fenêtre, dialogue de la source, rendu réel jusqu'au fichier ; pistes séparées (Phase 8 étape 2m1 : Sortie passée au dialogue et gardée, mix seul, stems seuls, mix + stems, gain du mix commun, stems silencieux omis, noms des slots, sélection, presse-papier, avancement, compte rendu, rendu réel où la somme des stems redonne le mix) ; choix Pistes d'Alt+Shift+S (Phase 8 étape 2o1 : liste, activation selon la source, Entrée, ordre de tabulation, toutes les pistes entre les limiteurs en mix et en stems, choix gardé pour la session, éditeur MIDI, rendu réel) ; « Sélection + résonance » et « Presse-papier + résonance » au dialogue et au compte rendu (Phase 8 étape 2o3) (52 tests) |
@@ -2109,6 +2112,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_bend_log.py` | bend_log partagé : drapeau, format des lignes, chemin par défaut |
 | `test_cc_event_edit_dialog.py` | _CcEventEditDialog : bend/mod/CC générique/Program Change, champ Canal + dispatch d'édition, piste Banque suivie (19 tests) |
 | `test_check_specs_tests.py` | tools/check_specs_tests.py sur un faux dépôt : absents, disparus, ligne proposée, code de sortie |
+| `test_engine_options.py` | Moteurs optionnels (Phase 8 étape 7c1) : --no-fluidsynth / --no-sfizz de main.py, création des moteurs FluidSynth et sfizz selon l'option, la clé de config.json et la bibliothèque, messages de démarrage, vraie fenêtre principale sans les deux moteurs (12 tests) |
 | `test_event_filter_dialog.py` | EventFilterDialog : critères, types (dont CC/Program Change) et "à venir", Tab order, on_action (51 tests) |
 | `test_exclusive_mute_solo.py` | Mute / Solo exclusifs et F5 (Phase 8 étape 6e1) : F4 / F3 (solo ou mute de la piste courante seule, notes coupées avant, Undo, annonce, passage d'un mode à l'autre, refusé pendant l'enregistrement), navigation (le mode suit, Undo groupé en moins d'une seconde, notes coupées, sans mode rien, même piste rien), second F3 / F4 (état d'avant rétabli, même après changement de mode, Undo dans les deux sens), drapeaux réels (écoute), X / S / Shift+X / Shift+S pendant un mode, X de l'éditeur MIDI, F5 (tout retiré, mode quitté, Undo s'il y a lieu), touches F3 / F4 / F5 par le KeyManager, F4 avec modificateur sans effet (27 tests) |
 | `test_explorer_actions.py` | Actions explorer : Preset, Kit, Patch, Sound (OK + annulation) |
@@ -2157,6 +2161,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_rename.py` | Renommage F2 : piste, pattern, song (18 tests) |
 | `test_render_copy.py` | Rendu hors temps réel, Phase 8 étape 1e1 : ordonnanceur des fins de note injecté dans TrackRouter, copies des moteurs (routeur, sons, synthés, FluidSynth) indépendantes de l'écoute, événements de _tape et jeu partagés par la lecture et le rendu (30 tests) |
 | `test_save_confirm_dialog.py` | SaveConfirmDialog : Entrée sur le bouton focus, raccourcis O/Y/N/A/C, garde-fou EndModal |
+| `test_sfizz_engine.py` | Moteur SFZ (Phase 8 étape 7c1) : SfzEngine sur des .sfz et WAV fabriqués — emplacements (slots du Rack), chargement en arrière-plan et échange d'instance (échange périmé écarté), file d'événements, état des CC et du Bend rejoué, une instance par canal, hauteur, coupures (pédale comprise), gain, render_copy hors temps réel, fichier refusé, fermeture ; sautés sans libsfizz (41 tests) |
 | `test_sixteen_tracks.py` | 16 pistes par pattern : défauts, migration des presets à 8 pistes, sérialisation |
 | `test_song.py` | Song : création, séquence, label |
 | `test_song_export_ui.py` | Interface de l'export d'un song, Phase 8 étape 2g1 : nom proposé, réglages de chaque pattern d'après son état figé et cohérence avec le pattern courant, Alt+Shift+E de la fenêtre Songs (Ok, Annuler, extension, erreur, song vide, dossier créé, compte rendu, notes de kit non converties), modifications non rangées du pattern courant, état propre à chaque pattern dans le fichier ; export audio du song, Phase 8 étape 2k1 : Alt+Shift+W de la fenêtre Songs (fichier puis paramètres, nom, fin proposée d'après la boucle du song et non gardée pour les patterns, libellé « Song + résonance », render_song et ses paramètres, annulations, song vide, pause, export déjà en cours, erreur, compte rendu, rendu réel jusqu'au fichier) ; stems d'un song (2m1) ; pistes kit d'un pattern créé sans réglage au canal 10 (2p3) ; choix « Pattern courant / Song courant » d'Alt+Shift+E et Alt+Shift+W (Phase 8 étape 4c1 : libellés, dialogue, pattern ou song, choix gardé et partagé, annulation, export en cours, song vide, de bout en bout) (52 tests) |

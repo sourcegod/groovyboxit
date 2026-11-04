@@ -10163,3 +10163,34 @@ moteurs restent sautés sans bibliothèque.
   faible**, mais à juger en comparant à l'écoute avec FluidSynth : à
   faire à l'essai de 7d1, le même morceau joué tour à tour par une
   banque FluidR3 et par un slot Synth SFZ, puis régler `sfizz_gain`.
+- **7c1** — tests de 7b1 :
+  - `tests/test_sfizz_engine.py` (41 tests, sautés sans libsfizz), sur des
+    `.sfz` et WAV fabriqués (cosinus à 440 et 660 Hz), sans dépendre des
+    instruments téléchargés : contrat (16 emplacements, bibliothèque
+    absente), emplacements (`load` refusé pour un slot ou un fichier
+    invalide, `unload`, `presets`), sélection et échange d'instance par
+    `render`, banque et programme ignorés, même fichier non rechargé,
+    fichier remplacé pendant le chargement, **échange périmé écarté par
+    le callback** (course entre le fil de chargement et un nouveau choix),
+    file d'événements, événements vers un canal sans instance, fichier
+    refusé, hauteur (69, 81, 57), note off, bloc plus long que
+    `MAX_BLOCK`, canal au repos qui rejoue, gain, une instance par canal,
+    volume propre à chaque canal, CC7 et CC10 posés avant la fin du
+    chargement puis rejoués, Bend (borné, rejoué), Reset, messages de mode
+    non retenus, Program Change sans effet, coupures (d'un canal, pédale
+    comprise, toutes), `render_copy`, fermeture.
+  - Vérifié en cassant le code : sans le rejeu des CC, ou sans le
+    contrôle de génération du callback, un test échoue (le second a
+    demandé le test d'échange périmé : le fil de chargement vérifiait
+    déjà la génération, ce qui masquait le défaut).
+  - `tests/test_app_config.py` (+24) : `sfz_dir` (défaut à côté de
+    `projects_dir`, absolu, relatif, invalide), `sfizz_gain` (défaut,
+    bornes, invalide), `fluidsynth` / `sfizz` (défaut, false, valeur non
+    booléenne = moteur gardé).
+  - `tests/test_engine_options.py` (12 tests) : `parse_args`, création
+    des deux moteurs, option, clé, option qui prime, bibliothèques
+    absentes, `status_cb` par `wx.CallAfter`, **vraie fenêtre principale
+    sans les deux moteurs** (message de démarrage, un pad joue).
+  - Fakes des 3 tests rouges de 7b1 adaptés (`test_fluidsynth_engine.py`,
+    `test_live_take.py`) ; `SPECS.md` (arborescence, table, `engines/`).
+  - 3476 verts ; tests du moteur stables sur 8 passages.

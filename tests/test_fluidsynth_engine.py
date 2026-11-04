@@ -328,14 +328,20 @@ class _FakeEngine:
 
 
 def _cfg(**kw):
-    base = dict(midi_bank_select="gs", fluidsynth_gain=1.0)
+    base = dict(midi_bank_select="gs", fluidsynth_gain=1.0, fluidsynth_enabled=True)
     base.update(kw)
     return types.SimpleNamespace(**base)
 
 
+def _fake_win():
+    # options de lancement et messages de démarrage (Phase 8 étape 7b1)
+    return types.SimpleNamespace(_audio_driver=_FakeDriver(), _no_fluidsynth=False,
+                                 _engine_notes=[])
+
+
 def test_init_bank_engine_plugs_render_into_driver(monkeypatch):
     monkeypatch.setattr(main_window, "FluidSynthEngine", _FakeEngine)
-    win = types.SimpleNamespace(_audio_driver=_FakeDriver())
+    win = _fake_win()
     MainWindow._init_bank_engine(win, _cfg(midi_bank_select="mma", fluidsynth_gain=0.5))
     assert win._bank_engine.args == (48000, "mma", 0.5)
     assert win._audio_driver.sources == [win._bank_engine.render]
@@ -345,7 +351,7 @@ def test_init_bank_engine_without_libfluidsynth(monkeypatch):
     def unavailable(**kw):
         raise FluidSynthUnavailable("absente")
     monkeypatch.setattr(main_window, "FluidSynthEngine", unavailable)
-    win = types.SimpleNamespace(_audio_driver=_FakeDriver())
+    win = _fake_win()
     MainWindow._init_bank_engine(win, _cfg())
     assert win._bank_engine is None
     assert win._audio_driver.sources == []

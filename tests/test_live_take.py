@@ -226,6 +226,7 @@ class _FakeMain:
         self._midi             = _Closable('midi.close')
         self._audio_driver     = _Closable('audio.close')
         self._bank_engine      = _Closable('bank.close')   # Phase 7 étape 17b1
+        self._sfz_engine       = _Closable('sfz.close')    # Phase 8 étape 7b1
     def _take_end_if_idle(self): self.calls.append('_take_end_if_idle')
 
 class _FakeEvent:
@@ -245,6 +246,7 @@ def test_close_ends_take_before_save_check():
     ev = _FakeEvent()
     MainWindow._on_close(win, ev)
     assert win.calls[0] == '_take_end_if_idle' and ev.skipped
-    # le moteur de banque se ferme après le pilote : le callback ne l'appelle plus
-    assert win.calls[1:] == ['midi.close', 'audio.close', 'bank.close']
+    # les moteurs de banque et SFZ se ferment après le pilote : le callback ne
+    # les appelle plus
+    assert win.calls[1:] == ['midi.close', 'audio.close', 'bank.close', 'sfz.close']
     print("  _on_close : prise fermée avant la question d'enregistrement : OK")
