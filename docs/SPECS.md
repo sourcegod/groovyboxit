@@ -33,6 +33,8 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Traitement audio | `numpy` |
 | MIDI in/out | `rtmidi` (via `python-rtmidi`) |
 | Fichiers MIDI (.mid) | `mido` — export du pattern (Phase 7 étape 10h1), import (Phase 7 étape 18b1) |
+| Banques SF2/SF3 | `libfluidsynth` par ctypes (paquet Debian `libfluidsynth3`, Phase 7 étape 17) |
+| Instruments SFZ (en cours) | `libsfizz` par ctypes — pas dans Debian 13, compilée et installée dans `~/.local` : procédure dans `docs/sfizz_build.md` (Phase 8 étape 7) |
 | Effets (futur) | `pedalboard` (Spotify) |
 
 ---
@@ -126,8 +128,10 @@ groovyboxit/
 │   ├── extract_gm_drums.py   # Script extraction drums GM depuis FluidSynth
 │   ├── extract_instruments_sf2.py # Exporteur général d'instruments SF2
 │   ├── extract_organ_sf2.py  # Extraction samples orgue depuis SF2
-│   └── find_loop_points.py   # Détection points de bouclage
+│   ├── find_loop_points.py   # Détection points de bouclage
+│   └── sfizz_probe.py        # Essai de libsfizz par ctypes (Phase 8 étape 7a1)
 ├── docs/
+│   ├── sfizz_build.md    # Compiler et installer libsfizz, de A à Z
 │   └── shortcuts.md      # Liste des raccourcis clavier
 └── tests/
     ├── test_all.sh
@@ -250,6 +254,18 @@ défaut `FluidR3_GM.sf2`), `midi_bank_select` (`"gs"` : le MSB seul choisit
 la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
 10.0, défaut 0.4 : sans écrêtage sur un orchestre GM importé, Phase 7 étape
 18d4 ; 1.0 avant).
+
+**À venir (Phase 8 étape 7, note du 2026-11-04) — désactiver les moteurs
+compilés.** FluidSynth et sfizz dépendent de bibliothèques compilées
+(libsfizz n'est même pas dans Debian 13, voir `docs/sfizz_build.md`).
+L'appli doit pouvoir se lancer et rester **entièrement fonctionnelle sans
+ces deux moteurs** : options `--no-fluidsynth` et `--no-sfizz`, dans
+`config.json` (et en ligne de commande, à trancher au plan 7a2). Moteur
+désactivé ou bibliothèque absente : les slots Banque ou Synth SFZ restent
+muets avec un message, tout le reste marche (kits, synthés WAV, séquenceur,
+MIDI, exports), et les tests qui en dépendent sont sautés. Aujourd'hui,
+seule l'absence de libfluidsynth est gérée (slots Banque muets) ; il n'y a
+pas d'option pour couper un moteur installé.
 
 `master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
@@ -2235,6 +2251,21 @@ Comparaison de la latence entre PygameDriver et SoundDeviceDriver.
 
 Outil de diagnostic des points de bouclage : affiche les paramètres, aligne les périodes pour les notes root.
 
+### `tools/sfizz_probe.py`
+
+Essai de libsfizz par ctypes, sans l'appli (Phase 8 étape 7a1) : vérifie qu'une libsfizz compilée (`docs/sfizz_build.md`) se charge et joue comme le moteur SFZ de l'appli en aura besoin.
+
+```
+Usage:
+  python3 tools/sfizz_probe.py
+  python3 tools/sfizz_probe.py --lib /chemin/libsfizz.so.1
+  python3 tools/sfizz_probe.py --keep /dossier
+```
+
+- Fabrique des WAV synthétiques et de petits `.sfz` dans un dossier temporaire (`--keep` pour les garder)
+- Vérifie : chargement et refus, opcodes inconnus, hauteur (transposition, Pitch Bend), vélocité, note off et release, délai exact dans le bloc, All Sound Off, CC64, groupes exclusifs, deux instances, coût du rendu ; informe sur le niveau et les CC 7, 10, 11
+- Code de sortie : 0 si tout passe, 1 en cas d'échec, 2 si la bibliothèque est introuvable
+
 ---
 
 ## Points ouverts / Phase suivante
@@ -2248,3 +2279,4 @@ Outil de diagnostic des points de bouclage : affiche les paramètres, aligne les
 - **Interface édition points de bouclage** : visualisation forme d'onde, édition manuelle loop_start/loop_end
 - **MIDI Clock** : synchronisation entrante/sortante
 - **Multi-fenêtres supplémentaires** : Piano Roll graphique (Alt+3)
+

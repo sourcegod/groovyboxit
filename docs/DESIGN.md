@@ -9801,3 +9801,96 @@ Change), aide (F3 / F4, F5).
 - un suivi des notes par piste dans les moteurs (une coupure de canal ou
   de moteur touche les autres pistes qui le partagent) ;
 - le test de la sortie du mode par Ctrl+N / Ctrl+O.
+
+## Phase 8 étape 7a1 — Instruments SFZ : choix de sfizz, compilation de libsfizz, essai par ctypes
+
+### Numérotation des commits de ce chantier
+
+`7a1` = ce commit (doc et outil d'essai) : choix du moteur, compilation
+de libsfizz, essai par ctypes. `7a2` = le plan de conception (état des
+lieux, décisions, découpage), après les questions restantes. Le code
+commence à `7b1`. Une paire impl → tests par sous-chantier ; `7b2`,
+`7c2`… pour un commit imprévu. Décisions notées **Z1, Z2…**.
+
+### Origine du besoin (utilisateur, 2026-11-03)
+
+- Gérer le format **SFZ** et un slot de Rack **« Synth SFZ »**.
+- Déjà noté en Phase 7 étape 17a1 : FluidSynth **ne lit pas** le SFZ ;
+  deux voies évoquées, sfizz (bibliothèque C/C++) ou notre AudioSampler
+  avec un analyseur SFZ ; l'interface étroite `BankEngine` (D1) était
+  prévue pour accueillir le SFZ.
+- Contrainte transverse : le moteur audio Python est un **prototype**, la
+  cible est C/C++.
+
+### Décisions validées (utilisateur, 2026-11-04)
+
+**Z1 — sfizz par ctypes, pas de moteur SFZ maison.** Comparaison faite
+avec l'utilisateur :
+- un moteur maison (analyseur, voix lues à vitesse variable, enveloppes,
+  boucles, groupes, round robin, keyswitches…) serait un chantier de la
+  taille de la Phase 7 étape 17, limité (sous-ensemble d'opcodes, pas de
+  filtres ni de LFO, tout en mémoire, polyphonie bornée par Python,
+  interpolation linéaire), et **jeté** à la réécriture C/C++, qui liera
+  sfizz ;
+- sfizz couvre les opcodes, lit les samples depuis le disque, interpole
+  finement ; la liaison ctypes sert de modèle à la future liaison C/C++ ;
+- le travail durable est l'intégration (slot, routage, Rack, `.gvp`,
+  export, coupures de notes), identique dans les deux voies.
+- Prix accepté : libsfizz n'est pas dans Debian 13, il faut la compiler
+  (une fois, puis à chaque mise à jour voulue).
+
+**Z2 — nouveau type de slot « Synth SFZ »** : le slot porte son propre
+fichier `.sfz`, un slot = un instrument (jusqu'à 16), joué sur le canal
+de la piste. Il n'utilise pas les 4 emplacements du slot Banque (D3/D4
+de la Phase 7 étape 17a1 ne valent donc pas pour le SFZ).
+
+**Z3 — instruments d'essai téléchargés par Claude**, hors du dépôt
+(licences, taille), pour les essais à l'écoute.
+
+**Z4 — l'appli doit marcher sans FluidSynth ni sfizz.** Les deux moteurs
+dépendent de bibliothèques compilées ; l'appli doit se lancer et rester
+entièrement fonctionnelle sans eux. Options **`--no-fluidsynth`** et
+**`--no-sfizz`** dans le fichier de configuration (`config.json`).
+Moteur désactivé ou bibliothèque absente : slots Banque ou Synth SFZ
+muets avec un message ; kits, synthés WAV, séquenceur, MIDI et exports
+inchangés ; tests dépendants sautés. Aujourd'hui, seule l'absence de
+libfluidsynth est gérée (`MainWindow._init_bank_engine` →
+`_bank_engine = None`) ; aucune option ne coupe un moteur installé, et
+`main.py` ne lit pas la ligne de commande. **À préciser en 7a2** : forme
+des clés de `config.json` (par exemple `"fluidsynth": false`), ligne de
+commande en plus ou non, message affiché, comportement d'un projet qui
+contient de tels slots (gardés tels quels dans le `.gvp`, jamais perdus).
+
+### Compilation et essai (2026-11-04)
+
+Procédure complète, de A à Z, dans **`docs/sfizz_build.md`** :
+- clone récursif de `sfztools/sfizz` (commit `f5c6e29`, 2025-03-17,
+  bibliothèque 1.2.3) dans `/home/com/build/sfizz` ;
+- CMake Release, bibliothèque partagée, sans JACK, avec `sfizz_render`
+  et les tests ; compilation en 1 min 58 s sur 8 cœurs ;
+- tests de sfizz : 477 cas, 52 206 assertions, tous verts ;
+- installation dans `~/.local` (sans `sudo`) ;
+- procédure **rejouée à blanc** dans un dossier neuf : même résultat.
+
+Essai par ctypes : **`tools/sfizz_probe.py`** (17 vérifications, toutes
+vertes, sur les deux compilations) : chargement et refus, opcodes
+inconnus, hauteur et transposition, Pitch Bend, vélocité, note off,
+délai exact dans le bloc, All Sound Off, CC64, `group` / `off_by`, deux
+instances, 32 voix = 2,5 % du temps réel.
+
+### Faits qui pèsent sur le plan 7a2
+
+- **Une instance sfizz = un instrument, sans canal MIDI** : un slot
+  Synth SFZ = une instance (Z2 s'y prête bien).
+- **Événements datés à l'échantillon** dans le prochain bloc : file
+  d'événements vidée dans le callback, transposable en C/C++.
+- **Rendu en deux canaux séparés**, à ajouter au mixage (source de rendu
+  du pilote, comme FluidSynth).
+- **Chargement bloquant** : dans un fil, sur une instance neuve, puis
+  échange.
+- **CC 7, 10, 11, 64 répondus par défaut** : volume et pan de piste par
+  CC7 / CC10, comme pour une banque.
+- **Niveau bas** (cosinus 0,5 → RMS 0,058 à vélocité 100) : un gain
+  `sfizz_gain` à régler à l'écoute, comme `fluidsynth_gain`.
+- Le chemin `~/.local/lib` n'est pas dans `ldconfig` : chargement par
+  chemin complet, puis le système (Z4 pour l'absence).
