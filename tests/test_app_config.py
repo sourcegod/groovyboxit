@@ -135,7 +135,8 @@ def test_sfz_dir_empty_or_invalid_gives_default(tmp_path, bad):
 
 
 def test_sfizz_gain_default(tmp_path):
-    assert _cfg(tmp_path).sfizz_gain == 1.0
+    # 1.5 depuis l'essai de 7d1 (plus agréable et plus clair que 1.0)
+    assert _cfg(tmp_path).sfizz_gain == 1.5
 
 
 @pytest.mark.parametrize("value, expected", [
@@ -147,7 +148,7 @@ def test_sfizz_gain_read_and_clamped(tmp_path, value, expected):
 
 @pytest.mark.parametrize("bad", ["1.5", None, True, [1]])
 def test_sfizz_gain_invalid_gives_default(tmp_path, bad):
-    assert _cfg(tmp_path, {"sfizz_gain": bad}).sfizz_gain == 1.0
+    assert _cfg(tmp_path, {"sfizz_gain": bad}).sfizz_gain == 1.5
 
 
 def test_engines_enabled_by_default(tmp_path):

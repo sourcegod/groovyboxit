@@ -31,6 +31,7 @@ import ui.mw_pads as mw_pads
 from undo_manager import UndoManager
 from voice_manager import VoiceManager
 from track_router import TrackRouter
+from rack import Rack
 from track_editor import TrackEditor
 from ui.mw_project import ProjectMixin
 from ui.mw_tracks import TrackMixin
@@ -63,6 +64,11 @@ def _make_router():
     r._track_volumes = [100] * n
     r._track_pans    = [0] * n
     r.bank_engine    = None          # sans moteur de banque (17d1)
+    # slots à canaux (Phase 8 étape 7d1) : Rack vide, sans moteur sfizz
+    r.sfz_engine     = None
+    r._rack          = Rack()
+    r._track_slots   = [0] * n
+    r.rack_mode      = False
     # coupure des notes avant Mute / Solo (Phase 8 étape 6b1) : aucun moteur
     r._slot_synths   = {}
     r._synth = r._kit_synth = r._bank_preview = None

@@ -176,14 +176,15 @@ class _FakeEditPlayer:
 
 
 class _FakeEditRouter:
-    """Routeur minimal (17h1) : pistes sur slot Banque, canal et poursuite."""
+    """Routeur minimal (17h1) : pistes sur slot Banque (slot à canaux depuis
+    la Phase 8 étape 7d1), canal et poursuite."""
     NUM_TRACKS = 16
 
     def __init__(self, bank_tracks=()):
         self.bank_tracks = set(bank_tracks)
         self.calls       = []
 
-    def _bank_slot_of(self, track):
+    def _chan_slot_of(self, track):
         return object() if track in self.bank_tracks else None
 
     def set_track_channel(self, track, channel):

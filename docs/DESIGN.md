@@ -10284,3 +10284,45 @@ moteurs restent sautés sans bibliothèque.
     0, `_song_pos` 0. `pytest` : toujours les 30 rouges de 7d1 ; tests de
     7d2 en 7e2.
 - **Essai de 7d2 (utilisateur, 2026-11-04)** : concluant.
+- **7e1** — tests de 7d1 :
+  - `tests/test_sfz_slot.py` (40 tests), avec un moteur sfizz factice
+    (`FakeSfzEngine`, 16 emplacements, copies de rendu) et les fakes de
+    `test_bank_slot.py` (banque, son du kit, minuteries) :
+    - Rack : type listé, `plays_notes`, `sfz_file` (espaces, vide, autre
+      type), programme GM deviné et réglé, pas de transposition GM, gain
+      GM gardé, aller-retour du Rack ;
+    - routeur : `sfz_path` (relatif, absolu, sans dossier), moteur de
+      chaque slot, `_chan_slot_of`, fichiers des slots retenus, changés
+      ou oubliés, fichier introuvable signalé, sélection du canal et
+      mixage envoyés au seul sfizz, sélection une fois par canal, sans
+      moteur sfizz rien ne joue ;
+    - notes : grille en gamme, canal 10 en 36 + pad, fin de note
+      programmée, piste muette, KIT / PATCH tels quels, Bend, modulation,
+      CC, pédale, CC0 / CC32 retenus sans envoi, volume, pan et pan
+      global ; un SFZ garde le canal 10 à l'assignation ;
+    - Program Change : la piste change de canal, pas de son ni de pont
+      `program % 16` ; poursuite d'un Program Change et d'une modulation ;
+      chase et fin de lecture remettent les deux moteurs à zéro ; canal
+      partagé banque / SFZ signalé ;
+    - coupures : canal de la piste dans le seul sfizz ; `cut_all_notes`,
+      All Notes Off, All Sounds Off, Reset, pédale globale : les deux
+      moteurs ;
+    - préécoute : jeu sur sfizz, note tenue arrêtée sur son moteur après
+      un changement de slot de préécoute, Bend et modulation ;
+    - mode Rack : le canal N joue le slot SFZ N ; le repli reste une
+      banque (M5) ;
+    - exports : copie de rendu du routeur, `_Session` de l'export WAV
+      (copie de sfizz, source de rendu, voix, fermeture, moteur de
+      l'écoute intact), `_midi_params` (piste à canaux, programme GM du
+      slot, nom du slot ; preset pour une banque), `build_pattern_midi`
+      d'une batterie SFZ au canal 10 ;
+    - de bout en bout avec le vrai sfizz (sauté sans libsfizz) :
+      `render_pattern` d'une piste SFZ, la 220 Hz attendue.
+  - Vérifié sur le code d'avant 7d1 (arbre de travail au commit de
+    7c1) : 39 tests sur 40 échouent ; le seul qui passe porte sur
+    `build_pattern_midi`, inchangé par 7d1.
+  - Les 30 tests rouges de 7d1 corrigés : `test_mix_undo.py` (le
+    `TrackRouter` sans `__init__` reçoit un Rack vide, `_track_slots`,
+    `rack_mode`, `sfz_engine`), `test_cc_event_edit_dialog.py`
+    (`_FakeEditRouter._chan_slot_of`), `test_app_config.py` (défaut de
+    `sfizz_gain` à 1.5) ; `SPECS.md`. 3516 verts.
