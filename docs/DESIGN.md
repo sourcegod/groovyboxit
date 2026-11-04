@@ -10326,3 +10326,18 @@ moteurs restent sautés sans bibliothèque.
     `rack_mode`, `sfz_engine`), `test_cc_event_edit_dialog.py`
     (`_FakeEditRouter._chan_slot_of`), `test_app_config.py` (défaut de
     `sfizz_gain` à 1.5) ; `SPECS.md`. 3516 verts.
+- **7e2** — tests de 7d2 : `tests/test_playback_rewind.py` (8 tests) :
+  `_rewind_playback` sur un lecteur factice (arrêt, voix coupées, mode
+  Song quitté, début) ; vraie `MainWindow` sans FluidSynth ni sfizz
+  (fixture de module) : la pause est gardée sans remise au début (le
+  défaut), Ctrl+N, Ctrl+O (`_load_project` d'un projet enregistré dans
+  un dossier temporaire ; lecture en cours arrêtée, mode Song quitté),
+  ouverture de la fenêtre Song (position et `_song_pos` à zéro), fenêtre
+  déjà ouverte (seulement montrée : position gardée), fermeture.
+  - Vérifié sur le code de 7d1 (arbre de travail) : les 5 tests du défaut
+    échouent ; les 3 autres passaient déjà (pause gardée, fenêtre déjà
+    ouverte, fermeture qui remettait au début).
+  - Piège retrouvé : dans la suite complète, la `wx.App` de session est
+    détruite par des fichiers passés avant (`test_key_manager`,
+    `test_midi_export_ui`) → App recréée au besoin et gardée dans le
+    module. `SPECS.md`. 3524 verts.
