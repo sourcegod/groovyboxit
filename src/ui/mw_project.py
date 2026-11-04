@@ -78,8 +78,7 @@ class ProjectMixin:
                 self._save_project()
         self._undo.clear()                 # l'historique appartient au projet (16d1, D3)
         self._exclusive = self._exclusive_saved = None   # Mute / Solo exclusif quitté (6d1)
-        self._player.stop_all()
-        self._router.stop_all_synth_voices()
+        self._rewind_playback()            # lecture arrêtée, au début (Phase 8 étape 7d2)
         self._pattern_list    = [Pattern() for _ in range(99)]
         self._cur_pattern_idx = 0
         self._pattern_cache       = [None] * len(self._pattern_list)
@@ -947,6 +946,22 @@ class ProjectMixin:
         self._project_path = path
         self._save_project()
 
+    def _rewind_playback(self):
+        """Lecture arrêtée et remise au début, pour le pattern comme pour le
+        song (Phase 8 étape 7d2, remarque de l'essai de 7d1) : à Ctrl+N et à
+        Ctrl+O. Sans cela, la position d'une pause (_resume_offset) survivait
+        au changement de projet, et la lecture du nouveau repartait de
+        l'ancienne position. Le mode Song en cours est quitté : sa séquence
+        appartenait à l'ancien projet."""
+        p = self._player
+        p.stop_all()
+        self._router.stop_all_synth_voices()
+        p._song_mode     = False
+        p._song_looping  = False
+        p._song_sequence = []
+        p._song_pos      = 0
+        p.goto_start()
+
     def _open_project(self):
         self._take_end_if_idle()
         if self._project_modified:
@@ -1020,6 +1035,7 @@ class ProjectMixin:
             return
         self._undo.clear()                     # l'historique appartient au projet (16d1, D3)
         self._exclusive = self._exclusive_saved = None   # Mute / Solo exclusif quitté (6d1)
+        self._rewind_playback()                # lecture arrêtée, au début (Phase 8 étape 7d2)
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._update_slot_list()

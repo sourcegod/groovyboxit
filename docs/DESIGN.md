@@ -10262,3 +10262,25 @@ moteurs restent sautés sans bibliothèque.
     Ctrl+N (qui arrête la lecture), ni par Ctrl+O (qui ne l'arrête même
     pas), ni à l'ouverture de la fenêtre Song (qui arrête le pattern) ; la
     fermeture la remet déjà au début (`_exit_song_mode`).
+- **7d2** — imprévu, remarque de l'essai de 7d1 : la lecture repart du
+  début après Ctrl+N, Ctrl+O, l'ouverture ou la fermeture de la fenêtre
+  Song.
+  - Cause précisée : un **arrêt** (`stop_pattern`) efface déjà la
+    position, mais une **pause** (`pause_pattern`) la garde dans
+    `_resume_offset`, et rien ne l'effaçait au changement de projet ni à
+    l'ouverture de la fenêtre Song. Ctrl+O n'arrêtait même pas une
+    lecture en cours.
+  - `ProjectMixin._rewind_playback` (`ui/mw_project.py`) : `stop_all`,
+    voix des synthés coupées, mode Song quitté (`_song_mode`,
+    `_song_looping`, `_song_sequence`, `_song_pos` remis à zéro : la
+    séquence appartenait à l'ancien projet), `goto_start`. Appelée par
+    `_new_project` (Ctrl+N, à la place de son `stop_all`) et par
+    `_load_project` (Ctrl+O, après la lecture réussie du fichier).
+  - `_open_song_window` : `_song_pos = 0` et `goto_start` à la création
+    de la fenêtre. La fermeture (`_exit_song_mode`) remettait déjà au
+    début.
+  - Vérifié par un script avec une vraie `MainWindow` : pause au pas 20,
+    puis Ctrl+N, Ctrl+O, ouverture et fermeture de la fenêtre Song → pas
+    0, `_song_pos` 0. `pytest` : toujours les 30 rouges de 7d1 ; tests de
+    7d2 en 7e2.
+- **Essai de 7d2 (utilisateur, 2026-11-04)** : concluant.

@@ -12,6 +12,10 @@ class SongMixin:
             if self._player.playing:
                 self._player.stop_pattern()
                 self._router.stop_all_synth_voices()
+            # Song lu depuis le début : la position d'une pause du pattern
+            # ne survit pas (Phase 8 étape 7d2)
+            self._player._song_pos = 0
+            self._player.goto_start()
             from ui.song_window import SongWindow
             self._song_window = SongWindow(self)
         self._song_window.Show()
