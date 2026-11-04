@@ -9894,3 +9894,220 @@ instances, 32 voix = 2,5 % du temps réel.
   `sfizz_gain` à régler à l'écoute, comme `fluidsynth_gain`.
 - Le chemin `~/.local/lib` n'est pas dans `ldconfig` : chargement par
   chemin complet, puis le système (Z4 pour l'absence).
+
+## Phase 8 étape 7a2 — Plan : slot « Synth SFZ » joué par sfizz, appli sans FluidSynth ni sfizz
+
+Suite de § 7a1 (Z1-Z4). Décisions de 7a2 notées **Z5, Z6…**
+
+### État des lieux constaté en code (2026-11-04, 3399 tests verts)
+
+- **Le slot Banque fait déjà presque tout ce qu'il faut.**
+  `BankEngine` (`src/engines/bank_engine.py`) est une interface à canaux :
+  `select`, notes, `cc`, `pitch_bend`, `channel_sounds_off`,
+  `all_sounds_off`, `render(out)`, `render_copy()`, `active_voices()`.
+  `TrackRouter` s'en sert pour :
+  - le canal courant de la piste (`_track_cur_channels`) ;
+  - le volume et le pan de piste en CC7 / CC10 (`_send_bank_mix`) ;
+  - la poursuite (`chase`, `sync_banks`, cache `_chan_sel`) ;
+  - les CC, le Bend et la pédale par canal (`on_cc_tape`, `on_bend_tape`,
+    `on_mod_tape`) ;
+  - les coupures (`cut_track_notes`, `cut_all_notes`, Phase 8 étape 6) ;
+  - la préécoute `BankPreview`, qui retient le canal des notes tenues
+    (6b2) ;
+  - les notes de grille (`_bank_grid_note` : canal 10 → 36 + pad,
+    sinon gamme du clavier) ;
+  - le mode Rack (`_slot_idx_of`, `fallback_bank_idx`).
+- **Un seul moteur, un seul type.** `InstrumentType.BANK` est testé
+  13 fois dans `track_router.py` (via `_bank_slot_of`, `:478`, et
+  directement à `:288`, `:360`, `:427`, `:488`, `:551`, `:758`, `:865`,
+  `:989`, `:1014`, `:1065`, `:1095`, `:1113`). Les appels vont toujours à
+  `self.bank_engine`. Hors du routeur :
+  - `rack.py:44`, `:111` (`plays_notes`, programme GM) ;
+  - `ui/mw_project.py:169` (export : `is_bank`), `:760`, `:837` (import) ;
+  - `ui/mw_tracks.py:132`, `:142`, `:174`, `:228` (propriétés de piste,
+    Ctrl+T) ;
+  - `ui/mw_pads.py:278-305` (Explorateur, élément « Banque ») ;
+  - 11 fichiers de tests.
+- **Moteurs au démarrage** : `MainWindow._init_bank_engine`
+  (`ui/main_window.py:216`) crée `FluidSynthEngine` et le branche au
+  pilote (`add_render_source`) ; libfluidsynth absente →
+  `_bank_engine = None`, les slots Banque sont muets. **Aucune option**
+  ne coupe un moteur installé.
+- **Démarrage** : `main.py` ne lit pas la ligne de commande.
+- **Configuration** : `AppConfig` (`src/app_config.py`) lit
+  `data/config.json` et ne l'écrit jamais. Clés de la banque :
+  `soundfonts_dir`, `gm_soundfont`, `midi_bank_select`,
+  `fluidsynth_gain`.
+- **Export WAV** : `audio_export.py:110` copie le moteur de banque
+  (`render_copy`) et le passe à `router.render_copy`.
+- **Export MIDI** : `build_pattern_midi(track_is_bank=…)`
+  (`midi/midi_export.py:84`). Une piste Banque prend ses entêtes PGM /
+  CC0 / CC32 dans `_tape`. Les autres pistes prennent le `gm_program` de
+  leur slot.
+- **Explorateur** : `ExplorerDialog.ITEMS` (`ui/dialogs_simple.py:472`) =
+  Projects, Preset, Kit, Patch, Sound, Banque.
+
+### Décisions validées (utilisateur, 2026-11-04)
+
+**Z5 — une instance sfizz par canal** (le canal est l'instrument, comme
+pour la banque). Chaque piste garde son volume et son pan par CC7 / CC10
+de son canal. Deux pistes sur le même slot SFZ et sur deux canaux
+différents chargent l'instrument deux fois (temps et mémoire), ce qui est
+accepté. En mode Rack (canal N → slot N), cela fait un chargement par
+slot.
+
+**Z6 — choix de l'instrument : une liste des instruments trouvés dans
+`sfz_dir`.** Nouvel élément **« SFZ »** de l'Explorateur (Alt+X), pour le
+slot courant. Une ListBox navigable au clavier liste les `.sfz`,
+parcourus récursivement, avec un bouton **« Parcourir… »** en plus. Les
+fragments sont écartés : un fichier inclus (`#include`) par un autre
+`.sfz` de l'arborescence, ou dont un `#include` est introuvable (cas de
+`big-rusty-drums/Programs/default/`).
+
+**Z7 — options de Z4 : `config.json` et ligne de commande.**
+- Clés `"fluidsynth": true|false` et `"sfizz": true|false` (défaut
+  `true`).
+- Arguments `--no-fluidsynth` et `--no-sfizz` de `main.py`. Ils priment
+  sur `config.json` le temps d'un lancement.
+- Moteur coupé ou bibliothèque absente : les slots Banque et Synth SFZ
+  sont gardés **intacts** dans le Rack, le `.gvp` et l'Undo, mais
+  restent muets. La barre d'état l'explique au démarrage, puis à chaque
+  choix d'un tel slot. Tout le reste marche (kits, synthés WAV,
+  séquenceur, MIDI, exports).
+
+### Choix de conception proposés
+
+Ils seront confirmés ou corrigés dans « Avancement » au fil des commits.
+
+**Z8 — `SfzEngine` implémente `BankEngine`** (`src/engines/sfizz_engine.py`,
+liaison ctypes comme `fluidsynth_engine.py`, signatures déclarées dans un
+seul module, celles de `tools/sfizz_probe.py`).
+- « Emplacement » = **indice du slot du Rack** (0..15) :
+  - `load(slot, path)` retient le fichier du slot ;
+  - `select(channel, slot, bank, program)` lie le canal à ce fichier
+    (banque et programme ignorés) et charge l'instance du canal si le
+    fichier a changé ;
+  - `presets(slot)` = `[(0, 0, nom du fichier)]` ;
+  - `program_change` est sans effet.
+- `NUM_BANK_SLOTS` vaut 16 pour ce moteur.
+- `channel_sounds_off(ch)` = `sfizz_all_sound_off` de l'instance du
+  canal ; `reset_controllers` = Bend au centre, CC1 et CC64 à 0, CC11 à
+  127 (sfizz n'a pas de CC121 propre, à vérifier en 7b1).
+- `active_voices()` = somme des instances.
+
+**Z9 — sfizz n'est appelé que depuis le callback audio.**
+- **File d'événements** : l'interface, les `threading.Timer` et le
+  séquenceur déposent `(type, canal, a, b)` dans une `collections.deque`
+  (ajout atomique). `render(out)` la vide avant de rendre, avec un
+  `delay` de 0 : la précision reste celle d'aujourd'hui, celle des
+  minuteries. Une datation à l'échantillon pourra venir plus tard sans
+  changer l'interface.
+- **Chargement dans un fil**, sur une instance neuve (fréquence du
+  pilote, taille de bloc maximale) ; un événement « échange » la met en
+  place dans le callback. L'ancienne instance est libérée hors du
+  callback.
+- **Tampons préalloués** L et R, à la taille de bloc maximale.
+  `render(out)` ajoute `gain × (L, R)` dans `out (frames, 2)`.
+- Pendant le chargement, le canal est muet et la barre d'état dit
+  « Chargement de <instrument>… », puis « prêt ».
+- Prototype, cible C/C++ : file d'événements et échange d'instance se
+  transposent tels quels (file sans verrou en C/C++).
+
+**Z10 — `InstrumentType.SFZ = "sfz"`**, libellé « Synth SFZ ».
+- `config` = `{"sfz_file": chemin}` : relatif à `sfz_dir` s'il s'y
+  trouve (projet portable), absolu sinon.
+- Nom du slot = nom du fichier, sans extension.
+- `plays_notes` est vrai.
+- Le Rack est déjà dans le `.gvp` et l'instantané d'Undo :
+  `_restore_state` recharge un canal seulement si son fichier a changé.
+- `ProjectManager.VERSION` est inchangé (nouveau type, rien à migrer).
+
+**Z11 — routeur : « slot à canaux »** = BANK ou SFZ.
+- `_bank_slot_of` devient `_chan_slot_of` (BANK ou SFZ), et
+  `_engine_of(slot)` rend `bank_engine` ou `sfz_engine` (None si coupé).
+- Les branches Banque valent pour les deux types : notes, grille, CC,
+  Bend, pédale, mix, chase, coupures, préécoute (`BankPreview` prend le
+  moteur de son slot).
+- **Différences du SFZ** :
+  - le Program Change déplace la piste sur son canal (O3), mais ne
+    change pas le son ;
+  - CC0 / CC32 sont gardés dans `_tape` mais sans effet ;
+  - mode Rack : un canal sur un slot vide se replie toujours sur le
+    premier slot **Banque** (M5), pas sur un SFZ.
+- `cut_all_notes`, `stop_all_sounds`, `panic` et `on_play_stop` passent
+  par les deux moteurs.
+- Une banque et un SFZ sur le même canal : avertissement de canal
+  partagé, comme D10.
+
+**Z12 — exports.**
+- **MIDI** : une piste SFZ exporte ses notes comme une piste Banque
+  (grille D12, canal courant), avec le **`gm_program` du slot**, comme un
+  synthé WAV. Dans Alt+Entrée, le programme GM du slot reste réglable
+  pour l'export ; programme et MSB / LSB du canal sont grisés.
+- **WAV** : `audio_export` copie aussi le moteur SFZ
+  (`SfzEngine.render_copy()`, chargement bloquant permis hors temps
+  réel) et le passe à `router.render_copy`.
+
+**Z13 — configuration.** Nouvelles clés de `config.json`, lues par
+`AppConfig` :
+- `"sfz_dir"`, défaut `/home/com/groovybox/media/sfz` ;
+- `"sfizz_gain"`, à régler à l'écoute en 7b1 (sfizz sort bas : crêtes
+  0,03 à 0,23 à vélocité 100 sur les instruments d'essai) ;
+- `"fluidsynth"` et `"sfizz"` (Z7).
+
+Chargement de libsfizz : `~/.local/lib/libsfizz.so.1` d'abord, puis le
+système (`docs/sfizz_build.md` § 7).
+
+**Z14 — démarrage (Z7).** `main.py` lit `--no-fluidsynth` et
+`--no-sfizz` (`argparse`, `parse_known_args` pour ne pas gêner wx) et
+les passe à `MainWindow`. `_init_bank_engine` et `_init_sfz_engine`
+consultent l'option, puis la bibliothèque. La barre d'état dit par
+exemple « FluidSynth désactivé (--no-fluidsynth) : slots Banque muets »
+ou « libsfizz introuvable : slots Synth SFZ muets ». Les tests des
+moteurs restent sautés sans bibliothèque.
+
+**Z15 — dialogue `SfzSlotDialog`** (`ui/dialogs_sfz.py`, Z6) :
+- ListBox des instruments, avec le chemin relatif à `sfz_dir` comme
+  libellé (« karoryfer-bigcat.cello/Programs/03- Plucked ») ;
+- bouton « Parcourir… » ;
+- Ok applique au slot courant, avec Undo « SFZ slot 03 », et Annuler ne
+  change rien ;
+- Ordre Tab : liste → Parcourir → Ok → Annuler ;
+- curseur clavier posé par `ui/gtk_listbox.select_with_cursor` ;
+- Alt+↑ joue une note d'aperçu de l'instrument sélectionné, comme dans
+  la liste des pads (à confirmer à l'essai : le chargement peut prendre
+  une seconde).
+- Le parcours de `sfz_dir` se fait sur le texte des fichiers
+  (`#include`), sans sfizz : rapide. Un fichier qui se révèle refusé au
+  chargement donne un message, et le slot reste muet.
+
+### Portée exclue
+
+- Effets de sfizz, réverbération (VPO la demande, plus tard) et réglages
+  de qualité (suréchantillonnage, interpolation) : défauts de sfizz.
+- Accordage Scala, keyswitches affichés, étiquettes de touches et de CC
+  (`sfizz_get_key_label_*`).
+- Datation des événements à l'échantillon près (Z9).
+- Une instance partagée par plusieurs canaux (Z5).
+- Virtual Playing Orchestra (téléchargement manuel, plus tard).
+- Un dialogue de réglage de `config.json` (chantier à
+  part).
+- Plusieurs kits SFZ en mode Rack au-delà de ce que M6 permet aux banques.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **7a2** | Doc — ce plan. | `docs/DESIGN.md` |
+| **7b1** | Implémentation — `SfzEngine` (Z8, Z9), clés `sfz_dir`, `sfizz_gain`, `fluidsynth`, `sfizz` (Z13), options de ligne de commande et moteurs optionnels au démarrage (Z7, Z14), branchement au pilote. Démo `python3 -m engines.sfizz_engine <fichier.sfz>` ; gain réglé à l'écoute. | `src/engines/sfizz_engine.py` (nouveau), `src/app_config.py`, `src/main.py`, `src/ui/main_window.py` |
+| **7c1** | Tests — moteur sur des `.sfz` et WAV fabriqués (comme `tools/sfizz_probe.py`) : file d'événements, échange d'instance, canaux, CC7 / CC10, coupures, `render_copy` ; sautés sans libsfizz. Config, options, démarrage sans moteurs. | `tests/test_sfizz_engine.py` (nouveau), `tests/test_app_config.py`, `tests/test_engine_options.py` (nouveau), `docs/SPECS.md` |
+| **7d1** | Implémentation — type SFZ (Z10), routeur à deux moteurs (Z11), exports (Z12), `.gvp` / Undo. Essai à l'écoute sur un projet d'essai (batterie, piano, violoncelle). | `src/rack.py`, `src/track_router.py`, `src/audio_export.py`, `src/ui/mw_project.py`, `src/ui/mw_tracks.py`, `src/midi/midi_export.py` |
+| **7e1** | Tests — routage avec un moteur SFZ factice (notes, grille, CC, Bend, pédale, chase, coupures, mode Rack, canal partagé), `.gvp`, exports ; types existants inchangés. | `tests/test_sfz_slot.py` (nouveau), fakes au besoin, `docs/SPECS.md` |
+| **7f1** | Implémentation — élément « SFZ » de l'Explorateur et `SfzSlotDialog` (Z6, Z15), Alt+Entrée (champs grisés), messages des moteurs coupés, aide F1. Essai avec Orca. | `src/ui/dialogs_sfz.py` (nouveau), `src/ui/dialogs_simple.py`, `src/ui/mw_pads.py`, `src/ui/dialogs_properties.py`, `docs/shortcuts.md` |
+| **7g1** | Tests — parcours de `sfz_dir` (fragments, `#include` introuvable), dialogue (Tab, Ok, Annuler, Undo, Parcourir), Alt+Entrée. | `tests/test_sfz_dialogs.py` (nouveau), `docs/SPECS.md` |
+| **7h1** | Doc — clôture (DESIGN, SPECS : Rack, configuration, `.gvp`, options ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+- Avant de committer 7b1, 7d1 et 7f1, l'utilisateur les essaie (à
+  l'écoute, et avec Orca pour 7f1).
+- Les commits d'implémentation peuvent laisser `pytest` rouge à cause
+  des fakes ; le titre le dira.
