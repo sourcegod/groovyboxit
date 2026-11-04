@@ -10111,3 +10111,55 @@ moteurs restent sautés sans bibliothèque.
   l'écoute, et avec Orca pour 7f1).
 - Les commits d'implémentation peuvent laisser `pytest` rouge à cause
   des fakes ; le titre le dira.
+
+### Phase 8 étape 7 — Avancement (7b1)
+
+- **7b1** — moteur et options, conformes à Z7, Z8, Z9, Z13, Z14 :
+  - `src/engines/sfizz_engine.py` : `SfzEngine(BankEngine)`, liaison
+    ctypes (`load_library`, `SfizzUnavailable`, `sfizz_available`) ;
+    emplacement = slot du Rack (`NUM_BANK_SLOTS = 16`) ; une instance par
+    canal ; file d'événements (`deque`, types entiers `EV_*`) vidée par
+    `render()` ; chargement dans un fil sur une instance neuve,
+    `EV_SWAP` avec numéro de génération (un chargement dépassé est
+    libéré) ; instances remplacées libérées hors du callback ; un canal
+    au repos (sans voix ni événement) n'est pas rendu ; blocs d'au plus
+    1024 échantillons ; `render_copy()` hors temps réel
+    (`realtime=False` : appels directs, chargement bloquant) ;
+    `channel_ready`, `channel_path`, `wait_loaded`, `status_cb`.
+  - **Écart à Z8** : sfizz traite lui-même les CC 120, 121 et 123
+    (vérifié) : `all_notes_off`, `reset_controllers` et
+    `channel_sounds_off` passent par eux ou par `sfizz_all_sound_off`,
+    sans code propre. L'état des CC (sauf 120, 121, 123) et du Bend de
+    chaque canal est **retenu et rejoué** sur une instance neuve : un CC7
+    posé pendant le chargement n'est pas perdu.
+  - **Écart au contrat `BankEngine.load`** : `load` ne fait que retenir
+    le fichier (False s'il n'existe pas) ; sfizz ne le lit qu'à la
+    sélection d'un canal, en arrière-plan ; un fichier refusé (aucune
+    région) est signalé par `status_cb` (« SFZ refusé : … »), le canal
+    reste muet.
+  - `AppConfig` : `sfz_dir` (**écart à Z13** : défaut = `media/sfz` à côté
+    du dossier des projets, comme `exports_dir`, soit
+    `/home/com/groovybox/media/sfz` ; `config.json` inchangé),
+    `sfizz_gain` (défaut 1.0, borné 0..10 : mesuré, sfizz sort alors à
+    peu près comme FluidR3 à 0.4), `fluidsynth_enabled`,
+    `sfizz_enabled` (clés `"fluidsynth"`, `"sfizz"`, défaut true).
+  - `main.py` : `parse_args` (`--no-fluidsynth`, `--no-sfizz`,
+    `parse_known_args`) → `MainWindow(no_fluidsynth, no_sfizz)` ;
+    `_init_bank_engine` et `_init_sfz_engine` consultent l'option, puis
+    la clé, puis la bibliothèque ; messages réunis dans la barre d'état
+    au démarrage (« FluidSynth désactivé (--no-fluidsynth) : slots
+    Banque muets ; … ») ; `_sfz_engine` fermé à la sortie.
+  - Démo `python3 -m engines.sfizz_engine [fichier.sfz] [note]` (gamme
+    canal 1, accord canal 2 à volume 60 et pan à gauche).
+  - Vérifié par un script (sans carte son) : échange, CC rejoués, pan,
+    deux canaux, fichier remplacé pendant le chargement, coupures, Bend
+    et Reset, copie hors temps réel, fichier refusé.
+  - `pytest` : **3 tests rouges jusqu'à 7c1**, dus aux fakes
+    (`SimpleNamespace` sans `_no_fluidsynth` dans
+    `test_fluidsynth_engine.py`, `_FakeMain` sans `_sfz_engine` dans
+    `test_live_take.py`).
+- **Essai de l'utilisateur (2026-11-04)** : concluant ; pas de
+  craquements ; pas d'erreur avec les deux moteurs coupés. **Gain un peu
+  faible**, mais à juger en comparant à l'écoute avec FluidSynth : à
+  faire à l'essai de 7d1, le même morceau joué tour à tour par une
+  banque FluidR3 et par un slot Synth SFZ, puis régler `sfizz_gain`.

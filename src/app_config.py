@@ -185,3 +185,45 @@ class AppConfig:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return self.FLUIDSYNTH_GAIN_DEFAULT
         return max(0.0, min(10.0, float(value)))
+
+    # Slot Synth SFZ et moteurs optionnels (Phase 8 étape 7b1, docs/DESIGN.md
+    # § 7a2 Z7, Z13).
+
+    SFIZZ_GAIN_DEFAULT = 1.0     # à 1.0, sfizz sort à peu près comme FluidR3 à 0.4
+
+    @property
+    def sfz_dir(self):
+        """Dossier des instruments SFZ (absolu, ou relatif à base_dir).
+        Défaut : media/sfz à côté du dossier des projets
+        (/home/com/groovybox/media/sfz)."""
+        value = self._get_str("sfz_dir")
+        if not value:
+            return os.path.join(os.path.dirname(os.path.normpath(self.projects_dir)),
+                                "media", "sfz")
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
+    @property
+    def sfizz_gain(self):
+        """Gain appliqué au rendu de sfizz (0.0..10.0) ; défaut 1.0."""
+        value = self._data.get("sfizz_gain", self.SFIZZ_GAIN_DEFAULT)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return self.SFIZZ_GAIN_DEFAULT
+        return max(0.0, min(10.0, float(value)))
+
+    def _get_bool(self, key, default):
+        value = self._data.get(key, default)
+        return value if isinstance(value, bool) else default
+
+    @property
+    def fluidsynth_enabled(self):
+        """Clé "fluidsynth" (défaut true) : false = moteur FluidSynth coupé,
+        slots Banque muets (Z7)."""
+        return self._get_bool("fluidsynth", True)
+
+    @property
+    def sfizz_enabled(self):
+        """Clé "sfizz" (défaut true) : false = moteur sfizz coupé, slots
+        Synth SFZ muets (Z7)."""
+        return self._get_bool("sfizz", True)

@@ -11,6 +11,7 @@ from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
 from app_config import AppConfig
 from engines.fluidsynth_engine import FluidSynthEngine, FluidSynthUnavailable
+from engines.sfizz_engine import SfzEngine, SfizzUnavailable
 import sound_cache
 from ui.dialogs import (
     KeyboardHelpDialog,
@@ -82,8 +83,15 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
     ]
     _VEL_STEPS = [None, 32, 16, 8, None]
 
-    def __init__(self):
+    def __init__(self, no_fluidsynth=False, no_sfizz=False):
+        """no_fluidsynth / no_sfizz : options --no-fluidsynth et --no-sfizz
+        de la ligne de commande (Phase 8 étape 7b1, docs/DESIGN.md § 7a2 Z7,
+        Z14), qui priment sur les clés "fluidsynth" et "sfizz" de
+        config.json."""
         super().__init__(None, title="GroovyboxIt")
+        self._no_fluidsynth = no_fluidsynth
+        self._no_sfizz      = no_sfizz
+        self._engine_notes  = []    # messages de démarrage des moteurs (Z14)
         self._cur_row = 0
         self._cur_col = 0
         self._cells = []
@@ -184,6 +192,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Centre()
+        if self._engine_notes:      # moteurs coupés ou absents (Phase 8 étape 7b1, Z14)
+            wx.CallAfter(self._show_status, " ; ".join(self._engine_notes))
 
     def wait_loaded(self):
         """Affiche 'Chargement…' et bloque jusqu'à ce que tous les sons soient prêts."""
@@ -202,6 +212,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
         self._audio_driver = SoundDeviceDriver()
         self._init_bank_engine(cfg)
+        self._init_sfz_engine(cfg)
         self._snd = SoundManager(media_lst, cfg.click1_file, cfg.click2_file,
                                  driver=self._audio_driver)
         self._player = DrumPlayer(self._snd)
@@ -215,17 +226,44 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _init_bank_engine(self, cfg):
         """Moteur de banque FluidSynth branché au pilote audio (Phase 7
-        étape 17b1) ; None si libfluidsynth est absente — les slots Banque
-        restent alors muets."""
+        étape 17b1) ; None s'il est coupé (--no-fluidsynth, clé "fluidsynth"
+        de config.json, Phase 8 étape 7b1) ou si libfluidsynth est absente —
+        les slots Banque restent alors muets."""
+        self._bank_engine = None
+        if self._no_fluidsynth or not cfg.fluidsynth_enabled:
+            src = "--no-fluidsynth" if self._no_fluidsynth else "config.json"
+            self._engine_notes.append(f"FluidSynth désactivé ({src}) : slots Banque muets")
+            return
         try:
             self._bank_engine = FluidSynthEngine(
                 samplerate=self._audio_driver.samplerate,
                 bank_select=cfg.midi_bank_select,
                 gain=cfg.fluidsynth_gain)
         except FluidSynthUnavailable:
-            self._bank_engine = None
+            self._engine_notes.append("libfluidsynth introuvable : slots Banque muets")
             return
         self._audio_driver.add_render_source(self._bank_engine.render)
+
+    def _init_sfz_engine(self, cfg):
+        """Moteur sfizz des slots Synth SFZ branché au pilote audio (Phase 8
+        étape 7b1, docs/DESIGN.md § 7a2 Z8, Z14) ; None s'il est coupé
+        (--no-sfizz, clé "sfizz" de config.json) ou si libsfizz est absente
+        — les slots Synth SFZ restent alors muets."""
+        self._sfz_engine = None
+        self._sfz_dir    = cfg.sfz_dir
+        if self._no_sfizz or not cfg.sfizz_enabled:
+            src = "--no-sfizz" if self._no_sfizz else "config.json"
+            self._engine_notes.append(f"sfizz désactivé ({src}) : slots Synth SFZ muets")
+            return
+        try:
+            self._sfz_engine = SfzEngine(
+                samplerate=self._audio_driver.samplerate,
+                gain=cfg.sfizz_gain,
+                status_cb=lambda msg: wx.CallAfter(self._show_status, msg))
+        except SfizzUnavailable:
+            self._engine_notes.append("libsfizz introuvable : slots Synth SFZ muets")
+            return
+        self._audio_driver.add_render_source(self._sfz_engine.render)
 
     def _build_ui(self):
         panel = wx.Panel(self)
@@ -489,6 +527,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._audio_driver.close()
         if self._bank_engine is not None:
             self._bank_engine.close()
+        if self._sfz_engine is not None:
+            self._sfz_engine.close()
         event.Skip()
 
     def _update_bpm_display(self):
