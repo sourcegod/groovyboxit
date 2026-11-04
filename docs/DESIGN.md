@@ -10194,3 +10194,71 @@ moteurs restent sautés sans bibliothèque.
   - Fakes des 3 tests rouges de 7b1 adaptés (`test_fluidsynth_engine.py`,
     `test_live_take.py`) ; `SPECS.md` (arborescence, table, `engines/`).
   - 3476 verts ; tests du moteur stables sur 8 passages.
+- **7d1** — slot Synth SFZ dans le routeur et les exports, conforme à
+  Z10, Z11, Z12 :
+  - `rack.py` : `InstrumentType.SFZ = "sfz"`, `sfz_file()` ;
+    `plays_notes` et `gm_program()` (programme GM deviné du nom ou réglé)
+    valent pour un SFZ ; `gm_transpose` non (notes réelles), `gm_gain_db`
+    oui.
+  - `track_router.py` : `CHAN_TYPES` (BANK, SFZ), `_chan_slot_of`,
+    `_engine_of(slot)`, `_track_engine`, `_chan_engines`, `_engine_place`
+    (emplacement de banque, ou indice du slot pour un SFZ), `sfz_path`
+    (relatif à `sfz_dir`), `_sync_sfz_files` (appelé par
+    `sync_bank_files`). `_chan_sel` retient `(type, emplacement, banque,
+    programme)`. Toutes les branches Banque passent au slot à canaux et au
+    moteur de son slot : notes, grille, KIT / PATCH, Bend, modulation, CC,
+    pédale, volume, pan, pan global, chase, `on_play_stop`, coupures
+    (`cut_track_notes` coupe le canal dans le bon moteur), All Notes Off,
+    Reset, pédale globale, `assign_slot`, `load_slot_preview`,
+    `channel_after_slot` (un SFZ garde le canal, 10 compris),
+    `program_change` (le SFZ change de canal, pas de son ; pas de
+    resélection forcée). `bank_select` retient CC0 / CC32 mais n'envoie
+    qu'à une banque. Restent propres à la banque : noms des presets,
+    `program_names`, numéro de banque, repli du mode Rack (M5).
+    Avertissement de canal partagé : « sur des sons différents » entre
+    une banque et un SFZ.
+  - `BankPreview` : moteur du slot de préécoute ; `_held` retient
+    `(canal, moteur)`.
+  - `bank_note(…, engine=None)` (défaut : la banque) ; `render_copy(…,
+    sfz_engine=None)` ; `TrackRouter(…, sfz_engine, sfz_dir)` créé par
+    `MainWindow`.
+  - `audio_export.py` : copie hors temps réel du moteur sfizz, source de
+    rendu du mixeur, voix comptées, fermée à la fin.
+  - Export MIDI : `_midi_params` met `track_is_bank` vrai pour un SFZ
+    (canal qui suit les Program Change, grille au canal 10 en 36 + pad,
+    notes de kit telles quelles) ; son programme reste le `gm_program` du
+    slot ; nom de piste = nom du slot. `midi_export.py` inchangé (docstring).
+  - Éditeur MIDI : la poursuite après l'édition d'un Program Change vaut
+    aussi pour une piste SFZ (`mew_editing.py`).
+  - Non fait (7f1) : propriétés de piste (Alt+Entrée) et Ctrl+T adaptés
+    au SFZ, élément « SFZ » de l'Explorateur.
+  - Projet d'essai `/home/com/groovybox/PROJECTS/essai_sfz_7d1.gvp`
+    (script dans le scratchpad de la session) : pattern 1 = orchestre
+    FluidR3 de `essai_banque_17f1.gvp` (piano canal 1, batterie canal 10,
+    cordes canal 3, basse canal 4) ; pattern 2 = même musique sur des
+    slots SFZ (piano et basse Discord GM, batterie SamsSonor, violoncelle
+    Karoryfer) ; pattern 3 = piano Headroom. Vérifié par un script avec
+    une vraie `MainWindow` : chargement, slots et canaux, rendu WAV hors
+    temps réel de chaque piste ; à `sfizz_gain` 1.0, RMS des pistes SFZ
+    de 0,5 à 1,5 fois celui de FluidR3 selon l'instrument.
+  - `pytest` : **30 tests rouges jusqu'à 7e1** : 25 fakes (`TrackRouter`
+    sans `__init__` de `test_mix_undo.py` : ni `_rack` ni `sfz_engine` ;
+    `_FakeEditRouter` sans `_chan_slot_of` dans
+    `test_cc_event_edit_dialog.py`) et 5 tests du défaut de `sfizz_gain`
+    (1.0 → 1.5, voir l'essai).
+- **Essai de 7d1 (utilisateur, 2026-11-04)** : concluant.
+  - **Gain** : à 1.0, les patterns SFZ sont un tout petit peu moins forts
+    que le pattern FluidSynth (il faut tendre l'oreille) ; à 1.5, un peu
+    plus forts, mais **beaucoup plus agréables et plus clairs** →
+    **défaut de `sfizz_gain` porté à 1.5** (`AppConfig`, `SfzEngine.GAIN`).
+  - Pas de craquements ; Mute, Solo, volume et pan des pistes SFZ
+    concluants ; jeu direct au clavier et aux pads sur une piste SFZ : la
+    préécoute suit ; export WAV du pattern 2 fidèle à l'écoute.
+  - **Remarque, hors SFZ → 7d2** : un projet ouvert après la lecture d'un
+    autre reprend à l'ancienne position de lecture. Comportement attendu :
+    après Ctrl+N, Ctrl+O, l'ouverture ou la fermeture de la fenêtre Song,
+    la lecture du pattern ou du song repart du début. Cause : la position
+    de reprise du lecteur (`_resume_offset`) n'est remise à zéro ni par
+    Ctrl+N (qui arrête la lecture), ni par Ctrl+O (qui ne l'arrête même
+    pas), ni à l'ouverture de la fenêtre Song (qui arrête le pattern) ; la
+    fermeture la remet déjà au début (`_exit_song_mode`).

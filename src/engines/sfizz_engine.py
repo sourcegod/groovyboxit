@@ -110,10 +110,11 @@ class SfzEngine(BankEngine):
 
     NUM_BANK_SLOTS = 16     # emplacement = slot du Rack (Z8)
     MAX_BLOCK      = 1024   # taille de bloc donnée à sfizz ; un bloc plus long est découpé
-    # Gain appliqué au rendu : à 1.0, les instruments d'essai sortent à peu
-    # près au niveau de FluidR3 réglé à 0.4 (Phase 8 étape 7b1) ; réglable
+    # Gain appliqué au rendu : à 1.0, les instruments d'essai sortent un peu
+    # moins fort que FluidR3 réglé à 0.4 (Phase 8 étape 7b1) ; 1.5, un peu
+    # plus fort mais plus agréable et plus clair (essai de 7d1) ; réglable
     # par la clé "sfizz_gain".
-    GAIN           = 1.0
+    GAIN           = 1.5
 
     def __init__(self, samplerate=44100, gain=GAIN, realtime=True, status_cb=None):
         """realtime : True = file d'événements vidée par render() et

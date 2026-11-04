@@ -141,6 +141,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             lambda msg: wx.CallAfter(self._show_status, msg),
             driver=self._audio_driver,
             bank_engine=self._bank_engine,                 # 17d1
+            sfz_engine=self._sfz_engine, sfz_dir=self._sfz_dir,   # Phase 8 étape 7d1
             cur_track=lambda: self._player._cur_track,
         )
         self._player._on_play_start_cb  = self._router.chase      # 17f1, § 17e3 O4

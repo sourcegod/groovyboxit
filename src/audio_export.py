@@ -109,12 +109,18 @@ class _Session:
         self.mixer.set_master_volume(master_volume)
         live_bank   = router.bank_engine
         self.bank   = live_bank.render_copy() if live_bank is not None else None
+        # Moteur sfizz des slots Synth SFZ (Phase 8 étape 7d1, § 7a2 Z12) :
+        # copie hors temps réel, chargement bloquant à la sélection des canaux
+        live_sfz    = router.sfz_engine
+        self.sfz    = live_sfz.render_copy() if live_sfz is not None else None
         self.router = router.render_copy(self.mixer, self.bank, self.schedule,
-                                         status_cb=status_cb)
+                                         status_cb=status_cb, sfz_engine=self.sfz)
         if engines_from is not None:
             self._adopt_engines(engines_from)
         if self.bank is not None:
             self.mixer.add_render_source(self.bank.render)
+        if self.sfz is not None:
+            self.mixer.add_render_source(self.sfz.render)
 
     def _adopt_engines(self, other):
         """Reprend les moteurs de synthé d'une autre session (ceux chargés au
@@ -164,6 +170,8 @@ class _Session:
         n = self.mixer.voice_count()
         if self.bank is not None:
             n += self.bank.active_voices()
+        if self.sfz is not None:
+            n += self.sfz.active_voices()
         return n
 
     def close(self):
@@ -172,6 +180,10 @@ class _Session:
             self.mixer.remove_render_source(self.bank.render)
             self.bank.close()
             self.bank = None
+        if self.sfz is not None:
+            self.mixer.remove_render_source(self.sfz.render)
+            self.sfz.close()
+            self.sfz = None
 
 
 # ---------------------------------------------------------------------------

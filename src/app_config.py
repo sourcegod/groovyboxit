@@ -189,7 +189,9 @@ class AppConfig:
     # Slot Synth SFZ et moteurs optionnels (Phase 8 étape 7b1, docs/DESIGN.md
     # § 7a2 Z7, Z13).
 
-    SFIZZ_GAIN_DEFAULT = 1.0     # à 1.0, sfizz sort à peu près comme FluidR3 à 0.4
+    # 1.0 (7b1) sortait un peu moins fort que FluidR3 à 0.4 ; 1.5 un peu plus
+    # fort, mais plus agréable et plus clair à l'écoute (essai de 7d1)
+    SFIZZ_GAIN_DEFAULT = 1.5
 
     @property
     def sfz_dir(self):
@@ -206,7 +208,7 @@ class AppConfig:
 
     @property
     def sfizz_gain(self):
-        """Gain appliqué au rendu de sfizz (0.0..10.0) ; défaut 1.0."""
+        """Gain appliqué au rendu de sfizz (0.0..10.0) ; défaut 1.5."""
         value = self._data.get("sfizz_gain", self.SFIZZ_GAIN_DEFAULT)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return self.SFIZZ_GAIN_DEFAULT

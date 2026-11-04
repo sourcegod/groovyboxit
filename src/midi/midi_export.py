@@ -121,14 +121,16 @@ def build_pattern_midi(pattern, *, name, bpm, track_channels, track_is_synth,
     pad_audible      : bool par pad (VoiceManager.is_audible) ; les cases
                        de grille d'un pad muet ou hors solo sont omises ;
                        None = tous
-    track_is_bank    : bool par piste — slot Banque (Phase 7 étape 17f1,
-                       docs/DESIGN.md § 17e3 O3, O8) : banque et programme
+    track_is_bank    : bool par piste — slot à canaux, Banque ou Synth SFZ
+                       (Phase 7 étape 17f1, docs/DESIGN.md § 17e3 O3, O8 ;
+                       Phase 8 étape 7d1, § 7a2 Z12) : banque et programme
                        viennent des CC0 / CC32 / Program Change de _tape,
                        écrits sur leur propre canal ; chaque Program Change
                        fait passer la piste sur son canal, où vont les
                        événements suivants ; cases de grille en 36 + pad au
                        canal 10, sinon gamme ; notes KIT telles quelles,
-                       PATCH gardées. None = aucune
+                       PATCH gardées. Un Synth SFZ a en plus le programme
+                       GM de son slot (track_programs). None = aucune
     track_is_kit     : bool par piste — slot Kit ; ses notes PATCH sont
                        exportées telles quelles (notes GM, jouées par le kit
                        depuis la Phase 8 étape 5b1, docs/DESIGN.md § 5a M11).

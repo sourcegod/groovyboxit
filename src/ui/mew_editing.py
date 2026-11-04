@@ -160,7 +160,7 @@ class EditingMixin:
         parent = self._parent
         router = parent._router
         track  = new_ev["track"]
-        if track >= router.NUM_TRACKS or router._bank_slot_of(track) is None:
+        if track >= router.NUM_TRACKS or router._chan_slot_of(track) is None:
             return
         if new_ev["type"] == "pgm" and new_ev["offset"] == 0:
             router.set_track_channel(track, new_ev["channel"])

@@ -2,7 +2,7 @@
 """
     File: rack.py
     Rack — 16 slots d'instruments globaux partagés par tous les patterns.
-    Types : kit | synth | bank | loop | audio | midi_file | midi_port
+    Types : kit | synth | bank | sfz | loop | audio | midi_file | midi_port
     Date: Fri, 16/05/2026
     Author: Coolbrother
 """
@@ -16,8 +16,9 @@ class InstrumentType:
     MIDI_FILE = "midi_file"
     MIDI_PORT = "midi_port"
     BANK      = "bank"      # banque de sons (SF2/SF3 par FluidSynth), Phase 7 étape 17d1
+    SFZ       = "sfz"       # Synth SFZ (un .sfz par sfizz), Phase 8 étape 7d1
 
-    ALL = (KIT, SYNTH, BANK, LOOP, AUDIO, MIDI_FILE, MIDI_PORT)
+    ALL = (KIT, SYNTH, BANK, SFZ, LOOP, AUDIO, MIDI_FILE, MIDI_PORT)
 
 
 class InstrumentSlot:
@@ -39,9 +40,9 @@ class InstrumentSlot:
 
     @property
     def plays_notes(self):
-        """Vrai si le slot joue des notes MIDI (synthé WAV ou banque) :
-        jeu au clavier, notes PATCH, gamme sur les pads."""
-        return self.type in (InstrumentType.SYNTH, InstrumentType.BANK)
+        """Vrai si le slot joue des notes MIDI (synthé WAV, banque ou Synth
+        SFZ) : jeu au clavier, notes PATCH, gamme sur les pads."""
+        return self.type in (InstrumentType.SYNTH, InstrumentType.BANK, InstrumentType.SFZ)
 
     # ------------------------------------------------------------------
     # Slot Banque (Phase 7 étape 17d1, révisé en 17f1, docs/DESIGN.md
@@ -50,6 +51,17 @@ class InstrumentSlot:
 
     def bank_slot(self):
         return self._config_int("bank_slot", 0, Rack.NUM_BANK_SLOTS - 1)
+
+    # Slot Synth SFZ (Phase 8 étape 7d1, docs/DESIGN.md § 7a2 Z10) : config =
+    # {"sfz_file": chemin}, relatif au dossier sfz_dir s'il s'y trouve (projet
+    # portable), absolu sinon ; résolu par TrackRouter.sfz_path.
+
+    def sfz_file(self):
+        """Chemin du .sfz tel qu'enregistré (relatif ou absolu), ou None."""
+        if self.type != InstrumentType.SFZ:
+            return None
+        value = self.config.get("sfz_file")
+        return value.strip() if isinstance(value, str) and value.strip() else None
 
     # ------------------------------------------------------------------
 
@@ -64,10 +76,11 @@ class InstrumentSlot:
 
     def gm_program(self):
         """Programme GM du slot (Phase 7 étape 10h3) : instrument GM pour un
-        synthé, kit GM2 pour un kit ; config["gm_program"] s'il est réglé,
-        sinon déduit du nom. None pour un slot vide ou d'un autre type,
-        banque comprise : son programme est celui de la piste (17e2 R2)."""
-        if self.type not in (InstrumentType.SYNTH, InstrumentType.KIT):
+        synthé ou un Synth SFZ (Phase 8 étape 7d1, Z12), kit GM2 pour un kit ;
+        config["gm_program"] s'il est réglé, sinon déduit du nom. None pour un
+        slot vide ou d'un autre type, banque comprise : son programme est
+        celui de la piste (17e2 R2)."""
+        if self.type not in (InstrumentType.SYNTH, InstrumentType.KIT, InstrumentType.SFZ):
             return None
         program = self.config.get("gm_program")
         if isinstance(program, int) and 0 <= program <= 127:

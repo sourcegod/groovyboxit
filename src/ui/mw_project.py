@@ -166,7 +166,11 @@ class ProjectMixin:
             track_slots = [self._rack_slot_at_start(t, ch, tape)
                            for t, ch in enumerate(channels)]
         slots = [self._rack.get_slot(s) for s in track_slots]
-        is_bank = [s.type == InstrumentType.BANK for s in slots]
+        # Slot à canaux (banque, ou Synth SFZ depuis la Phase 8 étape 7d1,
+        # § 7a2 Z12) : canal qui suit les Program Change, grille au canal 10
+        # en 36 + pad, notes de kit telles quelles. Le Synth SFZ garde le
+        # programme GM de son slot (track_programs), une banque non.
+        is_bank = [s.type in (InstrumentType.BANK, InstrumentType.SFZ) for s in slots]
         # Piste sur un slot Kit : toujours au canal 10 (Phase 8 étape 2p2).
         # Les patterns créés sans réglage ont toutes leurs pistes sur le
         # slot 0 (souvent un kit) mais aux canaux 1, 2, 3… : la règle « kit
@@ -179,7 +183,7 @@ class ProjectMixin:
                     else ch for t, ch in enumerate(channels)]
         # Piste sur slot Banque (17f1, § 17e3 O8) : banque et programme
         # viennent des événements de _tape ; nom = preset de son canal.
-        preset_names = [preset_name(t) if is_bank[t] else None
+        preset_names = [preset_name(t) if slots[t].type == InstrumentType.BANK else None
                         for t in range(len(slots))]
         return dict(
             name             = name,
@@ -196,7 +200,7 @@ class ProjectMixin:
             synth_grid_notes = list(kb_notes),
             voice_durations  = [vm.get_duration_ms(i) for i in range(Pattern.NUM_PADS)],
             pad_volumes      = [vm.get_voice(i).volume for i in range(Pattern.NUM_PADS)],  # 12a1 D2
-            track_programs   = [s.gm_program() for s in slots],  # None pour une banque
+            track_programs   = [s.gm_program() for s in slots],  # None pour une banque (SFZ : son programme GM)
             track_transposes = [s.gm_transpose() for s in slots],      # 12a2 D4
             track_gain_db    = [s.gm_gain_db() for s in slots],        # 12a2 D5
             track_audible    = list(audible),
