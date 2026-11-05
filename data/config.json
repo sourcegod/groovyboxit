@@ -8,5 +8,6 @@
   "click1_file":  "media/hi_wood_block_mono.wav",
   "click2_file":  "media/low_wood_block_mono.wav",
   "master_volume": 100,
-  "master_pan":    0
+  "master_pan":    0,
+  "sfizz_gain":     1.5 
 }
