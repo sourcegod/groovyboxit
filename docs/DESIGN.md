@@ -10584,3 +10584,9 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
     `set_slot_gain`.
 - **Essai de 7f2 (utilisateur, 2026-11-05)** : concluant (plus de
   saturation, noms des pistes sans préfixe).
+- **7f3** — imprévu, trouvé en écrivant les tests de 7g1 : une instance
+  **courante** abandonnée (`release_channel` : plus aucune piste SFZ sur
+  le canal) n'était jamais libérée, faute d'être remplacée : le callback
+  ne rendait une instance qu'à la fin d'une extinction ou d'un échange.
+  `render` la retire désormais (`_inst[ch] = None`, `_freeq`) dès qu'elle
+  est marquée à abandonner et muette ; elle finit d'abord ses notes.

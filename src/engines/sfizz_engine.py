@@ -523,6 +523,11 @@ class SfzEngine(BankEngine):
             if inst is not None and (self._busy[ch]
                                      or lib.sfizz_get_num_active_voices(inst[0]) > 0):
                 self._render_into(inst[0], out)
+            if inst is not None and inst[0] in self._drop \
+                    and lib.sfizz_get_num_active_voices(inst[0]) <= 0:
+                self._inst[ch] = None          # abandonnée (canal libéré) et muette
+                self._drop.discard(inst[0])
+                self._freeq.append(inst[0])
             self._busy[ch] = False
             fading = self._fading[ch]
             for synth in list(fading):
