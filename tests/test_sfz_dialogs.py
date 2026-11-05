@@ -9,7 +9,10 @@
     Annuler, inchangé, réglages gardés, message de moteur coupé, liste des
     slots rétablie par l'Undo), propriétés de piste (Alt+Entrée) sur un SFZ
     (programmes de la source, MSB / LSB grisés), note d'aperçu qui attend
-    le chargement du programme.
+    le chargement du programme ; 7k1 : composition d'une banque SFZ
+    (SfzBankDialog : ajout, numéro, monter / descendre, renommer, retirer,
+    touches, enregistrement, modification d'une banque), boutons du
+    dialogue du slot, banque modifiée relue par l'Explorateur.
     Date: Thu, 05/11/2026
     Author: Coolbrother
 """
@@ -26,7 +29,7 @@ import ui.mw_pads as mw_pads
 import ui.mw_tracks as mw_tracks
 from rack import Rack, InstrumentType
 from sfz_sources import source_entry, write_sfzbank
-from ui.dialogs_sfz import SfzSlotDialog, stored_source
+from ui.dialogs_sfz import SfzSlotDialog, SfzBankDialog, stored_source
 from ui.dialogs_properties import TrackPropertiesDialog
 from ui.main_window import MainWindow
 from ui.mw_pads import PadMixin
@@ -166,9 +169,10 @@ def test_dialog_tab_order(library):
         focusable = [w for w in dlg.GetChildren() if w.AcceptsFocus()]
         names = [w.GetName() if isinstance(w, (wx.ListBox, wx.SpinCtrl)) else w.GetLabel()
                  for w in focusable]
-        assert names[:4] == ["Sources SFZ", "Gain du slot", "Fichier…", "Dossier…"]
+        assert names[:6] == ["Sources SFZ", "Gain du slot", "Fichier…", "Dossier…",
+                             "Nouvelle banque SFZ…", "Modifier la banque…"]    # 7j1
         # puis les boutons, dans l'ordre de GTK (Annuler avant Ok)
-        assert sorted(names[4:]) == ["Annuler", "Ok"]
+        assert sorted(names[6:]) == ["Annuler", "Ok"]
     finally:
         dlg.Destroy()
 
@@ -463,3 +467,237 @@ def test_preview_without_engine_does_nothing(later):
     win = _PreviewWindow()
     win._preview_note_when_ready(None, 0, 60, {"last": "k"}, "k")
     assert win.notes == [] and queue == []
+
+
+# ---------------------------------------------------------------------------
+# Composition d'une banque SFZ (Phase 8 étape 7j1, Z21)
+# ---------------------------------------------------------------------------
+
+def _labels(lb):
+    return [lb.GetString(i) for i in range(lb.GetCount())]
+
+
+def _pick(dlg, text):
+    for i, e in enumerate(dlg._available):
+        if text in e.label:
+            dlg._avail.SetSelection(i)
+            return dlg.add_selected()
+    raise AssertionError(text)
+
+
+@pytest.fixture
+def bank_dlg(library):
+    dlg = SfzBankDialog(None, library.root)
+    yield dlg
+    dlg.Destroy()
+
+
+def test_bank_dialog_lists_only_sfz_files(bank_dlg):
+    labels = _labels(bank_dlg._avail)
+    assert labels == ["Cello/Programs/a — SFZ", "GM/Melodic/001-Piano — SFZ",
+                      "GM/Melodic/005-Rhodes — SFZ", "Solo/Sax — SFZ"]
+    assert bank_dlg.GetTitle() == "Nouvelle banque SFZ"
+    assert bank_dlg._programs.GetCount() == 0 and not bank_dlg._number.IsEnabled()
+
+
+def test_bank_dialog_add_number_and_labels(bank_dlg):
+    assert _pick(bank_dlg, "001-Piano") == 0
+    assert _pick(bank_dlg, "Solo/Sax") == 1
+    assert _labels(bank_dlg._programs) == ["1 - 001-Piano — GM/Melodic/001-Piano.sfz",
+                                           "2 - Sax — Solo/Sax.sfz"]
+    assert bank_dlg._programs.GetSelection() == 1 and bank_dlg._number.GetValue() == 2
+    assert bank_dlg._note.GetLabel() == "Ajouté : programme 2, Sax"
+
+
+def test_bank_dialog_number_swaps(bank_dlg):
+    _pick(bank_dlg, "001-Piano")
+    _pick(bank_dlg, "Solo/Sax")
+    bank_dlg._programs.SetSelection(0)
+    bank_dlg.set_number(2)                     # Piano prend 2, Sax prend 1
+    assert _labels(bank_dlg._programs)[0].startswith("1 - Sax")
+    assert bank_dlg._programs.GetSelection() == 1 and bank_dlg._number.GetValue() == 2
+    bank_dlg.set_number(40)
+    assert _labels(bank_dlg._programs)[1].startswith("40 - 001-Piano")
+
+
+def test_bank_dialog_move_rename_remove(bank_dlg):
+    for text in ("001-Piano", "005-Rhodes", "Solo/Sax"):
+        _pick(bank_dlg, text)
+    bank_dlg._programs.SetSelection(2)
+    bank_dlg.move(-1)
+    assert [l.split(" — ")[0] for l in _labels(bank_dlg._programs)] == \
+        ["1 - 001-Piano", "2 - Sax", "3 - 005-Rhodes"]
+    assert bank_dlg._programs.GetSelection() == 1
+    bank_dlg.rename("Ténor")
+    assert _labels(bank_dlg._programs)[1].startswith("2 - Ténor")
+    bank_dlg.remove()
+    assert bank_dlg._programs.GetCount() == 2 and bank_dlg._programs.GetSelection() == 1
+    assert bank_dlg._note.GetLabel() == "Retiré : Ténor"
+
+
+def _key(code, alt=False):
+    return types.SimpleNamespace(GetKeyCode=lambda: code, AltDown=lambda: alt,
+                                 skipped=[], Skip=lambda: None)
+
+
+def test_bank_dialog_keys_on_program_list(bank_dlg, monkeypatch):
+    for text in ("001-Piano", "Solo/Sax"):
+        _pick(bank_dlg, text)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: bank_dlg._programs))
+    renamed = []
+    monkeypatch.setattr(type(bank_dlg), "_ask_rename", lambda self: renamed.append(True))
+    bank_dlg._programs.SetSelection(1)
+    bank_dlg._on_key(_key(wx.WXK_UP, alt=True))                 # Alt+Haut : monter
+    assert _labels(bank_dlg._programs)[0].startswith("1 - Sax")
+    bank_dlg._on_key(_key(wx.WXK_F2))
+    assert renamed == [True]
+    bank_dlg._on_key(_key(wx.WXK_DELETE))
+    assert bank_dlg._programs.GetCount() == 1
+
+
+def test_bank_dialog_keys_elsewhere_are_ignored(bank_dlg, monkeypatch):
+    _pick(bank_dlg, "001-Piano")
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: bank_dlg._avail))
+    bank_dlg._on_key(_key(wx.WXK_DELETE))
+    assert bank_dlg._programs.GetCount() == 1
+
+
+def test_bank_dialog_save(bank_dlg, library):
+    path = str(library.tmp / "out" / "Mes sons")
+    os.makedirs(library.tmp / "out")
+    assert not bank_dlg.save(path)                              # banque vide
+    assert bank_dlg._note.GetLabel() == "Banque vide : ajoutez au moins un programme"
+    _pick(bank_dlg, "Solo/Sax")
+    bank_dlg._name.SetValue("  Mes sons  ")
+    assert bank_dlg.save(path)
+    assert bank_dlg.get_path() == path + ".sfzbank.json"
+    from sfz_sources import read_source
+    src = read_source(bank_dlg.get_path())
+    assert src.name == "Mes sons" and [p.name for p in src.programs] == ["Sax"]
+
+
+def test_bank_dialog_default_path(bank_dlg, library):
+    bank_dlg._name.SetValue('Pia/no: "1"')
+    assert bank_dlg.default_path() == os.path.join(library.root, "Piano 1.sfzbank.json")
+    bank_dlg._name.SetValue("")
+    assert bank_dlg.default_path() == os.path.join(library.root, "Banque SFZ.sfzbank.json")
+
+
+def test_bank_dialog_edits_existing_bank(library):
+    bank = os.path.join(library.root, "Mes pianos.sfzbank.json")
+    write_sfzbank(bank, "Mes pianos", [(4, "Piano", os.path.join(library.melodic, "001-Piano.sfz"))])
+    dlg = SfzBankDialog(None, library.root, path=bank)
+    try:
+        assert dlg.GetTitle() == "Banque SFZ — modifier"
+        assert dlg.get_name() == "Mes pianos" and dlg.get_path() == bank
+        assert _labels(dlg._programs) == ["5 - Piano — GM/Melodic/001-Piano.sfz"]
+        _pick(dlg, "Solo/Sax")
+        assert dlg.save(dlg.get_path())
+    finally:
+        dlg.Destroy()
+    entries = [e for e in [source_entry(bank)] if e]
+    assert entries[0].count == 2
+
+
+# ---------------------------------------------------------------------------
+# Dialogue du slot : boutons de banque SFZ (7j1)
+# ---------------------------------------------------------------------------
+
+class _BankDialog:
+    def __init__(self, result, saved):
+        self.result, self.saved, self.args = result, saved, None
+
+    def __call__(self, parent, sfz_dir, entries=None, path=None):
+        self.args = (sfz_dir, path, len(entries))
+        return self
+
+    def ShowModal(self):
+        return self.result
+
+    def get_path(self):
+        return self.saved
+
+    def Destroy(self):
+        pass
+
+
+def test_edit_button_enabled_on_sfz_bank_only(library):
+    bank = os.path.join(library.root, "B.sfzbank.json")
+    write_sfzbank(bank, "B", [(0, "Sax", library.sax)])
+    dlg = _dialog(library, current=library.melodic)
+    try:
+        assert not dlg._edit_bank_btn.IsEnabled()
+        dlg.add_source(bank)
+        assert dlg._edit_bank_btn.IsEnabled()
+        dlg.add_source(library.sax)
+        assert not dlg._edit_bank_btn.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+def test_new_bank_added_and_selected(library, monkeypatch):
+    bank = os.path.join(library.root, "Nouvelle.sfzbank.json")
+    write_sfzbank(bank, "Nouvelle", [(0, "Sax", library.sax)])
+    fake = _BankDialog(wx.ID_OK, bank)
+    monkeypatch.setattr(SfzSlotDialog, "BANK_DIALOG", fake)
+    dlg = _dialog(library, entries=[source_entry(library.sax, library.root)])
+    try:
+        dlg._compose_bank(None)
+        assert fake.args == (library.root, None, 1)
+        assert dlg._list.GetSelection() == 0 and dlg.get_source() == bank
+        assert dlg._list.GetString(0) == "Nouvelle.sfzbank.json — banque SFZ, 1 programme"
+        assert dlg._edit_bank_btn.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+def test_modified_bank_line_updated(library, monkeypatch):
+    bank = os.path.join(library.root, "M.sfzbank.json")
+    write_sfzbank(bank, "M", [(0, "Sax", library.sax)])
+    dlg = _dialog(library, current=bank)
+    try:
+        index = dlg._list.GetSelection()
+        write_sfzbank(bank, "M", [(0, "Sax", library.sax),
+                                  (1, "Piano", os.path.join(library.melodic, "001-Piano.sfz"))])
+        fake = _BankDialog(wx.ID_OK, bank)
+        monkeypatch.setattr(SfzSlotDialog, "BANK_DIALOG", fake)
+        count = dlg._list.GetCount()
+        dlg._compose_bank(dlg.get_source())
+        assert fake.args[1] == bank
+        assert dlg._list.GetCount() == count and dlg._list.GetSelection() == index
+        assert dlg._list.GetString(index) == "M.sfzbank.json — banque SFZ, 2 programmes"
+    finally:
+        dlg.Destroy()
+
+
+def test_cancelled_composition_changes_nothing(library, monkeypatch):
+    monkeypatch.setattr(SfzSlotDialog, "BANK_DIALOG", _BankDialog(wx.ID_CANCEL, None))
+    dlg = _dialog(library, current=library.sax)
+    try:
+        before = (dlg._list.GetCount(), dlg.get_source())
+        dlg._compose_bank(None)
+        assert (dlg._list.GetCount(), dlg.get_source()) == before
+    finally:
+        dlg.Destroy()
+
+
+# ---------------------------------------------------------------------------
+# Explorateur : même source modifiée, relue (correction de l'essai de 7j1)
+# ---------------------------------------------------------------------------
+
+def test_explorer_rereads_modified_source(win, library, monkeypatch):
+    from test_sfz_slot import FakeSfzEngine
+    win._sfz_dir = win._router.sfz_dir = library.root
+    _explore(win, monkeypatch, 9, source=library.sax)
+    engine = FakeSfzEngine()
+    monkeypatch.setattr(win._router, "sfz_engine", engine)
+    engine.stale = (9,)
+    before = win._undo.last_entry()
+    _explore(win, monkeypatch, 9, source=library.sax)
+    assert ("load", 9, library.sax) in engine.calls            # relue par la synchronisation
+    assert win._status_ctrl.GetString(0) == "Slot 10: SFZ Sax relu, 3 programmes"
+    assert win._undo.last_entry() is before                     # le Rack n'a pas changé
+    engine.stale = ()
+    _explore(win, monkeypatch, 9, source=library.sax)
+    assert win._status_ctrl.GetString(0) == "SFZ : inchangé"
+

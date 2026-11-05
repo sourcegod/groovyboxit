@@ -952,3 +952,51 @@ def test_placeholder_program_shown_as_dummy(eng, tmp_path):
     (folder / "020-Church Organ.sfz").write_text("//dummy\n<region> sample=*sine\n")
     eng.load(0, str(folder))
     assert eng.presets(0) == [(0, 0, "001-Piano"), (0, 19, "020-Church Organ (Dummy)")]
+
+
+# ---------------------------------------------------------------------------
+# Source modifiée depuis sa lecture (correction de l'essai de 7j1)
+# ---------------------------------------------------------------------------
+
+def _rewrite_later(path, text):
+    before = os.stat(path).st_mtime_ns
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.utime(path, ns=(before + 10 ** 9, before + 10 ** 9))
+
+
+@needs_sfizz
+def test_source_stale_after_bank_rewritten(eng, progs, tmp_path):
+    from sfz_sources import write_sfzbank
+    bank = str(tmp_path / "Essai.sfzbank.json")
+    first = os.path.join(progs["folder"], "001-la.sfz")
+    write_sfzbank(bank, "Essai", [(0, "La", first)])
+    eng.load(0, bank)
+    assert not eng.source_stale(0)
+    write_sfzbank(bank, "Essai", [(0, "La", first),
+                                  (1, "Mi", os.path.join(progs["folder"], "002-mi.sfz"))])
+    os.utime(bank, ns=(os.stat(bank).st_mtime_ns + 10 ** 9,) * 2)
+    assert eng.source_stale(0)
+    eng.load(0, bank)                          # relue
+    assert not eng.source_stale(0) and len(eng.presets(0)) == 2
+
+
+@needs_sfizz
+def test_source_stale_after_folder_changed(eng, progs):
+    eng.load(0, progs["folder"])
+    assert not eng.source_stale(0)
+    with open(os.path.join(progs["folder"], "004-re.sfz"), "w") as f:
+        f.write("<region> sample=../a440.wav\n")
+    assert eng.source_stale(0)
+
+
+@needs_sfizz
+def test_source_stale_false_without_source_and_copied(eng, progs):
+    assert not eng.source_stale(3)
+    eng.load(3, progs["folder"])
+    eng.unload(3)
+    assert not eng.source_stale(3)
+    eng.load(3, progs["folder"])
+    copy = eng.render_copy()
+    assert copy._stamps[3] == eng._stamps[3] and not copy.source_stale(3)
+    copy.close()

@@ -85,6 +85,11 @@ class FakeSfzEngine(FakeBankEngine):
     def release_channel(self, channel):
         self.calls.append(("release", channel))
 
+    stale = ()                       # emplacements dont la source a changé (7j1)
+
+    def source_stale(self, slot):
+        return slot in self.stale
+
     def program_change(self, channel, program):
         self.calls.append(("pgm", channel, program))
 
@@ -775,3 +780,28 @@ def test_track_label_keeps_bank_preset_name():
     win, label = _label_window(router)
     assert label(win, 0) == "  Track_01 - Slot_03 - " + router.bank_preset_name(0)
 
+
+
+# ---------------------------------------------------------------------------
+# Source modifiée : relue à la synchronisation (correction de l'essai de 7j1)
+# ---------------------------------------------------------------------------
+
+def test_sync_reloads_stale_source_and_refreshes_names():
+    router, sfz, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    assert router.bank_preset_name(0) == "001-Headroom Piano"
+    loads = len(sfz.of("load"))
+    sfz.stale = (SFZ_A,)
+    sfz.presets = lambda slot: [(0, 0, "Nouveau")] if slot == SFZ_A else []
+    router.sync_banks()
+    assert len(sfz.of("load")) == loads + 1               # relue
+    assert ("select", 0, SFZ_A, 0, 0) in sfz.calls        # canal resélectionné
+    assert router.bank_preset_name(0) == "Nouveau"        # noms rafraîchis
+
+
+def test_sync_does_not_reload_unchanged_source():
+    router, sfz, *_ = _make_router()
+    router.sync_bank_files()
+    loads = len(sfz.of("load"))
+    router.sync_bank_files()
+    assert len(sfz.of("load")) == loads

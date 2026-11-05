@@ -10791,3 +10791,33 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
   numéros, Alt+Haut / Alt+Bas, F2, Suppr, enregistrement, banque
   sélectionnée, Ctrl+T, Alt+Entrée), sauf le point 6 (banque modifiée non
   relue), corrigé ci-dessus ; essai de la correction concluant.
+- **7k1** — tests de 7j1 :
+  - `tests/test_sfz_sources.py` (66, +12) : `SfzBankDraft` (numéro après
+    le dernier, numéro demandé libre, pris ou invalide, retour au début
+    après 127, banque pleine, retrait, renommage, nom vide ignoré,
+    `set_number` qui échange et borne, `move` avec voisin ou numéro
+    adjacent, `save` et `from_file`, nom par défaut), `write_sfzbank`
+    (relatif sous un dossier commun, absolu avec la seule racine),
+    `source_stamp` (fichier, dossier : un `.sfz` ajouté compte, un autre
+    fichier non ; absent).
+  - `tests/test_sfizz_engine.py` (73, +3, vrai sfizz) : `source_stale`
+    après une banque réécrite (relue : plus périmée, 2 programmes),
+    après un dossier modifié, sans source, copie de rendu.
+  - `tests/test_sfz_slot.py` (57, +2) : source périmée relue à la
+    synchronisation (rechargée, canal resélectionné, noms rafraîchis),
+    source inchangée non rechargée ; moteur factice : `source_stale`.
+  - `tests/test_sfz_dialogs.py` (44, +14) : `SfzBankDialog` (seuls les
+    `.sfz` proposés, libellés « numéro - nom — fichier », numéro échangé,
+    monter, renommer, retirer, Alt+Haut / F2 / Suppr sur la liste des
+    programmes et sans effet ailleurs, banque vide refusée, extension
+    ajoutée, nom de fichier proposé et nettoyé, modification d'une banque
+    existante) ; boutons du dialogue du slot (« Modifier la banque… »
+    actif sur une banque SFZ seulement, nouvelle banque ajoutée et
+    sélectionnée, banque modifiée : ligne mise à jour sur place,
+    composition annulée sans effet) ; Explorateur : même source modifiée
+    relue (« Slot 10: SFZ Sax relu, 3 programmes », sans Undo), sinon
+    « inchangé » ; ordre Tab avec les deux nouveaux boutons.
+  - Vérifié en remettant l'ancien comportement : routeur sans relecture
+    (1 échec), Explorateur « inchangé » (1), numéro sans échange (5),
+    chemins toujours relatifs (1).
+  - `SPECS.md`. 3683 verts, deux passages.

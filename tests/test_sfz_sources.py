@@ -11,7 +11,9 @@
     banque SFZ JSON (lecture, écriture, chemins relatifs, entrées
     invalides), nom affiché sans préfixe ; 7i1 : #include imbriqués résolus
     depuis le fichier racine (règle de sfizz), nom « parent — dossier »,
-    liste des sources d'un dossier d'instruments, programmes factices.
+    liste des sources d'un dossier d'instruments, programmes factices ;
+    7k1 : composition d'une banque (SfzBankDraft), chemins relatifs ou
+    absolus d'une banque enregistrée, empreinte d'une source.
     Date: Thu, 05/11/2026
     Author: Coolbrother
 """
@@ -27,7 +29,7 @@ import sfz_sources as ss
 from sfz_sources import (read_source, source_kind, fragments, number_programs,
                          folder_program_files, write_sfzbank, display_name,
                          SfzProgram, MAX_PROGRAMS, list_sources, source_entry,
-                         folder_name, is_placeholder)
+                         folder_name, is_placeholder, SfzBankDraft, source_stamp)
 
 
 def _sfz(path, text="<region> sample=a.wav\n"):
@@ -439,4 +441,120 @@ def test_placeholder_flag_and_shown_name(tmp_path):
     assert organ.name == "020-Church Organ"               # le nom lui-même ne change pas
     assert organ == SfzProgram(19, "020-Church Organ", organ.path)   # comparaison sans le drapeau
     assert display_name(organ.shown_name) == "Church Organ (Dummy)"  # nom de piste
+
+
+# ---------------------------------------------------------------------------
+# Composition d'une banque (Phase 8 étape 7j1, Z21)
+# ---------------------------------------------------------------------------
+
+def test_draft_add_numbers_after_the_last():
+    d = SfzBankDraft("Pianos")
+    assert d.add("/a/Piano.sfz") == 0
+    assert d.add("/b/Rhodes.sfz", "Mon Rhodes") == 1
+    assert d.add("/c/Orgue.sfz", number=20) == 2          # numéro libre demandé
+    assert d.add("/d/Sax.sfz") == 3                        # après le dernier : 21
+    assert d.programs == [[0, "Piano", "/a/Piano.sfz"], [1, "Mon Rhodes", "/b/Rhodes.sfz"],
+                          [20, "Orgue", "/c/Orgue.sfz"], [21, "Sax", "/d/Sax.sfz"]]
+
+
+def test_draft_add_taken_or_invalid_number_takes_next_free():
+    d = SfzBankDraft("", [(0, "A", "/a.sfz"), (1, "B", "/b.sfz")])
+    assert d.add("/c.sfz", number=0) == 2 and d.numbers() == [0, 1, 2]
+    assert d.add("/d.sfz", number=500) == 3 and d.numbers()[-1] == 3
+
+
+def test_draft_add_wraps_and_full_bank():
+    d = SfzBankDraft("", [(127, "Fin", "/z.sfz")])
+    assert d.add("/a.sfz") == 0                            # après 127 : le premier libre
+    d = SfzBankDraft("", [(n, f"p{n}", f"/{n}.sfz") for n in range(MAX_PROGRAMS)])
+    assert d.add("/x.sfz") is None and len(d) == MAX_PROGRAMS
+
+
+def test_draft_remove_and_rename():
+    d = SfzBankDraft("", [(0, "A", "/a.sfz"), (5, "B", "/b.sfz")])
+    d.rename(1, "  Basse  ")
+    d.rename(0, "   ")                                     # nom vide : ignoré
+    assert [p[1] for p in d.programs] == ["A", "Basse"]
+    d.remove(0)
+    assert d.programs == [[5, "Basse", "/b.sfz"]]
+
+
+def test_draft_set_number_swaps_and_clamps():
+    d = SfzBankDraft("", [(0, "A", "/a.sfz"), (1, "B", "/b.sfz"), (9, "C", "/c.sfz")])
+    assert d.set_number(0, 9) == 2                         # A prend 9, C prend 0
+    assert d.programs == [[0, "C", "/c.sfz"], [1, "B", "/b.sfz"], [9, "A", "/a.sfz"]]
+    assert d.set_number(1, 300) == 2 and d.numbers() == [0, 9, 127]
+    assert d.set_number(0, -5) == 0 and d.numbers() == [0, 9, 127]
+
+
+def test_draft_move_swaps_with_neighbour_or_adjacent_number():
+    d = SfzBankDraft("", [(0, "A", "/a.sfz"), (1, "B", "/b.sfz"), (5, "C", "/c.sfz")])
+    assert d.move(0, +1) == 1 and [p[1] for p in d.programs] == ["B", "A", "C"]
+    assert d.move(2, -1) == 1 and [p[1] for p in d.programs] == ["B", "C", "A"]
+    assert d.numbers() == [0, 1, 5]
+    assert d.move(2, +1) == 2 and d.numbers() == [0, 1, 6]     # sans voisin : +1
+    assert d.move(0, -1) == 0 and d.numbers() == [0, 1, 6]     # déjà au 0
+
+
+def test_draft_save_and_from_file(tmp_path):
+    a = _sfz(tmp_path / "lib" / "a.sfz")
+    b = _sfz(tmp_path / "lib" / "b.sfz")
+    d = SfzBankDraft("Mes sons", [(3, "B", b), (0, "A", a)])
+    path = str(tmp_path / "Mes sons.sfzbank.json")
+    d.save(path)
+    again = SfzBankDraft.from_file(path)
+    assert again.name == "Mes sons"
+    assert again.programs == [[0, "A", a], [3, "B", b]]
+
+
+def test_draft_save_without_name_uses_file_name(tmp_path):
+    a = _sfz(tmp_path / "a.sfz")
+    path = str(tmp_path / "Anonyme.sfzbank.json")
+    SfzBankDraft("", [(0, "A", a)]).save(path)
+    assert read_source(path).name == "Anonyme"
+
+
+def test_write_sfzbank_relative_only_below_a_shared_folder(tmp_path):
+    inside = _sfz(tmp_path / "lib" / "a.sfz")
+    path = str(tmp_path / "banks" / "b.sfzbank.json")
+    os.makedirs(tmp_path / "banks")
+    write_sfzbank(path, "b", [(0, "in", inside), (1, "root", "/opt/elsewhere/x.sfz")])
+    with open(path, encoding="utf-8") as f:
+        progs = json.load(f)["programs"]
+    assert progs[0]["path"] == "../lib/a.sfz"
+    # seul « / » en commun : chemin absolu (pas de « ../../opt/… »)
+    assert progs[1]["path"] == "/opt/elsewhere/x.sfz"
+
+
+# ---------------------------------------------------------------------------
+# Empreinte d'une source (correction de l'essai de 7j1)
+# ---------------------------------------------------------------------------
+
+def _touch_later(path, text):
+    before = os.stat(path).st_mtime_ns
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.utime(path, ns=(before + 10 ** 9, before + 10 ** 9))
+
+
+def test_source_stamp_of_a_file(tmp_path):
+    path = _sfz(tmp_path / "b.sfzbank.json", "{}")
+    stamp = source_stamp(path)
+    assert source_stamp(path) == stamp
+    _touch_later(path, '{"programs": []}')
+    assert source_stamp(path) != stamp
+
+
+def test_source_stamp_of_a_folder(tmp_path):
+    _sfz(tmp_path / "GM" / "001-a.sfz")
+    _sfz(tmp_path / "GM" / "notes.txt", "x")
+    stamp = source_stamp(str(tmp_path / "GM"))
+    _sfz(tmp_path / "GM" / "autre.txt", "y")              # pas un .sfz : sans effet
+    assert source_stamp(str(tmp_path / "GM")) == stamp
+    _sfz(tmp_path / "GM" / "002-b.sfz")
+    assert source_stamp(str(tmp_path / "GM")) != stamp
+
+
+def test_source_stamp_missing(tmp_path):
+    assert source_stamp(str(tmp_path / "absent.sfz")) is None
 
