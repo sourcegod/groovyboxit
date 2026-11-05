@@ -35,14 +35,15 @@ def teardown(frame, dlg):
 # ---------------------------------------------------------------------------
 
 def test_items_constant():
-    # "Banque" ajouté en fin de liste (slot Banque, Phase 7 étape 17h1)
-    assert ExplorerDialog.ITEMS == ["Projects", "Preset", "Kit", "Patch", "Sound", "Banque"]
-    print("  ITEMS == ['Projects', 'Preset', 'Kit', 'Patch', 'Sound', 'Banque'] : OK")
+    # "Banque" (slot Banque, Phase 7 étape 17h1), puis "SFZ" (slot Synth
+    # SFZ, Phase 8 étape 7h1) ajoutés en fin de liste
+    assert ExplorerDialog.ITEMS == ["Projects", "Preset", "Kit", "Patch", "Sound", "Banque", "SFZ"]
+    print("  ITEMS == ['Projects', 'Preset', 'Kit', 'Patch', 'Sound', 'Banque', 'SFZ'] : OK")
 
 
 def test_items_count():
-    assert len(ExplorerDialog.ITEMS) == 6
-    print("  len(ITEMS) == 6 : OK")
+    assert len(ExplorerDialog.ITEMS) == 7
+    print("  len(ITEMS) == 7 : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +59,9 @@ def test_title():
 
 def test_listbox_count():
     frame, dlg = make_dlg()
-    assert dlg._listbox.GetCount() == 6
+    assert dlg._listbox.GetCount() == 7
     teardown(frame, dlg)
-    print("  listbox.GetCount() == 6 : OK")
+    print("  listbox.GetCount() == 7 : OK")
 
 
 def test_listbox_items_match_constant():

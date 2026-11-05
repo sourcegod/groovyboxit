@@ -10706,3 +10706,44 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
   - **audition dans l'Explorateur** : pour chaque banque ou fichier SFZ,
     un court fichier audio (une note de l'instrument, un rythme du kit),
     pour écouter sans charger l'instrument.
+- **7i1** — tests de 7h1 :
+  - `tests/test_sfz_dialogs.py` (nouveau, 30 tests) : `SfzSlotDialog`
+    (sources listées, source actuelle présélectionnée, gain borné,
+    première source sans source actuelle, source hors de `sfz_dir` en
+    tête, source ajoutée, retrouvée ou sans programme, liste fournie sans
+    parcours, `sfz_dir` vide, ordre Tab, `stored_source`) ; Explorateur sur
+    une vraie `MainWindow` sans moteurs (slot rempli et nommé « GM —
+    Melodic », libellé de la liste, message avec moteur coupé, Undo
+    « SFZ slot 11 », Annuler et inchangé retirent l'Undo, programme GM
+    gardé, ancienne clé `sfz_file` remplacée, **Undo qui rétablit le
+    libellé de la liste**, élément « SFZ » et son aiguillage) ;
+    `_engine_off_note` ; `_bank_info` d'un SFZ ; `TrackPropertiesDialog`
+    sur un SFZ (libellé, « (Dummy) », MSB / LSB grisés) et sur une banque
+    (inchangé) ; note d'aperçu (attend le chargement, abandonnée si un
+    autre programme est choisi, jouée au bout de 5 s, aussitôt sur une
+    banque, rien sans moteur).
+  - `tests/test_sfz_sources.py` (54, +21) : `#include` imbriqués résolus
+    depuis le dossier de la racine (cas de big-rusty-drums), `#include`
+    imbriqué introuvable sans effet sur la racine, cycle d'inclusions,
+    `folder_name`, `list_sources` sur une bibliothèque fabriquée (sortes,
+    libellés, ordre, fragments, dossier de morceaux écarté, dossier d'un
+    seul programme non proposé), `source_entry`, `is_placeholder` (8 cas,
+    dont un vrai oscillateur réglé), `shown_name` et nom de piste.
+  - `tests/test_sfizz_engine.py` (70, +11, vrai sfizz) : note jouée
+    pendant un chargement (après la bascule, retenue puis jouée, annulée
+    par sa fin, abandonnée par coupure, CC120, CC123, canal libéré ou
+    chargement refusé, au plus 64, pas de retenue sans programme voulu),
+    « (Dummy) » dans `presets`.
+  - Les 6 tests rouges de 7h1 corrigés (`test_explorer_dialog.py`,
+    `test_track_channels.py` : `_engine_off_note` du vrai `PadMixin`,
+    noms de source dossier dans `test_sfz_sources.py` et
+    `test_sfizz_engine.py`).
+  - Vérifié en remettant l'ancien comportement : liste des slots non
+    rafraîchie (1 échec), `#include` résolus depuis l'incluant (1), aperçu
+    sans attente (3), sans notes retenues (7), sans détection des factices
+    (5).
+  - **Écart constaté** : l'ordre Tab réel du dialogue est Sources → Gain →
+    Fichier… → Dossier… → **Annuler → Ok** (GTK place Annuler avant Ok
+    dans `StdDialogButtonSizer`, comme pour les autres dialogues) ; le test
+    vérifie l'ordre des contrôles propres au dialogue.
+  - `SPECS.md`. 3652 verts, deux passages.

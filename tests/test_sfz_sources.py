@@ -9,7 +9,9 @@
     dossier (fragments : inclus ou #include introuvable ; numérotation par
     préfixe à partir de 1 ou de 0, numéros libres, doublons, plus de 128),
     banque SFZ JSON (lecture, écriture, chemins relatifs, entrées
-    invalides), nom affiché sans préfixe.
+    invalides), nom affiché sans préfixe ; 7i1 : #include imbriqués résolus
+    depuis le fichier racine (règle de sfizz), nom « parent — dossier »,
+    liste des sources d'un dossier d'instruments, programmes factices.
     Date: Thu, 05/11/2026
     Author: Coolbrother
 """
@@ -24,7 +26,8 @@ import pytest
 import sfz_sources as ss
 from sfz_sources import (read_source, source_kind, fragments, number_programs,
                          folder_program_files, write_sfzbank, display_name,
-                         SfzProgram, MAX_PROGRAMS)
+                         SfzProgram, MAX_PROGRAMS, list_sources, source_entry,
+                         folder_name, is_placeholder)
 
 
 def _sfz(path, text="<region> sample=a.wav\n"):
@@ -202,7 +205,8 @@ def test_folder_source(tmp_path):
     p1 = _sfz(tmp_path / "Melodic" / "001-Acoustic Grand Piano.sfz")
     p2 = _sfz(tmp_path / "Melodic" / "049-String Ensemble 1.sfz")
     src = read_source(str(tmp_path / "Melodic"))
-    assert src.kind == ss.KIND_FOLDER and src.name == "Melodic"
+    # nom « parent — dossier » (Phase 8 étape 7h1)
+    assert src.kind == ss.KIND_FOLDER and src.name == f"{tmp_path.name} — Melodic"
     assert src.programs == [SfzProgram(0, "001-Acoustic Grand Piano", p1),
                             SfzProgram(48, "049-String Ensemble 1", p2)]
     assert src.program(48).path == p2 and src.program(1) is None
@@ -287,3 +291,152 @@ def test_sfzbank_absolute_path_kept(tmp_path):
 ])
 def test_display_name(name, shown):
     assert display_name(name) == shown
+
+
+# ---------------------------------------------------------------------------
+# Fragments : #include résolus depuis le fichier racine (Phase 8 étape 7h1)
+# ---------------------------------------------------------------------------
+
+def test_nested_include_resolved_from_root_folder(tmp_path):
+    # Comme big-rusty-drums : Programs/01-full.sfz inclut
+    # mappings/kick_map.sfz, qui inclut "mappings/kick/k.sfz", relatif à
+    # Programs/ (dossier de la racine), pas à mappings/.
+    root = _sfz(tmp_path / "Programs" / "01-full.sfz", '#include "mappings/kick_map.sfz"\n')
+    mapping = _sfz(tmp_path / "Programs" / "mappings" / "kick_map.sfz",
+                   '#include "mappings/kick/k.sfz"\n')
+    leaf = _sfz(tmp_path / "Programs" / "mappings" / "kick" / "k.sfz")
+    frag = fragments(str(tmp_path))
+    assert os.path.normpath(leaf) in frag and os.path.normpath(mapping) in frag
+    assert os.path.normpath(root) not in frag
+
+
+def test_nested_missing_include_does_not_mark_root(tmp_path):
+    root = _sfz(tmp_path / "a.sfz", '#include "inc/b.sfz"\n<region>\n')
+    _sfz(tmp_path / "inc" / "b.sfz", '#include "absent.sfz"\n')
+    assert os.path.normpath(root) not in fragments(str(tmp_path))
+
+
+def test_include_cycle_terminates(tmp_path):
+    a = _sfz(tmp_path / "a.sfz", '#include "b.sfz"\n')
+    b = _sfz(tmp_path / "b.sfz", '#include "a.sfz"\n')
+    assert {os.path.normpath(a), os.path.normpath(b)} <= fragments(str(tmp_path))
+
+
+def test_folder_name_is_parent_and_folder(tmp_path):
+    assert folder_name(str(tmp_path / "Discord GM" / "Melodic")) == "Discord GM — Melodic"
+    assert folder_name(str(tmp_path / "Melodic") + os.sep) == f"{tmp_path.name} — Melodic"
+
+
+# ---------------------------------------------------------------------------
+# Liste des sources (dialogue du slot, Z26)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def library(tmp_path):
+    """Dossier d'instruments : une bibliothèque à .bank.xml et dossier
+    Programs (3 programmes, un dossier de morceaux inclus), un dossier GM
+    numéroté, un .sfz seul, une banque JSON, un fragment cassé."""
+    lib = tmp_path / "Cello"
+    _sfz(lib / "Programs" / "01- Archet.sfz", '#include "maps/a_map.sfz"\n')
+    _sfz(lib / "Programs" / "02- Molette.sfz", '#include "maps/a_map.sfz"\n')
+    _sfz(lib / "Programs" / "03- Pizz.sfz", '#include "maps/parts/p1.sfz"\n')
+    _sfz(lib / "Programs" / "maps" / "a_map.sfz", '#include "maps/parts/p1.sfz"\n')
+    _sfz(lib / "Programs" / "maps" / "parts" / "p1.sfz")
+    _sfz(lib / "Programs" / "maps" / "parts" / "p2.sfz")        # morceau isolé
+    _sfz(lib / "Programs" / "maps" / "parts" / "p3.sfz")
+    _sfz(lib / "Programs" / "default" / "01- Archet.sfz", '#include "keymap/k.sfz"\n')
+    _sfz(lib / "Cello.bank.xml",
+         '<AriaBank name="Mon violoncelle">'
+         '<AriaProgram name="Archet"><AriaElement path="Programs/01- Archet.sfz"/></AriaProgram>'
+         '<AriaProgram name="Pizz"><AriaElement path="Programs/03- Pizz.sfz"/></AriaProgram>'
+         '</AriaBank>')
+    _sfz(tmp_path / "GM" / "Melodic" / "001-Piano.sfz")
+    _sfz(tmp_path / "GM" / "Melodic" / "005-Rhodes.sfz")
+    _sfz(tmp_path / "Solo" / "Sax.sfz")
+    write_sfzbank(str(tmp_path / "Mes sons.sfzbank.json"), "Mes sons",
+                  [(0, "Sax", str(tmp_path / "Solo" / "Sax.sfz"))])
+    return tmp_path
+
+
+def test_list_sources_kinds_labels_and_order(library):
+    labels = [e.label for e in list_sources(str(library))]
+    assert labels == [
+        "Cello/Cello.bank.xml — banque Sforzando, 2 programmes",
+        "Cello/Programs — dossier, 3 programmes",
+        "Cello/Programs/01- Archet — SFZ",
+        "Cello/Programs/02- Molette — SFZ",
+        "Cello/Programs/03- Pizz — SFZ",
+        "Cello/Programs/maps/parts/p2 — SFZ",
+        "Cello/Programs/maps/parts/p3 — SFZ",
+        "GM/Melodic — dossier, 2 programmes",
+        "GM/Melodic/001-Piano — SFZ",
+        "GM/Melodic/005-Rhodes — SFZ",
+        "Mes sons.sfzbank.json — banque SFZ, 1 programme",
+        "Solo/Sax — SFZ",
+    ]
+
+
+def test_list_sources_excludes_fragments_and_part_folders(library):
+    paths = {os.path.relpath(e.path, str(library)) for e in list_sources(str(library))}
+    assert "Cello/Programs/maps/a_map.sfz" not in paths          # inclus
+    assert "Cello/Programs/maps/parts/p1.sfz" not in paths       # inclus, imbriqué
+    assert "Cello/Programs/default/01- Archet.sfz" not in paths  # #include cassé
+    # le dossier de morceaux n'est pas une banque : ses fichiers p2 et p3 sont
+    # des programmes seuls, mais p1 y est inclus depuis Programs/
+    assert "Cello/Programs/maps/parts" not in paths
+    assert "Solo" not in paths                                     # un seul programme
+
+
+def test_list_sources_entries(library):
+    entry = next(e for e in list_sources(str(library)) if e.kind == ss.KIND_FOLDER
+                 and e.path.endswith("Melodic"))
+    assert entry.count == 2 and entry.name == "GM — Melodic"
+    assert entry.path == str(library / "GM" / "Melodic")
+
+
+@pytest.mark.parametrize("root", [None, "", "/nexiste/pas"])
+def test_list_sources_without_folder(root):
+    assert list_sources(root) == []
+
+
+def test_source_entry_outside_root_and_empty(tmp_path):
+    path = _sfz(tmp_path / "x" / "Seul.sfz")
+    entry = source_entry(path)
+    assert entry.label == f"{path[:-4]} — SFZ" and entry.count == 1
+    os.makedirs(tmp_path / "vide")
+    assert source_entry(str(tmp_path / "vide")) is None
+
+
+# ---------------------------------------------------------------------------
+# Programmes factices (essai de 7h1 : banque GM Discord)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text, dummy", [
+    ("//dummy\n<region> sample=*sine\n", True),
+    ("<region>   sample=*sine", True),
+    ("/* bloc */\n<region> sample=*sine // fin\n", True),
+    ("<region> sample=*sine pitch_keycenter=60\n", False),     # vrai oscillateur réglé
+    ("<region> sample=*saw\n", False),
+    ("<region> sample=*sine\n<region> sample=*sine\n", False),
+    ("<region> sample=piano.wav\n", False),
+    ("", False),
+])
+def test_is_placeholder(tmp_path, text, dummy):
+    assert is_placeholder(_sfz(tmp_path / "p.sfz", text)) is dummy
+
+
+def test_is_placeholder_missing_file(tmp_path):
+    assert not is_placeholder(str(tmp_path / "absent.sfz"))
+
+
+def test_placeholder_flag_and_shown_name(tmp_path):
+    _sfz(tmp_path / "GM" / "001-Piano.sfz")
+    _sfz(tmp_path / "GM" / "020-Church Organ.sfz", "//dummy\n<region> sample=*sine\n")
+    src = read_source(str(tmp_path / "GM"))
+    piano, organ = src.programs
+    assert not piano.placeholder and piano.shown_name == "001-Piano"
+    assert organ.placeholder and organ.shown_name == "020-Church Organ (Dummy)"
+    assert organ.name == "020-Church Organ"               # le nom lui-même ne change pas
+    assert organ == SfzProgram(19, "020-Church Organ", organ.path)   # comparaison sans le drapeau
+    assert display_name(organ.shown_name) == "Church Organ (Dummy)"  # nom de piste
+

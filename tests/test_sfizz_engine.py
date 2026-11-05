@@ -602,7 +602,7 @@ def test_folder_source_presets_and_programs(eng, progs):
     assert eng.load(0, progs["folder"])
     assert eng.loaded_path(0) == progs["folder"]
     assert eng.presets(0) == [(0, 0, "001-la"), (0, 1, "002-mi"), (0, 2, "003-la8")]
-    assert eng.source(0).name == "Melodic"
+    assert eng.source(0).name.endswith(" — Melodic")       # « parent — dossier » (7h1)
     for program, freq in ((0, 440.0), (1, 660.0), (2, 880.0)):
         _prog_ready(eng, program, program)     # un canal par programme
         eng.note_on(program, 69, 100)
@@ -842,3 +842,113 @@ def test_render_copy_keeps_sources_and_gains(eng, progs):
     assert _close(_freq(out[4096:]), 880.0)
     c.close()
 
+
+
+# ---------------------------------------------------------------------------
+# Notes jouées pendant un chargement, programmes factices (Phase 8 étape 7h1)
+# ---------------------------------------------------------------------------
+
+def _loading_program_1(eng, progs):
+    """Canal 0 sur le programme 0, puis le programme 1 demandé (pas préparé :
+    il se charge) ; la bascule n'a pas encore eu lieu."""
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.select(0, 0, 0, 1)
+    eng.wait_loaded()                          # chargé, échange pas encore rendu
+    return eng._inst[0][0]
+
+
+@needs_sfizz
+def test_note_during_load_waits_for_new_program(eng, progs):
+    old = _loading_program_1(eng, progs)
+    eng.note_on(0, 69, 100)
+    _render(eng, BLOCK)                        # l'échange passe avant la note
+    assert eng._inst[0][0] != old and _voices(eng, old) == 0
+    assert _close(_freq(_render(eng)[4096:]), 660.0)     # le nouveau programme
+
+
+@needs_sfizz
+def test_note_queued_before_swap_is_held_then_played(eng, progs):
+    old = _loading_program_1(eng, progs)
+    swap = [ev for ev in eng._queue if ev[0] == sfizz_engine.EV_SWAP]
+    eng._queue.clear()                         # l'échange n'est pas encore arrivé
+    eng.note_on(0, 69, 100)
+    _render(eng, BLOCK)
+    assert eng._pending[0] == [(69, 100)] and _voices(eng, old) == 0
+    eng._queue.extend(swap)
+    _render(eng, BLOCK)
+    assert eng._pending[0] == [] and _voices(eng, eng._inst[0][0]) == 1
+    assert _close(_freq(_render(eng)[4096:]), 660.0)
+
+
+@needs_sfizz
+def test_released_before_swap_is_cancelled(eng, progs):
+    _loading_program_1(eng, progs)
+    swap = [ev for ev in eng._queue if ev[0] == sfizz_engine.EV_SWAP]
+    eng._queue.clear()
+    eng.note_on(0, 69, 100)
+    eng.note_on(0, 72, 90)
+    eng.note_off(0, 69)
+    _render(eng, BLOCK)
+    assert eng._pending[0] == [(72, 90)]
+    eng._queue.extend(swap)
+    _render(eng, BLOCK)
+    assert eng.active_voices() == 1
+
+
+@needs_sfizz
+@pytest.mark.parametrize("cut", ["sounds_off", "cc120", "cc123", "release"])
+def test_pending_notes_dropped_by_cuts(eng, progs, cut):
+    _loading_program_1(eng, progs)
+    eng._queue.clear()
+    eng.note_on(0, 69, 100)
+    _render(eng, BLOCK)
+    assert eng._pending[0]
+    if cut == "sounds_off":
+        eng.channel_sounds_off(0)
+    elif cut == "release":
+        eng.release_channel(0)
+    else:
+        eng.cc(0, int(cut[2:]), 0)
+    _render(eng, BLOCK)
+    assert eng._pending[0] == []
+
+
+@needs_sfizz
+def test_pending_dropped_when_load_refused(eng, sfz, progs):
+    eng.load(0, progs["folder"])
+    eng.load(1, sfz["bad"])
+    _prog_ready(eng, 0, 0)
+    eng._paths[1] = sfz["bad"]
+    eng.select(0, 1, 0, 0)                     # programme refusé par sfizz
+    eng.note_on(0, 69, 100)
+    eng.wait_loaded()
+    _render(eng, BLOCK)
+    assert eng._pending[0] == [] and "SFZ refusé : bad" in eng.msgs
+
+
+@needs_sfizz
+def test_pending_notes_capped(eng, progs):
+    _loading_program_1(eng, progs)
+    eng._queue.clear()
+    for i in range(SfzEngine.MAX_PENDING + 10):
+        eng.note_on(0, 30 + i % 60, 100)
+    _render(eng, BLOCK)
+    assert len(eng._pending[0]) == SfzEngine.MAX_PENDING
+
+
+@needs_sfizz
+def test_no_pending_without_target(eng, progs):
+    eng.note_on(3, 69, 100)                    # canal sans programme voulu
+    _render(eng, BLOCK)
+    assert eng._pending[3] == []
+
+
+@needs_sfizz
+def test_placeholder_program_shown_as_dummy(eng, tmp_path):
+    folder = tmp_path / "GM"
+    folder.mkdir()
+    (folder / "001-Piano.sfz").write_text("<region> sample=*sine pitch_keycenter=60\n")
+    (folder / "020-Church Organ.sfz").write_text("//dummy\n<region> sample=*sine\n")
+    eng.load(0, str(folder))
+    assert eng.presets(0) == [(0, 0, "001-Piano"), (0, 19, "020-Church Organ (Dummy)")]

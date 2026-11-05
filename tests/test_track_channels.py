@@ -24,6 +24,7 @@ from pattern import Pattern
 from rack import Rack, InstrumentType
 from track_router import TrackRouter
 from ui.mw_tracks import TrackMixin
+from ui.mw_pads import PadMixin
 from ui.mw_patterns import PatternMixin
 from ui.mw_songs import SongMixin
 
@@ -197,6 +198,9 @@ def test_song_advance_loads_channels_into_router():
 # ---------------------------------------------------------------------------
 
 class _FakeTrackWindow(TrackMixin):
+    # message des moteurs coupés après Ctrl+T (Phase 8 étape 7h1)
+    _engine_off_note = PadMixin._engine_off_note
+
     def __init__(self, cur_track=3, modified=False):
         self._router           = _make_router()
         self._rack             = self._router._rack
