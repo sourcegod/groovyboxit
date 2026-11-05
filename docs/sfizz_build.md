@@ -259,13 +259,20 @@ Lus dans `sfizz.h` et confirmés par l'outil :
 
 ## 10. Lancer l'appli sans sfizz (ni FluidSynth)
 
-FluidSynth et sfizz dépendent de bibliothèques compilées : l'appli doit
-pouvoir se lancer et rester **entièrement fonctionnelle sans elles**.
-Prévu en Phase 8 étape 7 (note du 2026-11-04, à préciser au plan 7a2) :
-options `--no-fluidsynth` et `--no-sfizz` dans `config.json` (et en ligne
-de commande). Moteur désactivé ou bibliothèque absente : les slots Banque
-ou Synth SFZ restent muets avec un message, tout le reste marche, et les
-tests qui en dépendent sont sautés.
+FluidSynth et sfizz dépendent de bibliothèques compilées : l'appli se
+lance et reste **entièrement fonctionnelle sans elles** (Phase 8 étape 7) :
+
+```sh
+python3 main.py --no-sfizz                    # sans sfizz, pour ce lancement
+python3 main.py --no-fluidsynth --no-sfizz    # sans les deux moteurs
+```
+
+ou, durablement, `"sfizz": false` / `"fluidsynth": false` dans
+`data/config.json` (les options de lancement priment). Moteur coupé ou
+bibliothèque absente : les slots Banque ou Synth SFZ sont gardés dans le
+projet mais muets, la barre d'état le dit ; tout le reste marche, et les
+tests qui dépendent du moteur sont sautés. Voir `docs/SPECS.md`
+(Configuration, Instruments SFZ).
 
 ## 11. Mettre à jour sfizz plus tard
 

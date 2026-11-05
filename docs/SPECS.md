@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) | en cours |
 
 ---
 
@@ -34,7 +34,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | MIDI in/out | `rtmidi` (via `python-rtmidi`) |
 | Fichiers MIDI (.mid) | `mido` — export du pattern (Phase 7 étape 10h1), import (Phase 7 étape 18b1) |
 | Banques SF2/SF3 | `libfluidsynth` par ctypes (paquet Debian `libfluidsynth3`, Phase 7 étape 17) |
-| Instruments SFZ (en cours) | `libsfizz` par ctypes — pas dans Debian 13, compilée et installée dans `~/.local` : procédure dans `docs/sfizz_build.md` (Phase 8 étape 7) |
+| Instruments SFZ | `libsfizz` par ctypes — pas dans Debian 13, compilée et installée dans `~/.local` : procédure dans `docs/sfizz_build.md` (Phase 8 étape 7) ; facultative, comme `libfluidsynth` |
 | Effets (futur) | `pedalboard` (Spotify) |
 
 ---
@@ -64,6 +64,7 @@ groovyboxit/
 │   ├── pygame_driver.py  # PygameDriver : backend audio pygame.mixer
 │   ├── quantize_manager.py # QuantizeManager : quantisation grille/tape, double/halve
 │   ├── rack.py           # Rack 16 slots + InstrumentType
+│   ├── sfz_sources.py    # Sources de programmes SFZ (.sfz, .bank.xml, dossier, .sfzbank.json), liste, composition (Phase 8 étape 7)
 │   ├── song.py           # Données Song : séquence ordonnée de patterns ; segments figés pour l'export (Phase 8 étape 2b1)
 │   ├── sound_cache.py    # Cache disque sons pré-calculés (.npz sha256)
 │   ├── sound_device_driver.py # Mixer (mélange sans carte son) et SoundDeviceDriver (Mixer + PortAudio)
@@ -93,6 +94,7 @@ groovyboxit/
 │   └── ui/
 │       ├── dialogs.py          # Boîtes de dialogue (explorateur)
 │       ├── dialogs_bank.py     # BankSlotDialog : fichier et emplacement d'un slot Banque
+│       ├── dialogs_sfz.py      # SfzSlotDialog (source et gain d'un slot Synth SFZ), SfzBankDialog (composer une banque SFZ)
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
 │       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
@@ -250,7 +252,11 @@ groovyboxit/
   "soundfonts_dir":   "/usr/share/sounds/sf2",
   "gm_soundfont":     "FluidR3_GM.sf2",
   "midi_bank_select": "gs",
-  "fluidsynth_gain":  0.4
+  "fluidsynth_gain":  0.4,
+  "sfz_dir":          "/home/com/groovybox/media/sfz",
+  "sfizz_gain":       1.5,
+  "fluidsynth":       true,
+  "sfizz":            true
 }
 ```
 
@@ -262,17 +268,24 @@ la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
 10.0, défaut 0.4 : sans écrêtage sur un orchestre GM importé, Phase 7 étape
 18d4 ; 1.0 avant).
 
-**À venir (Phase 8 étape 7, note du 2026-11-04) — désactiver les moteurs
-compilés.** FluidSynth et sfizz dépendent de bibliothèques compilées
-(libsfizz n'est même pas dans Debian 13, voir `docs/sfizz_build.md`).
-L'appli doit pouvoir se lancer et rester **entièrement fonctionnelle sans
-ces deux moteurs** : options `--no-fluidsynth` et `--no-sfizz`, dans
-`config.json` (et en ligne de commande, à trancher au plan 7a2). Moteur
-désactivé ou bibliothèque absente : les slots Banque ou Synth SFZ restent
-muets avec un message, tout le reste marche (kits, synthés WAV, séquenceur,
-MIDI, exports), et les tests qui en dépendent sont sautés. Aujourd'hui,
-seule l'absence de libfluidsynth est gérée (slots Banque muets) ; il n'y a
-pas d'option pour couper un moteur installé.
+Slot Synth SFZ (Phase 8 étape 7) : `sfz_dir` (dossier des instruments SFZ,
+parcouru par le dialogue du slot ; absolu ou relatif à la racine ; défaut
+`media/sfz` à côté du dossier des projets, soit
+`/home/com/groovybox/media/sfz`), `sfizz_gain` (gain du rendu de sfizz,
+0.0 à 10.0, défaut 1.5 : un peu plus fort que FluidR3 à 0.4, plus clair à
+l'écoute).
+
+**Moteurs facultatifs** (Phase 8 étape 7) : FluidSynth et sfizz dépendent
+de bibliothèques compilées ; l'appli se lance et reste entièrement
+fonctionnelle sans elles. Clés `"fluidsynth"` et `"sfizz"` (défaut
+`true` ; seul `false` coupe un moteur), et options de lancement
+`--no-fluidsynth` et `--no-sfizz` de `main.py` (`python3 main.py --help`),
+qui priment le temps d'un lancement. Moteur coupé ou bibliothèque absente :
+les slots Banque ou Synth SFZ sont gardés intacts dans le Rack, le `.gvp`
+et l'Undo, mais muets ; la barre d'état le dit au démarrage (« sfizz
+désactivé (--no-sfizz) : slots Synth SFZ muets »), et à chaque choix d'un
+tel slot (Explorateur, Ctrl+T) ; kits, synthés WAV, séquenceur, MIDI et
+exports marchent ; les tests qui en dépendent sont sautés.
 
 `master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
@@ -300,8 +313,9 @@ Le Rack est **global et partagé par tous les patterns**. Il contient 16 slots.
 | `MIDI_FILE` | `"midi_file"` | Fichier MIDI .mid (prévu) |
 | `MIDI_PORT` | `"midi_port"` | Port MIDI externe (prévu) |
 | `BANK` | `"bank"` | Banque de sons SF2/SF3 jouée par FluidSynth (Phase 7 étape 17) |
+| `SFZ` | `"sfz"` | Synth SFZ : banque de programmes SFZ jouée par sfizz (Phase 8 étape 7) |
 
-*Implémentés et opérationnels : KIT, SYNTH et BANK.*
+*Implémentés et opérationnels : KIT, SYNTH, BANK et SFZ.*
 
 ### Structure d'un slot
 
@@ -316,9 +330,16 @@ Slot
         BANK  → { "bank_slot": 0..3 }  emplacement de banque ; le slot porte
                 le nom du fichier ; l'instrument appartient au canal
                 (voir « Banques de sons »)
-        + "gm_program" (0..127, facultatif) : instrument GM (synthé) ou kit
-          GM2 (kit) écrit en Program Change à l'export ; absent → déduit du
-          nom du slot (guess_gm_program). Réglable dans les propriétés de piste.
+        SFZ   → { "sfz_source": chemin, "sfz_gain_db": -24..12 }  source de
+                programmes (.sfz, .bank.xml, dossier, .sfzbank.json),
+                relative à sfz_dir si elle s'y trouve, absolue sinon ; gain
+                du slot en dB ; "sfz_file" (essais de 7d1) est lu comme
+                sfz_source ; le programme appartient au canal (voir
+                « Instruments SFZ »)
+        + "gm_program" (0..127, facultatif) : instrument GM (synthé, Synth
+          SFZ) ou kit GM2 (kit) écrit en Program Change à l'export ; absent →
+          déduit du nom du slot (guess_gm_program). Réglable dans les
+          propriétés de piste. Un Program Change de la piste l'emporte.
         + "gm_transpose" (-24..+24, facultatif, synthé seulement) : demi-tons
           ajoutés aux notes du synthé à l'export (ex. DrawbarOrgan +24, le
           preset FluidR3 sonnant deux octaves sous la note écrite)
@@ -389,6 +410,63 @@ habitudes d'un séquenceur comme Sonar devant un module General MIDI.
 - **Événements simultanés** rejoués dans l'ordre de la piste (Phase 7
   étape 18d3) : un Reset All Controllers (CC121) suivi d'une pédale
   enfoncée laisse la pédale enfoncée.
+
+---
+
+## Instruments SFZ (type SFZ, sfizz)
+
+Phase 8 étape 7 (docs/DESIGN.md § 7a1, 7a2, 7a3 et avancement). Un slot
+**Synth SFZ** est une **banque de programmes SFZ**, jouée par sfizz
+(bibliothèque C/C++ libre, liée par ctypes ; compilation :
+`docs/sfizz_build.md`). Il se comporte comme un slot Banque : **le canal
+est l'instrument**.
+
+- **Sources** (`src/sfz_sources.py`) : le programme N est le N-ième `.sfz`
+  de la source :
+  - un fichier **`.sfz`** seul : un programme ;
+  - un **`.bank.xml` de Sforzando** (`AriaBank`) : les `AriaProgram` dans
+    l'ordre, leurs `<Define>` passés à sfizz (bibliothèques prévues pour
+    Sforzando, comme celles de Karoryfer) ;
+  - un **dossier** : ses `.sfz` qui sont des programmes (pas les
+    fragments inclus par d'autres, ni ceux dont un `#include` manque),
+    numérotés par le préfixe de leur nom (« 001-Acoustic Grand Piano » =
+    programme 1 ; une numérotation qui part de 000 est suivie), les autres
+    aux numéros libres par ordre alphabétique ; 128 au plus ;
+  - une **banque SFZ** (`.sfzbank.json`) composée dans l'appli :
+    `{"name", "programs": [{"program", "name", "path"}]}`, chemins relatifs
+    au fichier quand ils partagent un dossier.
+  Un programme réduit à une sinusoïde (`<region> sample=*sine`, programmes
+  factices de la banque GM Discord, en cours d'écriture) est signalé
+  « (Dummy) ».
+- **Choix d'une source** : Alt+X, élément **« SFZ »** : liste des sources
+  de `sfz_dir` (chemin d'abord : « Discord-SFZ-GM-Bank/Discord GM/Melodic
+  — dossier, 128 programmes »), **gain du slot** (−24 à +12 dB : baisser
+  une source trop forte), Fichier…, Dossier…, **Nouvelle banque SFZ…** /
+  **Modifier la banque…** (composer sa banque : programmes, numéro,
+  monter / descendre, renommer, retirer, Enregistrer). Undo « SFZ slot
+  NN ». Une source modifiée depuis sa lecture est relue (empreinte : date
+  et taille ; à chaque synchronisation, et en rechoisissant la même source :
+  « Slot 12: SFZ Essai relu, 2 programmes »).
+- **Programme du canal** : Program Change de la piste (entête à 1.1.1
+  compris), poursuite (chase) comme une banque ; Alt+Entrée : liste des
+  programmes de la source, en direct avec note d'aperçu (jouée quand le
+  programme est chargé), MSB / LSB grisés ; nom de piste = programme, sans
+  son préfixe numérique (« Acoustic Grand Piano »).
+- **Moteur** (`src/engines/sfizz_engine.py`, interface `BankEngine`) : une
+  instance sfizz par canal et par programme ; les programmes que les
+  Program Change du pattern demanderont sont **préparés** à la poursuite
+  (bascule sans silence en lecture) ; une instance remplacée **finit ses
+  notes** (fin de note, pédale et coupures lui parviennent) ; une note
+  jouée pendant le chargement d'un programme attend sa mise en place ; un
+  canal sans piste SFZ rend sa mémoire. sfizz n'est appelé que depuis le
+  callback audio (file d'événements) ; chargement en arrière-plan.
+- **Niveau** : `sfizz_gain` (config.json) pour tout le moteur, gain du
+  slot pour une source ; volume et pan de piste en CC7 / CC10 du canal.
+- **Exports** : WAV, copie hors temps réel de sfizz ; MIDI, une piste SFZ
+  s'exporte comme une piste Banque (Program Change tels quels, grille au
+  canal 10 en 36 + pad), avec le programme GM de son slot en tête.
+- **Mode Rack 16 canaux** : le canal N joue le slot SFZ N ; un canal au
+  slot vide se replie sur une banque, jamais sur un SFZ.
 
 ---
 
@@ -947,9 +1025,9 @@ la structure historique dédiée `_mod_tape` a été supprimée (Phase 7 étape 
 Capturé dans `_tape` (etype `ETYPE_PGM`, payload `{"program"}`). En mode
 normal, sur un synthé WAV ou un kit, effet **provisoire**, live et à la
 lecture : réassigne le slot du Rack de la piste (`assign_slot(track,
-program % 16)`). Sur une piste **Banque** (Phase 7 étape 17), le Program
-Change change l'instrument de son canal, où passe la piste ; voir
-« Banques de sons ». Dans un pattern en **mode Rack 16 canaux** (Phase 8
+program % 16)`). Sur une piste **Banque** (Phase 7 étape 17) ou **Synth
+SFZ** (Phase 8 étape 7), le Program Change change l'instrument de son
+canal, où passe la piste ; voir « Banques de sons » et « Instruments SFZ ». Dans un pattern en **mode Rack 16 canaux** (Phase 8
 étape 5), pas de pont : la piste passe sur le canal du Program Change,
 donc sur son slot ; voir « Mode Rack 16 canaux ». Reçu du contrôleur, il
 coupe d'abord les notes de la piste courante (Phase 8 étape 6 ; voir
@@ -1602,7 +1680,10 @@ Un `_add_undo` est posé avant le dialog ; si l'utilisateur annule ou laisse le 
       { "index": 1, "type": "synth", "name": "Piano",
         "config": { "patch": "/chemin/Piano" } },
       { "index": 5, "type": "bank",  "name": "FluidR3_GM",
-        "config": { "bank_slot": 0 } }
+        "config": { "bank_slot": 0 } },
+      { "index": 6, "type": "sfz",   "name": "Discord GM — Melodic",
+        "config": { "sfz_source": "Discord-SFZ-GM-Bank/Discord GM/Melodic",
+                    "sfz_gain_db": -10 } }
     ],
     "bank_files": ["/usr/share/sounds/sf2/FluidR3_GM.sf2", null, null, null]
   },

@@ -10821,3 +10821,92 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
     (1 échec), Explorateur « inchangé » (1), numéro sans échange (5),
     chemins toujours relatifs (1).
   - `SPECS.md`. 3683 verts, deux passages.
+
+### Clôture (7l1)
+
+**7a1-7k1 FAITS** (commits `f9d1d12` à `63b8453`, et ce commit de
+clôture ; 3683 tests verts) : **chantier Phase 8 étape 7 complet**. Le
+Rack a un type **Synth SFZ** : une banque de programmes SFZ jouée par
+sfizz, que le Program Change parcourt comme une banque FluidSynth ; et
+l'appli marche sans FluidSynth ni sfizz.
+
+**Ce que le chantier a livré** :
+- **sfizz** (Z1) : bibliothèque compilée et installée dans `~/.local`,
+  procédure de A à Z rejouée à blanc (`docs/sfizz_build.md`), outil
+  d'essai `tools/sfizz_probe.py` ; liaison ctypes
+  (`src/engines/sfizz_engine.py`, interface `BankEngine`), modèle de la
+  future liaison C/C++.
+- **Moteurs facultatifs** (Z4, Z7, Z14) : clés `"fluidsynth"`, `"sfizz"`
+  de `config.json`, options `--no-fluidsynth` / `--no-sfizz` de `main.py` ;
+  slots gardés mais muets, messages au démarrage et au choix d'un slot.
+- **Moteur** : file d'événements vidée dans le callback, instances par
+  canal et par programme, préparées à la poursuite (bascule sans
+  silence), en extinction après un Program Change (elles finissent leurs
+  notes), abandonnées par `EV_DROP` et libérées hors callback, canal
+  libéré ; état des CC rejoué ; notes retenues pendant un chargement ;
+  gain global `sfizz_gain` (1.5) et gain par slot ; copie hors temps réel
+  pour l'export WAV.
+- **Sources** (`src/sfz_sources.py`, pur) : `.sfz`, `.bank.xml` de
+  Sforzando (définitions), dossier numéroté par préfixe, banque
+  `.sfzbank.json` composée dans l'appli ; fragments résolus comme sfizz
+  (depuis le fichier racine) ; programmes factices « (Dummy) » ; liste
+  des sources ; empreinte (source modifiée relue).
+- **Routeur** : slots à canaux Banque / SFZ, moteur de chaque slot, dans
+  tous les chemins (notes, grille, CC, Bend, pédale, mixage, poursuite,
+  préchargement, coupures, préécoute, mode Rack, copie de rendu) ;
+  exports WAV et MIDI.
+- **Interface** : Explorateur « SFZ » (liste des sources, gain, Fichier…,
+  Dossier…, Nouvelle banque / Modifier la banque), composition d'une
+  banque, Alt+Entrée (programmes de la source, aperçu au chargement),
+  nom de piste sans préfixe, aide F1.
+
+**Écarts au plan et imprévus** :
+- **7a3** : révision du plan à la demande de l'utilisateur (comme Keyzone
+  Classic dans Sforzando) : le Synth SFZ devient une banque de programmes
+  (Program Change), au lieu d'un fichier unique au son fixe (Z11 révisé) ;
+  découpage 7f1-7l1 au lieu de 7f1-7h1.
+- **7d2** : la lecture repart du début après Ctrl+N, Ctrl+O et la
+  fenêtre Song (une pause gardait sa position) — hors SFZ, trouvé à
+  l'essai.
+- **7f2** : gain par slot et noms de pistes sans préfixe (saturation de
+  la banque Discord à l'essai) ; **7f3** : instance courante d'un canal
+  libéré enfin libérée (trouvé en écrivant les tests).
+- Corrections de l'essai de 7h1 : fragments résolus depuis le fichier
+  racine, aperçu vers sfizz quand le programme est chargé, notes
+  retenues, programmes factices, liste des slots rafraîchie par l'Undo
+  (défaut général : SFZ, Banque, Kit, Patch) ; de l'essai de 7j1 : source
+  modifiée relue.
+- Note d'aperçu dans la liste des sources (Alt+↑, Z15) : non faite, pas
+  demandée à l'essai (voir l'audition, plus bas).
+
+**Essais de l'utilisateur** (2026-11-04 et 2026-11-05) : tous concluants
+après correction — moteur et options (7b1), écoute comparée à FluidR3 et
+gain (7d1), lecture au début (7d2), Program Change sans silence ni clic,
+export WAV et MIDI (7f1), saturation corrigée (7f2), Explorateur, Ctrl+T,
+Alt+Entrée et `--no-sfizz` avec Orca (7h1), composition d'une banque
+(7j1).
+
+**`docs/SPECS.md`** : ligne Phase 8, stack, arborescence (`sfz_sources.py`,
+`dialogs_sfz.py`, `sfizz_engine.py`), configuration (`sfz_dir`,
+`sfizz_gain`, moteurs facultatifs), type SFZ et structure de son slot,
+section « Instruments SFZ », Program Change, exemple de `.gvp`, tests.
+**`docs/shortcuts.md`** (aide F1) : Alt+X (SFZ), slot Synth SFZ, composer
+une banque, Alt+Entrée sur un SFZ. **`docs/sfizz_build.md`** : lancer
+l'appli sans les moteurs.
+
+**Laissé hors périmètre** :
+- effets de sfizz (réverbération : Virtual Playing Orchestra la demande),
+  réglages de qualité, accordage Scala, keyswitches affichés ;
+- plus de 128 programmes par source, plusieurs `AriaElement` par
+  programme ; un `.sfz` modifié lui-même n'est pas rechargé (seule la
+  liste des programmes est relue) ;
+- datation des événements à l'échantillon ; Virtual Playing Orchestra
+  (téléchargement manuel : le site refuse les clients automatiques).
+
+**Suites proposées par l'utilisateur** (futurs chantiers) :
+- **limiteur du mix à l'écoute** (comme celui de l'export), pour ne
+  jamais écrêter quand plusieurs instruments jouent ensemble ;
+- **mode Clavier par défaut** au chargement d'une banque ou d'un SFZ
+  (rien à recalculer pour FluidSynth et sfizz) ;
+- **audition dans l'Explorateur** : un court extrait audio par banque ou
+  fichier SFZ (une note, un rythme de kit), pour écouter sans charger.
