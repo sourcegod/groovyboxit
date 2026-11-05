@@ -1,5 +1,6 @@
 import wx
 from rack import InstrumentType
+from sfz_sources import display_name
 from pattern import Pattern, bank_header, with_bank_header
 from .dialogs import TrackPropertiesDialog
 from .gtk_listbox import select_with_cursor
@@ -334,8 +335,12 @@ class TrackMixin:
 
     def _track_label(self, idx):
         slot_idx  = self._router.slot_for_track(idx)
-        # piste sur slot Banque : nom du preset de la piste (17f1, § 17e2 R7)
+        # piste sur slot Banque : nom du preset de la piste (17f1, § 17e2 R7) ;
+        # sur un Synth SFZ, nom du programme sans son préfixe numérique
+        # (Phase 8 étape 7f2 : « Acoustic Grand Piano », pas « 001-… »)
         preset    = self._router.bank_preset_name(idx)
+        if preset and self._rack.get_slot(slot_idx).type == InstrumentType.SFZ:
+            preset = display_name(preset)
         slot_name = preset or self._router.slot_name(idx)
         prefix    = "* " if self._track_editor.is_selected(idx) else "  "
         track_name = self._player.voice_manager.get_name(idx)

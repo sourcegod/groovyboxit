@@ -711,6 +711,8 @@ class TrackRouter:
         for i in range(self._rack.NUM_SLOTS):
             slot = self._rack.get_slot(i)
             path = self.sfz_path(slot)
+            if path is not None:
+                engine.set_slot_gain(i, slot.sfz_gain_db())   # gain du slot (7f2)
             if engine.loaded_path(i) == path:
                 continue
             self._chan_sel = [None if sel is not None and sel[0] == InstrumentType.SFZ

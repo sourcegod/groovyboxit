@@ -10562,3 +10562,25 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
     gardent « 001-Acoustic Grand Piano ») ;
   - export WAV du pattern 2 sans saturation ; export MIDI : changements
     de programme entendus sous timidity.
+- **7f2** — imprévu, suites de l'essai de 7f1 :
+  - **gain par slot SFZ** : `config["sfz_gain_db"]` (−24..+12 dB, défaut
+    0 ; `InstrumentSlot.sfz_gain_db`, `set_sfz_gain_db`), envoyé au
+    moteur par `_sync_sfz_files` (`SfzEngine.set_slot_gain`) ; appliqué
+    au rendu de chaque instance (`_inst_gain`, lu par le callback ; plutôt
+    que `sfizz_set_volume`, pour ne pas appeler sfizz hors du callback),
+    celles qui sonnent comprises ; copié par `render_copy`. La clé d'une
+    instance inclut maintenant le slot (`(slot, fichier, définitions)`) :
+    un même `.sfz` dans deux slots a deux gains. Réglage dans le dialogue
+    du slot en 7h1.
+  - **noms des pistes** : `sfz_sources.display_name` ôte le préfixe
+    numérique (« 001-Acoustic Grand Piano » → « Acoustic Grand Piano » ;
+    « 2nd Violin » et « 128 » intacts), dans `_track_label` seulement :
+    liste des programmes et propriétés de piste gardent le nom complet.
+  - Projet d'essai régénéré avec −10 dB sur le slot Discord : mix du
+    pattern 1 RMS 0,142 (crête 0,89), pattern 2 RMS 0,131 (crête 0,95),
+    FluidR3 RMS 0,124.
+  - `pytest` : **28 tests rouges jusqu'à 7g1** : les 10 de 7f1, et 18
+    tests de `test_sfz_slot.py` dont le moteur factice n'a pas
+    `set_slot_gain`.
+- **Essai de 7f2 (utilisateur, 2026-11-05)** : concluant (plus de
+  saturation, noms des pistes sans préfixe).

@@ -70,6 +70,22 @@ class InstrumentSlot:
 
     sfz_file = sfz_source          # nom de 7d1
 
+    # Gain du slot SFZ en dB (Phase 8 étape 7f2, essai de 7f1) : une source
+    # trop forte (banque GM Discord : ~10 dB au-dessus de FluidR3) se baisse
+    # sans toucher aux autres ; appliqué au rendu de ses instances sfizz.
+    SFZ_GAIN_DB_MIN, SFZ_GAIN_DB_MAX = -24, 12
+
+    def sfz_gain_db(self):
+        """Gain du slot SFZ en dB (config["sfz_gain_db"], borné), 0 sinon."""
+        if self.type != InstrumentType.SFZ:
+            return 0
+        return self._config_int("sfz_gain_db", self.SFZ_GAIN_DB_MIN, self.SFZ_GAIN_DB_MAX)
+
+    def set_sfz_gain_db(self, db):
+        """Règle config["sfz_gain_db"] ; config est remplacé (voir set_gm_program)."""
+        value = max(self.SFZ_GAIN_DB_MIN, min(self.SFZ_GAIN_DB_MAX, int(db)))
+        self.config = {**self.config, "sfz_gain_db": value}
+
     # ------------------------------------------------------------------
 
     def label(self):

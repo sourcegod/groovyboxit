@@ -162,6 +162,19 @@ def fragments(root):
 _PREFIX_RE = re.compile(r"^(\d+)(?=[\s\-_.])")
 
 
+# Nombre entier en tête, suivi d'un séparateur (-, _, .) ou d'espaces, puis
+# du nom : « 2nd Violin » et « 128 » restent tels quels
+_DISPLAY_PREFIX_RE = re.compile(r"^\d+(?:\s*[-_.]\s*|\s+)(?=\S)")
+
+
+def display_name(name):
+    """Nom d'un programme sans son préfixe numérique, pour les noms des
+    pistes (Phase 8 étape 7f2) : « 001-Acoustic Grand Piano » → « Acoustic
+    Grand Piano ». Un nom fait seulement de chiffres reste tel quel."""
+    stripped = _DISPLAY_PREFIX_RE.sub("", name or "", count=1)
+    return stripped or (name or "")
+
+
 def number_programs(names):
     """Numéros de programme d'une liste de noms de fichiers (Z18) :
     {nom: numéro}, au plus MAX_PROGRAMS, et la liste des noms écartés.

@@ -150,6 +150,10 @@ class SfzEngine(BankEngine):
         n = self.NUM_CHANNELS
         self._paths      = [None] * self.NUM_BANK_SLOTS   # source de chaque slot
         self._sources    = [None] * self.NUM_BANK_SLOTS   # SfzSource lue
+        # Gain linéaire de chaque slot (7f2) et de chaque instance (celui de
+        # son slot), lu par le callback au rendu
+        self._slot_gain  = [1.0] * self.NUM_BANK_SLOTS
+        self._inst_gain  = {}
         # Registre (fils hors callback, sous _lock)
         self._target     = [None] * n      # clé (fichier, définitions) du programme voulu
         self._target_name = [None] * n
@@ -201,6 +205,23 @@ class SfzEngine(BankEngine):
     def loaded_path(self, slot):
         return self._paths[slot] if 0 <= slot < self.NUM_BANK_SLOTS else None
 
+    def set_slot_gain(self, slot, gain_db):
+        """Gain du slot en dB (Phase 8 étape 7f2), appliqué au rendu de ses
+        instances, celles qui sonnent déjà comprises."""
+        if not 0 <= slot < self.NUM_BANK_SLOTS:
+            return
+        gain = 10.0 ** (float(gain_db) / 20.0)
+        self._slot_gain[slot] = gain
+        with self._lock:
+            for ch in range(self.NUM_CHANNELS):
+                for key, synth in self._owned[ch].items():
+                    if key[0] == slot:
+                        self._inst_gain[synth] = gain
+
+    def slot_gain_db(self, slot):
+        import math
+        return round(20.0 * math.log10(self._slot_gain[slot]), 6)
+
     def source(self, slot):
         return self._sources[slot] if 0 <= slot < self.NUM_BANK_SLOTS else None
 
@@ -223,7 +244,7 @@ class SfzEngine(BankEngine):
         prog = source.program(program) if source is not None else None
         if prog is None:
             return False
-        key = prog.key
+        key = (slot,) + prog.key          # un même .sfz dans deux slots : deux gains
         with self._lock:
             if self._target[channel] == key:
                 return True
@@ -233,7 +254,7 @@ class SfzEngine(BankEngine):
             if synth is not None:
                 self._push(EV_SWAP, channel, synth, key)
             else:
-                self._start_load(channel, prog, announce=True)
+                self._start_load(channel, slot, prog, announce=True)
         self._collect()
         return True
 
@@ -247,14 +268,14 @@ class SfzEngine(BankEngine):
         if source is not None:
             for number in programs:
                 prog = source.program(number)
-                if prog is not None and prog.key not in keys:
-                    keys.add(prog.key)
+                if prog is not None and (slot,) + prog.key not in keys:
+                    keys.add((slot,) + prog.key)
                     progs.append(prog)
         with self._lock:
             self._wanted[channel] = keys
             for prog in progs:
-                if prog.key not in self._owned[channel]:
-                    self._start_load(channel, prog, announce=False)
+                if (slot,) + prog.key not in self._owned[channel]:
+                    self._start_load(channel, slot, prog, announce=False)
         self._collect()
 
     def release_channel(self, channel):
@@ -269,7 +290,7 @@ class SfzEngine(BankEngine):
     def channel_path(self, channel):
         """Fichier .sfz du programme voulu sur le canal, ou None."""
         key = self._target[channel]
-        return key[0] if key else None
+        return key[1] if key else None
 
     def channel_ready(self, channel):
         """Vrai si l'instance courante du canal est celle du programme voulu."""
@@ -287,20 +308,21 @@ class SfzEngine(BankEngine):
                 t.join()
         self._threads = []
 
-    def _start_load(self, channel, prog, announce):
-        """Charge prog pour le canal (sous _lock), sauf s'il l'est déjà."""
-        if prog.key in self._loading[channel]:
+    def _start_load(self, channel, slot, prog, announce):
+        """Charge prog du slot pour le canal (sous _lock), sauf s'il l'est déjà."""
+        key = (slot,) + prog.key
+        if key in self._loading[channel]:
             return
-        self._loading[channel].add(prog.key)
+        self._loading[channel].add(key)
         if self._realtime:
             t = threading.Thread(target=self._load_instance,
-                                 args=(channel, prog, announce), daemon=True)
+                                 args=(channel, slot, prog, announce), daemon=True)
             self._threads.append(t)
             t.start()
         else:
-            self._load_instance(channel, prog, announce)
+            self._load_instance(channel, slot, prog, announce)
 
-    def _load_instance(self, channel, prog, announce):
+    def _load_instance(self, channel, slot, prog, announce):
         """Crée et charge une instance neuve ; la garde si son programme est
         encore voulu (courant ou préparé), et la met en place s'il est le
         programme courant."""
@@ -312,17 +334,18 @@ class SfzEngine(BankEngine):
             lib.sfizz_add_external_definitions(synth, name.encode(), value.encode())
         ok = lib.sfizz_load_file(synth, os.fsencode(prog.path)) \
             and lib.sfizz_get_num_regions(synth) > 0
+        key = (slot,) + prog.key
         with self._lock:
-            self._loading[channel].discard(prog.key)
+            self._loading[channel].discard(key)
             if not ok:
                 lib.sfizz_free(synth)
-                is_target = self._target[channel] == prog.key
             else:
-                current = self._target[channel] == prog.key
-                if current or prog.key in self._wanted[channel]:
-                    self._owned[channel][prog.key] = synth
+                current = self._target[channel] == key
+                if current or key in self._wanted[channel]:
+                    self._owned[channel][key] = synth
+                    self._inst_gain[synth] = self._slot_gain[slot]
                     if current:
-                        self._push(EV_SWAP, channel, synth, prog.key)
+                        self._push(EV_SWAP, channel, synth, key)
                 else:
                     lib.sfizz_free(synth)      # plus voulu entre-temps
                     current = False
@@ -478,6 +501,7 @@ class SfzEngine(BankEngine):
                 synth = self._freeq.popleft()
             except IndexError:
                 break
+            self._inst_gain.pop(synth, None)
             self._lib.sfizz_free(synth)
 
     # -- rendu -----------------------------------------------------------
@@ -510,7 +534,8 @@ class SfzEngine(BankEngine):
                         self._freeq.append(synth)
 
     def _render_into(self, synth, out):
-        lib, L, R, gain = self._lib, self._L, self._R, self.gain
+        lib, L, R = self._lib, self._L, self._R
+        gain = self.gain * self._inst_gain.get(synth, 1.0)
         pos, frames = 0, len(out)
         while pos < frames:
             n = min(self.MAX_BLOCK, frames - pos)
@@ -524,8 +549,9 @@ class SfzEngine(BankEngine):
         directs), aux mêmes réglages et avec les mêmes sources de slots ;
         les canaux se chargent à leur sélection (export WAV, Phase 8)."""
         copy = SfzEngine(self._samplerate, self.gain, realtime=False)
-        copy._paths   = list(self._paths)
-        copy._sources = list(self._sources)
+        copy._paths     = list(self._paths)
+        copy._sources   = list(self._sources)
+        copy._slot_gain = list(self._slot_gain)
         return copy
 
     def close(self):
@@ -553,6 +579,7 @@ class SfzEngine(BankEngine):
             self._drop.clear()
         for synth in synths:
             self._lib.sfizz_free(synth)
+        self._inst_gain.clear()
 
     def __del__(self):
         try:
