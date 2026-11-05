@@ -10341,3 +10341,150 @@ moteurs restent sautés sans bibliothèque.
     détruite par des fichiers passés avant (`test_key_manager`,
     `test_midi_export_ui`) → App recréée au besoin et gardée dans le
     module. `SPECS.md`. 3524 verts.
+
+## Phase 8 étape 7a3 — Révision du plan : le Synth SFZ devient une banque de programmes SFZ
+
+### Origine (utilisateur, 2026-11-05, après 7e2)
+
+Utiliser le Program Change avec sfizz pour changer de preset, comme le
+fait Keyzone Classic de Bitsonic : plusieurs pianos SFZ dans Sforzando,
+avec une liste déroulante qui change le preset, c'est-à-dire le type de
+piano et ses réglages de filtres, d'effets… L'utilisateur pensait aux
+« fichiers de presets » de l'appli ; mais l'élément « Preset » de
+l'Explorateur charge l'ancien format de projet (`PRESETS/preset_01.json`,
+tout l'état de l'appli), pas des presets d'instrument.
+
+### État des lieux (2026-11-05, 3524 tests verts)
+
+- **Le mécanisme de Sforzando est le fichier `.bank.xml`** (`AriaBank`),
+  présent dans deux instruments téléchargés
+  (`karoryfer-bigcat.cello/Karoryfer x bigcat cello.bank.xml`,
+  3 programmes ; `karoryfer.big-rusty-drums/Big Rusty Drums.bank.xml`,
+  8 programmes) :
+  - `<Define name="$sample_dir" value="../Samples"/>` : définition
+    passée aux `.sfz` ;
+  - `<AriaProgram name="…" gui="…"><AriaElement path="Programs/….sfz"/>
+    </AriaProgram>`, dans l'ordre de la liste ; chemins relatifs au
+    `.bank.xml` ;
+  - `<Key>` (signature de Sforzando) et `gui` : sans objet ici.
+- sfizz reçoit les définitions par `sfizz_add_external_definitions` (avant
+  le chargement), effacées par `sfizz_clear_external_definitions`.
+- La banque GM Discord range un programme GM par fichier, numéroté :
+  `Discord GM/Melodic/001-Acoustic Grand Piano.sfz` … ; le violoncelle et
+  Big Rusty Drums numérotent aussi leurs programmes (`01- …`, `01-…`).
+- Code de 7b1-7d1 : un slot SFZ = un fichier (`config["sfz_file"]`) ;
+  `SfzEngine` : emplacement = slot du Rack, `presets` = un seul,
+  `program_change` sans effet ; routeur (Z11) : le Program Change d'une
+  piste SFZ change son canal, pas son son ; `_bank_key` d'un SFZ =
+  `(slot, 0, 0)`.
+
+### Décisions validées (utilisateur, 2026-11-05)
+
+**Z16 — un slot Synth SFZ est une banque de programmes SFZ** (révise Z8,
+Z10, Z11). Le programme N est le N-ième `.sfz` de la liste du slot. Comme
+pour une banque FluidSynth, **le canal est l'instrument** : un Program
+Change (entête à 1.1.1 compris) choisit le programme du canal, la
+poursuite le suit, Alt+Entrée affiche la liste des programmes. Un seul
+`.sfz` = une banque d'un programme (le 0).
+
+**Z17 — trois sources de programmes** (réponses 1a, 1b, 1c) :
+- **(a) un `.bank.xml` de Sforzando** : les `AriaProgram` dans l'ordre,
+  nom = attribut `name`, `.sfz` = premier `AriaElement` (chemin relatif au
+  `.bank.xml`), `<Define>` passés à sfizz avant le chargement de chaque
+  programme ;
+- **(b) un dossier** : ses `.sfz` qui ne sont pas des fragments (règle de
+  Z6 : ni inclus par un autre `.sfz`, ni avec un `#include` introuvable) ;
+- **(c) une liste à nous** : un fichier JSON « banque SFZ », composé dans
+  un dialogue, qui peut mélanger des instruments de plusieurs
+  bibliothèques.
+
+**Z18 — numéro de programme d'un dossier : le préfixe numérique du nom**
+(réponse 2a), sinon l'ordre alphabétique. Préfixe = chiffres en tête du
+nom, suivis d'une séparation (`001-Acoustic Grand Piano`, `01- Bowed`) :
+numéroté à partir de 1, il donne le programme préfixe − 1 (`001` → 0) ;
+si un fichier du dossier porte le préfixe 0, la numérotation part de 0
+(préfixe = programme). Les fichiers sans préfixe prennent ensuite les
+numéros libres, par ordre alphabétique. Au plus 128 programmes (0..127) ;
+au-delà, ignorés avec un message.
+
+**Z19 — préchargement à la poursuite** (réponse 3b) : à chaque poursuite
+(démarrage de la lecture, changement de pattern, saut, Undo), le moteur
+prépare, pour chaque canal SFZ, une instance par programme que les
+Program Change du pattern demanderont, en plus du programme courant. Un
+Program Change en lecture bascule alors sans silence. Les instances
+préparées qui ne servent plus sont libérées à la poursuite suivante.
+
+### Choix de conception proposés
+
+**Z20 — slot et sources.** `config["sfz_source"]` = chemin d'un `.sfz`,
+d'un `.bank.xml`, d'un dossier ou d'une banque SFZ JSON (relatif à
+`sfz_dir`, absolu sinon, comme Z10) ; `config["sfz_file"]` de 7d1 est lu
+comme `sfz_source` (projets d'essai). Nouveau module `src/sfz_sources.py`,
+sans sfizz ni wx (pur, testable, transposable) : `read_source(path)` →
+`[(programme, nom, chemin du .sfz, définitions)]`, triée, avec les
+messages (programme sans fichier, plus de 128, `.bank.xml` illisible) ;
+parcours des fragments partagé avec le dialogue (Z6).
+
+**Z21 — banque SFZ JSON** (Z17 c) : extension `.sfzbank.json`,
+`{"name": …, "programs": [{"program": 0, "name": "…", "path": "…"}]}`,
+chemins relatifs au fichier (portable) ; enregistrée par défaut dans
+`sfz_dir`. Composée dans un dialogue accessible : liste des programmes
+(numéro, nom), ajouter un `.sfz` (liste de `sfz_dir`, Z6, ou
+Parcourir…), retirer, monter / descendre, renommer (F2), Enregistrer sous.
+
+**Z22 — moteur** (révise Z8) : `SfzEngine.load(slot, source)` lit la
+source (Z20) ; `presets(slot)` = `[(0, programme, nom)]` ;
+`select(canal, slot, banque, programme)` → le `.sfz` du programme
+(banque ignorée ; programme absent : False, comme un preset introuvable
+d'une banque) ; `prefetch(canal, slot, programmes)` (Z19) ; instances
+d'un canal gardées par chemin de `.sfz` (la courante, les préparées) ;
+**une instance remplacée continue de sonner jusqu'à la fin de ses voix**
+(un Program Change ne coupe pas les notes en cours, N3), puis rejoint
+les préparées ou est libérée. L'état des CC et du Bend du canal est
+envoyé à chaque instance qui devient courante (déjà fait en 7b1).
+
+**Z23 — routeur** (révise Z11) : `_bank_key` d'un SFZ = `(slot, 0,
+programme du canal)` ; `program_change` d'une piste SFZ change son
+instrument (comme une banque) ; `bank_preset_name` et `program_names`
+valent pour un SFZ (noms de la source ; MSB / LSB sans objet, grisés) ;
+`chase` appelle `prefetch` avec les Program Change de tout le pattern
+pour chaque canal joué par une piste SFZ.
+
+**Z24 — propriétés de piste et entêtes** : Alt+Entrée sur une piste SFZ
+montre la liste des programmes de la source (en direct, note d'aperçu,
+comme D15 / D16) ; l'entête écrit à 1.1.1 est un Program Change (CC0 /
+CC32 à 0, comme une banque) ; Ctrl+T comme pour une banque.
+
+**Z25 — export MIDI** (révise Z12) : une piste SFZ s'exporte comme une
+piste Banque : ses Program Change sont écrits tels quels (numéro du
+programme dans la source, comme Sonar envoie le numéro au module) ;
+sans Program Change dans la piste, le programme GM du slot (`gm_program`)
+reste écrit en tête. Avec une source GM numérotée (banque Discord), le
+`.mid` joue juste dans un lecteur GM.
+
+**Z26 — dialogue du slot** (révise Z15) : la liste montre des
+**sources** : chaque `.bank.xml` (« Banque Sforzando — Karoryfer x bigcat
+cello (3 programmes) »), chaque dossier d'au moins deux programmes
+(« Dossier — Discord GM/Melodic (128 programmes) »), chaque banque
+`.sfzbank.json` et chaque `.sfz` seul ; boutons « Parcourir… » et
+« Nouvelle banque SFZ… » (Z21).
+
+### Portée exclue
+
+- Plus de 128 programmes par source (Bank Select MSB / LSB pour un
+  SFZ) ; plusieurs `AriaElement` par programme (couches) : le premier
+  seulement ; l'interface graphique de Sforzando (`gui`, `<Key>`).
+- Le reste de la portée exclue de 7a2.
+
+### Découpage révisé (remplace 7f1-7h1 de 7a2)
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **7a3** | Doc — ce plan. | `docs/DESIGN.md` |
+| **7f1** | Implémentation — sources (Z17, Z18, Z20 : `.sfz`, `.bank.xml`, dossier, JSON), moteur à programmes, préchargement et instances en extinction (Z19, Z22), routeur (Z23), export (Z25). Essai à l'écoute : projet d'essai avec Program Change en cours de pattern (banque Discord en dossier, violoncelle en `.bank.xml`). | `src/sfz_sources.py` (nouveau), `src/engines/sfizz_engine.py`, `src/track_router.py`, `src/rack.py`, `src/ui/mw_project.py` |
+| **7g1** | Tests — 7f1. | `tests/test_sfz_sources.py` (nouveau), `tests/test_sfizz_engine.py`, `tests/test_sfz_slot.py`, `docs/SPECS.md` |
+| **7h1** | Implémentation — Explorateur « SFZ » et dialogue des sources (Z6, Z26), Alt+Entrée et entêtes (Z24), Ctrl+T, messages des moteurs coupés, aide F1. Essai avec Orca. | `src/ui/dialogs_sfz.py` (nouveau), `src/ui/dialogs_simple.py`, `src/ui/mw_pads.py`, `src/ui/mw_tracks.py`, `src/ui/dialogs_properties.py`, `docs/shortcuts.md` |
+| **7i1** | Tests — 7h1. | `tests/test_sfz_dialogs.py` (nouveau), `docs/SPECS.md` |
+| **7j1** | Implémentation — composition d'une banque SFZ JSON (Z21). Essai avec Orca. | `src/ui/dialogs_sfz.py`, `src/sfz_sources.py` |
+| **7k1** | Tests — 7j1. | `tests/test_sfz_dialogs.py`, `tests/test_sfz_sources.py` |
+| **7l1** | Doc — clôture (DESIGN, SPECS : Rack, sources SFZ, configuration, `.gvp`, options ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
