@@ -1,14 +1,19 @@
 #python3
 """
     File: tests/test_sfizz_engine.py
-    Moteur SFZ (Phase 8 étape 7c1, docs/DESIGN.md § 7a2 Z5, Z8, Z9 ;
-    avancement 7b1) : SfzEngine, libsfizz par ctypes derrière BankEngine,
+    Moteur SFZ (Phase 8 étapes 7c1 et 7g1, docs/DESIGN.md § 7a2 Z5, Z8, Z9,
+    § 7a3 Z19, Z22 ; avancement 7b1, 7f1, 7f2) : SfzEngine, libsfizz par
+    ctypes derrière BankEngine,
     sur des WAV et des .sfz fabriqués (cosinus à 440 et 660 Hz) :
     emplacements (= slots du Rack), sélection d'un canal et chargement en
     arrière-plan, file d'événements vidée par render(), échange
     d'instance, état des CC rejoué, une instance par canal, coupures,
     Pitch Bend, gain, rendu hors temps réel (render_copy), fichier refusé,
-    fermeture. Sautés si libsfizz est absente (docs/sfizz_build.md).
+    fermeture ; banque de programmes (7g1) : sources dossier et .bank.xml
+    (définitions), programme par canal, préchargement et bascule sans
+    attente, instances en extinction (fin de note, pédale, coupure),
+    abandon et libération, canal libéré, gain par slot. Sautés si libsfizz
+    est absente (docs/sfizz_build.md).
     Date: Wed, 04/11/2026
     Author: Coolbrother
 """
@@ -191,20 +196,22 @@ def test_instance_swapped_in_by_render(eng, sfz):
 
 
 @needs_sfizz
-def test_bank_and_program_are_ignored(eng, sfz):
+def test_bank_is_ignored_and_single_file_has_only_program_0(eng, sfz):
     eng.load(0, sfz["sine"])
-    assert eng.select(0, 0, 128, 42)
+    assert eng.select(0, 0, 128, 0)            # banque sans objet
     _ready(eng, 0)
     eng.note_on(0, 69, 100)
     assert _close(_freq(_render(eng)[4096:]), 440.0)
+    assert not eng.select(1, 0, 0, 1)          # un .sfz seul = le programme 0 seulement
 
 
 @needs_sfizz
-def test_reselect_same_file_does_not_reload(eng, sfz):
+def test_reselect_same_program_does_not_reload(eng, sfz):
     _loaded(eng, sfz)
-    gen = eng._gen[0]
+    inst = eng._inst[0]
     assert eng.select(0, 0, 0, 0)
-    assert eng._gen[0] == gen and eng.channel_ready(0)
+    assert eng._threads == [] and not eng._queue
+    assert eng._inst[0] == inst and eng.channel_ready(0)
 
 
 @needs_sfizz
@@ -217,23 +224,28 @@ def test_file_replaced_while_loading_keeps_the_last(eng, sfz):
     assert eng.channel_path(0) == sfz["high"]
     eng.note_on(0, 76, 100)
     assert _close(_freq(_render(eng)[4096:]), 660.0)
-    eng._free_retired()
-    assert not eng._retired                    # l'instance dépassée est libérée
+    # l'instance du premier, plus voulue, n'est pas gardée
+    assert [k[1] for k in eng._owned[0]] == [sfz["high"]]
 
 
 @needs_sfizz
-def test_stale_swap_is_retired_in_render(eng, sfz):
-    # Course : un autre fichier est demandé entre la vérification du fil de
-    # chargement et l'échange ; le callback écarte l'instance périmée.
+def test_stale_swap_is_ignored_then_dropped(eng, sfz):
+    # Course : un autre programme est demandé entre la mise au registre d'une
+    # instance et son échange ; le callback ignore l'échange périmé, puis
+    # l'instance, plus voulue, lui est confiée (EV_DROP) et libérée.
     _loaded(eng, sfz)
     current = eng._inst[0]
     stale = eng._lib.sfizz_create_synth()
-    eng._queue.append((sfizz_engine.EV_SWAP, 0, stale, eng._gen[0] - 1))
+    stale_key = (0, "/perime.sfz", ())
+    eng._owned[0][stale_key] = stale
+    eng._queue.append((sfizz_engine.EV_SWAP, 0, stale, stale_key))
     _render(eng, BLOCK)
     assert eng._inst[0] == current
-    assert list(eng._retired) == [stale]
-    eng._free_retired()
-    assert not eng._retired
+    eng._collect()                             # plus voulue : confiée au callback
+    assert stale_key not in eng._owned[0]
+    _render(eng, BLOCK)                        # le callback la rend
+    eng._free_pending()
+    assert not eng._freeq and stale not in eng._drop
 
 
 @needs_sfizz
@@ -539,5 +551,294 @@ def test_close_frees_everything_and_twice_is_harmless(sfz):
     e.select(2, 1, 0, 0)
     e.wait_loaded()                            # canal 2 en attente d'échange
     e.close()
-    assert e._inst == [None] * 16 and not e._queue and not e._retired
+    assert e._inst == [None] * 16 and not e._queue and not e._freeq
+    assert all(not o for o in e._owned) and all(not f for f in e._fading)
     e.close()
+
+
+# ---------------------------------------------------------------------------
+# Banque de programmes (Phase 8 étapes 7f1, 7f2 ; § 7a3 Z16-Z22)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def progs(tmp_path):
+    """Dossier de trois programmes (la 440, mi 660, la 880 à la note 69,
+    release 0,3 s) et .bank.xml avec une définition ($sample_dir)."""
+    _write_wav(tmp_path / "a440.wav", 440.0)
+    _write_wav(tmp_path / "e660.wav", 660.0)
+    _write_wav(tmp_path / "a880.wav", 880.0)
+    folder = tmp_path / "Melodic"
+    folder.mkdir()
+    for name, wav in (("001-la", "a440"), ("002-mi", "e660"), ("003-la8", "a880")):
+        (folder / f"{name}.sfz").write_text(
+            f"<region> sample=../{wav}.wav pitch_keycenter=69 lokey=0 hikey=127 "
+            f"ampeg_release=0.3\n")
+    (tmp_path / "Samples").mkdir()
+    _write_wav(tmp_path / "Samples" / "s.wav", 440.0)
+    (tmp_path / "Programs").mkdir()
+    (tmp_path / "Programs" / "p.sfz").write_text(
+        "<control> default_path=$sample_dir/\n<region> sample=s.wav pitch_keycenter=69 "
+        "lokey=0 hikey=127\n")
+    bank = tmp_path / "Lib.bank.xml"
+    bank.write_text('<?xml version="1.0" ?>\n<Key>AB</Key>\n<AriaBank name="Lib">'
+                    '<Define name="$sample_dir" value="../Samples"/>'
+                    '<AriaProgram name="Un"><AriaElement path="Programs/p.sfz"/></AriaProgram>'
+                    '<AriaProgram name="Deux"><AriaElement path="Programs/absent.sfz"/>'
+                    '</AriaProgram></AriaBank>\n')
+    return {"folder": str(folder), "bank": str(bank)}
+
+
+def _prog_ready(e, channel=0, program=0, slot=0):
+    assert e.select(channel, slot, 0, program)
+    _ready(e, channel)
+
+
+def _voices(e, synth):
+    return e._lib.sfizz_get_num_active_voices(synth)
+
+
+@needs_sfizz
+def test_folder_source_presets_and_programs(eng, progs):
+    assert eng.load(0, progs["folder"])
+    assert eng.loaded_path(0) == progs["folder"]
+    assert eng.presets(0) == [(0, 0, "001-la"), (0, 1, "002-mi"), (0, 2, "003-la8")]
+    assert eng.source(0).name == "Melodic"
+    for program, freq in ((0, 440.0), (1, 660.0), (2, 880.0)):
+        _prog_ready(eng, program, program)     # un canal par programme
+        eng.note_on(program, 69, 100)
+        assert _close(_freq(_render(eng)[4096:]), freq)
+        eng.all_sounds_off()
+        _render(eng, BLOCK)
+
+
+@needs_sfizz
+def test_missing_program_is_refused(eng, progs):
+    eng.load(0, progs["folder"])
+    assert not eng.select(0, 0, 0, 3)
+    assert eng.channel_path(0) is None
+
+
+@needs_sfizz
+def test_source_without_programs_is_refused(eng, tmp_path):
+    (tmp_path / "vide").mkdir()
+    assert not eng.load(0, str(tmp_path / "vide"))
+    assert eng.loaded_path(0) is None
+    assert any("aucun programme" in m for m in eng.msgs)
+
+
+@needs_sfizz
+def test_bank_xml_defines_reach_sfizz_and_messages(eng, progs):
+    assert eng.load(1, progs["bank"])
+    assert eng.presets(1) == [(0, 0, "Un")]
+    assert eng.msgs == ["SFZ Lib : programme « Deux » : fichier introuvable"]
+    _prog_ready(eng, 0, 0, slot=1)
+    eng.note_on(0, 69, 100)
+    x = _render(eng)[4096:]
+    assert _rms(x) > 0.01 and _close(_freq(x), 440.0)     # sample trouvé par $sample_dir
+
+
+@needs_sfizz
+def test_prefetched_program_switches_without_loading(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.prefetch(0, 0, [0, 1, 2])
+    eng.wait_loaded()
+    assert len(eng._owned[0]) == 3
+    eng.select(0, 0, 0, 2)
+    assert eng._threads == []                  # rien à charger : instance prête
+    _render(eng, BLOCK)
+    assert eng.channel_ready(0)
+    eng.note_on(0, 69, 100)
+    assert _close(_freq(_render(eng)[4096:]), 880.0)
+
+
+@needs_sfizz
+def test_unprepared_program_is_loaded(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.select(0, 0, 0, 1)
+    assert not eng.channel_ready(0)
+    _ready(eng, 0)
+    assert eng.channel_path(0).endswith("002-mi.sfz")
+
+
+def _switched_with_note(eng, progs):
+    """Programme 0 qui joue la 69, puis bascule vers le programme 1 préparé."""
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.prefetch(0, 0, [1])
+    eng.wait_loaded()
+    eng.note_on(0, 69, 100)
+    _render(eng, 4 * BLOCK)
+    old = eng._inst[0][0]
+    eng.select(0, 0, 0, 1)
+    _render(eng, BLOCK)
+    return old
+
+
+@needs_sfizz
+def test_replaced_instance_keeps_sounding(eng, progs):
+    old = _switched_with_note(eng, progs)
+    assert eng._fading[0] == [old] and _voices(eng, old) == 1
+    eng.note_on(0, 76, 100)                    # la nouvelle note va au programme 1
+    assert _voices(eng, old) == 1
+    _render(eng, BLOCK)
+    assert _voices(eng, eng._inst[0][0]) == 1
+    x = _render(eng, SR // 2)[4096:, 0]
+    spec = np.abs(np.fft.rfft(x * np.hanning(len(x))))
+    peaks = sorted(round(k * SR / len(x)) for k in np.argsort(spec)[-2:])
+    # 440 Hz de l'ancienne note, 660 × 2^(7/12) ≈ 989 Hz de la nouvelle
+    assert abs(peaks[0] - 440) < 5 and abs(peaks[1] - 989) < 5
+
+
+@needs_sfizz
+def test_note_off_reaches_fading_instance_then_freed(eng, progs):
+    # Le pattern ne demande que le programme 1 : le 0, remplacé, n'est plus
+    # voulu ; il finit sa note, puis il est libéré.
+    old = _switched_with_note(eng, progs)
+    assert old not in eng._owned[0].values() and old in eng._drop
+    eng.note_off(0, 69)
+    _render(eng, SR // 2)                      # release 0,3 s
+    eng._free_pending()
+    assert eng._fading[0] == [] and old not in eng._drop and not eng._freeq
+
+
+@needs_sfizz
+def test_fading_instance_still_wanted_is_kept(eng, progs):
+    # Le pattern demande aussi le programme 0 : son instance est gardée,
+    # prête pour le prochain retour au programme 0
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.prefetch(0, 0, [0, 1])
+    eng.wait_loaded()
+    eng.note_on(0, 69, 100)
+    _render(eng, 4 * BLOCK)
+    old = eng._inst[0][0]
+    eng.select(0, 0, 0, 1)
+    eng.note_off(0, 69)
+    _render(eng, SR // 2)
+    assert eng._fading[0] == [] and old in eng._owned[0].values()
+    eng.select(0, 0, 0, 0)                     # retour sans chargement
+    assert eng._threads == []
+    _render(eng, BLOCK)
+    assert eng._inst[0][0] == old
+
+
+@needs_sfizz
+def test_pedal_release_reaches_fading_instance(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.prefetch(0, 0, [1])
+    eng.wait_loaded()
+    eng.cc(0, 64, 127)
+    eng.note_on(0, 69, 100)
+    _render(eng, 2 * BLOCK)
+    eng.note_off(0, 69)
+    old = eng._inst[0][0]
+    eng.select(0, 0, 0, 1)
+    _render(eng, SR // 2)
+    assert _voices(eng, old) == 1              # tenue par la pédale
+    eng.cc(0, 64, 0)
+    _render(eng, SR // 2)
+    assert _voices(eng, old) == 0 and eng._fading[0] == []
+
+
+@needs_sfizz
+def test_sounds_off_cuts_fading_instances(eng, progs):
+    old = _switched_with_note(eng, progs)
+    eng.channel_sounds_off(0)
+    _render(eng, BLOCK)
+    assert _voices(eng, old) == 0 and eng.active_voices() == 0
+
+
+@needs_sfizz
+def test_new_instance_gets_channel_state(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.prefetch(0, 0, [1])
+    eng.wait_loaded()
+    eng.cc(0, 10, 0)                           # pan à gauche, avant la bascule
+    eng.select(0, 0, 0, 1)
+    _render(eng, BLOCK)
+    eng.note_on(0, 69, 100)
+    x = _render(eng)[4096:]
+    assert _rms(x[:, 1]) < 1e-6 < _rms(x[:, 0])
+
+
+@needs_sfizz
+def test_prefetch_drops_unwanted_but_keeps_current(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.prefetch(0, 0, [0, 1, 2])
+    eng.wait_loaded()
+    dropped = [s for k, s in eng._owned[0].items() if k[1].endswith("003-la8.sfz")]
+    eng.prefetch(0, 0, [1])
+    assert sorted(os.path.basename(k[1]) for k in eng._owned[0]) == ["001-la.sfz", "002-mi.sfz"]
+    _render(eng, BLOCK)                        # EV_DROP : rendue au fil principal
+    eng._free_pending()
+    assert not eng._freeq and dropped[0] not in eng._drop
+
+
+@needs_sfizz
+def test_release_channel_frees_current_once_silent(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.note_on(0, 69, 100)
+    _render(eng, 2 * BLOCK)
+    eng.release_channel(0)
+    assert eng._owned[0] == {} and eng.channel_path(0) is None
+    _render(eng, BLOCK)
+    assert eng._inst[0] is not None            # finit sa note
+    eng.note_off(0, 69)
+    _render(eng, SR // 2)
+    eng._free_pending()
+    assert eng._inst[0] is None and not eng._drop and eng.active_voices() == 0
+
+
+@needs_sfizz
+def test_slot_gain_scales_instances_already_playing(eng, progs):
+    eng.load(0, progs["folder"])
+    _prog_ready(eng, 0, 0)
+    eng.note_on(0, 69, 100)
+    full = _rms(_render(eng)[4096:])
+    eng.set_slot_gain(0, -6.0)
+    half = _rms(_render(eng)[4096:])
+    assert half == pytest.approx(full * 10 ** (-6 / 20), rel=0.02)
+    assert eng.slot_gain_db(0) == pytest.approx(-6.0)
+
+
+@needs_sfizz
+def test_slot_gain_applies_to_new_instances(eng, progs):
+    eng.load(0, progs["folder"])
+    eng.set_slot_gain(0, -12.0)
+    _prog_ready(eng, 0, 0)
+    assert eng._inst_gain[eng._inst[0][0]] == pytest.approx(10 ** (-12 / 20))
+
+
+@needs_sfizz
+def test_same_file_in_two_slots_two_instances_two_gains(eng, sfz):
+    eng.load(0, sfz["sine"])
+    eng.load(1, sfz["sine"])
+    eng.set_slot_gain(1, -6.0)
+    _prog_ready(eng, 0, 0, slot=0)
+    first = eng._inst[0][0]
+    _prog_ready(eng, 0, 0, slot=1)
+    assert eng._inst[0][0] != first
+    assert eng._inst_gain[eng._inst[0][0]] == pytest.approx(10 ** (-6 / 20))
+
+
+@needs_sfizz
+def test_render_copy_keeps_sources_and_gains(eng, progs):
+    eng.load(3, progs["folder"])
+    eng.set_slot_gain(3, -6.0)
+    c = eng.render_copy()
+    assert c.presets(3) == eng.presets(3) and c.slot_gain_db(3) == pytest.approx(-6.0)
+    c.prefetch(0, 3, [0, 2])                   # chargement bloquant
+    assert len(c._owned[0]) == 2 and c._threads == []
+    assert c.select(0, 3, 0, 2) and c.channel_ready(0)
+    c.note_on(0, 69, 100)
+    out = np.zeros((SR // 4, 2), np.float32)
+    c.render(out)
+    assert _close(_freq(out[4096:]), 880.0)
+    c.close()
+

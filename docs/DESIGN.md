@@ -10590,3 +10590,45 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
   ne rendait une instance qu'à la fin d'une extinction ou d'un échange.
   `render` la retire désormais (`_inst[ch] = None`, `_freeq`) dès qu'elle
   est marquée à abandonner et muette ; elle finit d'abord ses notes.
+- **7g1** — tests de 7f1, 7f2, 7f3 :
+  - `tests/test_sfz_sources.py` (nouveau, 33 tests, sans sfizz) : sorte de
+    source, `.sfz` seul, `.bank.xml` (`<Key>` avant `<AriaBank>`,
+    `<Define>` sans `$`, programme commenté ignoré, programme sans fichier
+    signalé, sans nom, illisible), fragments (inclus, `#include`
+    introuvable, en commentaire, à variable), fichiers d'un dossier,
+    numérotation (préfixe à partir de 1 ou de 0, numéros libres par ordre
+    alphabétique, doublon, hors plage, « 2nd Violin », séparateur exigé,
+    plus de 128), banque JSON (aller-retour aux chemins relatifs, entrées
+    invalides, illisible, chemin absolu), `display_name`.
+  - `tests/test_sfizz_engine.py` (59 tests, +18) : les 5 tests de
+    l'ancien modèle réécrits (banque ignorée et programme 0 seul, même
+    programme non rechargé, dernier choix gardé pendant un chargement,
+    échange périmé ignoré puis abandonné, fermeture) ; source dossier et
+    `.bank.xml` (définition `$sample_dir` reçue par sfizz, message d'un
+    programme sans fichier), programme absent ou source vide refusés,
+    bascule sans chargement vers un programme préparé, programme non
+    préparé chargé, **instance remplacée qui sonne encore** (440 Hz et
+    989 Hz ensemble), fin de note, pédale et coupure qui l'atteignent,
+    instance gardée si le pattern la demande encore (retour sans
+    chargement) ou libérée sinon, état du canal envoyé à la nouvelle,
+    abandon des préparées, canal libéré (7f3), gain par slot (instances
+    qui sonnent, nouvelles, même fichier dans deux slots), copie de rendu.
+  - `tests/test_sfz_slot.py` (55 tests, +15) : les 4 tests de l'ancien
+    modèle réécrits (message de source, Program Change qui choisit le
+    programme et toujours renvoyé, poursuite, nom de piste = programme à
+    l'export) ; `sfz_source` et l'ancienne clé, `sfz_gain_db`, gain envoyé
+    au moteur, programme du canal, programme absent signalé, noms des
+    programmes (mis à jour quand la source change), préchargement à la
+    poursuite (programmes de tout le pattern, programme courant, canaux
+    suivis, mode Rack), canaux sans SFZ libérés, Program Change d'une
+    banque non préchargé, sans moteur ; nom de piste sans préfixe (la
+    liste des programmes garde le nom complet), banque inchangée. Moteur
+    factice : 3 programmes par source, `set_slot_gain`, `prefetch`,
+    `release_channel`.
+  - Vérifié en cassant le code : sans préchargement (4 échecs), sans
+    `display_name` (1), sans la libération de 7f3 (1).
+  - Échec fugace de 7f1 : non revu (suite complète verte trois fois).
+  - Deux tests d'abord faux, corrigés : la numérotation d'un dossier
+    donne les numéros libres par ordre alphabétique (« 001-b » avant
+    « 2nd Violin ») ; une instance remplacée que le pattern ne demande
+    plus est libérée, pas gardée. `SPECS.md`. 3590 verts.

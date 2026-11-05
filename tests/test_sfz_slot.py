@@ -1,15 +1,19 @@
 #python3
 """
     File: tests/test_sfz_slot.py
-    Slot Synth SFZ (Phase 8 étape 7e1, docs/DESIGN.md § 7a2 Z10, Z11, Z12 ;
-    avancement 7d1) : type SFZ du Rack (fichier, programme GM, .gvp),
+    Slot Synth SFZ (Phase 8 étapes 7e1 et 7g1, docs/DESIGN.md § 7a2 Z10,
+    Z11, Z12, § 7a3 Z16-Z25 ; avancement 7d1, 7f1, 7f2) : type SFZ du Rack
+    (source, programme GM, gain, .gvp),
     routeur à deux moteurs (slots à canaux Banque / SFZ, moteur de chaque
     slot) avec un moteur sfizz factice : fichiers des slots, sélection des
     canaux, notes de grille / KIT / PATCH, Bend, modulation, CC, pédale,
     volume et pan, Program Change (canal sans changement de son), poursuite,
     canal partagé, coupures, préécoute (BankPreview), mode Rack, copie de
     rendu ; exports MIDI (_midi_params) et WAV (_Session) ; rendu de bout en
-    bout avec le vrai sfizz (sauté sans libsfizz).
+    bout avec le vrai sfizz (sauté sans libsfizz) ; banque de programmes
+    (7g1) : Program Change qui choisit le programme, préchargement à la
+    poursuite, canaux libérés, gain du slot, noms des programmes, nom de
+    piste sans préfixe.
     Date: Wed, 04/11/2026
     Author: Coolbrother
 """
@@ -60,8 +64,26 @@ class FakeSfzEngine(FakeBankEngine):
         self.voices = 0
 
     def presets(self, slot):
+        """Trois programmes par source : « 001-<nom> », « 002-<nom> »,
+        « 049-<nom> » (0, 1, 48)."""
         path = self.paths[slot]
-        return [(0, 0, os.path.splitext(os.path.basename(path))[0])] if path else []
+        if not path:
+            return []
+        stem = os.path.splitext(os.path.basename(path))[0]
+        return [(0, 0, f"001-{stem}"), (0, 1, f"002-{stem}"), (0, 48, f"049-{stem}")]
+
+    def select(self, channel, slot, bank, program):
+        self.calls.append(("select", channel, slot, bank, program))
+        return self.paths[slot] is not None and program in (0, 1, 48)
+
+    def set_slot_gain(self, slot, gain_db):
+        self.calls.append(("gain", slot, gain_db))
+
+    def prefetch(self, channel, slot, programs):
+        self.calls.append(("prefetch", channel, slot, list(programs)))
+
+    def release_channel(self, channel):
+        self.calls.append(("release", channel))
 
     def program_change(self, channel, program):
         self.calls.append(("pgm", channel, program))
@@ -241,12 +263,12 @@ def test_sync_reloads_changed_file_and_forgets_cleared_slot():
     assert sfz.selects(0)                        # le canal resélectionne le nouveau fichier
 
 
-def test_missing_sfz_file_reported():
+def test_missing_sfz_source_reported():
     sfz = FakeSfzEngine(refuse={"/abs/SamsSonor.sfz"})
     router, _, _, _, statuses, _ = _make_router(sfz=sfz)
     router.sync_bank_files()
     assert sfz.loaded_path(SFZ_B) is None
-    assert any("Slot 08: fichier SFZ introuvable" in m for m in statuses)
+    assert any("Slot 08: source SFZ introuvable ou vide" in m for m in statuses)
 
 
 def test_assign_sfz_selects_channel_and_sends_mix_to_sfz_only():
@@ -355,27 +377,29 @@ def test_volume_pan_and_master_pan_to_sfz():
     assert sfz.ccs(1, 10)[-1] == ("cc", 1, 10, pan_to_cc10(-20))
 
 
-def test_program_change_moves_channel_without_changing_sound():
+def test_program_change_selects_program_and_moves_channel():
     router, sfz, *_ = _make_router()
     _on_sfz(router, 0, SFZ_A, channel=0)
-    assert router.program_change(0, 40, channel=6) is True
+    assert router.program_change(0, 48, channel=6) is True
     assert router.track_channel_now(0) == 6
     assert router.slot_for_track(0) == SFZ_A     # pas de pont program % 16
-    assert sfz.selects(6) == [("select", 6, SFZ_A, 0, 0)]
-    assert not sfz.of("pgm")
+    assert sfz.selects(6) == [("select", 6, SFZ_A, 0, 48)]
     assert sfz.ccs(6, 7) and sfz.ccs(6, 10)      # mixage suivi sur le nouveau canal
     sfz.calls.clear()
-    router.program_change(0, 41)                  # même canal : rien à resélectionner
-    assert not sfz.of("select")
+    router.program_change(0, 1)                   # même canal : nouveau programme
+    assert sfz.selects(6) == [("select", 6, SFZ_A, 0, 1)]
+    sfz.calls.clear()
+    router.program_change(0, 1)                   # Program Change : toujours renvoyé
+    assert sfz.selects(6) == [("select", 6, SFZ_A, 0, 1)]
 
 
 def test_chase_follows_program_change_of_sfz_track():
     router, sfz, *_ = _make_router()
     _on_sfz(router, 0, SFZ_A, channel=0)
-    tape = _tape(t0=[_pgm(0, 5, 3), _ev(ETYPE_CC, 0, {"cc_num": 1, "value": 33}, 3)])
+    tape = _tape(t0=[_pgm(0, 48, 3), _ev(ETYPE_CC, 0, {"cc_num": 1, "value": 33}, 3)])
     router.chase(tape)
     assert router.track_channel_now(0) == 3
-    assert ("select", 3, SFZ_A, 0, 0) in sfz.calls
+    assert ("select", 3, SFZ_A, 0, 48) in sfz.calls
     assert ("cc", 3, 1, 33) in sfz.calls          # modulation poursuivie
 
 
@@ -518,11 +542,11 @@ def test_midi_params_sfz_track_is_channel_track_with_gm_program():
         _midi_window(rack, router), name="P", bpm=120, track_slots=slots,
         channels=list(range(16)), volumes=[100] * 16, pans=[0] * 16,
         audible=[True] * 16, vm=VoiceManager(), kb_notes=list(range(60, 76)),
-        preset_name=lambda t: "Preset banque")
+        preset_name=lambda t: f"Preset {t}")
     assert prm["track_is_bank"][:3] == [True, True, False]
     assert prm["track_programs"][0] == 1 and prm["track_programs"][1] is None
-    assert prm["track_names"][0] == "Headroom Piano"       # nom du slot
-    assert prm["track_names"][1] == "Preset banque"        # preset de la banque
+    # nom de piste : programme du canal, pour une banque comme pour un SFZ (7f1)
+    assert prm["track_names"][:3] == ["Preset 0", "Preset 1", "Piano WAV"]
 
 
 def test_midi_export_sfz_drum_grid_and_program():
@@ -592,3 +616,162 @@ def test_render_pattern_with_real_sfizz(tmp_path):
     freq = np.argmax(spec) * sr / len(x)
     assert abs(freq - 220.0) < 5.0
     assert live_sfz.channel_path(0) is None       # le moteur de l'écoute n'a pas servi
+
+
+# ---------------------------------------------------------------------------
+# Banque de programmes côté routeur (Phase 8 étapes 7f1, 7f2 ; § 7a3)
+# ---------------------------------------------------------------------------
+
+def test_sfz_source_key_and_legacy_sfz_file():
+    s = InstrumentSlot(0)
+    s.type = InstrumentType.SFZ
+    s.config = {"sfz_source": "Discord GM/Melodic", "sfz_file": "ancien.sfz"}
+    assert s.sfz_source() == "Discord GM/Melodic"     # la nouvelle clé l'emporte
+    s.config = {"sfz_file": "ancien.sfz"}
+    assert s.sfz_source() == "ancien.sfz" == s.sfz_file()
+
+
+def test_sfz_gain_db_bounded_and_sfz_only():
+    s = InstrumentSlot(0)
+    s.type = InstrumentType.SFZ
+    assert s.sfz_gain_db() == 0
+    s.set_sfz_gain_db(-40)
+    assert s.sfz_gain_db() == -24 and s.config["sfz_gain_db"] == -24
+    s.set_sfz_gain_db(30)
+    assert s.sfz_gain_db() == 12
+    s.config = {"sfz_gain_db": "fort"}
+    assert s.sfz_gain_db() == 0
+    s.type = InstrumentType.SYNTH
+    s.config = {"sfz_gain_db": -6}
+    assert s.sfz_gain_db() == 0
+
+
+def test_sync_sends_slot_gain():
+    router, sfz, *_ = _make_router()
+    router._rack.get_slot(SFZ_A).set_sfz_gain_db(-10)
+    router.sync_bank_files()
+    assert ("gain", SFZ_A, -10) in sfz.calls and ("gain", SFZ_B, 0) in sfz.calls
+    assert not [c for c in sfz.of("gain") if c[1] not in (SFZ_A, SFZ_B)]
+
+
+def test_select_key_of_sfz_is_program_of_channel():
+    router, sfz, *_ = _make_router()
+    router._chan_prog[2] = 48
+    _on_sfz(router, 0, SFZ_A, channel=2)
+    router.sync_banks(force=True)
+    assert sfz.selects(2) == [("select", 2, SFZ_A, 0, 48)]
+
+
+def test_missing_program_reported():
+    router, sfz, _, _, statuses, _ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    router.program_change(0, 77)
+    assert any("Piste 1: slot SFZ 07 sans source ou programme 77 introuvable" in m
+               for m in statuses)
+
+
+def test_preset_and_program_names_of_sfz():
+    router, sfz, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    router.program_change(0, 48)
+    assert router.bank_preset_name(0) == "049-Headroom Piano"
+    names = router.program_names(SFZ_A, 0, 99, 99)      # MSB / LSB sans objet
+    assert names[0] == "001-Headroom Piano" and names[48] == "049-Headroom Piano"
+    assert names[2] is None and len(names) == 128
+    router.program_change(0, 77)
+    assert router.bank_preset_name(0) == "(preset absent)"
+
+
+def test_program_names_refreshed_when_source_changes():
+    router, sfz, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    assert router.bank_preset_name(0) == "001-Headroom Piano"
+    router._rack.set_slot(SFZ_A, InstrumentType.SFZ, "Autre", {"sfz_source": "autre.sfz"})
+    router.sync_banks()
+    assert router.bank_preset_name(0) == "001-autre"
+
+
+def test_chase_prefetches_programs_of_the_whole_pattern():
+    router, sfz, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    tape = _tape(t0=[_pgm(0, 1, 0), _pgm(8, 48, 0), _pgm(16, 1, 0)])
+    router.chase(tape, 0.0)
+    assert ("prefetch", 0, SFZ_A, [1, 48]) in sfz.calls
+    assert ("select", 0, SFZ_A, 0, 1) in sfz.calls     # programme à la position
+
+
+def test_chase_prefetch_includes_current_program_and_follows_channels():
+    router, sfz, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    _on_sfz(router, 1, SFZ_B, channel=5)
+    tape = _tape(t0=[_pgm(8, 48, 3)])                  # passe au canal 4 à la mesure 1, pas 9
+    router.chase(tape, 0.0)
+    prefetch = {c[1]: (c[2], c[3]) for c in sfz.of("prefetch")}
+    assert prefetch[0] == (SFZ_A, [0])                 # programme courant du canal 1
+    assert prefetch[3] == (SFZ_A, [48])                # celui du Program Change, canal 4
+    assert prefetch[5] == (SFZ_B, [0])
+
+
+def test_chase_releases_channels_without_sfz():
+    router, sfz, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    router.assign_slot(1, BANK)
+    router.chase(_tape())
+    released = {c[1] for c in sfz.of("release")}
+    assert 0 not in released and released == set(range(1, 16))
+    assert router._chan_sel[0] is not None             # canal SFZ gardé
+
+
+def test_chase_does_not_prefetch_bank_program_changes():
+    router, sfz, *_ = _make_router()
+    router.assign_slot(0, BANK)
+    router.chase(_tape(t0=[_pgm(0, 33, 0)]))
+    assert not sfz.of("prefetch")
+
+
+def test_rack_mode_prefetch_uses_slot_of_channel():
+    router, sfz, *_ = _make_router()
+    router.rack_mode = True
+    router.set_track_channel(0, SFZ_A)                 # canal 7 → slot 7 (SFZ)
+    tape = _tape(t0=[_pgm(4, 48, SFZ_A)])
+    router.chase(tape, 0.0)
+    assert ("prefetch", SFZ_A, SFZ_A, [0, 48]) in sfz.calls
+
+
+def test_chase_without_sfz_engine_is_harmless():
+    router, *_ = _make_router(sfz=False)
+    router.assign_slot(0, SFZ_A)
+    router.chase(_tape(t0=[_pgm(0, 1, 0)]))            # aucune erreur
+
+
+# ---------------------------------------------------------------------------
+# Nom de piste sans préfixe (7f2) : liste des pistes seulement
+# ---------------------------------------------------------------------------
+
+def _label_window(router):
+    from ui.mw_tracks import TrackMixin
+    win = types.SimpleNamespace(
+        _router=router, _rack=router._rack,
+        _track_editor=types.SimpleNamespace(is_selected=lambda i: False),
+        _player=types.SimpleNamespace(voice_manager=VoiceManager(), _cur_track=1,
+                                      recording=False))
+    win._rack_channel_desc = lambda ch: f"Slot_{ch + 1:02d}"
+    return win, TrackMixin._track_label
+
+
+def test_track_label_shows_sfz_program_without_prefix():
+    router, *_ = _make_router()
+    _on_sfz(router, 0, SFZ_A, channel=0)
+    router.program_change(0, 48)
+    win, label = _label_window(router)
+    assert label(win, 0) == "  Track_01 - Slot_07 - Headroom Piano"
+    # la liste des programmes garde le nom complet
+    assert router.program_names(SFZ_A, 0, 0, 0)[48] == "049-Headroom Piano"
+
+
+def test_track_label_keeps_bank_preset_name():
+    router, _, bank, *_ = _make_router()
+    router.assign_slot(0, BANK)
+    win, label = _label_window(router)
+    assert label(win, 0) == "  Track_01 - Slot_03 - " + router.bank_preset_name(0)
+
