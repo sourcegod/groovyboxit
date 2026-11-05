@@ -52,16 +52,23 @@ class InstrumentSlot:
     def bank_slot(self):
         return self._config_int("bank_slot", 0, Rack.NUM_BANK_SLOTS - 1)
 
-    # Slot Synth SFZ (Phase 8 étape 7d1, docs/DESIGN.md § 7a2 Z10) : config =
-    # {"sfz_file": chemin}, relatif au dossier sfz_dir s'il s'y trouve (projet
-    # portable), absolu sinon ; résolu par TrackRouter.sfz_path.
+    # Slot Synth SFZ (Phase 8 étapes 7d1, 7f1, docs/DESIGN.md § 7a2 Z10,
+    # § 7a3 Z20) : config = {"sfz_source": chemin} d'une source de
+    # programmes (.sfz, .bank.xml, dossier, banque SFZ JSON), relatif au
+    # dossier sfz_dir s'il s'y trouve (projet portable), absolu sinon ;
+    # résolu par TrackRouter.sfz_path. "sfz_file" (7d1) est lu de même.
 
-    def sfz_file(self):
-        """Chemin du .sfz tel qu'enregistré (relatif ou absolu), ou None."""
+    def sfz_source(self):
+        """Chemin de la source tel qu'enregistré (relatif ou absolu), ou None."""
         if self.type != InstrumentType.SFZ:
             return None
-        value = self.config.get("sfz_file")
-        return value.strip() if isinstance(value, str) and value.strip() else None
+        for key in ("sfz_source", "sfz_file"):
+            value = self.config.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    sfz_file = sfz_source          # nom de 7d1
 
     # ------------------------------------------------------------------
 

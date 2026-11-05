@@ -5,19 +5,23 @@
     § 7a2 Z8, Z9 ; compilation : docs/sfizz_build.md), derrière l'interface
     BankEngine.
 
-    - « Emplacement » = indice du slot du Rack (0..15) : load(slot, path)
-      retient le fichier .sfz du slot ; select(canal, slot, …) lie le canal
-      à ce fichier. Banque et programme sont ignorés (un .sfz = un
-      instrument).
-    - Une instance sfizz par canal (Z5) : une instance sfizz n'a pas de
-      canal MIDI ; chaque canal a la sienne, donc son volume (CC7) et son
-      pan (CC10).
+    - « Emplacement » = indice du slot du Rack (0..15) : load(slot, source)
+      lit la source de programmes du slot (Phase 8 étape 7f1, § 7a3 Z16-Z22 :
+      .sfz, .bank.xml de Sforzando, dossier, banque SFZ JSON ; voir
+      sfz_sources.py) ; select(canal, slot, banque, programme) donne au
+      canal le .sfz de ce programme (banque ignorée).
+    - Instances sfizz par canal (Z5, Z19, Z22) : une instance sfizz n'a pas
+      de canal MIDI ; chaque canal a la sienne (son volume CC7, son pan
+      CC10), plus des instances préparées pour les programmes que le
+      pattern demandera (prefetch) et des instances en extinction, qui
+      finissent leurs notes après un Program Change.
     - sfizz n'est appelé que depuis le callback audio (Z9) : les appels de
       l'UI, des threading.Timer et du séquenceur déposent des événements
       dans une file (collections.deque, ajout atomique), vidée par render()
       avant le rendu. Le chargement d'un .sfz (bloquant) se fait dans un
       fil, sur une instance neuve, mise en place par un événement
-      « échange » ; l'ancienne instance est libérée hors du callback.
+      « échange » ; les instances qui ne servent plus sont libérées hors du
+      callback.
     - Hors temps réel (render_copy, rendu de l'export WAV) : realtime=False,
       les événements sont appliqués aussitôt et le chargement est bloquant.
 
@@ -36,6 +40,7 @@ import threading
 import numpy as np
 
 from engines.bank_engine import BankEngine
+from sfz_sources import read_source
 
 
 class SfizzUnavailable(RuntimeError):
@@ -68,6 +73,7 @@ def _declare(lib):
         "sfizz_get_num_regions":       ([vp], ci),
         "sfizz_get_num_active_voices": ([vp], ci),
         "sfizz_all_sound_off":         ([vp], None),
+        "sfizz_add_external_definitions": ([vp, cc, cc], None),
     }
     for name, (args, res) in sigs.items():
         fn = getattr(lib, name)
@@ -102,11 +108,24 @@ def sfizz_available():
 
 
 # Types d'événements de la file (entiers : transposables en C/C++)
-EV_NOTE_ON, EV_NOTE_OFF, EV_CC, EV_BEND, EV_SOUNDS_OFF, EV_SWAP = range(6)
+EV_NOTE_ON, EV_NOTE_OFF, EV_CC, EV_BEND, EV_SOUNDS_OFF, EV_SWAP, EV_DROP = range(7)
 
 
 class SfzEngine(BankEngine):
-    """BankEngine sur une instance sfizz par canal."""
+    """BankEngine sur des instances sfizz : par canal, une instance
+    courante, des instances préparées (programmes que le pattern
+    demandera, Z19) et des instances en extinction (remplacées par un
+    Program Change, elles finissent leurs notes, Z22).
+
+    Partage des rôles entre les fils (Z9, Z22) :
+    - fils de l'UI, des minuteries, du séquenceur et du chargement : ils
+      tiennent le registre des instances de chaque canal (_owned, sous
+      _lock) et déposent des événements dans la file ;
+    - callback audio : seul à appeler sfizz pour le jeu et le rendu ; seul
+      juge de ce qu'il tient (instance courante _inst, en extinction
+      _fading). Une instance qui ne sert plus lui est confiée par EV_DROP ;
+      il la met dans _freeq quand il ne la tient plus, et elle est libérée
+      hors du callback (_free_pending)."""
 
     NUM_BANK_SLOTS = 16     # emplacement = slot du Rack (Z8)
     MAX_BLOCK      = 1024   # taille de bloc donnée à sfizz ; un bloc plus long est découpé
@@ -129,108 +148,190 @@ class SfzEngine(BankEngine):
         self._realtime   = realtime
         self.status_cb   = status_cb
         n = self.NUM_CHANNELS
-        self._paths      = [None] * self.NUM_BANK_SLOTS   # fichier de chaque slot
-        self._chan_path  = [None] * n      # fichier voulu pour chaque canal
-        self._gen        = [0] * n         # génération du chargement voulu
-        self._inst       = [None] * n      # instance en place (callback seul)
+        self._paths      = [None] * self.NUM_BANK_SLOTS   # source de chaque slot
+        self._sources    = [None] * self.NUM_BANK_SLOTS   # SfzSource lue
+        # Registre (fils hors callback, sous _lock)
+        self._target     = [None] * n      # clé (fichier, définitions) du programme voulu
+        self._target_name = [None] * n
+        self._wanted     = [set() for _ in range(n)]      # clés préparées (Z19)
+        self._owned      = [dict() for _ in range(n)]     # clé → instance vivante
+        self._loading    = [set() for _ in range(n)]
+        # Callback
+        self._inst       = [None] * n      # (instance, clé) courante
+        self._fading     = [[] for _ in range(n)]         # instances en extinction
+        self._drop       = set()           # instances à libérer dès qu'elles se taisent
         self._busy       = [False] * n     # événement reçu depuis le dernier rendu
-        # État des contrôleurs de chaque canal, rejoué sur une instance neuve
+        # État des contrôleurs de chaque canal, rejoué sur l'instance qui
+        # devient courante
         self._ccs        = [dict() for _ in range(n)]
         self._bend       = [0] * n
         self._queue      = collections.deque()
-        self._retired    = collections.deque()   # instances à libérer hors callback
-        self._lock       = threading.Lock()      # chargements / libérations (hors callback)
+        self._freeq      = collections.deque()   # instances à libérer hors callback
+        self._lock       = threading.RLock()
         self._threads    = []
         self._L = np.zeros(self.MAX_BLOCK, np.float32)
         self._R = np.zeros(self.MAX_BLOCK, np.float32)
         p = ctypes.POINTER(ctypes.c_float)
         self._chans = (p * 2)(self._L.ctypes.data_as(p), self._R.ctypes.data_as(p))
 
-    # -- banques (emplacement = slot du Rack) ----------------------------
+    # -- banques (emplacement = slot du Rack, source de programmes) --------
 
     def load(self, slot, path):
-        """Retient le fichier .sfz du slot. Le fichier est lu par sfizz à
-        la sélection d'un canal (select), en arrière-plan : un fichier
-        refusé n'est signalé qu'alors (status_cb), le canal restant muet.
-        Retourne False si slot est invalide ou si le fichier n'existe pas."""
-        if not 0 <= slot < self.NUM_BANK_SLOTS or not path or not os.path.isfile(path):
+        """Lit la source de programmes du slot (Z20) : .sfz, .bank.xml,
+        dossier ou banque SFZ JSON. Les .sfz eux-mêmes sont lus par sfizz à
+        la sélection d'un canal (en arrière-plan). Retourne False si le slot
+        est invalide ou si la source n'a aucun programme ; les messages de
+        la source (fichier introuvable…) passent par status_cb."""
+        if not 0 <= slot < self.NUM_BANK_SLOTS or not path:
             return False
-        self._paths[slot] = path
+        source = read_source(path)
+        for msg in source.messages:
+            self._status(f"SFZ {source.name} : {msg}")
+        if not source.programs:
+            return False
+        self._paths[slot]   = path
+        self._sources[slot] = source
         return True
 
     def unload(self, slot):
         if 0 <= slot < self.NUM_BANK_SLOTS:
-            self._paths[slot] = None
+            self._paths[slot]   = None
+            self._sources[slot] = None
 
     def loaded_path(self, slot):
         return self._paths[slot] if 0 <= slot < self.NUM_BANK_SLOTS else None
 
+    def source(self, slot):
+        return self._sources[slot] if 0 <= slot < self.NUM_BANK_SLOTS else None
+
     def presets(self, slot):
-        """Un seul « preset » : l'instrument du fichier (banque et programme
-        sans objet)."""
-        path = self.loaded_path(slot)
-        if path is None:
+        """[(0, programme, nom)] de la source du slot (Z22)."""
+        source = self.source(slot)
+        if source is None:
             return []
-        return [(0, 0, os.path.splitext(os.path.basename(path))[0])]
+        return [(0, p.program, p.name) for p in source.programs]
 
     # -- canaux ----------------------------------------------------------
 
     def select(self, channel, slot, bank, program):
-        """Lie le canal au fichier du slot ; le charge si le canal jouait
-        un autre fichier (dans un fil en temps réel). Retourne False si le
-        slot n'a pas de fichier."""
-        path = self.loaded_path(slot)
-        if path is None:
+        """Programme du canal : le .sfz numéro program de la source du slot
+        (banque ignorée). Bascule aussitôt sur une instance déjà prête
+        (préparée ou en extinction), sinon la charge (dans un fil en temps
+        réel). Retourne False si le slot n'a pas de source ou pas ce
+        programme."""
+        source = self.source(slot)
+        prog = source.program(program) if source is not None else None
+        if prog is None:
             return False
-        if self._chan_path[channel] == path:
-            return True
-        self._chan_path[channel] = path
-        self._gen[channel] += 1
-        gen = self._gen[channel]
-        if self._realtime:
-            t = threading.Thread(target=self._load_instance,
-                                 args=(channel, path, gen), daemon=True)
-            self._threads.append(t)
-            t.start()
-        else:
-            self._load_instance(channel, path, gen)
+        key = prog.key
+        with self._lock:
+            if self._target[channel] == key:
+                return True
+            self._target[channel] = key
+            self._target_name[channel] = prog.name
+            synth = self._owned[channel].get(key)
+            if synth is not None:
+                self._push(EV_SWAP, channel, synth, key)
+            else:
+                self._start_load(channel, prog, announce=True)
+        self._collect()
         return True
 
+    def prefetch(self, channel, slot, programs):
+        """Prépare les programmes que le pattern demandera sur ce canal (Z19)
+        : une instance chargée pour chacun (en arrière-plan en temps réel) ;
+        les instances préparées qui ne figurent plus dans la liste (ni
+        comme programme courant) sont abandonnées."""
+        source = self.source(slot)
+        keys, progs = set(), []
+        if source is not None:
+            for number in programs:
+                prog = source.program(number)
+                if prog is not None and prog.key not in keys:
+                    keys.add(prog.key)
+                    progs.append(prog)
+        with self._lock:
+            self._wanted[channel] = keys
+            for prog in progs:
+                if prog.key not in self._owned[channel]:
+                    self._start_load(channel, prog, announce=False)
+        self._collect()
+
+    def release_channel(self, channel):
+        """Plus aucune piste SFZ ne joue ce canal : ses instances sont
+        abandonnées (la courante finit ses notes), la mémoire rendue."""
+        with self._lock:
+            self._target[channel] = None
+            self._target_name[channel] = None
+            self._wanted[channel] = set()
+        self._collect()
+
     def channel_path(self, channel):
-        """Fichier voulu pour le canal (chargé ou en cours), ou None."""
-        return self._chan_path[channel]
+        """Fichier .sfz du programme voulu sur le canal, ou None."""
+        key = self._target[channel]
+        return key[0] if key else None
 
     def channel_ready(self, channel):
-        """Vrai si l'instance du canal est en place et à jour."""
+        """Vrai si l'instance courante du canal est celle du programme voulu."""
         inst = self._inst[channel]
-        return inst is not None and inst[1] == self._gen[channel]
+        return inst is not None and self._target[channel] is not None \
+            and inst[1] == self._target[channel]
 
     def wait_loaded(self):
         """Attend la fin des chargements en cours (tests, démarrage)."""
-        for t in list(self._threads):
-            t.join()
-        self._threads = [t for t in self._threads if t.is_alive()]
+        while True:
+            threads = [t for t in self._threads if t.is_alive()]
+            if not threads:
+                break
+            for t in threads:
+                t.join()
+        self._threads = []
 
-    def _load_instance(self, channel, path, gen):
-        """Crée et charge une instance neuve, puis la met en place (par un
-        événement d'échange en temps réel)."""
+    def _start_load(self, channel, prog, announce):
+        """Charge prog pour le canal (sous _lock), sauf s'il l'est déjà."""
+        if prog.key in self._loading[channel]:
+            return
+        self._loading[channel].add(prog.key)
+        if self._realtime:
+            t = threading.Thread(target=self._load_instance,
+                                 args=(channel, prog, announce), daemon=True)
+            self._threads.append(t)
+            t.start()
+        else:
+            self._load_instance(channel, prog, announce)
+
+    def _load_instance(self, channel, prog, announce):
+        """Crée et charge une instance neuve ; la garde si son programme est
+        encore voulu (courant ou préparé), et la met en place s'il est le
+        programme courant."""
         lib = self._lib
         synth = lib.sfizz_create_synth()
         lib.sfizz_set_sample_rate(synth, float(self._samplerate))
         lib.sfizz_set_samples_per_block(synth, self.MAX_BLOCK)
-        ok = lib.sfizz_load_file(synth, os.fsencode(path)) \
+        for name, value in prog.defines:
+            lib.sfizz_add_external_definitions(synth, name.encode(), value.encode())
+        ok = lib.sfizz_load_file(synth, os.fsencode(prog.path)) \
             and lib.sfizz_get_num_regions(synth) > 0
-        name = os.path.splitext(os.path.basename(path))[0]
+        with self._lock:
+            self._loading[channel].discard(prog.key)
+            if not ok:
+                lib.sfizz_free(synth)
+                is_target = self._target[channel] == prog.key
+            else:
+                current = self._target[channel] == prog.key
+                if current or prog.key in self._wanted[channel]:
+                    self._owned[channel][prog.key] = synth
+                    if current:
+                        self._push(EV_SWAP, channel, synth, prog.key)
+                else:
+                    lib.sfizz_free(synth)      # plus voulu entre-temps
+                    current = False
         if not ok:
-            lib.sfizz_free(synth)
-            self._status(f"SFZ refusé : {name}")
+            self._status(f"SFZ refusé : {prog.name}")
             return
-        if gen != self._gen[channel]:        # un autre fichier a été demandé entre-temps
-            lib.sfizz_free(synth)
-            return
-        self._push(EV_SWAP, channel, synth, gen)
-        self._free_retired()
-        self._status(f"SFZ prêt : {name} (canal {channel + 1})")
+        self._free_pending()
+        if current and announce:
+            self._status(f"SFZ prêt : {prog.name} (canal {channel + 1})")
 
     def _status(self, msg):
         if self.status_cb is not None:
@@ -259,7 +360,8 @@ class SfzEngine(BankEngine):
         self._push(EV_BEND, channel, value, 0)
 
     def program_change(self, channel, program):
-        """Sans effet : un .sfz est un seul instrument (Z11)."""
+        """Sans effet ici : le routeur choisit le programme d'un canal par
+        select (canal, slot, banque, programme), comme pour une banque."""
 
     def all_notes_off(self):
         for ch in range(self.NUM_CHANNELS):
@@ -270,8 +372,8 @@ class SfzEngine(BankEngine):
             self.channel_sounds_off(ch)
 
     def channel_sounds_off(self, channel):
-        """Coupe net les sons du canal, notes tenues par la pédale comprises
-        (sfizz_all_sound_off)."""
+        """Coupe net les sons du canal, instances en extinction comprises,
+        notes tenues par la pédale comprises (sfizz_all_sound_off)."""
         self._push(EV_SOUNDS_OFF, channel, 0, 0)
 
     def reset_controllers(self):
@@ -280,9 +382,10 @@ class SfzEngine(BankEngine):
 
     def active_voices(self):
         lib, n = self._lib, 0
-        for inst in list(self._inst):
-            if inst is not None:
-                n += max(0, lib.sfizz_get_num_active_voices(inst[0]))
+        for ch in range(self.NUM_CHANNELS):
+            inst = self._inst[ch]
+            for synth in ([inst[0]] if inst is not None else []) + list(self._fading[ch]):
+                n += max(0, lib.sfizz_get_num_active_voices(synth))
         return n
 
     # -- file d'événements -------------------------------------------------
@@ -293,57 +396,96 @@ class SfzEngine(BankEngine):
             self._queue.append(ev)
         else:
             self._apply(ev)
+            self._free_pending()
+
+    def _held(self, ch):
+        """Instances que le callback fait sonner sur le canal."""
+        inst = self._inst[ch]
+        return ([inst[0]] if inst is not None else []) + self._fading[ch]
 
     def _apply(self, ev):
         """Applique un événement (dans le callback en temps réel)."""
         kind, ch, a, b = ev
         lib = self._lib
         if kind == EV_SWAP:
-            synth, gen = a, b
-            if gen != self._gen[ch]:         # dépassé par un chargement plus récent
-                self._retired.append(synth)
-                return
-            old = self._inst[ch]
-            self._inst[ch] = (synth, gen)
-            if old is not None:
-                self._retired.append(old[0])
-            for num, value in self._ccs[ch].items():    # état du canal rejoué
-                lib.sfizz_send_cc(synth, 0, num, value)
-            if self._bend[ch]:
-                lib.sfizz_send_pitch_wheel(synth, 0, self._bend[ch])
-            self._busy[ch] = True
+            self._apply_swap(ch, a, b)
+            return
+        if kind == EV_DROP:
+            if a in self._held(ch):
+                self._drop.add(a)              # libérée quand elle se taira
+            else:
+                self._freeq.append(a)
             return
         inst = self._inst[ch]
-        if inst is None:
-            return
-        synth = inst[0]
         if kind == EV_NOTE_ON:
-            lib.sfizz_send_note_on(synth, 0, a, b)
-        elif kind == EV_NOTE_OFF:
-            lib.sfizz_send_note_off(synth, 0, a, 0)
-        elif kind == EV_CC:
-            lib.sfizz_send_cc(synth, 0, a, b)
-        elif kind == EV_BEND:
-            lib.sfizz_send_pitch_wheel(synth, 0, a)
-        elif kind == EV_SOUNDS_OFF:
-            lib.sfizz_all_sound_off(synth)
+            if inst is not None:
+                lib.sfizz_send_note_on(inst[0], 0, a, b)
+        else:
+            # Fin de note, contrôleurs et coupures : aussi aux instances en
+            # extinction (une note commencée avant un Program Change doit
+            # recevoir sa fin, la pédale son relâchement)
+            for synth in self._held(ch):
+                if kind == EV_NOTE_OFF:
+                    lib.sfizz_send_note_off(synth, 0, a, 0)
+                elif kind == EV_CC:
+                    lib.sfizz_send_cc(synth, 0, a, b)
+                elif kind == EV_BEND:
+                    lib.sfizz_send_pitch_wheel(synth, 0, a)
+                elif kind == EV_SOUNDS_OFF:
+                    lib.sfizz_all_sound_off(synth)
         self._busy[ch] = True
 
-    def _free_retired(self):
-        """Libère les instances remplacées (hors callback)."""
+    def _apply_swap(self, ch, synth, key):
+        """L'instance synth devient la courante du canal (si son programme est
+        toujours le voulu) ; l'ancienne s'éteint, ou se repose si elle est
+        déjà muette."""
+        if key != self._target[ch]:
+            return                             # dépassé : l'instance reste au registre
+        old = self._inst[ch]
+        if old is not None and old[0] == synth:
+            return
+        if synth in self._fading[ch]:
+            self._fading[ch].remove(synth)
+        self._inst[ch] = (synth, key)
+        lib = self._lib
+        lib.sfizz_send_cc(synth, 0, 121, 0)    # état propre, puis celui du canal
+        for num, value in self._ccs[ch].items():
+            lib.sfizz_send_cc(synth, 0, num, value)
+        lib.sfizz_send_pitch_wheel(synth, 0, self._bend[ch])
+        self._busy[ch] = True
+        if old is not None:
+            if lib.sfizz_get_num_active_voices(old[0]) > 0:
+                self._fading[ch].append(old[0])
+            elif old[0] in self._drop:
+                self._drop.discard(old[0])
+                self._freeq.append(old[0])
+
+    def _collect(self):
+        """Abandonne les instances qui ne sont plus voulues (ni courantes ni
+        préparées) : confiées au callback par EV_DROP ; puis libère celles
+        qu'il a rendues."""
         with self._lock:
-            while self._retired:
-                try:
-                    synth = self._retired.popleft()
-                except IndexError:
-                    break
-                self._lib.sfizz_free(synth)
+            for ch in range(self.NUM_CHANNELS):
+                keep = self._wanted[ch] | {self._target[ch]}
+                for key in [k for k in self._owned[ch] if k not in keep]:
+                    self._push(EV_DROP, ch, self._owned[ch].pop(key), 0)
+        self._free_pending()
+
+    def _free_pending(self):
+        """Libère les instances rendues par le callback (hors callback)."""
+        while self._freeq:
+            try:
+                synth = self._freeq.popleft()
+            except IndexError:
+                break
+            self._lib.sfizz_free(synth)
 
     # -- rendu -----------------------------------------------------------
 
     def render(self, out):
-        """Vide la file, puis ajoute le rendu de chaque canal actif dans out
-        (float32 (frames, 2)), par blocs d'au plus MAX_BLOCK."""
+        """Vide la file, puis ajoute le rendu de chaque instance qui sonne
+        (courante, en extinction) dans out (float32 (frames, 2)), par blocs
+        d'au plus MAX_BLOCK."""
         queue = self._queue
         while queue:
             try:
@@ -351,43 +493,66 @@ class SfzEngine(BankEngine):
             except IndexError:
                 break
             self._apply(ev)
-        lib, L, R, gain = self._lib, self._L, self._R, self.gain
+        lib = self._lib
         for ch in range(self.NUM_CHANNELS):
             inst = self._inst[ch]
-            if inst is None:
-                continue
-            synth = inst[0]
-            if not self._busy[ch] and lib.sfizz_get_num_active_voices(synth) <= 0:
-                continue                      # instance au repos : rien à rendre
+            if inst is not None and (self._busy[ch]
+                                     or lib.sfizz_get_num_active_voices(inst[0]) > 0):
+                self._render_into(inst[0], out)
             self._busy[ch] = False
-            pos, frames = 0, len(out)
-            while pos < frames:
-                n = min(self.MAX_BLOCK, frames - pos)
-                lib.sfizz_render_block(synth, self._chans, 2, n)
-                out[pos:pos + n, 0] += L[:n] * gain
-                out[pos:pos + n, 1] += R[:n] * gain
-                pos += n
+            fading = self._fading[ch]
+            for synth in list(fading):
+                self._render_into(synth, out)
+                if lib.sfizz_get_num_active_voices(synth) <= 0:
+                    fading.remove(synth)       # éteinte
+                    if synth in self._drop:
+                        self._drop.discard(synth)
+                        self._freeq.append(synth)
+
+    def _render_into(self, synth, out):
+        lib, L, R, gain = self._lib, self._L, self._R, self.gain
+        pos, frames = 0, len(out)
+        while pos < frames:
+            n = min(self.MAX_BLOCK, frames - pos)
+            lib.sfizz_render_block(synth, self._chans, 2, n)
+            out[pos:pos + n, 0] += L[:n] * gain
+            out[pos:pos + n, 1] += R[:n] * gain
+            pos += n
 
     def render_copy(self):
         """Moteur neuf hors temps réel (chargements bloquants, appels
-        directs), aux mêmes réglages et avec les mêmes fichiers de slots ;
+        directs), aux mêmes réglages et avec les mêmes sources de slots ;
         les canaux se chargent à leur sélection (export WAV, Phase 8)."""
         copy = SfzEngine(self._samplerate, self.gain, realtime=False)
-        copy._paths = list(self._paths)
+        copy._paths   = list(self._paths)
+        copy._sources = list(self._sources)
         return copy
 
     def close(self):
+        """Libère toutes les instances (le callback ne doit plus tourner)."""
         self.wait_loaded()
-        for ch in range(self.NUM_CHANNELS):
-            inst = self._inst[ch]
-            self._inst[ch] = None
-            if inst is not None:
-                self._retired.append(inst[0])
-        while self._queue:                   # instances jamais mises en place
-            ev = self._queue.popleft()
-            if ev[0] == EV_SWAP:
-                self._retired.append(ev[2])
-        self._free_retired()
+        synths = set()
+        with self._lock:
+            for ch in range(self.NUM_CHANNELS):
+                synths.update(self._owned[ch].values())
+                self._owned[ch].clear()
+                self._wanted[ch] = set()
+                self._target[ch] = None
+                inst = self._inst[ch]
+                if inst is not None:
+                    synths.add(inst[0])
+                self._inst[ch] = None
+                synths.update(self._fading[ch])
+                self._fading[ch] = []
+            while self._queue:
+                ev = self._queue.popleft()
+                if ev[0] in (EV_SWAP, EV_DROP):
+                    synths.add(ev[2])
+            while self._freeq:
+                synths.add(self._freeq.popleft())
+            self._drop.clear()
+        for synth in synths:
+            self._lib.sfizz_free(synth)
 
     def __del__(self):
         try:

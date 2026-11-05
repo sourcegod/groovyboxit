@@ -166,9 +166,10 @@ class ProjectMixin:
                            for t, ch in enumerate(channels)]
         slots = [self._rack.get_slot(s) for s in track_slots]
         # Slot à canaux (banque, ou Synth SFZ depuis la Phase 8 étape 7d1,
-        # § 7a2 Z12) : canal qui suit les Program Change, grille au canal 10
-        # en 36 + pad, notes de kit telles quelles. Le Synth SFZ garde le
-        # programme GM de son slot (track_programs), une banque non.
+        # § 7a2 Z12, § 7a3 Z25) : canal qui suit les Program Change, écrits
+        # tels quels, grille au canal 10 en 36 + pad, notes de kit telles
+        # quelles. Le Synth SFZ garde en tête le programme GM de son slot
+        # (track_programs), qu'un Program Change de la piste remplace.
         is_bank = [s.type in (InstrumentType.BANK, InstrumentType.SFZ) for s in slots]
         # Piste sur un slot Kit : toujours au canal 10 (Phase 8 étape 2p2).
         # Les patterns créés sans réglage ont toutes leurs pistes sur le
@@ -182,8 +183,9 @@ class ProjectMixin:
                     else ch for t, ch in enumerate(channels)]
         # Piste sur slot Banque (17f1, § 17e3 O8) : banque et programme
         # viennent des événements de _tape ; nom = preset de son canal.
-        preset_names = [preset_name(t) if slots[t].type == InstrumentType.BANK else None
-                        for t in range(len(slots))]
+        preset_names = [preset_name(t) if slots[t].type in (InstrumentType.BANK,
+                                                            InstrumentType.SFZ) else None
+                        for t in range(len(slots))]       # programme SFZ aussi (7f1)
         return dict(
             name             = name,
             bpm              = bpm,

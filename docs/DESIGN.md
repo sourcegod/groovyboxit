@@ -10488,3 +10488,77 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
 | **7j1** | Implémentation — composition d'une banque SFZ JSON (Z21). Essai avec Orca. | `src/ui/dialogs_sfz.py`, `src/sfz_sources.py` |
 | **7k1** | Tests — 7j1. | `tests/test_sfz_dialogs.py`, `tests/test_sfz_sources.py` |
 | **7l1** | Doc — clôture (DESIGN, SPECS : Rack, sources SFZ, configuration, `.gvp`, options ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 7 — Avancement (7f1)
+
+- **7f1** — banque de programmes SFZ, conforme à Z16-Z20, Z22, Z23, Z25 :
+  - `src/sfz_sources.py` (module pur) : `read_source` → `SfzSource`
+    (programmes `SfzProgram(numéro, nom, chemin, définitions)` triés,
+    messages) pour un `.sfz`, un `.bank.xml` (lu par expressions
+    régulières : le fichier commence par `<Key>` avant `<AriaBank>`, deux
+    racines que ElementTree refuse ; `<Define name="$x">` passé à sfizz
+    **sans le `$`**, comme le stocke son analyseur), un dossier
+    (`fragments`, `number_programs` : préfixe à partir de 1 ou de 0,
+    numéros libres pour le reste, au plus 128) ou une banque
+    `.sfzbank.json` (`write_sfzbank` aussi, chemins relatifs).
+    Vérifié sur les instruments téléchargés : `Discord GM/Melodic` =
+    128 programmes, de `001-Acoustic Grand Piano` (0) à `128-Gunshot`
+    (127) ; `.bank.xml` du violoncelle (3) et de Big Rusty Drums (8) ;
+    dossier `Programs` du violoncelle (3, fragments `vc_*_map` écartés).
+  - `SfzEngine` réécrit : par canal, une instance courante, des instances
+    préparées (`prefetch`) et des instances en extinction ; registre
+    `_owned` (clé = fichier et définitions) tenu hors callback sous
+    verrou ; le callback seul joue et rend, et reste seul juge de ce
+    qu'il tient : une instance qui ne sert plus lui est confiée par
+    `EV_DROP`, il la rend par `_freeq` quand elle se tait, libérée hors
+    callback. `select` bascule aussitôt sur une instance prête, sinon la
+    charge ; à la bascule, l'instance reçoit CC121 puis l'état du canal ;
+    l'ancienne finit ses notes (fin de note, CC, Bend et coupures vont
+    aussi aux instances en extinction). `release_channel` : canal qui
+    n'a plus de piste SFZ, mémoire rendue. `sfizz_add_external_definitions`
+    déclarée. Les numéros de génération de 7b1 sont remplacés par la clé
+    du programme voulu.
+  - Rack : `sfz_source()` (clé `"sfz_source"`, `"sfz_file"` de 7d1 lue de
+    même ; `sfz_file` reste un alias).
+  - Routeur : `_bank_key` d'un SFZ = `(slot, 0, programme du canal)` ;
+    Program Change : resélection pour les deux types ; `bank_preset_name`,
+    `program_names`, `_preset_names_of(slot)` (cache par type et
+    emplacement) valent pour un SFZ ; `_prefetch_sfz` après la poursuite
+    (programmes de tous les Program Change du pattern, par canal ;
+    `release_channel` des canaux sans SFZ).
+  - Export MIDI : nom de piste = programme SFZ ; Program Change écrits
+    tels quels (`midi_export.py` inchangé).
+  - Projet d'essai `/home/com/groovybox/PROJECTS/essai_sfz_7f1.gvp`
+    (script dans le scratchpad) : pattern 1 = orchestre sur le dossier
+    Discord GM (entêtes 0, 48, 33 → piano, cordes, basse GM) et
+    SamsSonor ; pattern 2 = Program Change en cours de pattern (piste 1 :
+    0 → 4 au pas 9 → 19 à la mesure 2 → 0 ; piste 3 : violoncelle en
+    `.bank.xml`, archet → pizzicato à la mesure 2) ; pattern 3 = FluidR3.
+    Vérifié par un script (vraie `MainWindow`, rendu WAV) : noms des
+    programmes, 3 instances préparées sur le canal 1 du pattern 2,
+    aucune au pattern 3.
+  - `pytest` : **10 tests rouges jusqu'à 7g1**, qui décrivent l'ancien
+    modèle (programme ignoré, numéros de génération, fichier introuvable,
+    Program Change sans changement de son, poursuite sans préchargement).
+    Un premier passage a donné 11 échecs et un avertissement de plus
+    (exception dans un fil ?), non reproduit en 15 passages : à surveiller
+    en 7g1.
+- **Essai de 7f1 (utilisateur, 2026-11-05)** :
+  - changement de programme en cours de lecture **sans silence ni clic** ;
+  - piano, cordes et basse GM du dossier Discord : à peu de chose près
+    ceux de FluidR3 ;
+  - **saturation à l'écoute** : la banque Discord sort environ 10 dB plus
+    fort que FluidR3 (RMS du pattern 1 : 0,41 contre 0,12) ; le pattern 1
+    sature un peu, le pattern 2 beaucoup, surtout l'orgue d'église (19).
+    Cause : le pilote additionne les moteurs puis écrête à ±1 ; l'export
+    WAV passe, lui, par le limiteur (Phase 8 étape 1) et ne sature pas.
+    Idée de l'utilisateur : baisser le volume de chaque instrument, puis
+    remonter le mix (gain staging) → **7f2** : gain par slot SFZ (dB) ;
+    un limiteur du mix à l'écoute, chantier à part, à décider à la
+    clôture ;
+  - noms des programmes dans la liste des pistes : bons ; le préfixe
+    numérique n'y est pas nécessaire → ôté en 7f2 **dans les noms des
+    pistes seulement** (la liste des programmes et les propriétés de piste
+    gardent « 001-Acoustic Grand Piano ») ;
+  - export WAV du pattern 2 sans saturation ; export MIDI : changements
+    de programme entendus sous timidity.

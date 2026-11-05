@@ -533,9 +533,10 @@ class TrackRouter:
         return slot.bank_slot() if slot.type == InstrumentType.BANK else slot.index
 
     def sfz_path(self, slot):
-        """Chemin du fichier .sfz d'un slot Synth SFZ : config["sfz_file"],
-        absolu, ou relatif à sfz_dir (Z10) ; None sans fichier."""
-        value = slot.sfz_file()
+        """Chemin de la source de programmes d'un slot Synth SFZ :
+        config["sfz_source"] (ou "sfz_file"), absolu, ou relatif à sfz_dir
+        (Z10, Z20) ; None sans source."""
+        value = slot.sfz_source()
         if value is None:
             return None
         if os.path.isabs(value) or not self.sfz_dir:
@@ -575,9 +576,10 @@ class TrackRouter:
 
     def _bank_key(self, channel, slot):
         """(emplacement du slot, banque, programme) à sélectionner sur le canal.
-        Un Synth SFZ : (slot du Rack, 0, 0), banque et programme sans objet."""
+        Un Synth SFZ (Phase 8 étape 7f1, § 7a3 Z23) : (slot du Rack, 0,
+        programme du canal), la banque est sans objet."""
         if slot.type == InstrumentType.SFZ:
-            return slot.index, 0, 0
+            return slot.index, 0, self._chan_prog[channel]
         return slot.bank_slot(), self._chan_bank(channel), self._chan_prog[channel]
 
     def _select_channel(self, channel, slot, track_idx):
@@ -592,7 +594,7 @@ class TrackRouter:
         if not engine.select(channel, *key):
             if slot.type == InstrumentType.SFZ:
                 self._status_cb(f"Piste {track_idx + 1}: slot SFZ {slot.index + 1:02d} "
-                                f"sans fichier")
+                                f"sans source ou programme {key[2]} introuvable")
             else:
                 self._status_cb(f"Piste {track_idx + 1}: banque {key[0] + 1} vide ou "
                                 f"preset {key[1]}:{key[2]} introuvable")
@@ -603,19 +605,23 @@ class TrackRouter:
         son canal courant (§ 17e3 R7, O1). None si la piste n'est pas sur une
         banque ou si son emplacement est vide ; « (preset absent) » si la
         banque ne le contient pas."""
-        slot = self._bank_slot_of(track_idx)
-        if slot is None or self.bank_engine is None \
-                or self.bank_engine.loaded_path(slot.bank_slot()) is None:
+        slot = self._chan_slot_of(track_idx)
+        engine = self._engine_of(slot)
+        if slot is None or engine is None \
+                or engine.loaded_path(self._engine_place(slot)) is None:
             return None
         _, bank, program = self._bank_key(self._track_cur_channels[track_idx], slot)
-        return self._preset_names_of(slot.bank_slot()).get((bank, program), "(preset absent)")
+        return self._preset_names_of(slot).get((bank, program), "(preset absent)")
 
-    def _preset_names_of(self, bank_slot):
-        """{(banque, programme): nom} de l'emplacement, lu une fois."""
-        names = self._preset_names.get(bank_slot)
+    def _preset_names_of(self, slot):
+        """{(banque, programme): nom} de la banque ou de la source SFZ du
+        slot (Phase 8 étape 7f1), lu une fois par emplacement."""
+        place = (slot.type, self._engine_place(slot))
+        names = self._preset_names.get(place)
         if names is None:
-            names = {(b, p): n for b, p, n in self.bank_engine.presets(bank_slot)}
-            self._preset_names[bank_slot] = names
+            engine = self._engine_of(slot)
+            names = {(b, p): n for b, p, n in engine.presets(place[1])} if engine else {}
+            self._preset_names[place] = names
         return names
 
     def program_names(self, slot_idx, channel, msb, lsb):
@@ -623,12 +629,15 @@ class TrackRouter:
         sur ce canal (128 au canal 10), dans le fichier du slot Banque ;
         None pour un numéro absent (propriétés de piste, Alt+Entrée, Phase 7 étape 17h1, § 17e3 O5)."""
         slot = self._rack.get_slot(slot_idx)
-        if self.bank_engine is None or slot.type != InstrumentType.BANK \
-                or self.bank_engine.loaded_path(slot.bank_slot()) is None:
+        engine = self._engine_of(slot)
+        if engine is None or engine.loaded_path(self._engine_place(slot)) is None:
             return [None] * 128
-        bank = self.DRUM_BANK if channel == Pattern.KIT_CHANNEL \
-            else self.bank_engine.bank_number(msb, lsb)
-        names = self._preset_names_of(slot.bank_slot())
+        if slot.type == InstrumentType.SFZ:          # programmes de la source (7f1, Z24)
+            bank = 0
+        else:
+            bank = self.DRUM_BANK if channel == Pattern.KIT_CHANNEL \
+                else engine.bank_number(msb, lsb)
+        names = self._preset_names_of(slot)
         return [names.get((bank, p)) for p in range(128)]
 
     def bank_note(self, channel, note, velocity, duration_ms, engine=None):
@@ -684,7 +693,7 @@ class TrackRouter:
             if engine.loaded_path(i) == path:
                 continue
             self._chan_sel = [None] * len(self._chan_sel)
-            self._preset_names.pop(i, None)
+            self._preset_names.pop((InstrumentType.BANK, i), None)
             if path is None:
                 engine.unload(i)
             elif not engine.load(i, path):
@@ -706,11 +715,12 @@ class TrackRouter:
                 continue
             self._chan_sel = [None if sel is not None and sel[0] == InstrumentType.SFZ
                               and sel[1] == i else sel for sel in self._chan_sel]
+            self._preset_names.pop((InstrumentType.SFZ, i), None)
             if path is None:
                 engine.unload(i)
             elif not engine.load(i, path):
                 engine.unload(i)
-                self._status_cb(f"Slot {i + 1:02d}: fichier SFZ introuvable — {path}")
+                self._status_cb(f"Slot {i + 1:02d}: source SFZ introuvable ou vide — {path}")
 
     def sync_banks(self, force=False):
         """Emplacements, puis instrument de chaque canal joué par une piste
@@ -796,11 +806,47 @@ class TrackRouter:
         if self.rack_mode:
             self.ensure_rack_synths(tape)
         self.sync_banks(force=True)
+        self._prefetch_sfz(tape)
         for engine in self._chan_engines():          # banque et sfizz (7d1)
             for ch in range(16):
                 for cc in self._CHASED_CCS:
                     engine.cc(ch, cc, chan_cc[cc][ch])
                 engine.pitch_bend(ch, chan_bend[ch])
+
+    def _prefetch_sfz(self, tape):
+        """Préchargement (Phase 8 étape 7f1, § 7a3 Z19) : pour chaque canal
+        joué par une piste sur Synth SFZ, les programmes que les Program
+        Change de tout le pattern demanderont sur ce canal (et celui du
+        canal à la position de poursuite) sont préparés par sfizz ; un
+        Program Change en lecture bascule alors sans silence."""
+        engine = self.sfz_engine
+        if engine is None:
+            return
+        wanted = {}                                  # (canal, slot) → programmes
+        for t, events in enumerate(tape[:self.NUM_TRACKS]):
+            slot = self._chan_slot_of(t)
+            if slot is not None and slot.type == InstrumentType.SFZ:
+                ch = self._track_cur_channels[t]
+                wanted.setdefault((ch, slot.index), set()).add(self._chan_prog[ch])
+            for ev in events:
+                if ev.etype != ETYPE_PGM:
+                    continue
+                ch = max(0, min(15, ev.channel))
+                idx = self.rack_slot_idx(ch) if self.rack_mode else self._slot_idx_of(t)
+                if self._rack.get_slot(idx).type == InstrumentType.SFZ:
+                    wanted.setdefault((ch, idx), set()).add(
+                        max(0, min(127, ev.payload.get("program", 0))))
+        by_channel = {}
+        for (ch, idx), programs in wanted.items():
+            by_channel.setdefault(ch, (idx, programs))   # un slot SFZ par canal
+        for ch in range(16):
+            idx, programs = by_channel.get(ch, (None, ()))
+            if idx is None:
+                engine.release_channel(ch)               # canal sans SFZ : mémoire rendue
+                self._chan_sel[ch] = None if self._chan_sel[ch] is not None \
+                    and self._chan_sel[ch][0] == InstrumentType.SFZ else self._chan_sel[ch]
+            else:
+                engine.prefetch(ch, idx, sorted(programs))
 
     def on_play_stop(self):
         """Fin de lecture (arrêt, pause, fin du pattern ou du song) : pédale,
@@ -828,9 +874,8 @@ class TrackRouter:
         Mode Rack (Phase 8 étape 5b1, M3) : pas de pont ; la piste passe
         sur le canal du Program Change, donc sur son slot, et le programme
         devient l'instrument GM du canal, entendu si ce slot est une banque.
-        Piste sur Synth SFZ (Phase 8 étape 7d1, Z11) : comme une banque, la
-        piste passe sur le canal du Program Change, mais le son ne change
-        pas (un .sfz est un seul instrument).
+        Piste sur Synth SFZ (Phase 8 étape 7f1, § 7a3 Z16, Z23) : comme une
+        banque, le programme de la source devient l'instrument du canal.
         Retourne True si la piste est sur une banque ou un Synth SFZ."""
         if self.rack_mode:
             return self._rack_program_change(track_idx, program, channel)
@@ -844,8 +889,7 @@ class TrackRouter:
         moved = self._track_cur_channels[track_idx] != ch
         self._track_cur_channels[track_idx] = ch
         if self._engine_of(slot) is not None:
-            if slot.type == InstrumentType.BANK:
-                self._chan_sel[ch] = None         # Program Change : toujours renvoyé
+            self._chan_sel[ch] = None             # Program Change : toujours renvoyé
             self._select_channel(ch, slot, track_idx)
             if moved:
                 self._send_bank_mix(track_idx)
@@ -863,8 +907,7 @@ class TrackRouter:
         if slot.type not in self.CHAN_TYPES:
             return False
         if self._engine_of(slot) is not None:
-            if slot.type == InstrumentType.BANK:
-                self._chan_sel[ch] = None         # Program Change : toujours renvoyé
+            self._chan_sel[ch] = None             # Program Change : toujours renvoyé
             self._select_channel(ch, slot, track_idx)
             if ch != old:
                 self._send_bank_mix(track_idx)
