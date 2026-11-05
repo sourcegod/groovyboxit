@@ -108,7 +108,7 @@ def sfizz_available():
 
 
 # Types d'événements de la file (entiers : transposables en C/C++)
-EV_NOTE_ON, EV_NOTE_OFF, EV_CC, EV_BEND, EV_SOUNDS_OFF, EV_SWAP, EV_DROP = range(7)
+EV_NOTE_ON, EV_NOTE_OFF, EV_CC, EV_BEND, EV_SOUNDS_OFF, EV_SWAP, EV_DROP, EV_FLUSH = range(8)
 
 
 class SfzEngine(BankEngine):
@@ -129,6 +129,7 @@ class SfzEngine(BankEngine):
 
     NUM_BANK_SLOTS = 16     # emplacement = slot du Rack (Z8)
     MAX_BLOCK      = 1024   # taille de bloc donnée à sfizz ; un bloc plus long est découpé
+    MAX_PENDING    = 64     # notes retenues au plus par canal pendant un chargement
     # Gain appliqué au rendu : à 1.0, les instruments d'essai sortent un peu
     # moins fort que FluidR3 réglé à 0.4 (Phase 8 étape 7b1) ; 1.5, un peu
     # plus fort mais plus agréable et plus clair (essai de 7d1) ; réglable
@@ -164,6 +165,9 @@ class SfzEngine(BankEngine):
         self._inst       = [None] * n      # (instance, clé) courante
         self._fading     = [[] for _ in range(n)]         # instances en extinction
         self._drop       = set()           # instances à libérer dès qu'elles se taisent
+        # Notes jouées pendant le chargement du programme voulu (essai de
+        # 7h1) : retenues, puis jouées par la nouvelle instance à la bascule
+        self._pending    = [[] for _ in range(n)]
         self._busy       = [False] * n     # événement reçu depuis le dernier rendu
         # État des contrôleurs de chaque canal, rejoué sur l'instance qui
         # devient courante
@@ -226,11 +230,12 @@ class SfzEngine(BankEngine):
         return self._sources[slot] if 0 <= slot < self.NUM_BANK_SLOTS else None
 
     def presets(self, slot):
-        """[(0, programme, nom)] de la source du slot (Z22)."""
+        """[(0, programme, nom)] de la source du slot (Z22) ; un programme
+        factice (sinusoïde seule) est signalé « (Dummy) » (essai de 7h1)."""
         source = self.source(slot)
         if source is None:
             return []
-        return [(0, p.program, p.name) for p in source.programs]
+        return [(0, p.program, p.shown_name) for p in source.programs]
 
     # -- canaux ----------------------------------------------------------
 
@@ -285,6 +290,7 @@ class SfzEngine(BankEngine):
             self._target[channel] = None
             self._target_name[channel] = None
             self._wanted[channel] = set()
+        self._push(EV_FLUSH, channel, 0, 0)
         self._collect()
 
     def channel_path(self, channel):
@@ -350,6 +356,8 @@ class SfzEngine(BankEngine):
                     lib.sfizz_free(synth)      # plus voulu entre-temps
                     current = False
         if not ok:
+            if self._target[channel] == key:
+                self._push(EV_FLUSH, channel, 0, 0)   # notes retenues : abandonnées
             self._status(f"SFZ refusé : {prog.name}")
             return
         self._free_pending()
@@ -439,11 +447,27 @@ class SfzEngine(BankEngine):
             else:
                 self._freeq.append(a)
             return
+        if kind == EV_FLUSH:
+            self._pending[ch].clear()
+            return
         inst = self._inst[ch]
+        target = self._target[ch]
+        pending = self._pending[ch]
         if kind == EV_NOTE_ON:
-            if inst is not None:
+            if target is not None and (inst is None or inst[1] != target):
+                # programme voulu en chargement : la note attend la bascule
+                if len(pending) < self.MAX_PENDING:
+                    pending.append((a, b))
+            elif inst is not None:
                 lib.sfizz_send_note_on(inst[0], 0, a, b)
         else:
+            if kind == EV_NOTE_OFF:
+                for i, (note, _vel) in enumerate(pending):
+                    if note == a:              # relâchée avant la bascule : annulée
+                        del pending[i]
+                        break
+            elif kind == EV_SOUNDS_OFF or (kind == EV_CC and a in (120, 123)):
+                pending.clear()
             # Fin de note, contrôleurs et coupures : aussi aux instances en
             # extinction (une note commencée avant un Program Change doit
             # recevoir sa fin, la pédale son relâchement)
@@ -475,6 +499,9 @@ class SfzEngine(BankEngine):
         for num, value in self._ccs[ch].items():
             lib.sfizz_send_cc(synth, 0, num, value)
         lib.sfizz_send_pitch_wheel(synth, 0, self._bend[ch])
+        for note, vel in self._pending[ch]:    # notes retenues pendant le chargement
+            lib.sfizz_send_note_on(synth, 0, note, vel)
+        self._pending[ch].clear()
         self._busy[ch] = True
         if old is not None:
             if lib.sfizz_get_num_active_voices(old[0]) > 0:

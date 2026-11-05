@@ -1314,6 +1314,10 @@ class ProjectMixin:
         # recharger un kit (et renommer ses pads) à chaque Undo
         if self._router.slot_for_track(self._player._cur_track) != self._cur_slot:
             self._follow_track_slot()
+        # Libellés des slots rétablis avec le Rack (Phase 8 étape 7h1, essai) :
+        # sans cela, un slot rempli par l'Explorateur (SFZ, Banque, Kit,
+        # Patch) puis annulé gardait son nom dans la liste
+        self._update_slot_list()
         self._pattern_listbox.SetSelection(self._cur_pattern_idx)
         self._refresh_pattern_listbox()
         self._refresh_grid()

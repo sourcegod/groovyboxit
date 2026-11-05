@@ -163,7 +163,22 @@ NumPad -         ShiftPad vers pads 1-8
 Ctrl+1           Passer en mode Pad
 Ctrl+2           Passer en mode Keyboard
 Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banque :
-                 fichier SF2/SF3 et emplacement 1 à 4 du slot courant)
+                 fichier SF2/SF3 et emplacement 1 à 4 du slot courant ; SFZ :
+                 slot Synth SFZ, voir ci-dessous)
+
+  -- Slot Synth SFZ (Alt+X, élément SFZ) --
+  Liste          Sources du dossier des instruments SFZ (clé sfz_dir de
+                 config.json, par défaut /home/com/groovybox/media/sfz) :
+                 banque Sforzando (.bank.xml), banque SFZ, dossier de
+                 programmes (« 001-Piano » = programme 1), fichier .sfz seul ;
+                 chaque ligne commence par son chemin (taper les premières
+                 lettres pour y aller) ; Entrée ou double-clic = Ok
+  Gain du slot   −24 à +12 dB : baisser une source trop forte (saturation)
+  Fichier…       Choisir une source ailleurs (.sfz, .bank.xml, .sfzbank.json)
+  Dossier…       Choisir un dossier de programmes ailleurs
+                 Ok : le slot devient un Synth SFZ (Undo « SFZ slot NN ») ;
+                 Ctrl+T pour l'assigner à la piste ; le Program Change de la
+                 piste choisit le programme (comme une banque)
 
   -- Slot SYNTH (instrument mélodique) --
   NumPad 1-8     Jouer les 8 premières notes de la gamme courante
@@ -212,6 +227,8 @@ Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  soundfont), Banque MSB et LSB ; changer de canal fait entendre
                  l'instrument de ce canal ; note d'aperçu ; Ok écrit l'entête
                  de la piste (CC0, CC32, Program Change à 1.1.1)
+                 Sur un slot Synth SFZ : de même, Programme du canal = liste
+                 des programmes de sa source ; Banque MSB et LSB grisées
                  En mode Rack 16 canaux : le slot est le canal (choisir l'un
                  choisit l'autre) ; chaque canal dit le slot qu'il joue
                  Changer le slot, le canal, le programme ou la banque coupe d'abord

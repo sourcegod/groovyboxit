@@ -10632,3 +10632,77 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
     donne les numéros libres par ordre alphabétique (« 001-b » avant
     « 2nd Violin ») ; une instance remplacée que le pattern ne demande
     plus est libérée, pas gardée. `SPECS.md`. 3590 verts.
+- **7h1** — interface, conforme à Z6, Z24, Z26 (et Z7 pour les messages) :
+  - `sfz_sources.list_sources(root)` → `SourceEntry` (chemin, sorte, nom,
+    nombre de programmes, libellé « chemin relatif — sorte, N
+    programmes ») : chaque `.bank.xml`, banque JSON, dossier d'au moins
+    deux programmes et `.sfz` qui est un programme ; 201 sources en
+    0,14 s sur les instruments téléchargés.
+  - **Écart à Z6 (fragments)** : sfizz résout un `#include`, même écrit
+    dans un fichier inclus, depuis le dossier du **fichier racine**
+    (`mappings/kick_24_map.sfz` inclut `"mappings/kick_24/k_kick.sfz"`,
+    relatif à `Programs/`). `fragments` prend chaque `.sfz` comme racine
+    et suit la chaîne de ses `#include` depuis son dossier ; seuls ses
+    `#include` directs introuvables en font un fragment. Un dossier n'est
+    proposé que si ses programmes sont les mêmes, analysé seul ou dans
+    toute l'arborescence (un dossier de morceaux inclus depuis ailleurs
+    n'est pas une banque).
+  - Nom d'une source dossier : « parent — dossier » (`folder_name` :
+    « Discord GM — Melodic », « karoryfer-bigcat.cello — Programs »).
+  - `ui/dialogs_sfz.py` : `SfzSlotDialog` (liste des sources avec la
+    source actuelle présélectionnée et le curseur clavier placé, Gain du
+    slot −24..+12 dB, Fichier…, Dossier…, Ok, Annuler ; Entrée ou
+    double-clic = Ok ; une source hors de `sfz_dir` est ajoutée en tête),
+    `stored_source` (relatif à `sfz_dir`, absolu sinon).
+  - Explorateur : élément **« SFZ »** ; `_explorer_sfz` (slot visé de la
+    liste, Undo « SFZ slot NN » retiré si Annuler ou inchangé, autres
+    réglages d'un slot déjà SFZ gardés, message « Slot 11: SFZ …, N
+    programmes, gain … dB (Ctrl+T pour assigner) ») ;
+    `_engine_off_note` : « sfizz (ou FluidSynth) désactivé ou absent :
+    slot muet » après l'Explorateur (SFZ, Banque) et Ctrl+T.
+  - Alt+Entrée : `_bank_info` vaut pour un SFZ (`"sfz"` vrai :
+    programmes de la source, MSB / LSB grisés, « sans objet pour un
+    SFZ ») ; programme d'origine = celui du canal ; entête écrit à 1.1.1
+    et poursuite comme une banque (`_chan_slot_of` pour les autres pistes
+    du canal).
+  - Aide F1 (`docs/shortcuts.md`) : Alt+X (SFZ), section « Slot Synth
+    SFZ », Alt+Entrée sur un SFZ.
+  - **Corrections trouvées à l'essai** (intégrées à 7h1) :
+    - la note d'aperçu d'Alt+Entrée partait vers FluidSynth
+      (`bank_note` sans moteur) : moteur du slot, et sur un SFZ elle
+      attend que le programme soit chargé (`_preview_note_when_ready`,
+      sondage toutes les 40 ms, au plus 5 s ; aperçu dépassé abandonné) ;
+    - un programme pas encore chargé faisait entendre l'ancien :
+      `SfzEngine` **retient les notes** jouées pendant le chargement du
+      programme voulu (`_pending`, 64 au plus par canal) et les joue à la
+      bascule ; une fin de note avant la bascule les annule ; coupure,
+      CC120 / CC123, canal libéré ou chargement refusé (`EV_FLUSH`) les
+      abandonnent ;
+    - **banque GM Discord incomplète** (« Work in progress ») : 118 des
+      128 programmes de `Melodic` et 9 des 10 de `Drums` ne sont qu'une
+      sinusoïde (`//dummy` puis `<region> sample=*sine`) ; seuls 1, 2, 3,
+      5, 26, 34, 45, 46, 105, 112 (et le kit 1) sont de vrais
+      instruments. D'où « seuls quelques programmes changent le son », et
+      l'« orgue d'église » saturé de 7f1 (une sinusoïde à pleine
+      amplitude). `is_placeholder` (commentaires ôtés, le fichier se
+      réduit exactement à `<region> sample=*sine`) ; nom montré
+      `shown_name` : « 020-Church Organ (Dummy) » (mot choisi par
+      l'utilisateur, celui de la banque), dans la liste des programmes et
+      le nom de la piste ;
+    - Undo d'un slot rempli par l'Explorateur : le Rack était rétabli,
+      mais la liste des slots gardait l'ancien libellé (SFZ, Banque, Kit
+      ou Patch) : `_restore_state` appelle `_update_slot_list`.
+  - `pytest` : **6 tests rouges jusqu'à 7i1** : éléments de
+    l'Explorateur (3), nom d'une source dossier (2), fake de Ctrl+T sans
+    `_engine_off_note` (1).
+- **Essai de 7h1 (utilisateur, 2026-11-05)** : concluant avec Orca
+  (Explorateur, slot vide, liste des sources, gain ; Ctrl+T ; source et
+  gain présélectionnés au retour ; Alt+Entrée après les corrections ;
+  `--no-sfizz` : patterns SFZ muets). Remarques pour plus tard (hors de ce
+  chantier) :
+  - **mode Clavier par défaut** au chargement d'une banque ou d'un SFZ :
+    rien à recalculer pour FluidSynth et sfizz, alors qu'il faut
+    aujourd'hui passer en mode Clavier (Ctrl+2) pour jouer ;
+  - **audition dans l'Explorateur** : pour chaque banque ou fichier SFZ,
+    un court fichier audio (une note de l'instrument, un rythme du kit),
+    pour écouter sans charger l'instrument.

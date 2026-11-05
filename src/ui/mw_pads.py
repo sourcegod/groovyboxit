@@ -3,6 +3,8 @@ import wx
 from rack import InstrumentType
 from project_manager import ProjectManager
 from .dialogs import ExplorerDialog, PadPropertiesDialog, BankSlotDialog
+from .dialogs_sfz import SfzSlotDialog, stored_source
+from sfz_sources import read_source
 
 
 class PadMixin:
@@ -204,6 +206,8 @@ class PadMixin:
             self._explorer_sound()
         elif choice == "Banque":
             self._explorer_bank()
+        elif choice == "SFZ":
+            self._explorer_sfz()
 
     def _explorer_projects(self):
         projects_dir = self._projects_dir
@@ -311,7 +315,59 @@ class PadMixin:
         msg = f"Slot {target + 1:02d}: banque {name}, emplacement {bank_slot + 1}"
         if replaced and shared:
             msg += " — son changé aussi pour les slots " + ", ".join(f"{i:02d}" for i in shared)
-        self._show_status(msg)
+        self._show_status(msg + self._engine_off_note(InstrumentType.BANK))
+
+    def _engine_off_note(self, slot_type):
+        """Fin de message quand le moteur d'un slot Banque ou Synth SFZ est
+        coupé ou absent (Phase 8 étape 7h1, docs/DESIGN.md § 7a2 Z7) : le
+        slot est gardé, mais muet."""
+        if slot_type == InstrumentType.BANK and self._router.bank_engine is None:
+            return " — FluidSynth désactivé ou absent : slot muet"
+        if slot_type == InstrumentType.SFZ and self._router.sfz_engine is None:
+            return " — sfizz désactivé ou absent : slot muet"
+        return ""
+
+    def _explorer_sfz(self):
+        """Slot visé (celui de la liste, 5d3) en Synth SFZ : source de
+        programmes et gain (Phase 8 étape 7h1, docs/DESIGN.md § 7a3 Z26 ;
+        gain 7f2). Undo posé avant, retiré si Annuler ou rien changé ; nom
+        du slot = nom de la source ; un slot déjà SFZ garde ses autres
+        réglages (programme GM de l'export…)."""
+        target = self._listed_slot()
+        slot = self._rack.get_slot(target)
+        is_sfz = slot.type == InstrumentType.SFZ
+        current = self._router.sfz_path(slot) if is_sfz else None
+        gain = slot.sfz_gain_db() if is_sfz else 0
+        self._add_undo(f"SFZ slot {target + 1:02d}")
+        dlg = SfzSlotDialog(self, target, self._sfz_dir, current, gain)
+        if dlg.ShowModal() != wx.ID_OK or dlg.get_source() is None:
+            dlg.Destroy()
+            self._pop_last_undo()
+            self._show_status("SFZ : annulé")
+            return
+        path, gain_db, entry = dlg.get_source(), dlg.get_gain_db(), dlg.get_entry()
+        dlg.Destroy()
+        stored = stored_source(path, self._sfz_dir)
+        base = {k: v for k, v in slot.config.items() if k != "sfz_file"} if is_sfz else {}
+        config = {**base, "sfz_source": stored, "sfz_gain_db": int(gain_db)}
+        name = entry.name if entry else read_source(path).name
+        if is_sfz and slot.config == config and slot.name == name:
+            self._pop_last_undo()
+            self._show_status("SFZ : inchangé")
+            return
+        self._rack.set_slot(target, InstrumentType.SFZ, name, config)
+        self._update_slot_list(target)
+        self._router.sync_banks()
+        if target == self._cur_slot:
+            self._router.load_slot_preview(target)
+        self._refresh_track_list()
+        count = entry.count if entry else len(read_source(path).programs)
+        msg = (f"Slot {target + 1:02d}: SFZ {name}, {count} programme{'s' if count > 1 else ''}"
+               + (f", gain {int(gain_db):+d} dB" if gain_db else ""))
+        if target != self._cur_slot and self._router.slot_for_track(
+                self._player._cur_track) != target:
+            msg += " (Ctrl+T pour assigner)"
+        self._show_status(msg + self._engine_off_note(InstrumentType.SFZ))
 
     def _explorer_sound(self):
         start = self._samples_dir if os.path.isdir(self._samples_dir) else os.path.expanduser("~")

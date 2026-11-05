@@ -189,7 +189,7 @@ class TrackPropertiesDialog(wx.Dialog):
     def _show_bank(self, info, program):
         """Liste des 128 programmes de la banque du canal (noms lus dans le
         fichier, « (vide) » pour un numéro absent), MSB / LSB grisés au
-        canal 10."""
+        canal 10 ; ceux d'une source SFZ, MSB / LSB grisés (7h1)."""
         channel = self._channels.GetSelection()
         self._program_label.SetLabel(f"Programme du canal {channel + 1} :")
         self._program_values = list(range(128))
@@ -198,6 +198,11 @@ class TrackPropertiesDialog(wx.Dialog):
         if program is not None:
             select_with_cursor(self._programs, max(0, min(127, program)))
         self._programs.Enable(True)
+        if info.get("sfz"):        # Synth SFZ (Phase 8 étape 7h1) : banque sans objet
+            self._msb.Enable(False)
+            self._lsb.Enable(False)
+            self._lsb_label.SetLabel("Banque LSB (CC32, sans objet pour un SFZ) :")
+            return
         self._msb.Enable(not info["drums"])
         self._lsb.Enable(not info["drums"])
         self._lsb_label.SetLabel("Banque LSB (CC32, sans effet en mode GS) :"

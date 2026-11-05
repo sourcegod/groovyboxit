@@ -48,6 +48,7 @@ class TrackMixin:
         self._show_status(
             f"Piste {track_idx + 1} → Slot_{slot_idx + 1:02d} ({slot.name}), "
             f"canal {self._router.get_track_channel(track_idx) + 1}"
+            + self._engine_off_note(slot.type)        # moteur coupé (7h1)
         )
 
     # ------------------------------------------------------------------
@@ -139,8 +140,11 @@ class TrackMixin:
         § 17e3 O5) : None hors slot Banque. MSB None : instrument du canal
         (le canal impose son instrument), lu dans instruments (état des 16
         canaux à l'ouverture du dialogue) ou, à défaut, dans le routeur ;
-        sinon noms de la banque demandée, programme inchangé (None)."""
-        if self._rack.get_slot(slot_idx).type != InstrumentType.BANK:
+        sinon noms de la banque demandée, programme inchangé (None).
+        Slot Synth SFZ (Phase 8 étape 7h1, § 7a3 Z24) : programmes de sa
+        source, "sfz" vrai (MSB / LSB sans objet, grisés)."""
+        slot_type = self._rack.get_slot(slot_idx).type
+        if slot_type not in (InstrumentType.BANK, InstrumentType.SFZ):
             return None
         r = self._router
         program = None
@@ -151,7 +155,8 @@ class TrackMixin:
         return {"names": r.program_names(slot_idx, channel, msb, lsb),
                 "program": program, "msb": msb, "lsb": lsb,
                 "drums": channel == Pattern.KIT_CHANNEL,
-                "gs": engine is None or engine.bank_select == "gs"}
+                "gs": engine is None or engine.bank_select == "gs",
+                "sfz": slot_type == InstrumentType.SFZ}
 
     def _track_properties_dialog(self):
         tidx = self._player._cur_track
@@ -172,8 +177,8 @@ class TrackMixin:
         orig['program'] = self._rack.get_slot(played).gm_program()
         orig['transpose'], orig['gain_db'] = self._slot_gm_tuning(played)   # 12a2 D6
         orig['msb'] = orig['lsb'] = None
-        if self._rack.get_slot(played).type == InstrumentType.BANK:
-            # instrument du canal de la piste (17h1, § 17e3 O5)
+        if self._rack.get_slot(played).type in (InstrumentType.BANK, InstrumentType.SFZ):
+            # instrument du canal de la piste (17h1, § 17e3 O5 ; SFZ : 7h1)
             orig['program'], orig['msb'], orig['lsb'] = \
                 self._router.channel_instrument(self._router.track_channel_now(tidx))
         orig_key = (orig['channel'], orig['program'], orig['msb'], orig['lsb'])
@@ -211,7 +216,7 @@ class TrackMixin:
             if sound != last_sound[0]:
                 r.cut_track_notes(tidx)              # slot, canal, programme (N2)
                 last_sound[0] = sound
-            was_bank = self._router._bank_slot_of(tidx) is not None
+            was_bank = self._router._chan_slot_of(tidx) is not None    # banque ou SFZ (7h1)
             if rack_mode:                            # slot = canal, _track_slots intact (M9)
                 slot = self._router.rack_slot_idx(channel)
             elif slot != self._router.slot_for_track(tidx):
@@ -226,7 +231,7 @@ class TrackMixin:
             if rack_mode:
                 self._follow_track_slot()
             slot_obj = self._rack.get_slot(slot)
-            is_bank  = slot_obj.type == InstrumentType.BANK
+            is_bank  = slot_obj.type in (InstrumentType.BANK, InstrumentType.SFZ)
             if is_bank or was_bank:
                 self._apply_bank_header(tidx, live, saved_tape, bank_state, orig_key,
                                         is_bank, slot, channel, program, msb, lsb)
@@ -299,7 +304,7 @@ class TrackMixin:
             if is_bank and program is not None and key != orig_key:
                 live._tape[tidx] = with_bank_header(saved_tape[tidx], channel, program, msb, lsb)
                 for t, events in enumerate(saved_tape):
-                    if t == tidx or t >= r.NUM_TRACKS or r._bank_slot_of(t) is None:
+                    if t == tidx or t >= r.NUM_TRACKS or r._chan_slot_of(t) is None:
                         continue
                     header = bank_header(events)
                     if header is not None and header[0] == channel \
@@ -308,10 +313,29 @@ class TrackMixin:
                         others.append(t)
         state["others"] = others
         r.chase(live._tape, self._player._current_offset())
-        if is_bank and key != state["last"] and r.bank_slot_ready(slot):
-            note = r.DRUM_GRID_BASE if channel == Pattern.KIT_CHANNEL else 60
-            r.bank_note(channel, note, 100, 400)
+        changed = key != state["last"]
         state["last"] = key
+        if is_bank and changed and r.bank_slot_ready(slot):
+            note = r.DRUM_GRID_BASE if channel == Pattern.KIT_CHANNEL else 60
+            engine = r._engine_of(self._rack.get_slot(slot))     # banque ou sfizz (7h1)
+            self._preview_note_when_ready(engine, channel, note, state, key)
+
+    # Note d'aperçu d'un programme SFZ (essai de 7h1) : le programme choisi se
+    # charge en arrière-plan ; la note attend qu'il soit en place (au plus
+    # PREVIEW_WAIT_MS), sinon elle serait jouée, ou retenue puis annulée par
+    # sa propre fin. Un aperçu dépassé (autre programme choisi) est abandonné.
+    PREVIEW_POLL_MS = 40
+    PREVIEW_WAIT_MS = 5000
+
+    def _preview_note_when_ready(self, engine, channel, note, state, key, waited=0):
+        if engine is None or state.get("last") != key:
+            return
+        ready = getattr(engine, "channel_ready", None)
+        if ready is None or ready(channel) or waited >= self.PREVIEW_WAIT_MS:
+            self._router.bank_note(channel, note, 100, 400, engine)
+            return
+        wx.CallLater(self.PREVIEW_POLL_MS, self._preview_note_when_ready,
+                     engine, channel, note, state, key, waited + self.PREVIEW_POLL_MS)
 
     def _rename_track(self):
         """F2 : renomme la piste courante via un TextEntryDialog."""
