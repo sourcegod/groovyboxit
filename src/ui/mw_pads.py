@@ -353,7 +353,18 @@ class PadMixin:
         name = entry.name if entry else read_source(path).name
         if is_sfz and slot.config == config and slot.name == name:
             self._pop_last_undo()
-            self._show_status("SFZ : inchangé")
+            engine = self._router.sfz_engine
+            if engine is not None and engine.source_stale(target):
+                # Même source, contenu modifié (essai de 7j1) : relue
+                self._router.sync_banks()
+                if target == self._cur_slot:
+                    self._router.load_slot_preview(target)
+                self._refresh_track_list()
+                count = len(engine.presets(target))
+                self._show_status(f"Slot {target + 1:02d}: SFZ {name} relu, "
+                                  f"{count} programme{'s' if count > 1 else ''}")
+            else:
+                self._show_status("SFZ : inchangé")
             return
         self._rack.set_slot(target, InstrumentType.SFZ, name, config)
         self._update_slot_list(target)

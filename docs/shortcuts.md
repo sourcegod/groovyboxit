@@ -176,6 +176,24 @@ Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banq
   Gain du slot   −24 à +12 dB : baisser une source trop forte (saturation)
   Fichier…       Choisir une source ailleurs (.sfz, .bank.xml, .sfzbank.json)
   Dossier…       Choisir un dossier de programmes ailleurs
+  Nouvelle banque SFZ…   Composer sa propre banque (fichier .sfzbank.json),
+                 par exemple des pianos de plusieurs bibliothèques
+  Modifier la banque…    Modifier la banque SFZ sélectionnée dans la liste
+
+  -- Composer une banque SFZ --
+  Nom            Nom de la banque
+  Programmes     Liste « numéro - nom — fichier » :
+                 Suppr      retirer le programme
+                 F2         renommer le programme
+                 Alt+Haut / Alt+Bas   monter / descendre (échange le numéro
+                            avec le programme voisin)
+  Numéro         Numéro du programme sélectionné (1 à 128) ; un numéro déjà
+                 pris est échangé avec l'autre programme
+  Disponibles    Fichiers SFZ du dossier des instruments : Entrée ou
+                 double-clic (ou Ajouter) ajoute au numéro libre suivant
+  Parcourir…     Ajouter un fichier SFZ d'ailleurs
+  Enregistrer    Choisir le fichier (proposé dans le dossier des instruments)
+                 la première fois ; la banque est ensuite sélectionnée
                  Ok : le slot devient un Synth SFZ (Undo « SFZ slot NN ») ;
                  Ctrl+T pour l'assigner à la piste ; le Program Change de la
                  piste choisit le programme (comme une banque)

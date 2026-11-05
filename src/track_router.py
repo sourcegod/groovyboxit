@@ -713,7 +713,9 @@ class TrackRouter:
             path = self.sfz_path(slot)
             if path is not None:
                 engine.set_slot_gain(i, slot.sfz_gain_db())   # gain du slot (7f2)
-            if engine.loaded_path(i) == path:
+            # Même source, mais relue si son contenu a changé (essai de 7j1 :
+            # banque SFZ recomposée)
+            if engine.loaded_path(i) == path and (path is None or not engine.source_stale(i)):
                 continue
             self._chan_sel = [None if sel is not None and sel[0] == InstrumentType.SFZ
                               and sel[1] == i else sel for sel in self._chan_sel]

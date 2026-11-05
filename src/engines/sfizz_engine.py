@@ -40,7 +40,7 @@ import threading
 import numpy as np
 
 from engines.bank_engine import BankEngine
-from sfz_sources import read_source
+from sfz_sources import read_source, source_stamp
 
 
 class SfizzUnavailable(RuntimeError):
@@ -151,6 +151,7 @@ class SfzEngine(BankEngine):
         n = self.NUM_CHANNELS
         self._paths      = [None] * self.NUM_BANK_SLOTS   # source de chaque slot
         self._sources    = [None] * self.NUM_BANK_SLOTS   # SfzSource lue
+        self._stamps     = [None] * self.NUM_BANK_SLOTS   # empreinte à la lecture (7j1)
         # Gain linéaire de chaque slot (7f2) et de chaque instance (celui de
         # son slot), lu par le callback au rendu
         self._slot_gain  = [1.0] * self.NUM_BANK_SLOTS
@@ -199,12 +200,20 @@ class SfzEngine(BankEngine):
             return False
         self._paths[slot]   = path
         self._sources[slot] = source
+        self._stamps[slot]  = source_stamp(path)
         return True
+
+    def source_stale(self, slot):
+        """Vrai si la source du slot a changé depuis sa lecture (fichier ou
+        dossier modifié : banque SFZ recomposée, essai de 7j1)."""
+        path = self.loaded_path(slot)
+        return path is not None and source_stamp(path) != self._stamps[slot]
 
     def unload(self, slot):
         if 0 <= slot < self.NUM_BANK_SLOTS:
             self._paths[slot]   = None
             self._sources[slot] = None
+            self._stamps[slot]  = None
 
     def loaded_path(self, slot):
         return self._paths[slot] if 0 <= slot < self.NUM_BANK_SLOTS else None
@@ -583,6 +592,7 @@ class SfzEngine(BankEngine):
         copy = SfzEngine(self._samplerate, self.gain, realtime=False)
         copy._paths     = list(self._paths)
         copy._sources   = list(self._sources)
+        copy._stamps    = list(self._stamps)
         copy._slot_gain = list(self._slot_gain)
         return copy
 

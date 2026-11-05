@@ -10747,3 +10747,47 @@ cello (3 programmes) »), chaque dossier d'au moins deux programmes
     dans `StdDialogButtonSizer`, comme pour les autres dialogues) ; le test
     vérifie l'ordre des contrôles propres au dialogue.
   - `SPECS.md`. 3652 verts, deux passages.
+- **7j1** — composition d'une banque SFZ JSON, conforme à Z21 :
+  - `sfz_sources.SfzBankDraft` (pur) : programmes `[numéro, nom, chemin]`
+    triés, numéros distincts ; `add` (numéro libre après le dernier, ou
+    le numéro demandé s'il est libre ; `None` si 128 pris), `remove`,
+    `rename`, `set_number` (échange avec le titulaire du numéro), `move`
+    (échange avec le voisin de liste, sinon le numéro adjacent),
+    `from_file`, `save`.
+  - `write_sfzbank` : **écart** — chemin relatif seulement si la banque
+    et le `.sfz` partagent un dossier autre que la racine (une banque
+    enregistrée dans `/tmp` ne pointe plus en « ../../home/… »).
+  - `ui/dialogs_sfz.SfzBankDialog` : Nom ; Programmes (« numéro - nom —
+    fichier », mise à jour ligne par ligne : `SetString` / `Insert` /
+    `Delete`, pour Orca) ; Numéro du programme (`SpinCtrl` 1..128,
+    échange) ; Monter, Descendre, Renommer…, Retirer ; Fichiers SFZ
+    disponibles (les `.sfz` de `list_sources`, Entrée ou double-clic =
+    Ajouter) ; Parcourir… ; Enregistrer (fichier demandé la première fois,
+    proposé dans `sfz_dir` sous `<nom>.sfzbank.json` ; banque vide
+    refusée). Touches sur la liste des programmes : Suppr, F2,
+    Alt+Haut / Alt+Bas.
+  - `SfzSlotDialog` : boutons « Nouvelle banque SFZ… » et « Modifier la
+    banque… » (actif sur une banque SFZ) ; la banque enregistrée est
+    sélectionnée, sa ligne mise à jour (`refresh_source`).
+  - Aide F1 : boutons du dialogue du slot, section « Composer une banque
+    SFZ ».
+  - **Correction trouvée à l'essai** (point 6) : une banque modifiée puis
+    rechargée sur le même slot n'était pas relue (même chemin, même
+    gain : « inchangé » ; et le routeur ne relisait une source que si son
+    chemin changeait) ; il fallait un Undo puis un nouveau choix.
+    `sfz_sources.source_stamp` (date et taille d'un fichier ; pour un
+    dossier, celles de ses `.sfz`) retenu par `SfzEngine.load`,
+    `source_stale(slot)` ; `_sync_sfz_files` relit une source dont
+    l'empreinte a changé (à chaque synchronisation : lecture, pattern,
+    Undo, choix d'un slot) ; l'Explorateur, sur la même source modifiée :
+    « Slot 12: SFZ Essai relu, 2 programmes », sans Undo (le Rack ne
+    change pas). Vérifié par un script (vraie `MainWindow`). Les instances
+    déjà chargées des programmes inchangés restent valables ; un `.sfz`
+    modifié lui-même n'est pas rechargé (hors périmètre).
+  - `pytest` : **14 tests rouges jusqu'à 7k1** (moteur factice de
+    `test_sfz_slot.py` sans `source_stale` : 13 ; ordre Tab du dialogue
+    du slot : 1).
+- **Essai de 7j1 (utilisateur, 2026-11-05)** : concluant (composition,
+  numéros, Alt+Haut / Alt+Bas, F2, Suppr, enregistrement, banque
+  sélectionnée, Ctrl+T, Alt+Entrée), sauf le point 6 (banque modifiée non
+  relue), corrigé ci-dessus ; essai de la correction concluant.

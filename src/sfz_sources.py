@@ -96,6 +96,25 @@ def source_kind(path):
     return None
 
 
+def source_stamp(path):
+    """Empreinte d'une source, pour savoir si elle a changé depuis sa
+    lecture (essai de 7j1 : banque modifiée puis rechargée) : date de
+    modification et taille d'un fichier ; pour un dossier, celles de ses
+    .sfz. None si elle est absente."""
+    try:
+        if os.path.isdir(path):
+            out = []
+            for f in sorted(os.listdir(path)):
+                if f.lower().endswith(".sfz"):
+                    st = os.stat(os.path.join(path, f))
+                    out.append((f, st.st_mtime_ns, st.st_size))
+            return tuple(out)
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
 def read_source(path):
     """Lit la source path ; une source inconnue ou absente donne une
     source sans programme, avec un message."""
@@ -385,12 +404,17 @@ def _read_sfzbank(path):
 
 def write_sfzbank(path, name, programs):
     """Écrit une banque SFZ JSON : programs = [(numéro, nom, chemin .sfz)],
-    chemins rendus relatifs au fichier (portable) quand c'est possible."""
+    chemins rendus relatifs au fichier (portable) quand la banque et le
+    .sfz partagent un dossier autre que la racine ; absolus sinon (une
+    banque enregistrée dans /tmp ne pointe pas en « ../../home/… »)."""
     base = os.path.dirname(os.path.abspath(path))
     entries = []
     for number, pname, sfz in sorted(programs):
+        sfz = os.path.abspath(sfz)
         try:
-            rel = os.path.relpath(sfz, base)
+            common = os.path.commonpath([base, sfz])
+            rel = os.path.relpath(sfz, base) \
+                if common != os.path.dirname(common) else sfz    # racine seule : absolu
         except ValueError:              # autre lecteur (Windows)
             rel = sfz
         entries.append({"program": int(number), "name": pname, "path": rel})
@@ -465,3 +489,94 @@ def list_sources(root):
                     entries.append(entry)
     return sorted(entries, key=lambda e: e.label.lower())
 
+
+
+# ---------------------------------------------------------------------------
+# Composition d'une banque SFZ JSON (Phase 8 étape 7j1, § 7a3 Z21)
+# ---------------------------------------------------------------------------
+
+class SfzBankDraft:
+    """Banque SFZ en cours de composition : nom et programmes
+    [numéro, nom, chemin du .sfz], toujours triés par numéro, numéros
+    distincts 0..127. Module pur : le dialogue ne fait que l'afficher."""
+
+    def __init__(self, name="", programs=()):
+        self.name = name
+        self.programs = sorted([int(n), str(pn), str(p)] for n, pn, p in programs)
+
+    @classmethod
+    def from_file(cls, path):
+        """Banque relue d'un .sfzbank.json (programmes valides seulement)."""
+        src = read_source(path)
+        return cls(src.name, [(p.program, p.name, p.path) for p in src.programs])
+
+    def __len__(self):
+        return len(self.programs)
+
+    def numbers(self):
+        return [n for n, _, _ in self.programs]
+
+    def free_number(self, start=0):
+        """Premier numéro libre à partir de start, ou None (128 pris)."""
+        taken = set(self.numbers())
+        for n in list(range(start, MAX_PROGRAMS)) + list(range(0, start)):
+            if n not in taken:
+                return n
+        return None
+
+    def index_of(self, number):
+        for i, (n, _, _) in enumerate(self.programs):
+            if n == number:
+                return i
+        return None
+
+    def add(self, path, name=None, number=None):
+        """Ajoute le .sfz path : au numéro donné s'il est libre, sinon au
+        premier libre après le dernier. Retourne son indice, ou None si la
+        banque est pleine."""
+        if number is None or number in self.numbers() or not 0 <= number < MAX_PROGRAMS:
+            last = self.programs[-1][0] + 1 if self.programs else 0
+            number = self.free_number(min(last, MAX_PROGRAMS - 1))
+        if number is None:
+            return None
+        self.programs.append([number, name or _stem(path), path])
+        self.programs.sort()
+        return self.index_of(number)
+
+    def remove(self, index):
+        del self.programs[index]
+
+    def rename(self, index, name):
+        name = (name or "").strip()
+        if name:
+            self.programs[index][1] = name
+
+    def set_number(self, index, number):
+        """Donne le numéro number au programme index ; celui qui l'avait
+        prend l'ancien numéro (échange). Retourne le nouvel indice."""
+        number = max(0, min(MAX_PROGRAMS - 1, int(number)))
+        old = self.programs[index][0]
+        other = self.index_of(number)
+        if other is not None and other != index:
+            self.programs[other][0] = old
+        self.programs[index][0] = number
+        self.programs.sort()
+        return self.index_of(number)
+
+    def move(self, index, delta):
+        """Échange le numéro du programme avec celui du voisin (delta -1 :
+        le précédent, +1 : le suivant) ; sans voisin, le numéro libre
+        adjacent. Retourne le nouvel indice."""
+        number = self.programs[index][0]
+        neighbour = index + delta
+        if 0 <= neighbour < len(self.programs):
+            return self.set_number(index, self.programs[neighbour][0])
+        target = number + delta
+        if 0 <= target < MAX_PROGRAMS:
+            return self.set_number(index, target)
+        return index
+
+    def save(self, path):
+        """Écrit la banque (chemins relatifs au fichier)."""
+        write_sfzbank(path, self.name or _stem(path),
+                      [(n, pn, p) for n, pn, p in self.programs])
