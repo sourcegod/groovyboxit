@@ -44,7 +44,7 @@ from dataclasses import dataclass
 import numpy as np
 import soundfile as sf
 
-from sound_device_driver import Mixer
+from audio.sound_device_driver import Mixer
 from player import tape_events as te
 from rack import InstrumentType
 

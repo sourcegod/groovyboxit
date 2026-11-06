@@ -32,7 +32,7 @@ from rack import Rack, InstrumentSlot, InstrumentType
 from track_router import TrackRouter
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_CC
 from midi.midi_export import build_pattern_midi, volume_to_cc7, pan_to_cc10
-from sound_device_driver import Mixer
+from audio.sound_device_driver import Mixer
 from sound_manager import SoundManager
 from voice_manager import VoiceManager
 from ui.mw_project import ProjectMixin

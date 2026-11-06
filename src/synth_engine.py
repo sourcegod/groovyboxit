@@ -94,7 +94,7 @@ class SynthEngine:
 
     def __init__(self, synths_dir, driver=None):
         if driver is None:
-            from sound_device_driver import SoundDeviceDriver
+            from audio.sound_device_driver import SoundDeviceDriver
             driver = SoundDeviceDriver()
         self._driver      = driver
         self._synths_dir  = synths_dir

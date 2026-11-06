@@ -252,7 +252,7 @@ if __name__ == "__main__":
     #   python3 -m engines.fluidsynth_engine [fichier.sf2]
     import sys
     import time
-    from sound_device_driver import SoundDeviceDriver
+    from audio.sound_device_driver import SoundDeviceDriver
 
     path = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/sounds/sf2/FluidR3_GM.sf2"
     drv = SoundDeviceDriver()

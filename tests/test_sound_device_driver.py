@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import numpy as np
 import soundfile as sf
-from sound_device_driver import SoundDeviceDriver, SdSound, _Voice
+from audio.sound_device_driver import SoundDeviceDriver, SdSound, _Voice
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +384,7 @@ def test_resample_downsample():
 # LFO vibrato — constante, attributs, propagation
 # ---------------------------------------------------------------------------
 
-from sound_device_driver import _LoopVoice
+from audio.sound_device_driver import _LoopVoice
 import math as _math
 
 def test_lfo_depth_max_constant():

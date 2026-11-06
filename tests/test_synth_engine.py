@@ -17,7 +17,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import soundfile as sf
-from sound_device_driver import SoundDeviceDriver, SdSound
+from audio.sound_device_driver import SoundDeviceDriver, SdSound
 from synth_engine import (
     SynthEngine, scale_midi_notes, midi_to_note_name, note_name_to_midi,
 )
@@ -122,7 +122,7 @@ def test_clear_cache(engine):
 # ---------------------------------------------------------------------------
 
 import numpy as _np
-from sound_device_driver import _Voice as _SddVoice
+from audio.sound_device_driver import _Voice as _SddVoice
 
 class _MockDriver:
     """Driver minimal pour tester set_mod_wheel sans PortAudio ni WAV."""

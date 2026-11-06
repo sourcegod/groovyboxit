@@ -639,7 +639,7 @@ if __name__ == "__main__":
     import sys
     import time
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from sound_device_driver import SoundDeviceDriver
+    from audio.sound_device_driver import SoundDeviceDriver
     from app_config import AppConfig
 
     cfg  = AppConfig(os.path.dirname(sys.path[0]))

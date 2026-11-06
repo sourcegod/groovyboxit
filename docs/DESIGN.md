@@ -11092,3 +11092,11 @@ fidèle à l'écoute.
   `monkeypatch`) ; docstrings « File: ». Un import indirect,
   `__import__("audio_sampler")` (`test_synth_engine.py`), échappait au
   motif : trouvé par la suite. 3683 verts, outils lancés.
+- **8b2** — rangement : `git mv` de `sound_device_driver.py` et
+  `pygame_driver.py` vers `src/audio/` ; 26 lignes d'import pointées
+  (`src/` : `synth_engine`, `sound_manager`, `audio_export`,
+  `ui/main_window`, démos des deux moteurs ; tests ; `tools/diag_loop.py`,
+  `bench_latency.py`, `test_loop.py`), dont `import sound_device_driver`
+  → `from audio import sound_device_driver` (`test_mixer.py`) et les
+  imports alignés par des espaces ; aucun import indirect. 3683 verts,
+  appli et outils importés.

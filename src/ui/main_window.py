@@ -2,7 +2,7 @@ import os
 import threading
 import wx
 from sound_manager import SoundManager
-from sound_device_driver import SoundDeviceDriver
+from audio.sound_device_driver import SoundDeviceDriver
 from player.drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType

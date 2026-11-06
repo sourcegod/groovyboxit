@@ -43,7 +43,7 @@ from pattern import Pattern, TapeEvent, ETYPE_GRID
 from rack import Rack, InstrumentType
 from track_editor import TrackEditor
 from track_router import TrackRouter
-from sound_device_driver import Mixer
+from audio.sound_device_driver import Mixer
 from sound_manager import SoundManager
 from voice_manager import VoiceManager
 from test_key_manager import FakeWindow, FakeEvent

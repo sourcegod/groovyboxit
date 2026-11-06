@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/sound_device_driver.py
+    File: src/audio/sound_device_driver.py
     Moteur de playback audio polyphonique via sounddevice (PortAudio).
     Driver audio principal de l'application (remplace pygame.mixer).
     Le mélange des voix est dans Mixer, utilisable sans carte son (rendu

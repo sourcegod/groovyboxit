@@ -49,7 +49,7 @@ from ui.song_window import SongWindow
 import audio_export
 import ui.mw_project as mwp
 from ui.dialogs import AudioExportDialog
-from sound_device_driver import Mixer
+from audio.sound_device_driver import Mixer
 from sound_manager import SoundManager
 from rack import Rack
 from test_key_manager import FakeEvent

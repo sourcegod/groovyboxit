@@ -32,7 +32,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from audio.audio_tools import AudioTools
-from sound_device_driver import SoundDeviceDriver
+from audio.sound_device_driver import SoundDeviceDriver
 from synth_engine import SynthEngine, note_name_to_midi, midi_to_note_name, scale_midi_notes
 
 PATCH_DEFAULT = "/home/com/groovybox/PATCHS/organ_b3_basic_fast.json"

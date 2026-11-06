@@ -43,7 +43,7 @@ from rack import Rack, InstrumentType
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_PATCH, ETYPE_PGM
 from engines.bank_engine import BankEngine
 from engines import fluidsynth_engine as fs_mod
-from sound_device_driver import Mixer
+from audio.sound_device_driver import Mixer
 from sound_manager import SoundManager
 from synth_engine import SynthEngine
 from voice_manager import VoiceManager

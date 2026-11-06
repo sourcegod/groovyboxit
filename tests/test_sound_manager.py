@@ -20,8 +20,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pygame
-from pygame_driver      import PygameDriver
-from sound_device_driver import SoundDeviceDriver, SdSound
+from audio.pygame_driver      import PygameDriver
+from audio.sound_device_driver import SoundDeviceDriver, SdSound
 from sound_manager      import SoundManager
 
 MEDIA_DIR = os.path.join(os.path.dirname(__file__), "..", "media")

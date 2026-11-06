@@ -13,7 +13,7 @@ import glob
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pygame
-from pygame_driver import PygameDriver
+from audio.pygame_driver import PygameDriver
 
 MEDIA_DIR = os.path.join(os.path.dirname(__file__), "..", "media")
 WAVS      = sorted(glob.glob(os.path.join(MEDIA_DIR, "*.wav")))

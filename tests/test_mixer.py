@@ -21,8 +21,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-import sound_device_driver
-from sound_device_driver import Mixer, SoundDeviceDriver, SdSound
+from audio import sound_device_driver
+from audio.sound_device_driver import Mixer, SoundDeviceDriver, SdSound
 
 
 def _const(value, n=1000):

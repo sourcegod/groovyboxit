@@ -20,7 +20,7 @@ class SoundManager(object):
 
     def __init__(self, media_lst, click_name1, click_name2, driver=None):
         if driver is None:
-            from sound_device_driver import SoundDeviceDriver
+            from audio.sound_device_driver import SoundDeviceDriver
             driver = SoundDeviceDriver()
 
         self._driver     = driver

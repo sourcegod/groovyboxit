@@ -29,8 +29,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pygame
 import sounddevice as sd
-from pygame_driver        import PygameDriver
-from sound_device_driver  import SoundDeviceDriver, SdSound
+from audio.pygame_driver        import PygameDriver
+from audio.sound_device_driver  import SoundDeviceDriver, SdSound
 
 
 # ---------------------------------------------------------------------------

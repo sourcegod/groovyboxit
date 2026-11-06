@@ -20,7 +20,7 @@ import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from sound_device_driver import SoundDeviceDriver
+from audio.sound_device_driver import SoundDeviceDriver
 from synth_engine import SynthEngine, note_name_to_midi, midi_to_note_name
 
 

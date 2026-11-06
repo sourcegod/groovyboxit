@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/pygame_driver.py
+    File: src/audio/pygame_driver.py
     Driver audio pygame.mixer — backend optionnel / legacy.
     Même interface que SoundDeviceDriver. Conservé pour référence et tests ;
     n'est plus le driver par défaut de l'application (remplacé par SoundDeviceDriver).

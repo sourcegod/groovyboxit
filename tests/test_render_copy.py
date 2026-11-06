@@ -29,7 +29,7 @@ from pattern import (TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
                      ETYPE_CC, ETYPE_PGM, ETYPE_BEND)
 from engines.bank_engine import BankEngine
 from engines import fluidsynth_engine as fs_mod
-from sound_device_driver import Mixer
+from audio.sound_device_driver import Mixer
 from sound_manager import SoundManager
 from synth_engine import SynthEngine
 from voice_manager import VoiceManager
