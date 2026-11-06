@@ -26,7 +26,7 @@ from track_router import TrackRouter, BankPreview
 from pattern import (Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
                      ETYPE_CC, ETYPE_PGM, ETYPE_BEND)
 from project_manager import ProjectManager
-from engines.bank_engine import BankEngine
+from audio.engines.bank_engine import BankEngine
 from midi.midi_export import build_pattern_midi, volume_to_cc7, pan_to_cc10
 from audio.synth_engine import scale_midi_notes
 from player.drum_player import DrumPlayer

@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/engines/bank_engine.py
+    File: src/audio/engines/bank_engine.py
     Interface « moteur de banque » (Phase 7 étape 17b1, docs/DESIGN.md
     § 17a1 D1, D14) : un fichier de banque par emplacement (0..3), un
     instrument par canal MIDI (0..15), rendu stéréo ajouté au mixage du

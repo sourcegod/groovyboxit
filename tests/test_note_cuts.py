@@ -23,8 +23,8 @@ import wx
 
 import track_router as tr_mod
 import ui.midi_handler_window as mh
-from engines.bank_engine import BankEngine
-from engines.fluidsynth_engine import FluidSynthEngine
+from audio.engines.bank_engine import BankEngine
+from audio.engines.fluidsynth_engine import FluidSynthEngine
 from pattern import Pattern, with_bank_header
 from rack import Rack, InstrumentType
 from track_router import TrackRouter

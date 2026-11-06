@@ -36,7 +36,7 @@ from audio.sound_device_driver import Mixer
 from audio.sound_manager import SoundManager
 from voice_manager import VoiceManager
 from ui.mw_project import ProjectMixin
-from engines.sfizz_engine import SfzEngine, sfizz_available
+from audio.engines.sfizz_engine import SfzEngine, sfizz_available
 
 # Moteur de banque factice, son du kit, minuteries : ceux des tests du slot Banque
 from test_bank_slot import (FakeBankEngine, FakeSoundManager, FakeTimer,

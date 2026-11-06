@@ -20,7 +20,7 @@ import track_router as tr_mod
 from rack import Rack, InstrumentType
 from track_router import TrackRouter
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_PGM, ETYPE_CC
-from engines.bank_engine import BankEngine
+from audio.engines.bank_engine import BankEngine
 from audio.sound_manager import SoundManager
 from song import frozen_pattern
 from ui.mw_pads import PadMixin

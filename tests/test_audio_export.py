@@ -41,8 +41,8 @@ import track_router as tr_mod
 from track_router import TrackRouter
 from rack import Rack, InstrumentType
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_PATCH, ETYPE_PGM
-from engines.bank_engine import BankEngine
-from engines import fluidsynth_engine as fs_mod
+from audio.engines.bank_engine import BankEngine
+from audio.engines import fluidsynth_engine as fs_mod
 from audio.sound_device_driver import Mixer
 from audio.sound_manager import SoundManager
 from audio.synth_engine import SynthEngine

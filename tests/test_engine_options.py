@@ -21,8 +21,8 @@ import wx
 
 import main as app_main
 import ui.main_window as main_window
-from engines.fluidsynth_engine import FluidSynthUnavailable
-from engines.sfizz_engine import SfizzUnavailable
+from audio.engines.fluidsynth_engine import FluidSynthUnavailable
+from audio.engines.sfizz_engine import SfizzUnavailable
 from ui.main_window import MainWindow
 
 

@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/engines/fluidsynth_engine.py
+    File: src/audio/engines/fluidsynth_engine.py
     Moteur de banque FluidSynth (SF2/SF3) lié par ctypes à libfluidsynth
     (Phase 7 étape 17b1, docs/DESIGN.md § 17a1 D2) : une seule instance
     fluid_synth, 16 canaux, sans pilote audio propre — le rendu est tiré
@@ -18,7 +18,7 @@ import os
 
 import numpy as np
 
-from engines.bank_engine import BankEngine
+from audio.engines.bank_engine import BankEngine
 
 
 class FluidSynthUnavailable(RuntimeError):
@@ -249,14 +249,14 @@ class FluidSynthEngine(BankEngine):
 if __name__ == "__main__":
     # Essai à l'écoute : gamme de piano puis rythme de batterie au canal 10,
     # rendus par le callback de SoundDeviceDriver. Depuis src/ :
-    #   python3 -m engines.fluidsynth_engine [fichier.sf2]
+    #   python3 -m audio.engines.fluidsynth_engine [fichier.sf2]
     import sys
     import time
     from audio.sound_device_driver import SoundDeviceDriver
 
     path = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/sounds/sf2/FluidR3_GM.sf2"
     drv = SoundDeviceDriver()
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from app_config import AppConfig
     cfg = AppConfig(os.path.dirname(sys.path[0]))
     eng = FluidSynthEngine(samplerate=drv.samplerate, gain=cfg.fluidsynth_gain)

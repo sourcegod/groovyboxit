@@ -24,8 +24,8 @@ import numpy as np
 import pytest
 
 import ui.main_window as main_window
-from engines.bank_engine import BankEngine
-from engines.fluidsynth_engine import (FluidSynthEngine, FluidSynthUnavailable,
+from audio.engines.bank_engine import BankEngine
+from audio.engines.fluidsynth_engine import (FluidSynthEngine, FluidSynthUnavailable,
                                        fluidsynth_available)
 from ui.main_window import MainWindow
 

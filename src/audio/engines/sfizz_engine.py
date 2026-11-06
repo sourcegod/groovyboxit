@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/engines/sfizz_engine.py
+    File: src/audio/engines/sfizz_engine.py
     Moteur SFZ : libsfizz liée par ctypes (Phase 8 étape 7b1, docs/DESIGN.md
     § 7a2 Z8, Z9 ; compilation : docs/sfizz_build.md), derrière l'interface
     BankEngine.
@@ -39,7 +39,7 @@ import threading
 
 import numpy as np
 
-from engines.bank_engine import BankEngine
+from audio.engines.bank_engine import BankEngine
 from audio.sfz_sources import read_source, source_stamp
 
 
@@ -635,10 +635,10 @@ class SfzEngine(BankEngine):
 if __name__ == "__main__":
     # Essai à l'écoute : quelques notes d'un .sfz, rendues par le callback de
     # SoundDeviceDriver, sur deux canaux (volume et pan différents). Depuis src/ :
-    #   python3 -m engines.sfizz_engine [fichier.sfz] [note de départ]
+    #   python3 -m audio.engines.sfizz_engine [fichier.sfz] [note de départ]
     import sys
     import time
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from audio.sound_device_driver import SoundDeviceDriver
     from app_config import AppConfig
 

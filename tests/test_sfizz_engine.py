@@ -26,9 +26,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pytest
 
-from engines.bank_engine import BankEngine
-from engines.sfizz_engine import SfzEngine, SfizzUnavailable, sfizz_available
-from engines import sfizz_engine
+from audio.engines.bank_engine import BankEngine
+from audio.engines.sfizz_engine import SfzEngine, SfizzUnavailable, sfizz_available
+from audio.engines import sfizz_engine
 
 needs_sfizz = pytest.mark.skipif(not sfizz_available(),
                                  reason="libsfizz absente (docs/sfizz_build.md)")

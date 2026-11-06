@@ -11110,3 +11110,15 @@ fidèle à l'écoute.
   (`test_bend_log.py`) ; les remplacements de `SynthEngine` par les tests
   passent par l'attribut du module `track_router` (inchangés). 3683
   verts, appli et outils importés.
+- **8b4** — rangement : `git mv src/engines src/audio/engines`
+  (`bank_engine.py`, `fluidsynth_engine.py`, `sfizz_engine.py`,
+  `__init__.py`) ; l'ancien dossier, où ne restait que `__pycache__` non
+  suivi, est supprimé (sinon Python pouvait encore y voir un paquet
+  `engines`) ; 19 lignes d'import pointées (`from engines.x import` →
+  `from audio.engines.x import`, `from engines import x` → `from
+  audio.engines import x`, alias compris) dans les deux moteurs,
+  `ui/main_window` et les tests ; démos : `python3 -m
+  audio.engines.sfizz_engine` / `fluidsynth_engine`, `sys.path` remonte
+  d'un niveau de plus (trois `dirname`) jusqu'à `src/`, racine du projet
+  et `config.json` retrouvés (vérifié ; démos lancées sur un fichier
+  absent, sans son). 3683 verts, `tools/sfizz_probe.py` vert.
