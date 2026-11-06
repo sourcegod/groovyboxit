@@ -10910,3 +10910,172 @@ l'appli sans les moteurs.
   (rien à recalculer pour FluidSynth et sfizz) ;
 - **audition dans l'Explorateur** : un court extrait audio par banque ou
   fichier SFZ (une note, un rythme de kit), pour écouter sans charger.
+
+## Phase 8 étape 8a — Rangement des fichiers audio dans src/audio/, limiteur du mix à l'écoute, volume global jusqu'à 200
+
+### Numérotation des commits de ce chantier
+
+`8a` = ce plan (doc seule). Rangement : `8b1` à `8b5`. Limiteur et
+volume : paire `8c1` (implémentation) → `8d1` (tests). Clôture : `8e1`.
+`8c2`… pour un commit imprévu. Décisions notées **R1, R2…** (rangement)
+et **L1, L2…** (limiteur).
+
+### Origine du besoin (utilisateur)
+
+- **Limiteur** (essais de la Phase 8 étape 7, suite proposée à la
+  clôture 7l1) : plusieurs instruments ensemble saturent à l'écoute
+  (banque GM Discord, essai de 7f1), alors que l'export WAV, qui a son
+  limiteur, ne sature pas. Idée de l'utilisateur : baisser le volume de
+  chaque instrument, puis **remonter le volume du mix total** (gain
+  staging).
+- **Rangement** (2026-11-07) : « comme c'est un petit chantier », ranger
+  les fichiers du son et de l'audio dans leur propre dossier, comme les
+  fichiers MIDI dans `src/midi/` (Phase 7 étape 3).
+
+### État des lieux constaté en code (2026-11-07, 3683 tests verts)
+
+**Fichiers audio de `src/`** (nombre de fichiers de `src/`, `tests/`,
+`tools/` qui les importent) : `sound_device_driver.py` (19 :
+`SoundDeviceDriver`, `Mixer`), `pygame_driver.py` (3), `sound_manager.py`
+(9), `synth_engine.py` (22), `audio_sampler.py` (2), `audio_tools.py` (3),
+`sound_cache.py` (3), `audio_export.py` (6), `sfz_sources.py` (7),
+`engines/` (`bank_engine.py`, `fluidsynth_engine.py`, `sfizz_engine.py` ;
+12). Dépendances internes : `audio_sampler` → `audio_tools` ;
+`sound_manager`, `synth_engine`, `audio_export`, démos des moteurs →
+`sound_device_driver` ; `synth_engine` → `audio_sampler`, `sound_cache` ;
+`sfizz_engine` → `sfz_sources`, `bank_engine` ; `fluidsynth_engine` →
+`bank_engine`. Les démos `python3 -m engines.fluidsynth_engine` et
+`engines.sfizz_engine` calculent la racine du projet depuis leur propre
+chemin (`sys.path`, `AppConfig`).
+
+**Fichiers à la frontière** : `track_router.py` (routage piste → slot →
+moteur, colle entre le séquenceur et l'audio), `voice_manager.py`
+(réglages des pads : données), `metronome.py` (logique du click ; son par
+`SoundManager`).
+
+**Écoute** : `SoundDeviceDriver._callback` appelle `Mixer.mix(outdata)`
+(voix des kits et synthés WAV, sources de rendu FluidSynth et sfizz, puis
+`× _master_vol`), puis **écrête net** : `np.clip(outdata, -1, 1)`.
+
+**Export WAV** : `limit_peaks` / `limit_envelope` (`audio_export.py`,
+Phase 8 étape 1, W10) : brickwall à **anticipation de 5 ms**, seuil
+`PEAK_DB` −0,3 dBFS en crête d'échantillon, stéréo liée, retour
+exponentiel de 50 ms (`RELEASE_S`), sur le fichier entier
+(`_sliding_min_forward`, `_release` vectorisé par un maximum cumulé en
+logarithmes). Le `Mixer` sert aussi au rendu de l'export : le limiteur
+d'écoute ne doit pas y entrer.
+
+**Volume global** (0..100, gain linéaire, 100 = ×1), borné à 100 :
+`Mixer.set_master_volume`, `DrumPlayer.set_volume` (`dp_live.py` : ignoré
+hors de 0..100), SpinCtrl « Volume » de la fenêtre principale,
+`_set_master_volume_undo` et `_master_from_dict` (`mw_project.py`),
+`AppConfig.master_volume`. Ctrl+Haut / Ctrl+Bas : ±1. L'export reçoit
+`master_volume=player.volume`. **Défaut trouvé** : `set_master_volume`
+traite toute valeur ≤ 1 comme un rapport (`vol / 100 if vol > 1.0 else
+float(vol)`) : un volume global de **1** donne **×1** au lieu de ×0,01.
+
+### Décisions validées (utilisateur, 2026-11-06 et 2026-11-07)
+
+**R1 — paquet `src/audio/`** (singulier, comme `src/midi/`) : les fichiers
+audio y passent ; imports en forme pointée (`from audio.synth_engine
+import SynthEngine`), plus d'import plat.
+
+**R2 — `engines/` en sous-paquet `src/audio/engines/`** : les moteurs
+restent groupés.
+
+**R3 — fichiers frontière laissés en place** : `track_router.py`,
+`voice_manager.py`, `metronome.py`.
+
+**R4 — un commit par groupe de fichiers, avec leurs imports dans le code,
+les tests et les outils**, suite verte à chaque commit : rangement pur,
+sans changement de comportement (exception assumée à la paire impl →
+tests).
+
+**L1 — limiteur sans anticipation** : aucune latence ajoutée (le jeu en
+direct au clavier et aux pads compte plus). Le gain baisse à
+l'échantillon même de la crête ; une brève distorsion reste possible sur
+une attaque très franche, sans commune mesure avec l'écrêtage.
+
+**L2 — seuil −0,3 dBFS**, comme l'export.
+
+**L3 — toujours actif**, à la place de l'écrêtage ; clé
+`"live_limiter": false` de `config.json` pour le couper (l'écrêtage
+revient alors).
+
+**L4 — volume global jusqu'à 200** (×2, +6 dB) : on baisse les
+instruments, on remonte le mix, le limiteur rattrape les crêtes.
+
+### Choix de conception proposés
+
+**R5 — ordre des déplacements** (des fichiers sans dépendance audio vers
+ceux qui en ont), chaque commit avec `git mv` (historique gardé) :
+- `8b1` : `src/audio/__init__.py` (vide, comme `src/midi/`),
+  `audio_tools`, `audio_sampler`, `sound_cache`, `sfz_sources` ;
+- `8b2` : `sound_device_driver`, `pygame_driver` ;
+- `8b3` : `sound_manager`, `synth_engine` ;
+- `8b4` : `engines/` → `audio/engines/` (démos : `python3 -m
+  audio.engines.sfizz_engine`, racine du projet recalculée) ;
+- `8b5` : `audio_export` ; chemins dans la documentation vivante
+  (`SPECS.md` : arborescence, sections ; `docs/sfizz_build.md`, aide F1 si
+  besoin). L'historique de `DESIGN.md` garde les anciens chemins.
+- Chaînes de chemin dans les tests (`monkeypatch.setattr("…")`, `patch(…)`)
+  et alias de module (`import track_router as tr_mod`…) suivis.
+- Vérification avant chaque commit (piège de la Phase 7 étape 3k) :
+  `git status --short` montre `R` **et** les éditions (`RM`), `git diff
+  --cached` les contient ; `pytest` complet vert.
+
+**L5 — `src/audio/live_limiter.py`, `LiveLimiter`** (module pur, numpy,
+sans wx ni pilote ; prototype, cible C/C++) : `process(block)` traite en
+place un bloc float32 `(frames, 2)` et garde son état d'un bloc à l'autre.
+- Gain demandé par échantillon : `min(1, seuil / max(|G|, |D|))` (stéréo
+  liée).
+- Gain appliqué `g[n] = min(demandé[n], 1 − (1 − g[n−1]) · c)`,
+  `c = exp(−1 / (0,05 · fréquence))` : attaque immédiate, retour
+  exponentiel de 50 ms. Vectorisé par bloc avec l'astuce de `_release`
+  (maximum cumulé en logarithmes), l'état `1 − g` du dernier échantillon
+  servant de départ au bloc suivant ; un bloc sans crête et sans réduction
+  en cours ne coûte qu'un `max`.
+- Garantie : aucun échantillon ne dépasse le seuil (`g ≤ demandé`).
+- Mesure : `reduction_db` (plus forte réduction depuis la dernière
+  lecture), pour les tests et une annonce éventuelle.
+
+**L6 — pilote** : `SoundDeviceDriver(…, limiter=True)` ; `_callback` =
+`mix`, puis `limiter.process`, puis `np.clip` de sécurité (sans effet
+après le limiteur) ; `set_limiter(on)` pour la clé L3 ; `Mixer.mix`
+inchangé (export).
+
+**L7 — volume global 0..200** : bornes portées à 200 partout (pilote,
+`SoundManager`, lecteur, SpinCtrl, Undo, `.gvp`, `config.json`, export) ;
+gain = volume / 100. `set_master_volume` : un **entier** est un
+pourcentage, un **réel** un rapport (corrige le défaut : 1 % = ×0,01). Le
+pilote pygame (optionnel) garde son plafond de ×1.
+
+**L8 — annonce** : au-dessus de 100, « Volume Global: 150 (+3,5 dB) »,
+pour savoir qu'on amplifie ; « Volume Global: 80 » sinon. Pas
+d'indicateur de réduction en direct.
+
+**L9 — export** : il garde son limiteur à anticipation ; avec un volume
+global au-dessus de 100, il rattrape aussi les crêtes, et le WAV reste
+fidèle à l'écoute.
+
+### Portée exclue
+
+- Déplacer `track_router.py`, `voice_manager.py`, `metronome.py` (R3) ;
+  renommer des fichiers ou des classes.
+- Anticipation à l'écoute, réglages du limiteur dans l'interface, true
+  peak, compresseur ou maximiseur, indicateur de réduction en direct.
+- Volume de piste au-delà de 100.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **8a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **8b1** | Rangement — `src/audio/`, `audio_tools`, `audio_sampler`, `sound_cache`, `sfz_sources`. | ces fichiers, leurs importeurs (code, tests, outils) |
+| **8b2** | Rangement — `sound_device_driver`, `pygame_driver`. | idem |
+| **8b3** | Rangement — `sound_manager`, `synth_engine`. | idem |
+| **8b4** | Rangement — `engines/` → `audio/engines/`, démos. | idem |
+| **8b5** | Rangement — `audio_export` ; chemins de la documentation vivante. | idem, `docs/SPECS.md`, `docs/sfizz_build.md` |
+| **8c1** | Implémentation — `LiveLimiter` (L5), pilote (L6), clé `live_limiter` (L3), volume global 0..200 et défaut du volume 1 (L7), annonce (L8). Essai à l'écoute (banque Discord sans gain de slot, volume global 150). | `src/audio/live_limiter.py` (nouveau), `src/audio/sound_device_driver.py`, `src/app_config.py`, `src/audio/sound_manager.py`, `src/player/dp_live.py`, `src/ui/main_window.py`, `src/ui/mw_project.py`, `src/ui/key_handler_ctrl.py`, `src/ui/key_handler_chars.py` |
+| **8d1** | Tests — limiteur (seuil jamais dépassé, attaque immédiate, retour de 50 ms, état entre blocs, blocs de tailles diverses, stéréo liée, silence, coupé), pilote, clé, volume 0..200 (pilote, Undo, `.gvp`, config, export), défaut du volume 1. | `tests/test_live_limiter.py` (nouveau), tests existants du volume, `docs/SPECS.md` |
+| **8e1** | Doc — clôture (DESIGN, SPECS : volume global, configuration, pilote, arborescence ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
