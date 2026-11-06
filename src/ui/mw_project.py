@@ -13,7 +13,7 @@ from audio.synth_engine import scale_midi_notes
 from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
-import audio_export
+from audio import audio_export
 from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog, \
     ImportModeDialog
 from tempo_map import format_bpm

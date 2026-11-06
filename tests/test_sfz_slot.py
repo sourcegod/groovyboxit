@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pytest
 
-import audio_export as ax
+from audio import audio_export as ax
 from rack import Rack, InstrumentSlot, InstrumentType
 from track_router import TrackRouter
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_CC

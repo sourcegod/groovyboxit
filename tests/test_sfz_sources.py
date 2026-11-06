@@ -3,7 +3,7 @@
     File: tests/test_sfz_sources.py
     Sources de programmes d'un slot Synth SFZ (Phase 8 étape 7g1,
     docs/DESIGN.md § 7a3 Z17, Z18, Z20, Z21 ; avancement 7f1, 7f2) :
-    src/sfz_sources.py, module pur, sur des fichiers fabriqués : sorte de
+    src/audio/sfz_sources.py, module pur, sur des fichiers fabriqués : sorte de
     source, .sfz seul, .bank.xml de Sforzando (<Key> avant <AriaBank>,
     <Define> sans $, chemins relatifs, fichier absent, commentaires),
     dossier (fragments : inclus ou #include introuvable ; numérotation par

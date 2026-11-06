@@ -14,8 +14,8 @@
     réponse aux CC 7, 10, 11 et 64, coût du rendu (32 voix).
 
     Les fonctions C sont déclarées (argtypes / restype) comme dans
-    src/engines/fluidsynth_engine.py : c'est l'ébauche du futur
-    src/engines/sfizz_engine.py, et de la liaison C/C++.
+    src/audio/engines/fluidsynth_engine.py : c'est l'ébauche du futur
+    src/audio/engines/sfizz_engine.py, et de la liaison C/C++.
 
     Code de sortie : 0 si toutes les vérifications passent, 1 sinon,
     2 si la bibliothèque est introuvable.

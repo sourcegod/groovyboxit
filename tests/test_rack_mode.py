@@ -26,7 +26,7 @@ from song import frozen_pattern
 from ui.mw_pads import PadMixin
 from ui.mw_patterns import PatternMixin
 from ui.mw_songs import SongMixin
-import audio_export
+from audio import audio_export
 
 
 # ---------------------------------------------------------------------------

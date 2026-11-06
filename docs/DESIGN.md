@@ -11122,3 +11122,16 @@ fidèle à l'écoute.
   d'un niveau de plus (trois `dirname`) jusqu'à `src/`, racine du projet
   et `config.json` retrouvés (vérifié ; démos lancées sur un fichier
   absent, sans son). 3683 verts, `tools/sfizz_probe.py` vert.
+- **8b5** — rangement : `git mv` de `audio_export.py` vers `src/audio/` ;
+  6 lignes d'import (`import audio_export` → `from audio import
+  audio_export`, alias `ax` gardé) dans `ui/mw_project` et les tests.
+  Documentation vivante : arborescence de `SPECS.md` (sous-arbre `audio/`
+  avec `engines/`, avant `midi/`), chemins cités dans `SPECS.md`
+  (Instruments SFZ, export WAV), `docs/sfizz_build.md`, docstrings de
+  `tools/sfizz_probe.py` et `tests/test_sfz_sources.py` ; l'historique de
+  `DESIGN.md` garde les anciens chemins. Contrôle global : plus aucun
+  import plat d'un module déplacé. 3683 verts, `check_specs_tests`,
+  appli et `sfizz_probe` verts.
+- **Rangement terminé (8b1-8b5)** : `src/` ne garde à sa racine que la
+  logique du projet (16 fichiers) ; `src/audio/` réunit 9 modules et
+  `engines/`. Aucun changement de comportement.

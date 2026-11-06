@@ -198,7 +198,7 @@ python3 tools/sfizz_probe.py --keep /tmp/sfz_essai   # garde WAV et .sfz
 ```
 
 L'outil `tools/sfizz_probe.py` déclare les fonctions C utilisées
-(`argtypes` / `restype`, comme `src/engines/fluidsynth_engine.py`),
+(`argtypes` / `restype`, comme `src/audio/engines/fluidsynth_engine.py`),
 fabrique dans un dossier temporaire des WAV synthétiques (cosinus à 440
 et 660 Hz) et deux petits `.sfz`, puis vérifie ce dont le futur moteur
 SFZ de l'appli aura besoin. Code de sortie : 0 si tout passe, 1 en cas

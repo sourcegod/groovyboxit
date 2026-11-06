@@ -47,34 +47,35 @@ groovyboxit/
 ├── requirements.txt      # Dépendances (pip3 install -r requirements.txt --break-system-packages)
 ├── src/
 │   ├── app_config.py     # Chargement data/config.json, chemins configurables
-│   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1) ; song et stems (étape 2)
-│   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
-│   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
 │   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
-│   ├── engines/          # Moteurs de banque (Phase 7 étape 17) et SFZ (Phase 8 étape 7)
-│   │   ├── bank_engine.py      # BankEngine : interface (emplacements, canaux, rendu)
-│   │   ├── fluidsynth_engine.py # FluidSynthEngine : FluidSynth par ctypes (SF2/SF3)
-│   │   └── sfizz_engine.py      # SfzEngine : sfizz par ctypes (SFZ), une instance par canal
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
 │   ├── metronome.py      # Classe Metronome isolée
 │   ├── note.py           # Utilitaires note MIDI
 │   ├── pattern.py        # Données pattern : grille, _tape (TapeEvent G/K/P)
 │   ├── project_manager.py # Chargement/sauvegarde .gvp (JSON)
-│   ├── pygame_driver.py  # PygameDriver : backend audio pygame.mixer
 │   ├── quantize_manager.py # QuantizeManager : quantisation grille/tape, double/halve
 │   ├── rack.py           # Rack 16 slots + InstrumentType
-│   ├── sfz_sources.py    # Sources de programmes SFZ (.sfz, .bank.xml, dossier, .sfzbank.json), liste, composition (Phase 8 étape 7)
 │   ├── song.py           # Données Song : séquence ordonnée de patterns ; segments figés pour l'export (Phase 8 étape 2b1)
-│   ├── sound_cache.py    # Cache disque sons pré-calculés (.npz sha256)
-│   ├── sound_device_driver.py # Mixer (mélange sans carte son) et SoundDeviceDriver (Mixer + PortAudio)
-│   ├── sound_manager.py  # Lecture WAV : kits, note_map, pad_sound
-│   ├── synth_engine.py   # Moteur synthé : chargement patch, pitch shifting, cache
 │   ├── tempo_map.py      # TempoMap : carte de tempo, pas ↔ secondes (Phase 7 étape 19)
 │   ├── track_editor.py   # TrackEditor : sélection multi-pistes, limiteurs, clipboard
 │   ├── track_router.py   # Routage piste→slot→SynthEngine, dispatch audio
 │   ├── undo_manager.py   # UndoManager : historique annulations/rétablissements
 │   ├── voice_manager.py  # Volume, pan, mute, solo, durée par pad
+│   ├── audio/            # Audio (Phase 8 étape 8) : pilotes, mixage, sons, moteurs, export WAV
+│   │   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1) ; song et stems (étape 2)
+│   │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
+│   │   ├── audio_tools.py    # Détection de points de bouclage (AudioTools)
+│   │   ├── pygame_driver.py  # PygameDriver : backend audio pygame.mixer
+│   │   ├── sfz_sources.py    # Sources de programmes SFZ (.sfz, .bank.xml, dossier, .sfzbank.json), liste, composition (Phase 8 étape 7)
+│   │   ├── sound_cache.py    # Cache disque sons pré-calculés (.npz sha256)
+│   │   ├── sound_device_driver.py # Mixer (mélange sans carte son) et SoundDeviceDriver (Mixer + PortAudio)
+│   │   ├── sound_manager.py  # Lecture WAV : kits, note_map, pad_sound
+│   │   ├── synth_engine.py   # Moteur synthé : chargement patch, pitch shifting, cache
+│   │   └── engines/          # Moteurs de banque (Phase 7 étape 17) et SFZ (Phase 8 étape 7)
+│   │       ├── bank_engine.py      # BankEngine : interface (emplacements, canaux, rendu)
+│   │       ├── fluidsynth_engine.py # FluidSynthEngine : FluidSynth par ctypes (SF2/SF3)
+│   │       └── sfizz_engine.py      # SfzEngine : sfizz par ctypes (SFZ), une instance par canal
 │   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10, import en Phase 7 étape 18)
 │   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
 │   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
@@ -421,7 +422,7 @@ Phase 8 étape 7 (docs/DESIGN.md § 7a1, 7a2, 7a3 et avancement). Un slot
 `docs/sfizz_build.md`). Il se comporte comme un slot Banque : **le canal
 est l'instrument**.
 
-- **Sources** (`src/sfz_sources.py`) : le programme N est le N-ième `.sfz`
+- **Sources** (`src/audio/sfz_sources.py`) : le programme N est le N-ième `.sfz`
   de la source :
   - un fichier **`.sfz`** seul : un programme ;
   - un **`.bank.xml` de Sforzando** (`AriaBank`) : les `AriaProgram` dans
@@ -452,7 +453,7 @@ est l'instrument**.
   programmes de la source, en direct avec note d'aperçu (jouée quand le
   programme est chargé), MSB / LSB grisés ; nom de piste = programme, sans
   son préfixe numérique (« Acoustic Grand Piano »).
-- **Moteur** (`src/engines/sfizz_engine.py`, interface `BankEngine`) : une
+- **Moteur** (`src/audio/engines/sfizz_engine.py`, interface `BankEngine`) : une
   instance sfizz par canal et par programme ; les programmes que les
   Program Change du pattern demanderont sont **préparés** à la poursuite
   (bascule sans silence en lecture) ; une instance remplacée **finit ses
@@ -1313,7 +1314,7 @@ d'édition est rangé d'abord ; un song vide est refusé.
 ## Export audio (Alt+Shift+W, Alt+Shift+S)
 
 Rendu du pattern courant, de la sélection ou du presse-papier en fichier
-WAV (`src/audio_export.py`, Phase 8 étape 1), depuis la fenêtre principale
+WAV (`src/audio/audio_export.py`, Phase 8 étape 1), depuis la fenêtre principale
 ou l'éditeur MIDI ; rendu d'un song depuis la fenêtre Songs, et pistes
 séparées (Phase 8 étape 2) ; rendu du song courant aussi depuis la
 fenêtre principale et l'éditeur MIDI, par le choix « Pattern courant /

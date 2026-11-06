@@ -36,7 +36,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-import audio_export as ax
+from audio import audio_export as ax
 import track_router as tr_mod
 from track_router import TrackRouter
 from rack import Rack, InstrumentType

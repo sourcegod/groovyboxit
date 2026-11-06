@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/audio_export.py
+    File: src/audio/audio_export.py
     Export audio WAV du pattern courant — Phase 8 étape 1f1, docs/DESIGN.md
     § Phase 8 étape 1a (W1-W7) et § 1d2 (W9). Rendu hors temps réel, à
     l'échantillon près, avec les moteurs de l'appli : copies du routeur et

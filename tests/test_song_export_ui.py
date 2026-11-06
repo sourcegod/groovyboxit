@@ -46,7 +46,7 @@ from track_router import TrackRouter
 from ui.mw_songs import SongMixin
 from ui.mw_patterns import PatternMixin
 from ui.song_window import SongWindow
-import audio_export
+from audio import audio_export
 import ui.mw_project as mwp
 from ui.dialogs import AudioExportDialog
 from audio.sound_device_driver import Mixer

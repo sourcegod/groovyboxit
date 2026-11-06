@@ -34,7 +34,7 @@ import soundfile as sf
 import wx
 from types import SimpleNamespace
 
-import audio_export
+from audio import audio_export
 import ui.mw_project as mwp
 import ui.midi_editor_window as mew
 from ui.mw_project import ProjectMixin
