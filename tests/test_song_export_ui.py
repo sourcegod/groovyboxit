@@ -41,7 +41,7 @@ import wx
 from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from rack import InstrumentType
 from song import Song
-from synth_engine import scale_midi_notes
+from audio.synth_engine import scale_midi_notes
 from track_router import TrackRouter
 from ui.mw_songs import SongMixin
 from ui.mw_patterns import PatternMixin
@@ -50,7 +50,7 @@ import audio_export
 import ui.mw_project as mwp
 from ui.dialogs import AudioExportDialog
 from audio.sound_device_driver import Mixer
-from sound_manager import SoundManager
+from audio.sound_manager import SoundManager
 from rack import Rack
 from test_key_manager import FakeEvent
 from test_midi_export_ui import _ExportWindow, _fake_file_dialog, KIT, PIANO, ORGAN

@@ -44,8 +44,8 @@ from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_PATCH, ETYPE_PGM
 from engines.bank_engine import BankEngine
 from engines import fluidsynth_engine as fs_mod
 from audio.sound_device_driver import Mixer
-from sound_manager import SoundManager
-from synth_engine import SynthEngine
+from audio.sound_manager import SoundManager
+from audio.synth_engine import SynthEngine
 from voice_manager import VoiceManager
 from song import Song, song_segments
 

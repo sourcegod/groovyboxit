@@ -44,7 +44,7 @@ from rack import Rack, InstrumentType
 from track_editor import TrackEditor
 from track_router import TrackRouter
 from audio.sound_device_driver import Mixer
-from sound_manager import SoundManager
+from audio.sound_manager import SoundManager
 from voice_manager import VoiceManager
 from test_key_manager import FakeWindow, FakeEvent
 from ui.key_manager import KeyManager

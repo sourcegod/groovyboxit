@@ -28,7 +28,7 @@ from pattern import (Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
 from project_manager import ProjectManager
 from engines.bank_engine import BankEngine
 from midi.midi_export import build_pattern_midi, volume_to_cc7, pan_to_cc10
-from synth_engine import scale_midi_notes
+from audio.synth_engine import scale_midi_notes
 from player.drum_player import DrumPlayer
 
 NUM_TRACKS = TrackRouter.NUM_TRACKS

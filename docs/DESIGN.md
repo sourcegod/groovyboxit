@@ -11100,3 +11100,13 @@ fidèle à l'écoute.
   → `from audio import sound_device_driver` (`test_mixer.py`) et les
   imports alignés par des espaces ; aucun import indirect. 3683 verts,
   appli et outils importés.
+- **8b3** — rangement : `git mv` de `sound_manager.py` et
+  `synth_engine.py` vers `src/audio/` ; 32 lignes d'import pointées
+  (`src/` : `track_router`, `midi/midi_parser`, `ui/main_window`,
+  `ui/mw_project`, `ui/midi_handler_window`, `ui/key_handler_numpad`,
+  `ui/midi_editor_dialogs`, `ui/mew_display` ; tests ;
+  `tools/diag_loop.py`, `find_loop_points.py`, `test_loop.py`), dont
+  `import synth_engine` → `from audio import synth_engine`
+  (`test_bend_log.py`) ; les remplacements de `SynthEngine` par les tests
+  passent par l'attribut du module `track_router` (inchangés). 3683
+  verts, appli et outils importés.

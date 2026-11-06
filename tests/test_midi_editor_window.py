@@ -174,7 +174,7 @@ def test_set_midi_status_updates_dedicated_ctrl_not_status_ctrl():
 
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
-from synth_engine import midi_to_note_name
+from audio.synth_engine import midi_to_note_name
 
 
 class _FakeLabelPattern:

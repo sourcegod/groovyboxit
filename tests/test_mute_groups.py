@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from voice_manager import Voice, VoiceManager
-from sound_manager import SoundManager
+from audio.sound_manager import SoundManager
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from song import Song
 from rack import InstrumentType
 from project_manager import ProjectManager
 from midi.midi_export import export_pattern, export_song, SongPart
-from synth_engine import scale_midi_notes
+from audio.synth_engine import scale_midi_notes
 from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern

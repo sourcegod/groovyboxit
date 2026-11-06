@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from synth_engine import (
+from audio.synth_engine import (
     note_name_to_midi, midi_to_note_name,
     scale_midi_notes, SCALE_NAMES,
 )

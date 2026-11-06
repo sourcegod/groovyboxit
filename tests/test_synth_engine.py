@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import soundfile as sf
 from audio.sound_device_driver import SoundDeviceDriver, SdSound
-from synth_engine import (
+from audio.synth_engine import (
     SynthEngine, scale_midi_notes, midi_to_note_name, note_name_to_midi,
 )
 

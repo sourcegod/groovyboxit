@@ -8,7 +8,7 @@
 
 import os
 import threading
-from synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
+from audio.synth_engine import SynthEngine, scale_midi_notes, midi_to_note_name
 from rack import InstrumentType
 from pattern import Pattern, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from bend_log import bend_log

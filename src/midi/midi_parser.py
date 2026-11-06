@@ -14,7 +14,7 @@
     Date: Mon, 21/09/2026
     Author: Coolbrother
 """
-from synth_engine import midi_to_note_name
+from audio.synth_engine import midi_to_note_name
 from midi.midi_constants import CC_NAMES, GM_PATCH_NAMES, GM2_DRUMKIT_NAMES
 
 

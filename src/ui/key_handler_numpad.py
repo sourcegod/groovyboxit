@@ -1,7 +1,7 @@
 import threading
 import wx
 from pattern import Pattern
-from synth_engine import midi_to_note_name, SCALE_NAMES
+from audio.synth_engine import midi_to_note_name, SCALE_NAMES
 from rack import InstrumentType
 
 

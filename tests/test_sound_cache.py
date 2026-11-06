@@ -277,7 +277,7 @@ def _make_patch(wav_src, root_note):
 @pytest.mark.skipif(not os.path.exists(WAV_SRC), reason=f"WAV introuvable : {WAV_SRC}")
 def test_synth_engine_uses_disk_cache():
     """_get_pitched_sampler doit écrire puis relire depuis le cache disque."""
-    from synth_engine import SynthEngine
+    from audio.synth_engine import SynthEngine
     from audio.sound_device_driver import SoundDeviceDriver
 
     patch_dir = _make_patch(WAV_SRC, ROOT_NOTE)

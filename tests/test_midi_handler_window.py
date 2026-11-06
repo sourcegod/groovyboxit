@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import ui.midi_handler_window as mh
-from synth_engine import midi_to_note_name
+from audio.synth_engine import midi_to_note_name
 
 
 # ---------------------------------------------------------------------------

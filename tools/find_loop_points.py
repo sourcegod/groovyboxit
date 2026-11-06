@@ -116,7 +116,7 @@ def process_patch(patch_path, sustain_start=0.25, sustain_end=0.80,
                   min_corr=0.90, dry_run=False, json_only=False):
     """Analyse tous les WAV d'un patch.json et met à jour le JSON + les smpl."""
     import soundfile as sf
-    from synth_engine import note_name_to_midi
+    from audio.synth_engine import note_name_to_midi
 
     # patch_path peut être un répertoire ou le JSON directement
     if os.path.isdir(patch_path):

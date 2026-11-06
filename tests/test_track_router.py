@@ -20,7 +20,7 @@ from rack import Rack, InstrumentType
 from track_router import TrackRouter
 
 NUM_TRACKS = TrackRouter.NUM_TRACKS   # 16 depuis la Phase 7 étape 10d1
-from synth_engine import scale_midi_notes
+from audio.synth_engine import scale_midi_notes
 
 
 # ---------------------------------------------------------------------------

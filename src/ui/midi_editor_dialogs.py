@@ -1,5 +1,5 @@
 import wx
-from synth_engine import midi_to_note_name
+from audio.synth_engine import midi_to_note_name
 from pattern import ETYPE_GRID
 
 
@@ -7,7 +7,7 @@ class _NoteEditDialog(wx.Dialog):
     """Dialog d'édition d'une note (pad/pitch, position, durée, vélocité)."""
 
     def __init__(self, parent, ev, pattern, pad_names, title="Éditer note"):
-        from synth_engine import midi_to_note_name
+        from audio.synth_engine import midi_to_note_name
         etype     = ev.get("etype", ETYPE_GRID)
         super().__init__(parent, title=title,
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)

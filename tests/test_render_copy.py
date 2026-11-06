@@ -30,8 +30,8 @@ from pattern import (TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH,
 from engines.bank_engine import BankEngine
 from engines import fluidsynth_engine as fs_mod
 from audio.sound_device_driver import Mixer
-from sound_manager import SoundManager
-from synth_engine import SynthEngine
+from audio.sound_manager import SoundManager
+from audio.synth_engine import SynthEngine
 from voice_manager import VoiceManager
 from player import tape_events as te
 from player.dp_playback import PlaybackLoopMixin

@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import bend_log
 from player import dp_recording
 import track_router
-import synth_engine
+from audio import synth_engine
 import ui.midi_handler_window as midi_handler_window
 
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))

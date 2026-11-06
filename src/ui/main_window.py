@@ -1,13 +1,13 @@
 import os
 import threading
 import wx
-from sound_manager import SoundManager
+from audio.sound_manager import SoundManager
 from audio.sound_device_driver import SoundDeviceDriver
 from player.drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
 from song import Song
-from synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
+from audio.synth_engine import midi_to_note_name, SCALE_NAMES, SCALE_LABELS
 from track_router import TrackRouter
 from app_config import AppConfig
 from engines.fluidsynth_engine import FluidSynthEngine, FluidSynthUnavailable

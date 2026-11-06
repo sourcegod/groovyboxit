@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/sound_manager.py
+    File: src/audio/sound_manager.py
     Gestion des sons : chargement kits/pads, lecture, métronome.
     Le backend audio est injecté via un driver (SoundDeviceDriver par défaut).
     PygameDriver reste disponible dans pygame_driver.py comme backend optionnel.

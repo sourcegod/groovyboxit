@@ -10,7 +10,7 @@ from player.drum_player import DrumPlayer
 from pattern import Pattern
 from bend_log import bend_log
 from rack import InstrumentType
-from synth_engine import midi_to_note_name
+from audio.synth_engine import midi_to_note_name
 from midi.midi_constants import CC_NAMES
 from midi.midi_parser import describe_program
 

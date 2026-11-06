@@ -1,6 +1,6 @@
 #python3
 """
-    File: synth_engine.py
+    File: src/audio/synth_engine.py
     Moteur Synthé : chargement de patch, pitch shifting, cache par note MIDI,
     lecture via SoundDeviceDriver.
     Boucle, crossfade et ADSR délégués à AudioSampler.

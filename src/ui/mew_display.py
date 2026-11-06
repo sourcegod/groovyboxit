@@ -1,4 +1,4 @@
-from synth_engine import midi_to_note_name
+from audio.synth_engine import midi_to_note_name
 from rack import InstrumentType
 from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 from midi.midi_parser import describe_cc, describe_program
