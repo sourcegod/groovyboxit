@@ -1,6 +1,6 @@
 import wx
 from rack import InstrumentType
-from sfz_sources import display_name
+from audio.sfz_sources import display_name
 from pattern import Pattern, bank_header, with_bank_header
 from .dialogs import TrackPropertiesDialog
 from .gtk_listbox import select_with_cursor

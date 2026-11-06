@@ -11,8 +11,8 @@ import os
 import copy
 import json
 import numpy as np
-from audio_sampler import AudioSampler, PlayMode
-import sound_cache
+from audio.audio_sampler import AudioSampler, PlayMode
+from audio import sound_cache
 from bend_log import bend_log
 from midi.midi_constants import gm_gain
 

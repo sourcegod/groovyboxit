@@ -13,7 +13,7 @@ import os
 
 import wx
 
-from sfz_sources import (list_sources, source_entry, SfzBankDraft, KIND_SFZ,
+from audio.sfz_sources import (list_sources, source_entry, SfzBankDraft, KIND_SFZ,
                          KIND_SFZBANK, MAX_PROGRAMS, SFZBANK_EXT)
 
 from .gtk_listbox import select_with_cursor

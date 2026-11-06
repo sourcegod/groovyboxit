@@ -967,7 +967,7 @@ def _rewrite_later(path, text):
 
 @needs_sfizz
 def test_source_stale_after_bank_rewritten(eng, progs, tmp_path):
-    from sfz_sources import write_sfzbank
+    from audio.sfz_sources import write_sfzbank
     bank = str(tmp_path / "Essai.sfzbank.json")
     first = os.path.join(progs["folder"], "001-la.sfz")
     write_sfzbank(bank, "Essai", [(0, "La", first)])

@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import sound_cache
+from audio import sound_cache
 from app_config import AppConfig
 
 

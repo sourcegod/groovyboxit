@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/sfz_sources.py
+    File: src/audio/sfz_sources.py
     Sources de programmes d'un slot Synth SFZ (Phase 8 étape 7f1,
     docs/DESIGN.md § 7a3 Z16-Z18, Z20, Z21) : un slot est une banque de
     programmes SFZ, lue dans

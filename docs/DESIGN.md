@@ -11079,3 +11079,16 @@ fidèle à l'écoute.
 | **8c1** | Implémentation — `LiveLimiter` (L5), pilote (L6), clé `live_limiter` (L3), volume global 0..200 et défaut du volume 1 (L7), annonce (L8). Essai à l'écoute (banque Discord sans gain de slot, volume global 150). | `src/audio/live_limiter.py` (nouveau), `src/audio/sound_device_driver.py`, `src/app_config.py`, `src/audio/sound_manager.py`, `src/player/dp_live.py`, `src/ui/main_window.py`, `src/ui/mw_project.py`, `src/ui/key_handler_ctrl.py`, `src/ui/key_handler_chars.py` |
 | **8d1** | Tests — limiteur (seuil jamais dépassé, attaque immédiate, retour de 50 ms, état entre blocs, blocs de tailles diverses, stéréo liée, silence, coupé), pilote, clé, volume 0..200 (pilote, Undo, `.gvp`, config, export), défaut du volume 1. | `tests/test_live_limiter.py` (nouveau), tests existants du volume, `docs/SPECS.md` |
 | **8e1** | Doc — clôture (DESIGN, SPECS : volume global, configuration, pilote, arborescence ; raccourcis), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 8 — Avancement (8b1)
+
+- **8b1** — rangement : `src/audio/__init__.py` (vide) ; `git mv` de
+  `audio_tools.py`, `audio_sampler.py`, `sound_cache.py`, `sfz_sources.py`
+  vers `src/audio/` ; imports pointés dans `src/` (`synth_engine`,
+  `engines/sfizz_engine`, `ui/main_window`, `ui/mw_pads`, `ui/mw_tracks`,
+  `ui/dialogs_sfz`), les tests et `tools/diag_loop.py`,
+  `tools/find_loop_points.py` (`import sound_cache` →
+  `from audio import sound_cache`, même objet module pour les
+  `monkeypatch`) ; docstrings « File: ». Un import indirect,
+  `__import__("audio_sampler")` (`test_synth_engine.py`), échappait au
+  motif : trouvé par la suite. 3683 verts, outils lancés.

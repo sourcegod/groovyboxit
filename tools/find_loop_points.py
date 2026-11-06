@@ -35,7 +35,7 @@ import argparse
 import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from audio_tools import AudioTools
+from audio.audio_tools import AudioTools
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/audio_sampler.py
+    File: src/audio/audio_sampler.py
     Rendu audio d'un sample : points de bouclage avec zero-crossfading
     (inspiré de FluidSynth), enveloppe ADSR linéaire, trois modes de jeu.
 
@@ -286,7 +286,7 @@ class AudioSampler:
         # On re-snap ls et le sur des passages à zéro montants CORRÉLÉS dans
         # l'audio pitché (même logique que l'ancien SynthEngine._get_raw).
         if cloned._looping and cloned._loop_start is not None:
-            from audio_tools import AudioTools
+            from audio.audio_tools import AudioTools
             sr   = cloned.samplerate
             mono = AudioTools.to_mono(shifted)
             n    = len(mono)

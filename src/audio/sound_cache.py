@@ -1,6 +1,6 @@
 #python3
 """
-    File: sound_cache.py
+    File: src/audio/sound_cache.py
     Cache disque pour les buffers audio pré-calculés (pitch shifting rubberband).
     Stockage : <CACHE_DIR>/<sha256>.npz  (défaut : ~/.cache/groovyboxit/precompute)
     Écriture asynchrone (thread daemon) pour ne pas bloquer le moteur.

@@ -40,7 +40,7 @@ import threading
 import numpy as np
 
 from engines.bank_engine import BankEngine
-from sfz_sources import read_source, source_stamp
+from audio.sfz_sources import read_source, source_stamp
 
 
 class SfizzUnavailable(RuntimeError):

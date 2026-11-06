@@ -25,8 +25,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 
-import sfz_sources as ss
-from sfz_sources import (read_source, source_kind, fragments, number_programs,
+from audio import sfz_sources as ss
+from audio.sfz_sources import (read_source, source_kind, fragments, number_programs,
                          folder_program_files, write_sfzbank, display_name,
                          SfzProgram, MAX_PROGRAMS, list_sources, source_entry,
                          folder_name, is_placeholder, SfzBankDraft, source_stamp)

@@ -4,7 +4,7 @@ from rack import InstrumentType
 from project_manager import ProjectManager
 from .dialogs import ExplorerDialog, PadPropertiesDialog, BankSlotDialog
 from .dialogs_sfz import SfzSlotDialog, stored_source
-from sfz_sources import read_source
+from audio.sfz_sources import read_source
 
 
 class PadMixin:

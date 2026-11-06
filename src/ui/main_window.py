@@ -12,7 +12,7 @@ from track_router import TrackRouter
 from app_config import AppConfig
 from engines.fluidsynth_engine import FluidSynthEngine, FluidSynthUnavailable
 from engines.sfizz_engine import SfzEngine, SfizzUnavailable
-import sound_cache
+from audio import sound_cache
 from ui.dialogs import (
     KeyboardHelpDialog,
     GenRowDialog,

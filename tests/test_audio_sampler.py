@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import numpy as np
-from audio_sampler import AudioSampler, PlayMode
+from audio.audio_sampler import AudioSampler, PlayMode
 
 SR = 44100
 

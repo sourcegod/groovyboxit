@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/audio_tools.py
+    File: src/audio/audio_tools.py
     Utilitaires audio réutilisables : détection de période fondamentale,
     passages à zéro, corrélation croisée et recherche de points de bouclage.
     Utilisé par SynthEngine et par tools/find_loop_points.py.

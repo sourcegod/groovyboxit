@@ -28,7 +28,7 @@ import wx
 import ui.mw_pads as mw_pads
 import ui.mw_tracks as mw_tracks
 from rack import Rack, InstrumentType
-from sfz_sources import source_entry, write_sfzbank
+from audio.sfz_sources import source_entry, write_sfzbank
 from ui.dialogs_sfz import SfzSlotDialog, SfzBankDialog, stored_source
 from ui.dialogs_properties import TrackPropertiesDialog
 from ui.main_window import MainWindow
@@ -571,7 +571,7 @@ def test_bank_dialog_save(bank_dlg, library):
     bank_dlg._name.SetValue("  Mes sons  ")
     assert bank_dlg.save(path)
     assert bank_dlg.get_path() == path + ".sfzbank.json"
-    from sfz_sources import read_source
+    from audio.sfz_sources import read_source
     src = read_source(bank_dlg.get_path())
     assert src.name == "Mes sons" and [p.name for p in src.programs] == ["Sax"]
 
