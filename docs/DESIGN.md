@@ -11431,3 +11431,53 @@ aujourd'hui.
     montage de `test_midi_export_ui` (gamme d'un pattern neuf à 36)
     adaptés.
   - `SPECS.md` (arborescence et table) ; `check_specs_tests` : 93 fichiers.
+
+### Clôture (9d1)
+
+**9a-9c1 FAITS** (commits `3544234` à `670a711`, et ce commit de
+clôture ; 3762 tests verts) : **chantier Phase 8 étape 9 complet**.
+
+**Ce que le chantier a livré** :
+- **Mode d'office** (9b1, K1-K8) : `_apply_auto_input_mode()` à chaque
+  changement du slot joué ou de son contenu ; Banque et Synth SFZ →
+  Clavier (batterie au canal 10 comprise), Kit → Pad, synthé WAV et slot
+  vide → inchangé ; choix manuel gardé sur le même slot ; rien pendant
+  l'enregistrement ou le décompte ; annonce « — Mode Clavier » / « — Mode
+  Pad » ajoutée aux messages de l'action ; démarrage et ouverture d'un
+  projet.
+- **Pavé et contrôleur sur la même octave** (9b2, imprévu, remarque de
+  l'essai de 9b1) : `KB_INPUT_BASE = 36` ; NumPad 1 = touche la plus
+  grave du contrôleur = do 2, comme le pad 1 d'un kit ; NumPad + / −
+  déplacent les deux ; nouveaux patterns à la racine 36, anciens à 48 ;
+  racine de lecture du clavier = celle du pattern joué.
+- **Tests** (9c1) : `tests/test_auto_input_mode.py`, 32 tests, vraie
+  fenêtre principale et vrai `MidiHandler`.
+
+**Écarts au plan et imprévus** :
+- l'annonce, consommée par le premier message, se perdait sur une piste
+  de kit (le message du chargement du kit suit) : ajoutée à chaque message
+  de l'action, oubliée par un `wx.CallAfter` (9b1) ;
+- 9b2 tout entier (hauteur du pavé ≠ contrôleur en mode Clavier), et dans
+  9b2 la racine de lecture qui doit suivre le pattern (sinon une note
+  enregistrée au contrôleur sur un ancien pattern était rejouée une
+  octave plus haut) ;
+- tests : une seule vraie fenêtre par module, chaque `MainWindow` ouvrant
+  un client du séquenceur ALSA (limite atteinte à une trentaine).
+
+**Essais de l'utilisateur** (2026-11-07) : 9b1 concluant (Orca,
+contrôleur MIDI), avec la remarque qui a donné 9b2 ; 9b2 concluant.
+
+**`docs/SPECS.md`** : ligne Phase 8, « Modes de jeu » (mode choisi
+d'office, référence commune 36, racine de lecture), tests.
+**`docs/shortcuts.md`** (aide F1) : mode d'office, NumPad 1 = do 2,
+NumPad + / − suivis par le contrôleur.
+
+**Laissé hors périmètre** : mode d'office pour les synthés WAV,
+préférence pour couper la règle (futur dialogue des préférences), mode
+mémorisé par piste, mode de l'éditeur MIDI ; la case de grille d'une note
+jouée au pavé après NumPad + / − (indice de gamme, pas la hauteur jouée),
+comportement d'avant ce chantier.
+
+**Suite notée** (Phase 8 étape 7) : audition dans l'Explorateur (un court
+extrait audio par banque / SFZ) ; dialogue des préférences (catégorie
+Audio : `live_limiter`, gains, moteurs).

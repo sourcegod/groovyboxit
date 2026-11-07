@@ -165,6 +165,10 @@ NumPad -         ShiftPad vers pads 1-8
 --- Mode Keyboard (Ctrl+2 pour activer, Ctrl+1 pour revenir en Pad) ---
 Ctrl+1           Passer en mode Pad
 Ctrl+2           Passer en mode Keyboard
+                 Mode choisi d'office en arrivant sur un slot : Clavier sur
+                 une banque ou un Synth SFZ, Pad sur un kit (annonce
+                 « — Mode Clavier » / « — Mode Pad ») ; Ctrl+1 / Ctrl+2 est
+                 gardé tant qu'on reste sur le même slot
 Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banque :
                  fichier SF2/SF3 et emplacement 1 à 4 du slot courant ; SFZ :
                  slot Synth SFZ, voir ci-dessous)
@@ -202,10 +206,12 @@ Alt+X            Ouvrir l'explorateur (Projects, Preset, Kit, Patch, Sound, Banq
                  piste choisit le programme (comme une banque)
 
   -- Slot SYNTH (instrument mélodique) --
-  NumPad 1-8     Jouer les 8 premières notes de la gamme courante
+  NumPad 1-8     Jouer les 8 premières notes de la gamme courante ; au
+                 départ NumPad 1 = do 2 (note 36), comme la touche la plus
+                 grave du contrôleur MIDI
   NumPad 9       Rejouer la dernière note MIDI jouée
-  NumPad +       Octave suivante (bloquant à C7)
-  NumPad -       Octave précédente (bloquant à C0)
+  NumPad +       Octave suivante (bloquant à C7) : le contrôleur MIDI suit
+  NumPad -       Octave précédente (bloquant à C0) : le contrôleur MIDI suit
   NumPad /       Gamme précédente (bloquant en début de liste)
   NumPad *       Gamme suivante (bloquant en fin de liste)
 

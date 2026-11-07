@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) | en cours |
 
 ---
 
@@ -723,6 +723,24 @@ Définies dans `synth_engine.SCALES`, accessible via `SCALE_NAMES` :
 
 ## Modes de jeu
 
+### Mode choisi d'office (Phase 8 étape 9)
+
+À chaque changement du slot joué (navigation des pistes, Ctrl+T, mode
+Rack, propriétés de piste, Explorateur sur le slot joué, Undo, ouverture
+d'un projet, import MIDI), `MainWindow._apply_auto_input_mode()` choisit le
+mode :
+- slot **Banque** ou **Synth SFZ** → mode Keyboard (rien à pré-calculer),
+  y compris une batterie au canal 10 ;
+- slot **Kit** → mode Pad ;
+- synthé WAV ou slot vide → mode inchangé (le pré-calcul reste au choix de
+  l'utilisateur, Ctrl+2).
+
+Un choix manuel (Ctrl+1 / Ctrl+2) est gardé tant que le slot joué ne
+change pas (clé `(slot, type)`) ; rien pendant l'enregistrement ou le
+décompte. Annonce : « — Mode Clavier » ou « — Mode Pad » ajouté au message
+de l'action (« Piste 3 — Discord GM — Melodic — Mode Clavier »). Le mode
+reste de session (pas dans le `.gvp`).
+
 ### Mode Pad (Ctrl+1)
 
 - NumPad 1–8 / 9–16 déclenche le son du kit chargé sur la piste courante
@@ -739,6 +757,13 @@ Deux comportements selon le type du slot courant :
 - NumPad/ : gamme précédente / NumPad* : gamme suivante
 - Clavier MIDI : 25 notes de gamme (`kb_notes`), précalculées
 - NumPad joue sur 16 notes (`kb_notes_input`), transposables indépendamment
+- Référence commune (Phase 8 étape 9b2, `MainWindow.KB_INPUT_BASE = 36`) :
+  au départ NumPad 1 = do 2 (36) = touche la plus grave du contrôleur, comme
+  le pad 1 d'un kit ; le contrôleur est transposé de (octave d'entrée − 36),
+  donc NumPad+/- déplacent ensemble le pavé et le contrôleur
+- Racine de lecture (`_kb_play_root`, d'où `kb_notes` : case de grille d'une
+  note jouée) = celle du pattern joué (`_set_kb_play_root`) ; un nouveau
+  pattern est à 36, un pattern d'avant la Phase 8 étape 9b2 garde 48
 
 **Slot KIT** (batterie pitchée, style Maschine+) :
 - Le dernier pad joué est pitché sur les notes de la gamme
