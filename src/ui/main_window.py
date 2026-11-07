@@ -108,6 +108,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._kb_play_root = 48
         self._kb_root_midi = 48
         self._input_mode       = "pad"
+        # Mode d'office selon le slot joué (Phase 8 étape 9b1, § 9a K4, K5) :
+        # dernière paire (slot, type) vue, et fin d'annonce en attente (K6)
+        self._auto_mode_key    = None
+        self._mode_note        = ""
         self._vel_level        = 4
         self._init_sound()
         self._synths_dir  = os.path.join(self._base_dir, "synths")
@@ -558,7 +562,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         track_idx = self._player._cur_track
         self._show_status(f"Rec: Piste {track_idx + 1} — {self._router.slot_name(track_idx)}")
 
-    def _set_input_mode(self, mode):
+    def _set_input_mode(self, mode, announce=True):
+        """Mode Pad ou Keyboard (Ctrl+1 / Ctrl+2, liste « Mode »). announce :
+        annonce et pré-calcul d'un synthé WAV ; False pour le passage
+        d'office (Phase 8 étape 9b1, K6), qui n'a rien à pré-calculer."""
         modes = ["pad", "keyboard"]
         if mode not in modes:
             return
@@ -567,6 +574,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         if mode == "keyboard":
             self._router.update_kb_notes(self._kb_scale, self._kb_play_root)
             self._router.update_input_kb(self._kb_root_midi)
+            if not announce:
+                return
             self._show_status(
                 f"Mode: Keyboard — {self._kb_scale} @ {midi_to_note_name(self._kb_root_midi)}"
             )
@@ -575,8 +584,45 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
                 def _precache():
                     engine.precompute(list(range(36, 97)), duration_ms=0)
                 threading.Thread(target=_precache, daemon=True).start()
-        else:
+        elif announce:
             self._show_status("Mode: Pad")
+
+    # Mode d'office selon le slot joué (Phase 8 étape 9b1, docs/DESIGN.md
+    # § 9a K1-K7) : Banque et Synth SFZ → Clavier, Kit → Pad, autres slots
+    # → mode inchangé ; seulement quand le slot joué ou son type change, pour
+    # garder un choix manuel fait sur le même slot (K4).
+    AUTO_MODES = {InstrumentType.BANK: "keyboard", InstrumentType.SFZ: "keyboard",
+                  InstrumentType.KIT: "pad"}
+    MODE_NOTES = {"keyboard": " — Mode Clavier", "pad": " — Mode Pad"}
+
+    def _apply_auto_input_mode(self):
+        """À appeler après tout changement du slot joué ou de son contenu.
+        Retourne le mode choisi d'office, ou None."""
+        if self._player.recording or self._player._count_in > 0:
+            return None                       # pas pendant l'enregistrement
+        slot = self._rack.get_slot(self._cur_slot)
+        key = (self._cur_slot, slot.type)
+        if key == self._auto_mode_key:
+            return None                       # même slot : choix manuel gardé (K4)
+        self._auto_mode_key = key
+        mode = self.AUTO_MODES.get(slot.type)
+        if mode is None or mode == self._input_mode:
+            return None
+        self._set_input_mode(mode, announce=False)
+        # Annonce (K6) : ajoutée à chaque message de la même action (le
+        # dernier, celui qu'Orca lit, la porte toujours : un kit chargé écrit
+        # le sien après celui de la piste) ; sinon à la ligne d'état en
+        # cours ; oubliée une fois l'action finie
+        self._mode_note = self.MODE_NOTES[mode]
+        wx.CallAfter(self._flush_mode_note)
+        return mode
+
+    def _flush_mode_note(self):
+        note, self._mode_note = self._mode_note, ""
+        if note:
+            current = self._status_ctrl.GetString(0)
+            if not current.endswith(note):
+                self._status_ctrl.SetString(0, current + note)
 
     def _on_mode_choice(self, event):
         modes = ["pad", "keyboard"]
@@ -591,6 +637,9 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         )
 
     def _show_status(self, msg):
+        note = getattr(self, "_mode_note", "")
+        if note and not msg.endswith(note):   # passage d'office annoncé avec (K6)
+            msg += note
         self._status_ctrl.SetString(0, msg)
 
     def _move(self, dr, dc):

@@ -247,6 +247,7 @@ class PadMixin:
             self._rack.set_slot(target, InstrumentType.KIT,
                                 kit_name, {"kit": json_path})
             self._update_slot_list(target)
+            self._apply_auto_input_mode()            # slot joué changé ? (9b1, K5)
             if target == self._cur_slot:             # le slot joué : sons chargés
                 self._load_kit_slot(target)
             else:                                    # sinon la batterie ne change pas
@@ -266,6 +267,7 @@ class PadMixin:
             self._rack.set_slot(target, InstrumentType.SYNTH,
                                 patch_name, {"patch": json_path})
             self._update_slot_list(target)
+            self._apply_auto_input_mode()            # slot joué changé ? (9b1, K5)
             self._router.reload_slot(target)         # pistes de ce slot : nouveau patch
             if target != self._cur_slot and self._rack.get_slot(self._cur_slot).plays_notes:
                 self._router.load_slot_preview(self._cur_slot)   # le clavier garde son son
@@ -308,6 +310,7 @@ class PadMixin:
         self._rack.set_bank_file(bank_slot, path)
         self._rack.set_slot(target, InstrumentType.BANK, name, config)
         self._update_slot_list(target)
+        self._apply_auto_input_mode()                # slot joué changé ? (9b1, K5)
         self._router.sync_banks()
         if target == self._cur_slot:
             self._router.load_slot_preview(target)
@@ -368,6 +371,7 @@ class PadMixin:
             return
         self._rack.set_slot(target, InstrumentType.SFZ, name, config)
         self._update_slot_list(target)
+        self._apply_auto_input_mode()                # slot joué changé ? (9b1, K5)
         self._router.sync_banks()
         if target == self._cur_slot:
             self._router.load_slot_preview(target)

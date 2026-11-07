@@ -99,6 +99,7 @@ class TrackMixin:
         idx = self._router.slot_for_track(self._player._cur_track)
         self._cur_slot = idx
         select_with_cursor(self._slot_choice, idx)
+        self._apply_auto_input_mode()                # Phase 8 étape 9b1 (K5)
         slot = self._rack.get_slot(idx)
         if slot.plays_notes:
             self._router.load_slot_preview(idx)
@@ -223,6 +224,7 @@ class TrackMixin:
                 self._router.assign_slot(tidx, slot)
                 self._cur_slot = slot
                 self._slot_choice.SetSelection(slot)
+                self._apply_auto_input_mode()        # Phase 8 étape 9b1 (K5)
             self._router.set_track_volume(tidx, vol)
             self._router.set_track_pan(tidx, pan)
             self._router._track_mutes[tidx] = mute
@@ -512,6 +514,7 @@ class TrackMixin:
         self._player._cur_track = idx
         self._cur_slot = self._router.slot_for_track(idx)
         select_with_cursor(self._slot_choice, self._cur_slot)
+        self._apply_auto_input_mode()                # Phase 8 étape 9b1 (K5)
         self._router.reset_kit_pad()
         self._refresh_grid()
         slot = self._rack.get_slot(self._cur_slot)

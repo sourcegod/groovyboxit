@@ -11345,3 +11345,42 @@ aujourd'hui.
 | **9b1** | Implémentation — `_apply_auto_input_mode` (K5), appels aux changements du slot joué et de son contenu, annonce (K6), démarrage et projet (K7). Essai au clavier MIDI et au pavé numérique avec Orca. | `src/ui/main_window.py`, `src/ui/mw_tracks.py`, `src/ui/mw_project.py`, `src/ui/mw_pads.py` |
 | **9c1** | Tests — règle (Banque, SFZ, Kit, synthé, vide), choix manuel gardé (K4), contenu du slot changé, chaque appelant, pas pendant l'enregistrement, annonces. | `tests/test_auto_input_mode.py` (nouveau), `docs/SPECS.md` |
 | **9d1** | Doc — clôture (DESIGN, SPECS : Modes de jeu ; aide F1), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
+
+### Phase 8 étape 9 — Avancement (9b1)
+
+- **9b1** — mode d'office, conforme à K1-K8 :
+  - `MainWindow._apply_auto_input_mode()` : `AUTO_MODES` (Banque, SFZ →
+    « keyboard » ; Kit → « pad »), clé `(_cur_slot, type)` retenue dans
+    `_auto_mode_key` (même clé : rien, choix manuel gardé, K4) ; rien
+    pendant l'enregistrement ou le décompte ; `_set_input_mode(mode,
+    announce=False)` (gamme d'entrée mise à jour, ni annonce ni
+    pré-calcul).
+  - Appels : `_go_to_track`, `_follow_track_slot`, propriétés de piste
+    (slot changé), `_load_project` (K7), import MIDI, `_restore_state`
+    (Undo), Explorateur Kit / Patch / Banque / SFZ (la clé ne change que
+    si le slot visé est le slot joué).
+  - **Annonce (K6), écart trouvé en vérifiant** : la fin d'annonce
+    (`MODE_NOTES` : « — Mode Clavier », « — Mode Pad ») est ajoutée à
+    **chaque** message de la même action par `_show_status`, et oubliée
+    une fois l'action finie (`wx.CallAfter(_flush_mode_note)`, qui
+    l'ajoute aussi à la ligne en cours si aucun message n'a suivi) : sur
+    une piste de kit, le chargement du kit écrit son message après celui
+    de la piste, et une annonce consommée par le premier se perdait.
+  - Vérifié par un script (vraie `MainWindow`, `essai_sfz_7f1.gvp`) :
+    Clavier à l'ouverture (piste 1 sur SFZ), Pad sur la piste 5 (kit),
+    Clavier en revenant, Ctrl+1 gardé sur une autre piste du même slot,
+    Clavier sur un autre slot SFZ, rien pendant l'enregistrement.
+  - `pytest` : **114 tests rouges jusqu'à 9c1** : 14 classes de fenêtres
+    factices (mixins) sans `_apply_auto_input_mode`.
+- **Essai de 9b1 (utilisateur, 2026-11-07)** : concluant (Orca, contrôleur
+  MIDI). **Remarque → 9b2** : incohérence de hauteur entre le pavé
+  numérique et le contrôleur. Sur un kit en mode Pad, le pavé 1 et la
+  touche la plus grave du contrôleur (36) jouent tous deux la grosse caisse
+  (note 36) ; en mode Clavier sur un synthé, le pavé 1 joue 48 (racine
+  d'entrée `_kb_root_midi`, défaut 48) alors que la même touche du
+  contrôleur joue 36 (notes jouées telles quelles, transposées seulement
+  de `_kb_root_midi − _kb_play_root`, 0 au départ). Choix de
+  l'utilisateur (option a) : **le pavé suit le contrôleur** — pavé 1 = 36
+  au départ, contrôleur sans transposition, `+` / `-` déplacent les deux ;
+  racine des **nouveaux** patterns à 36 pour que la grille d'un synthé
+  soit relue à la hauteur jouée (patterns existants inchangés).

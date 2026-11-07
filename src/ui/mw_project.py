@@ -862,6 +862,7 @@ class ProjectMixin:
         cur_track = self._player._cur_track
         self._cur_slot = self._router.slot_for_track(cur_track)   # slot effectif (5f1)
         self._slot_choice.SetSelection(self._cur_slot)
+        self._apply_auto_input_mode()                # Phase 8 étape 9b1 (K5)
         if self._rack.get_slot(self._cur_slot).plays_notes:
             self._router.load_slot_preview(self._cur_slot)
         self._player._compute_offsets()
@@ -1082,6 +1083,7 @@ class ProjectMixin:
                    if self._player._cur_track < len(new._track_slots) else 0
         self._cur_slot = cur_slot
         self._slot_choice.SetSelection(cur_slot)
+        self._apply_auto_input_mode()               # Phase 8 étape 9b1 (K5, K7)
         slot = self._rack.get_slot(cur_slot)
         if slot.plays_notes:                        # synthé ou banque (17d1)
             self._router.load_slot_preview(cur_slot)
@@ -1319,6 +1321,7 @@ class ProjectMixin:
         # sans cela, un slot rempli par l'Explorateur (SFZ, Banque, Kit,
         # Patch) puis annulé gardait son nom dans la liste
         self._update_slot_list()
+        self._apply_auto_input_mode()    # contenu du slot joué rétabli (9b1, K5)
         self._pattern_listbox.SetSelection(self._cur_pattern_idx)
         self._refresh_pattern_listbox()
         self._refresh_grid()
