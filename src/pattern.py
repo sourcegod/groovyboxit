@@ -229,7 +229,10 @@ class Pattern:
 
         # Gamme utilisée lors de l'enregistrement (lecture indépendante de l'UI)
         self._kb_scale     = "major"   # défaut "major" pour rétrocompat anciens patterns
-        self._kb_root_midi = 48        # C3
+        # Racine de la gamme des pads d'un synthé : do 2 (36) pour un nouveau
+        # pattern (Phase 8 étape 9b2 : même référence que le pavé et le
+        # contrôleur) ; un pattern relu garde la sienne (48 s'il n'en a pas)
+        self._kb_root_midi = 36        # C2
 
     #--------------------------------------------------------------------------
 

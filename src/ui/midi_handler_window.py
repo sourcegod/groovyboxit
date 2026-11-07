@@ -333,7 +333,7 @@ class MidiHandler:
 
     def _handle_keyboard_note_on(self, note, velocity, channel=0):
         win        = self._win
-        offset     = win._kb_root_midi - win._kb_play_root
+        offset     = win._kb_root_midi - win.KB_INPUT_BASE   # référence commune (9b2)
         transposed = max(0, min(127, note + offset))
         play_idx   = self._kb_play_idx(transposed)
         if win._player.erasing:
@@ -496,7 +496,7 @@ class MidiHandler:
                     win._player.record_patch_note_off(played)
         elif win._router.synth_ready() and slot.plays_notes:
             if win._input_mode == "keyboard":
-                offset     = win._kb_root_midi - win._kb_play_root
+                offset     = win._kb_root_midi - win.KB_INPUT_BASE   # référence commune (9b2)
                 transposed = max(0, min(127, note + offset))
                 win._router.synth.stop(transposed)
                 self._erase_held_kb.discard(transposed)

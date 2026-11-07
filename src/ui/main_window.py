@@ -105,8 +105,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._nr_ternary       = False
         self._nr_midi_note     = None
         self._kb_scale     = "chromatic"
-        self._kb_play_root = 48
-        self._kb_root_midi = 48
+        # Racines du clavier (Phase 8 étape 9b2) : do 2 (36), la note du pad 1
+        # et de la touche la plus grave d'un contrôleur, comme pour un kit
+        self._kb_play_root = self.KB_INPUT_BASE
+        self._kb_root_midi = self.KB_INPUT_BASE
         self._input_mode       = "pad"
         # Mode d'office selon le slot joué (Phase 8 étape 9b1, § 9a K4, K5) :
         # dernière paire (slot, type) vue, et fin d'annonce en attente (K6)
@@ -591,6 +593,24 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
     # § 9a K1-K7) : Banque et Synth SFZ → Clavier, Kit → Pad, autres slots
     # → mode inchangé ; seulement quand le slot joué ou son type change, pour
     # garder un choix manuel fait sur le même slot (K4).
+    # Référence commune du pavé et du contrôleur (Phase 8 étape 9b2, essai de
+    # 9b1) : la note 36 (do 2) est le pad 1 d'un kit et la touche la plus
+    # grave du contrôleur ; en mode Clavier, le contrôleur est transposé de
+    # (racine d'entrée − 36) : sans transposition au départ, et NumPad + / −
+    # déplacent ensemble le pavé et le contrôleur.
+    KB_INPUT_BASE = 36
+
+    def _set_kb_play_root(self, root):
+        """Racine de lecture du clavier = celle du pattern joué (Phase 8 étape
+        9b2) : une note du contrôleur ou du pavé s'enregistre sur la case de
+        grille qui la rejouera (36 pour un nouveau pattern, 48 pour un ancien).
+        L'octave d'entrée (_kb_root_midi, NumPad + / −) n'est pas touchée."""
+        if root == self._kb_play_root:
+            return
+        self._kb_play_root = root
+        self._router.update_kb_notes(self._kb_scale, root)
+        self._router.update_input_kb(self._kb_root_midi)
+
     AUTO_MODES = {InstrumentType.BANK: "keyboard", InstrumentType.SFZ: "keyboard",
                   InstrumentType.KIT: "pad"}
     MODE_NOTES = {"keyboard": " — Mode Clavier", "pad": " — Mode Pad"}

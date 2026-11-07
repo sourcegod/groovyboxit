@@ -11384,3 +11384,26 @@ aujourd'hui.
   au départ, contrôleur sans transposition, `+` / `-` déplacent les deux ;
   racine des **nouveaux** patterns à 36 pour que la grille d'un synthé
   soit relue à la hauteur jouée (patterns existants inchangés).
+- **9b2 (implémentation, imprévue)** : référence commune du pavé et du
+  contrôleur en mode Clavier.
+  - `MainWindow.KB_INPUT_BASE = 36` (do 2) : le contrôleur est transposé
+    de `_kb_root_midi − 36` (`midi_handler_window`, note on et note off),
+    donc pas du tout au départ ; `_kb_root_midi` et `_kb_play_root`
+    partent de 36 : NumPad1 = touche la plus grave du contrôleur = 36,
+    comme le pad 1 d'un kit ; NumPad + / − déplacent les deux.
+  - `Pattern()` : `_kb_root_midi = 36` pour un nouveau pattern ; un
+    pattern relu garde le sien (`from_dict` : 48 sans clé).
+  - **Écart trouvé en vérifiant** : la racine de lecture du clavier
+    (`_kb_play_root`, d'où `kb_notes`, qui donne la case de grille d'une
+    note du contrôleur) restait fixe ; sur un ancien pattern (48), une
+    note enregistrée au contrôleur aurait été rejouée une octave plus
+    haut. Nouvelle méthode `_set_kb_play_root(root)` appelée avec la
+    racine du pattern joué (`_apply_pattern_from_store`, avancée du
+    song) ; l'octave d'entrée n'est pas touchée.
+  - Vérifié par un script (vraie `MainWindow`, projet de l'utilisateur à
+    48) : NumPad1 → 36, contrôleur 36 → 36 ; après NumPad + : 48 et 48.
+  - `pytest` : **119 tests rouges jusqu'à 9c1** : les 114 de 9b1, 4 tests
+    de fenêtres factices sans `_set_kb_play_root` (test_rack_mode,
+    test_track_channels) et le montage de test_song_export_ui (racine 48
+    figée face aux patterns neufs à 36).
+- **Essai de 9b2 (utilisateur, 2026-11-07)** : concluant.

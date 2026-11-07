@@ -94,6 +94,7 @@ class PatternMixin:
         self._router._track_channels[:] = new._track_channels
         self._router.rack_mode = new._rack_mode        # Phase 8 étape 5b1, M13
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
+        self._set_kb_play_root(new._kb_root_midi)       # Phase 8 étape 9b2
         # instruments des canaux de banque à la position courante (17f1, § 17e3 O4)
         self._router.chase(live._tape, self._player._current_offset())
         if new._rack_mode:
