@@ -63,6 +63,14 @@ class _Ctrl:
 
 
 class _ImportWindow(ProjectMixin, PatternMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     def __init__(self, exports_dir, rack=None):
         self._rack   = rack or Rack()
         self._router = TrackRouter(self._rack, "/fake", _SilentSoundManager(),

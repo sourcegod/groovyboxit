@@ -96,6 +96,16 @@ class _Silent:
 
 
 class _RackWin(TrackMixin, PatternMixin, PadMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
+    KB_INPUT_BASE = 36      # comme MainWindow (Phase 8 étape 9b2)
+
     def __init__(self, rack_mode=True, kit_path=""):
         rack = Rack()
         rack.set_slot(SYNTH, InstrumentType.SYNTH, "Piano WAV", {"patch": "p"})

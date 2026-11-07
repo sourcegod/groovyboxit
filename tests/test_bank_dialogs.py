@@ -247,6 +247,14 @@ def _router_and_tape():
 
 
 class _TrackWindow(TrackMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     def __init__(self, cur_track=3):
         self._router, pat = _router_and_tape()
         self._rack        = self._router._rack
@@ -481,6 +489,14 @@ def test_bank_slot_dialog_choosing_slot_shows_its_file():
 # ---------------------------------------------------------------------------
 
 class _PadWindow(PadMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     def __init__(self, cur_slot=6):
         self._rack = Rack()
         self._rack.set_slot(BANK, InstrumentType.BANK, "FluidR3_GM", {"bank_slot": 0})

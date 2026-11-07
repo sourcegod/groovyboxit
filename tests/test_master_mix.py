@@ -46,6 +46,14 @@ class _Spin:
 
 
 class _Win(ProjectMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     def __init__(self, tmp_path, defaults=(100, 0)):
         self._project_path    = str(tmp_path / "projet.gvp")
         self._projects_dir    = str(tmp_path)

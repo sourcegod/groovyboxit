@@ -397,7 +397,7 @@ def _live_window(rack_mode=False):
     win = _RackWin(rack_mode=rack_mode)
     win._router._cur_track_cb = lambda: win._player._cur_track
     win._input_mode = "keyboard"
-    win._kb_root_midi = win._kb_play_root = 60
+    win._kb_root_midi = win._kb_play_root = win.KB_INPUT_BASE   # sans transposition (9b2)
     win._note_repeat, win._vel_level, win._cur_row = False, 0, 0
     win._player.erasing = False
     win.ROWS = win.COLS = 16
@@ -449,7 +449,7 @@ def test_held_note_off_recorded_with_played_note():
     win._player.record_patch_note = lambda note, vel, **kw: None
     win._player.record_patch_note_off = lambda note: played.append(note)
     h.on_note_on(64, 100, 0)
-    win._kb_root_midi = 72                       # transposition changée entre-temps
+    win._kb_root_midi = 48                       # transposition changée entre-temps (+12)
     h.on_note_off(64, 0)
     assert played == [64]                        # la note jouée, pas 76
 

@@ -154,6 +154,14 @@ def test_program_change_keeps_channel():
 # ---------------------------------------------------------------------------
 
 class _FakeStoreWindow(PatternMixin, SongMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     def __init__(self):
         self._router          = _make_router()
         self._player          = MagicMock()
@@ -199,6 +207,14 @@ def test_song_advance_loads_channels_into_router():
 
 class _FakeTrackWindow(TrackMixin):
     # message des moteurs coupés après Ctrl+T (Phase 8 étape 7h1)
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     _engine_off_note = PadMixin._engine_off_note
 
     def __init__(self, cur_track=3, modified=False):

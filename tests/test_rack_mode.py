@@ -783,6 +783,14 @@ class _FakePlayer:
 
 
 class _LoadWindow(PatternMixin, SongMixin):
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     def __init__(self, router):
         self._router   = router
         self._player   = _FakePlayer()

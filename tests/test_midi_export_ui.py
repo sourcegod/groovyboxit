@@ -84,7 +84,8 @@ class _ExportWindow(ProjectMixin):
         self._snd    = _FakeSoundManager()
         self._router = TrackRouter(rack, "/fake", self._snd, lambda m: None)
         self._router._ensure_slot_synth = lambda slot_idx: None
-        self._router.set_playback_kb("major", 48)
+        # gamme d'un pattern neuf (racine 36 depuis la Phase 8 étape 9b2)
+        self._router.set_playback_kb("major", 36)
         self._router.assign_slot_by_user(0, PIANO)
         self._router.assign_slot_by_user(1, KIT)
         self._router.assign_slot_by_user(2, ORGAN)

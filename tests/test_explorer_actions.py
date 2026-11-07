@@ -68,6 +68,14 @@ class FakeSnd:
 # ---------------------------------------------------------------------------
 
 class FakeWindow:
+    # méthodes de MainWindow appelées par les mixins (Phase 8 étapes 9b1, 9b2),
+    # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
+    def _apply_auto_input_mode(self):
+        return None
+
+    def _set_kb_play_root(self, root):
+        pass
+
     pass
 
 

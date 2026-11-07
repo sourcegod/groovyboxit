@@ -11407,3 +11407,27 @@ aujourd'hui.
     test_track_channels) et le montage de test_song_export_ui (racine 48
     figée face aux patterns neufs à 36).
 - **Essai de 9b2 (utilisateur, 2026-11-07)** : concluant.
+- **9c1 (tests)** : `tests/test_auto_input_mode.py` (32 tests).
+  - Vraie `MainWindow` (sans FluidSynth ni sfizz), **une seule pour le
+    module** : chaque fenêtre ouvre un client du séquenceur ALSA, et une
+    par test épuisait la limite (erreurs `MidiInAlsa::initialize` dans la
+    suite complète) ; état remis à zéro avant chaque test, MIDI et pilote
+    fermés à la fin comme `_on_close`.
+  - Règle K1-K3, choix manuel gardé (K4), contenu qui change de type,
+    enregistrement et décompte, annonces (K6), appelants
+    (`_go_to_track`, refus pendant l'enregistrement, `_follow_track_slot`,
+    `_apply_pattern_from_store` → `_set_kb_play_root`).
+  - 9b2 : base 36 et état de départ, `Pattern()` à 36 / relu sans clé à
+    48, NumPad + / − (vrai `KeyManager`), racine de lecture sans toucher
+    l'octave d'entrée ; contrôleur par le vrai `MidiHandler` (fenêtre du
+    mode Rack) : touche 36 jouée 36, suit l'octave d'entrée, non
+    transposée par la racine de lecture.
+  - Vérifié en remettant l'ancien code : l'ancienne transposition du
+    contrôleur et l'oubli du choix manuel font échouer des tests.
+  - 11 classes de fenêtres factices complétées, dont héritent les autres
+    (`_apply_auto_input_mode`,
+    `_set_kb_play_root`, et `KB_INPUT_BASE` pour `_RackWin`) ;
+    `test_note_cuts` (racine de départ 36, transposition +12) et le
+    montage de `test_midi_export_ui` (gamme d'un pattern neuf à 36)
+    adaptés.
+  - `SPECS.md` (arborescence et table) ; `check_specs_tests` : 93 fichiers.
