@@ -139,8 +139,11 @@ H                Tap Tempo : frapper au rythme pour définir le BPM
                  vigueur à la position (et le suit pendant la lecture)
 +                Volume +1
 - ou 6           Volume -1
-Ctrl+↑           Volume Global +1 (0..100)
-Ctrl+↓           Volume Global -1 (0..100)
+Ctrl+↑           Volume Global +1 (0..200)
+Ctrl+↓           Volume Global -1 (0..200)
+                 100 = volume normal ; au-dessus, le mix est amplifié
+                 (200 = +6 dB) et le limiteur d'écoute empêche la saturation ;
+                 l'annonce donne le gain : « Volume Global: 150 (+3,5 dB) »
 Ctrl+→           Pan Global +1 (-100..+100)
 Ctrl+←           Pan Global -1 (-100..+100)
 Ctrl+0           Centrer le Pan Global (→ 0)

@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) | en cours |
 
 ---
 
@@ -250,6 +250,7 @@ groovyboxit/
   "sound_cache_dir": "/chemin/cache_npz",
   "exports_dir":  "/chemin/vers/EXPORTS",
   "master_volume": 100,
+  "live_limiter":  true,
   "master_pan":    0,
   "soundfonts_dir":   "/usr/share/sounds/sf2",
   "gm_soundfont":     "FluidR3_GM.sf2",
@@ -289,7 +290,7 @@ désactivé (--no-sfizz) : slots Synth SFZ muets »), et à chaque choix d'un
 tel slot (Explorateur, Ctrl+T) ; kits, synthés WAV, séquenceur, MIDI et
 exports marchent ; les tests qui en dépendent sont sautés.
 
-`master_volume` (0..100, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
+`master_volume` (0..200 depuis la Phase 8 étape 8, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
 
 `exports_dir` (export MIDI, Alt+Shift+E ; premier dossier proposé par l'import, Alt+Shift+I) vaut par défaut le dossier `EXPORTS`
 voisin du dossier des projets (`/home/com/groovybox/EXPORTS`).
@@ -641,7 +642,17 @@ Moteur audio polyphonique bas niveau, remplace pygame.mixer pour la lecture des 
   `mix(out)` remplit un tampon float32 (frames, 2), volume global
   appliqué, sans écrêtage, sans carte son (export audio hors temps réel).
   `SoundDeviceDriver(Mixer)` y ajoute le flux PortAudio ; son callback fait
-  `mix`, puis écrête à ±1
+  `mix`, puis passe le mix au **limiteur d'écoute**, puis écrête à ±1 par
+  sécurité (Phase 8 étape 8)
+- **Limiteur du mix à l'écoute** (`src/audio/live_limiter.py`,
+  `LiveLimiter`, Phase 8 étape 8) : brickwall **sans anticipation**
+  (aucune latence ajoutée), seuil −0,3 dBFS comme l'export, même gain sur
+  les deux canaux, attaque immédiate sur l'échantillon de la crête, retour
+  exponentiel de 50 ms ; aucun échantillon ne dépasse le seuil ; quelques
+  dizaines de µs par bloc. Clé `"live_limiter": false` de `config.json`
+  pour revenir à l'écrêtage seul (à régler plus tard dans les préférences,
+  catégorie Audio). Le `Mixer` de l'export n'est pas limité ici : l'export
+  WAV a son propre limiteur, à anticipation, à l'écriture.
 - Prototype : tout le moteur audio (sons, Mixer, driver, callback, moteurs,
   rendu de l'export) sera réécrit en C/C++
 
@@ -1073,7 +1084,7 @@ rien.
 ## Volume et Pan
 
 ### Global
-- Volume global : 0..100 (Ctrl+↑/↓, `+`/`-`, champ « Vol: ») : volume maître du pilote audio, appliqué à tout le mixage
+- Volume global : 0..200 (Ctrl+↑/↓, `+`/`-`, champ « Vol: ») : volume maître du pilote audio, appliqué à tout le mixage ; 100 = gain ×1, 200 = ×2 (+6 dB, Phase 8 étape 8) : on baisse les instruments, on remonte le mix, le limiteur d'écoute rattrape les crêtes. Au-dessus de 100, l'annonce donne le gain : « Volume Global: 150 (+3,5 dB) »
 - Pan global : -100..+100 (Ctrl+←/→, Ctrl+0 pour centrer, champ « Pan: ») : décalage ajouté au pan de chaque pad joué
 - Une valeur par projet, sauvegardée dans la clé `master` du `.gvp` ; défauts dans `data/config.json` (`master_volume`, `master_pan`), appliqués au pilote dès le lancement (Phase 7 étape 15d1)
 
@@ -2231,7 +2242,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_parser.py` | midi_parser en isolation : decode_message, describe_note/cc/program |
 | `test_midi_virtual_keyboard.py` | VirtualKeyboardMixin : clavier virtuel de l'éditeur MIDI |
 | `test_mix_undo.py` | Undo du mute, du solo et du volume : regroupement < 1 s, chaque chemin, dialogue du pad (40 tests) |
-| `test_mixer.py` | Mixer (Phase 8 étape 1c1) : mélange sans carte son ni écrêtage, volume global, pan, sources externes, voix qui avancent d'un appel à l'autre, découpage en blocs sans effet, release, callback du driver = mix puis écrêtage |
+| `test_mixer.py` | Mixer (Phase 8 étape 1c1) : mélange sans carte son ni écrêtage, volume global, pan, sources externes, voix qui avancent d'un appel à l'autre, découpage en blocs sans effet, release, callback du driver sans limiteur = mix puis écrêtage (le limiteur : `test_live_limiter.py`) |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
 | `test_note_cuts.py` | Notes coupées avant un changement de son (Phase 8 étape 6c1) : CC120 d'un canal (défaut et FluidSynth), cut_all_notes (tous les moteurs une fois, kit, banque et pédale sur 16 canaux, Pitch Bend et modulation gardés, sans banque), cut_track_notes (canal courant d'une banque, préécoute une fois, note tenue au contrôleur coupée avant le changement de canal, moteur du synthé et préécoute, autres moteurs intacts, kit, mode Rack), Program Change rejoué sans coupure ; gestes : X / S / Shift+X / Shift+S (avant la bascule), pads sans coupure, propriétés de piste (canal, slot, volume sans coupure, Mute, Annuler), Ctrl+T (deux modes, même slot sans coupure), Program Change du contrôleur ; relâchement là où la note a été jouée (Phase 8 étape 6c2 : canal retenu par BankPreview, note tenue pendant la navigation des pistes arrêtée sur le canal ou le synthé de la piste précédente, fin de note enregistrée avec la note jouée, pad de batterie au canal 10) (33 tests) |

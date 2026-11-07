@@ -11200,3 +11200,53 @@ fidèle à l'écoute.
     ancienne règle du volume (4), état non gardé entre blocs (7), plafond
     de l'Undo à 100 (5), annonce sans dB (3).
   - `SPECS.md`. 3730 verts, deux passages.
+
+### Clôture (8e1)
+
+**8a-8d1 FAITS** (commits `0a3764c` à `3c98d02`, et ce commit de
+clôture ; 3730 tests verts) : **chantier Phase 8 étape 8 complet**.
+
+**Ce que le chantier a livré** :
+- **Rangement** (8b1-8b5) : paquet `src/audio/` (pilotes, `Mixer`,
+  `SoundManager`, `SynthEngine`, `AudioSampler`, outils de boucle, cache
+  des sons, sources SFZ, export WAV) et `src/audio/engines/` (FluidSynth,
+  sfizz) ; imports pointés partout (code, tests, outils), historique gardé
+  (`git mv`), aucun changement de comportement, suite verte à chaque
+  commit ; `track_router.py`, `voice_manager.py`, `metronome.py` laissés
+  en place (R3) ; démos `cd src && python3 -m audio.engines.sfizz_engine`.
+- **Limiteur du mix à l'écoute** (8c1) : `LiveLimiter`, sans
+  anticipation, −0,3 dBFS, retour 50 ms, stéréo liée, à la place de
+  l'écrêtage, dans le seul callback du pilote ; clé `live_limiter`.
+- **Volume global jusqu'à 200** (+6 dB) : pilote, lecteur, champ Volume,
+  touches, Undo, `.gvp`, `config.json`, export ; annonce en dB au-dessus
+  de 100 ; défaut corrigé (un volume de 1 sortait à ×1).
+
+**Écarts au plan et imprévus** :
+- le rangement, demandé après le plan initial du limiteur, a été ajouté
+  au chantier avant lui (plan 8a commun) ;
+- scripts de rangement exécutés sous bash (zsh ne découpe pas les
+  variables de liste), à la demande de l'utilisateur ;
+- un import indirect (`__import__("audio_sampler")`) échappait à la
+  recherche des imports (8b1) ; l'ancien dossier `src/engines/`, réduit à
+  son cache, supprimé (8b4) ;
+- seuil visé à ×(1 − 10⁻⁶) pour que l'arrondi en float32 ne le dépasse
+  jamais (8c1).
+
+**Essai de l'utilisateur** (2026-11-07) : concluant — « ça marche
+vraiment bien », volume global poussé jusqu'à 200 (+6 dB) sans aucune
+saturation, pas de latence ajoutée au jeu.
+
+**`docs/SPECS.md`** : ligne Phase 8, arborescence (`audio/`), configuration
+(`live_limiter`, `master_volume` 0..200), pilote et limiteur d'écoute,
+volume global, tests. **`docs/shortcuts.md`** (aide F1) : volume global
+0..200 et annonce en dB. **`docs/sfizz_build.md`** : chemins des moteurs.
+
+**Laissé hors périmètre** : anticipation à l'écoute, réglages du limiteur
+dans l'interface, true peak, compresseur, indicateur de réduction en
+direct, volume de piste au-delà de 100.
+
+**Suite notée** : la clé `live_limiter` (et les autres réglages audio de
+`config.json`) dans les **préférences de l'utilisateur**, catégorie
+Audio — chantier du dialogue de configuration, pas commencé. Restent
+aussi, de la Phase 8 étape 7 : mode Clavier par défaut sur une banque ou
+un SFZ, audition dans l'Explorateur.
