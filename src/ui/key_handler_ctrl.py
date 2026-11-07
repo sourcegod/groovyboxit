@@ -169,11 +169,11 @@ class CtrlHandler:
             return True
         if not shift and not alt and key == wx.WXK_UP:
             vol = win._set_master_volume_undo(win._player.volume + 1)
-            win._show_status(f"Volume Global: {vol}")
+            win._show_status(f"Volume Global: {win.master_volume_text(vol)}")
             return True
         if not shift and not alt and key == wx.WXK_DOWN:
             vol = win._set_master_volume_undo(win._player.volume - 1)
-            win._show_status(f"Volume Global: {vol}")
+            win._show_status(f"Volume Global: {win.master_volume_text(vol)}")
             return True
         if not shift and not alt and key == wx.WXK_RIGHT:
             pan = win._set_master_pan_undo(win._player.pan + 1)

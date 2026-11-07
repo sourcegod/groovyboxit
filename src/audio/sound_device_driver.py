@@ -22,6 +22,8 @@ import numpy as np
 import soundfile as sf
 import sounddevice as sd
 
+from audio.live_limiter import LiveLimiter
+
 
 # ---------------------------------------------------------------------------
 # SdSound — sample chargé en mémoire
@@ -143,7 +145,7 @@ class Mixer:
     play(sound, vol, pan)             → _Voice ou _LoopVoice selon sound
     stop_all()
     stop_sound(sound)
-    set_master_volume(vol)
+    set_master_volume(vol)            entier : % (0..200) ; réel : rapport (0..2)
     add_render_source(fn) / remove_render_source(fn)
     mix(out)                          → mélange de frames, sans écrêtage
     voice_count()
@@ -458,10 +460,17 @@ class Mixer:
         """No-op : le volume est appliqué au moment de play()."""
         pass
 
+    MASTER_MAX = 2.0    # volume global jusqu'à 200 % (+6 dB, Phase 8 étape 8c1, L4)
+
     def set_master_volume(self, vol):
-        """Volume global : 0..100 (entier) ou 0.0..1.0 (float)."""
-        v = vol / 100.0 if vol > 1.0 else float(vol)
-        self._master_vol = max(0.0, min(1.0, v))
+        """Volume global : un entier est un pourcentage (0..200), un réel un
+        rapport (0.0..2.0). Phase 8 étape 8c1 (L7) : avant, toute valeur ≤ 1
+        était un rapport, si bien qu'un volume de 1 % donnait ×1."""
+        if isinstance(vol, (int, np.integer)) and not isinstance(vol, bool):
+            v = vol / 100.0
+        else:
+            v = float(vol)
+        self._master_vol = max(0.0, min(self.MASTER_MAX, v))
 
     @property
     def samplerate(self) -> int:
@@ -510,9 +519,13 @@ class SoundDeviceDriver(Mixer):
     """
 
     def __init__(self, samplerate: int = Mixer.SAMPLERATE,
-                 blocksize: int = Mixer.BLOCKSIZE):
+                 blocksize: int = Mixer.BLOCKSIZE, limiter: bool = True):
+        """limiter : limiteur du mix à l'écoute (Phase 8 étape 8c1, L3, L6),
+        à la place de l'écrêtage ; False = écrêtage seul (clé
+        "live_limiter" de config.json)."""
         super().__init__(samplerate)
         self._blocksize = blocksize
+        self._limiter   = LiveLimiter(samplerate) if limiter else None
 
         self._stream = sd.OutputStream(
             samplerate = self._sr,
@@ -528,10 +541,26 @@ class SoundDeviceDriver(Mixer):
     # ------------------------------------------------------------------
 
     def _callback(self, outdata: np.ndarray, frames: int, time_info, status):
-        """Mélange toutes les voix actives dans outdata (float32, shape (frames, 2)),
-        écrêté à ±1."""
+        """Mélange toutes les voix actives dans outdata (float32, shape
+        (frames, 2)), limite le mix (seuil −0,3 dBFS, sans anticipation),
+        puis écrête à ±1 par sécurité (sans effet après le limiteur)."""
         self.mix(outdata)
+        limiter = self._limiter
+        if limiter is not None:
+            limiter.process(outdata)
         np.clip(outdata, -1.0, 1.0, out=outdata)
+
+    def set_limiter(self, on):
+        """Limiteur du mix à l'écoute actif (True) ou écrêtage seul (False)."""
+        if on and self._limiter is None:
+            self._limiter = LiveLimiter(self._sr)
+        elif not on:
+            self._limiter = None
+
+    @property
+    def limiter(self):
+        """Le LiveLimiter du pilote, ou None (écrêtage seul)."""
+        return self._limiter
 
     def close(self):
         """Ferme le flux PortAudio."""

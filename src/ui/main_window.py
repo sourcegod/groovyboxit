@@ -211,7 +211,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         cfg = AppConfig(base_dir)
         media_dir = cfg.media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
-        self._audio_driver = SoundDeviceDriver()
+        # limiteur du mix à l'écoute (Phase 8 étape 8c1, L3)
+        self._audio_driver = SoundDeviceDriver(limiter=cfg.live_limiter_enabled)
         self._init_bank_engine(cfg)
         self._init_sfz_engine(cfg)
         self._snd = SoundManager(media_lst, cfg.click1_file, cfg.click2_file,
@@ -280,7 +281,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._bpm_ctrl.Bind(wx.EVT_SPINCTRL, self._on_bpm_spin)
 
         vol_label = wx.StaticText(panel, label="Vol:")
-        self._volume_ctrl = wx.SpinCtrl(panel, min=0, max=100, initial=self._player.volume, size=(70, -1))
+        self._volume_ctrl = wx.SpinCtrl(panel, min=0, max=self.MASTER_VOLUME_MAX,
+                                        initial=self._player.volume, size=(70, -1))
         self._volume_ctrl.Bind(wx.EVT_SPINCTRL, self._on_volume_spin)
 
         pan_label = wx.StaticText(panel, label="Pan:")
@@ -503,7 +505,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _on_volume_spin(self, event):
         vol = self._set_master_volume_undo(self._volume_ctrl.GetValue())
-        self._show_status(f"Volume: {vol}")
+        self._show_status(f"Volume: {self.master_volume_text(vol)}")
 
     def _on_pan_spin(self, event):
         pan = self._set_master_pan_undo(self._pan_ctrl.GetValue())

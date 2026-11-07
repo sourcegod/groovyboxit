@@ -329,12 +329,13 @@ class SoundManager(object):
         self._driver.stop_all()
 
     def set_volume(self, volume):
-        """Règle le volume global (0..100).
-        - SoundDeviceDriver : applique via set_master_volume.
-        - PygameDriver (optionnel) : applique le volume sur chaque son individuellement.
+        """Règle le volume global (0..200 depuis la Phase 8 étape 8c1, L4).
+        - SoundDeviceDriver : applique via set_master_volume (pourcentage).
+        - PygameDriver (optionnel) : applique le volume sur chaque son
+          individuellement, plafonné à ×1.
         """
-        vol_norm = volume / 100.0
-        self._driver.set_master_volume(volume)
+        vol_norm = min(1.0, volume / 100.0)
+        self._driver.set_master_volume(int(volume))
         for sound in self.drum_sounds:
             self._driver.set_sound_volume(sound, vol_norm)
         self._driver.set_sound_volume(self.sound_click1, vol_norm)

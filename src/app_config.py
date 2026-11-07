@@ -134,9 +134,12 @@ class AppConfig:
             return default
         return max(lo, min(hi, int(value)))
 
+    MASTER_VOLUME_MAX = 200    # jusqu'à 200 (+6 dB, Phase 8 étape 8c1, L4)
+
     @property
     def master_volume(self):
-        return self._get_int("master_volume", self.MASTER_VOLUME_DEFAULT, 0, 100)
+        return self._get_int("master_volume", self.MASTER_VOLUME_DEFAULT, 0,
+                             self.MASTER_VOLUME_MAX)
 
     @property
     def master_pan(self):
@@ -223,6 +226,12 @@ class AppConfig:
         """Clé "fluidsynth" (défaut true) : false = moteur FluidSynth coupé,
         slots Banque muets (Z7)."""
         return self._get_bool("fluidsynth", True)
+
+    @property
+    def live_limiter_enabled(self):
+        """Clé "live_limiter" (défaut true) : false = pas de limiteur du mix à
+        l'écoute, écrêtage seul (Phase 8 étape 8c1, docs/DESIGN.md § 8a L3)."""
+        return self._get_bool("live_limiter", True)
 
     @property
     def sfizz_enabled(self):

@@ -43,8 +43,10 @@ class LivePlayMixin:
 
     #--------------------------------------------------------------------------
 
+    VOLUME_MAX = 200     # volume global jusqu'à 200 (Phase 8 étape 8c1, L4)
+
     def set_volume(self, volume):
-        if 0 <= volume <= 100:
+        if 0 <= volume <= self.VOLUME_MAX:
             self.volume = volume
             self.sound_man.set_volume(volume)
 

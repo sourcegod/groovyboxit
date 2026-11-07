@@ -11135,3 +11135,40 @@ fidèle à l'écoute.
 - **Rangement terminé (8b1-8b5)** : `src/` ne garde à sa racine que la
   logique du projet (16 fichiers) ; `src/audio/` réunit 9 modules et
   `engines/`. Aucun changement de comportement.
+- **8c1** — limiteur et volume global, conformes à L1-L8 :
+  - `src/audio/live_limiter.py`, `LiveLimiter` : seuil −0,3 dBFS
+    (`THRESHOLD_DB`, visé à ×(1 − 10⁻⁶) pour que l'arrondi en float32 ne
+    le dépasse jamais), retour 50 ms, attaque immédiate, stéréo liée ;
+    état `1 − gain` gardé d'un bloc à l'autre ; bloc calme sans réduction
+    en cours : un seul `max` ; `reduction_db()`, `gain`, `reset()`.
+    Vérifié par un script : écart au calcul échantillon par échantillon
+    1e-5 sur des blocs de tailles irrégulières, crête de sortie au seuil,
+    retour à 1 − (1 − g)/e au bout de 50 ms ; 66 µs par bloc de 512 qui
+    limite, 26 µs au repos (budget 11 600 µs).
+  - Pilote : `SoundDeviceDriver(…, limiter=True)`, `_callback` = `mix`,
+    limiteur, `np.clip` de sécurité ; `set_limiter(on)`, propriété
+    `limiter` ; `Mixer.mix` inchangé (export).
+  - `set_master_volume` : entier = pourcentage (0..200), réel = rapport
+    (0..2) — **défaut corrigé** : un volume de 1 donnait ×1 ;
+    `MASTER_MAX = 2.0`.
+  - Volume global 0..200 : `SoundManager.set_volume` (pygame plafonné à
+    ×1), `DrumPlayer.set_volume` (`VOLUME_MAX`), SpinCtrl de la fenêtre
+    principale, `_set_master_volume_undo` et `_master_from_dict`
+    (`MASTER_VOLUME_MAX`), `AppConfig.master_volume`.
+  - Clé `"live_limiter"` (`AppConfig.live_limiter_enabled`, défaut true)
+    passée au pilote par `MainWindow`.
+  - Annonce (`ProjectMixin.master_volume_text`) : « Volume Global: 150
+    (+3,5 dB) » au-dessus de 100 (champ Volume, `+` / `-`, Ctrl+Haut /
+    Ctrl+Bas).
+  - Vérifié par un script (vraie `MainWindow`) : limiteur actif, volume
+    80 / 150 / 200, 260 borné à 200, **1 → ×0,01**, SpinCtrl jusqu'à 200.
+  - `pytest` : **12 tests rouges jusqu'à 8d1** : bornes à 100 des tests du
+    volume global (`test_master_mix.py`, `test_sound_device_driver.py`),
+    pilotes construits sans `__init__` (sans `_limiter`) dans
+    `test_mixer.py` et `test_sound_device_driver.py`, fenêtre factice de
+    `test_key_manager.py` sans `master_volume_text`.
+- **Essai de 8c1 (utilisateur, 2026-11-07)** : concluant ; « ça marche
+  vraiment bien » : volume global poussé jusqu'à 200 (+6 dB) sans aucune
+  saturation. **Suite notée** : la clé `live_limiter` ira plus tard dans
+  les préférences de l'utilisateur, catégorie Audio (chantier du dialogue
+  de configuration, pas commencé).

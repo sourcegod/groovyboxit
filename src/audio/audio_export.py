@@ -405,7 +405,8 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
     avant ignorées (W15, W17) ; tracks : pistes rendues (les autres sont
     vidées), None = toutes. tempo_map : carte de tempo jouée (celle du
     player) ; voice_manager : volume, pan, durée, mute et solo des pads ;
-    master_pan, master_volume (0..100 ou 0..1) : pan et volume globaux.
+    master_pan, master_volume (entier 0..200 en %, ou réel en rapport) : pan
+    et volume globaux.
     progress(fraction 0..1) et cancelled() -> bool sont appelés au plus une
     fois par seconde rendue ; status_cb(message) reçoit les messages du
     passage à blanc (patch introuvable…). Retourne un RenderResult non

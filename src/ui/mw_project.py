@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import time
@@ -1350,7 +1351,7 @@ class ProjectMixin:
         if isinstance(d, dict):
             v, p = d.get("volume"), d.get("pan")
             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                vol = max(0, min(100, int(v)))
+                vol = max(0, min(self.MASTER_VOLUME_MAX, int(v)))
             if isinstance(p, (int, float)) and not isinstance(p, bool):
                 pan = max(-100, min(100, int(p)))
         return vol, pan
@@ -1363,10 +1364,21 @@ class ProjectMixin:
         self._volume_ctrl.SetValue(self._player.volume)
         self._pan_ctrl.SetValue(self._player.pan)
 
+    MASTER_VOLUME_MAX = 200     # Phase 8 étape 8c1 (L4) : jusqu'à +6 dB
+
+    @staticmethod
+    def master_volume_text(vol):
+        """Annonce du volume global (L8) : « 80 », et au-dessus de 100 le
+        gain ajouté, « 150 (+3,5 dB) », pour savoir qu'on amplifie."""
+        if vol <= 100:
+            return str(vol)
+        db = 20.0 * math.log10(vol / 100.0)
+        return f"{vol} (+{db:.1f} dB)".replace(".", ",")
+
     def _set_master_volume_undo(self, vol):
         """Volume global avec Undo regroupé (D4) : rien si la valeur ne
         change pas. Retourne le volume."""
-        vol = max(0, min(100, int(vol)))
+        vol = max(0, min(self.MASTER_VOLUME_MAX, int(vol)))
         if vol != self._player.volume:
             self._add_mix_undo(f"Volume global: {vol}", ("master_volume",))
             self._player.set_volume(vol)
