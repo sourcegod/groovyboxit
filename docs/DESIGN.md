@@ -11172,3 +11172,31 @@ fidèle à l'écoute.
   saturation. **Suite notée** : la clé `live_limiter` ira plus tard dans
   les préférences de l'utilisateur, catégorie Audio (chantier du dialogue
   de configuration, pas commencé).
+- **8d1** — tests de 8c1 :
+  - `tests/test_live_limiter.py` (nouveau, 46 tests) : constantes égales
+    à celles de l'export ; `LiveLimiter` comparé au calcul échantillon par
+    échantillon (blocs de 512, de 1, de 4096, de tailles irrégulières),
+    seuil jamais dépassé (bruit fort, blocs aléatoires), attaque immédiate
+    (échantillons d'avant intacts, crête au seuil), retour de 50 ms
+    (1 − (1 − g)/e à τ, e⁻⁵ à 5τ), état identique d'un seul bloc ou en
+    morceaux, signal sous le seuil intact au bit près, stéréo liée,
+    silence et bloc vide, float32 en place, `reduction_db` et `reset`,
+    seuil et retour réglables ; callback du pilote avec limiteur (au
+    seuil, pas écrêté) et sans (écrêté à 1), `set_limiter`, limiteur après
+    le volume global, `Mixer.mix` de l'export non limité ;
+    `set_master_volume` (13 cas : entier = %, réel = rapport, **1 →
+    ×0,01**, plafond ×2, entier numpy) ; volume 0..200 de `SoundManager`
+    (pygame plafonné à ×1) et du lecteur ; `master_volume_text` ; clés
+    `live_limiter` et `master_volume` ; **vraie fenêtre principale** avec
+    un pilote factice : la clé arrive au pilote (vraie et fausse),
+    SpinCtrl jusqu'à 200 ; `_Session` de l'export à 200 (×2) et à 1,0.
+  - Les 12 tests rouges de 8c1 adaptés : `test_master_mix.py` (bornes à
+    200 ; `+` au-delà de 100 amplifie, `+` à 200 ne fait rien),
+    `test_sound_device_driver.py` (plafond ×2 ; pilotes sans `__init__`
+    sans limiteur), `test_mixer.py` (« mix puis écrêtage » sans limiteur),
+    `test_key_manager.py` (fenêtre factice avec `MASTER_VOLUME_MAX` et
+    `master_volume_text`).
+  - Vérifié en cassant le code : callback sans limiteur (2 échecs),
+    ancienne règle du volume (4), état non gardé entre blocs (7), plafond
+    de l'Undo à 100 (5), annonce sans dB (3).
+  - `SPECS.md`. 3730 verts, deux passages.

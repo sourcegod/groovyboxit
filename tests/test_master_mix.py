@@ -144,8 +144,11 @@ def test_config_reads_values(tmp_path):
 
 
 def test_config_clamps_values(tmp_path):
-    cfg = _write_config(tmp_path, {"master_volume": 150, "master_pan": -300})
-    assert (cfg.master_volume, cfg.master_pan) == (100, -100)
+    # volume global jusqu'à 200 depuis la Phase 8 étape 8c1 (L4)
+    cfg = _write_config(tmp_path, {"master_volume": 250, "master_pan": -300})
+    assert (cfg.master_volume, cfg.master_pan) == (200, -100)
+    cfg = _write_config(tmp_path, {"master_volume": 150, "master_pan": 0})
+    assert cfg.master_volume == 150
     cfg = _write_config(tmp_path, {"master_volume": -5, "master_pan": 300})
     assert (cfg.master_volume, cfg.master_pan) == (0, 100)
 
@@ -187,7 +190,8 @@ def test_master_from_dict_partial_and_invalid_fields(tmp_path):
     assert w._master_from_dict({"volume": 60}) == (60, -10)
     assert w._master_from_dict({"pan": 25}) == (80, 25)
     assert w._master_from_dict({"volume": "60", "pan": True}) == (80, -10)
-    assert w._master_from_dict({"volume": 500, "pan": -500}) == (100, -100)
+    assert w._master_from_dict({"volume": 500, "pan": -500}) == (200, -100)   # 8c1
+    assert w._master_from_dict({"volume": 180}) == (180, -10)
 
 
 def test_save_writes_master_key(win):
@@ -285,7 +289,12 @@ def test_volume_and_pan_are_separate_entries(win):
 
 def test_unchanged_value_adds_nothing(win):
     win._set_master_volume_undo(100)
-    win._set_master_volume_undo(140)              # borné à 100 : inchangé
+    win._set_master_pan_undo(0)
+    assert win.titles() == []
+    win._set_master_volume_undo(200)
+    win._undo.clear()
+    win._project_modified = False
+    win._set_master_volume_undo(240)              # borné à 200 (8c1) : inchangé
     win._set_master_pan_undo(0)
     assert win.titles() == []
     assert win._project_modified is False
@@ -359,9 +368,18 @@ def test_plus_minus_six(win, key, ukey, expected):
     assert win.status[-1] == f"Volume: {expected}"
 
 
-def test_plus_at_100_adds_nothing(win):
+def test_plus_above_100_amplifies(win):
+    # au-delà de 100 depuis la Phase 8 étape 8c1 (L4) : le limiteur protège
     KeyManager(win)._handle_chars(_Event(ord('+'), ord('+')), _ctx(ord('+'), ord('+')))
-    assert win.master() == (100, 0)
+    assert win.master() == (101, 0)
+    assert win.titles() == ["Volume global: 101"]
+
+
+def test_plus_at_200_adds_nothing(win):
+    win._set_master_volume_undo(200)
+    win._undo.clear()
+    KeyManager(win)._handle_chars(_Event(ord('+'), ord('+')), _ctx(ord('+'), ord('+')))
+    assert win.master() == (200, 0)
     assert win.titles() == []
 
 

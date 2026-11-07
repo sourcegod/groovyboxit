@@ -278,9 +278,15 @@ def test_master_volume_zero():
 
 
 def test_master_volume_clamp_above():
+    # jusqu'à 200 % depuis la Phase 8 étape 8c1 (L4)
     _drv.set_master_volume(200)
-    assert _drv._master_vol == 1.0
-    print("  set_master_volume(200) → clamp 1.0 : OK")
+    assert _drv._master_vol == 2.0
+    _drv.set_master_volume(300)
+    assert _drv._master_vol == 2.0
+    _drv.set_master_volume(3.5)
+    assert _drv._master_vol == 2.0
+    _drv.set_master_volume(100)
+    print("  set_master_volume(300) → clamp 2.0 : OK")
 
 
 def test_master_volume_clamp_below():
@@ -493,6 +499,7 @@ def _bare_driver(master_vol=1.0):
     d._lock = _threading.Lock()
     d._master_vol = master_vol
     d._render_sources = ()
+    d._limiter = None            # sans limiteur : mix puis écrêtage (8c1)
     return d
 
 

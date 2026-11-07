@@ -231,13 +231,15 @@ def test_mixer_load_wav(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Callback du driver : mix(), puis écrêtage à ±1
+# Callback du driver sans limiteur : mix(), puis écrêtage à ±1 (le limiteur
+# à l'écoute, Phase 8 étape 8c1, est testé dans test_live_limiter.py)
 # ---------------------------------------------------------------------------
 
 def _bare_driver():
-    """Driver sans flux PortAudio, construit par Mixer.__init__."""
+    """Driver sans flux PortAudio ni limiteur, construit par Mixer.__init__."""
     d = SoundDeviceDriver.__new__(SoundDeviceDriver)
     Mixer.__init__(d)
+    d._limiter = None
     return d
 
 

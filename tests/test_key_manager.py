@@ -315,6 +315,8 @@ class FakeWindow:
     _set_track_pan_undo    = TrackMixin._set_track_pan_undo      # Phase 7 étape 15b1
     _set_pad_pan_undo      = PadMixin._set_pad_pan_undo
     _set_master_volume_undo = ProjectMixin._set_master_volume_undo   # Phase 7 étape 15d1
+    MASTER_VOLUME_MAX  = ProjectMixin.MASTER_VOLUME_MAX                # Phase 8 étape 8c1
+    master_volume_text = staticmethod(ProjectMixin.master_volume_text)
     _set_master_pan_undo    = ProjectMixin._set_master_pan_undo
     def _take_begin(self, title):
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
