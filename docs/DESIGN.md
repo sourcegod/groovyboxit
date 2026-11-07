@@ -11250,3 +11250,98 @@ direct, volume de piste au-delà de 100.
 Audio — chantier du dialogue de configuration, pas commencé. Restent
 aussi, de la Phase 8 étape 7 : mode Clavier par défaut sur une banque ou
 un SFZ, audition dans l'Explorateur.
+
+## Phase 8 étape 9a — Mode Clavier d'office sur une banque ou un Synth SFZ
+
+### Numérotation des commits de ce chantier
+
+`9a` = ce plan (doc seule). Le code commence à `9b1` (implémentation),
+puis `9c1` (tests), `9d1` (clôture) ; `9b2`… pour un commit imprévu.
+Décisions notées **K1, K2…** (lettre libre dans cette Phase).
+
+### Origine du besoin (utilisateur, essai de la Phase 8 étape 7h1)
+
+Pour jouer un slot Banque ou Synth SFZ au clavier MIDI, il faut d'abord
+passer en mode Clavier (Ctrl+2) depuis la fenêtre principale. Avec
+FluidSynth et sfizz, il n'y a aucun échantillon à recalculer : le mode
+Clavier pourrait être choisi d'office au chargement de la banque.
+
+### État des lieux constaté en code (2026-11-07, 3730 tests verts)
+
+- **Mode d'entrée** : `MainWindow._input_mode` (« pad » ou
+  « keyboard », défaut « pad », de session) ; `_set_input_mode(mode)`
+  (`main_window.py`), appelé par Ctrl+1 / Ctrl+2 (`key_handler_ctrl.py`)
+  et la liste « Mode » (`_on_mode_choice`) ; jamais d'office. En Clavier :
+  gamme d'entrée mise à jour, annonce « Mode: Keyboard — major @ C3 », et
+  sur un **synthé WAV** pré-calcul de 61 notes transposées (36..96) dans
+  un fil — la raison de ne pas passer en Clavier d'office.
+- **Effets du mode** sur un slot qui joue des notes : pavé numérique
+  (`key_handler_numpad.py` : touches 1-8 = gamme, octave par `+` / `-`, en
+  Clavier ; pads en Pad), contrôleur MIDI (`midi_handler_window.on_note_on`
+  : notes chromatiques transposées en Clavier, rangées sur les pads en
+  Pad), `_play` (autoplay de la grille).
+- **Le slot joué (`_cur_slot`) change** à : `_go_to_track` (navigation des
+  pistes, `mw_tracks.py`), `_follow_track_slot` (Ctrl+T, mode Rack,
+  changement de pattern en mode Rack, Program Change du contrôleur en mode
+  Rack, Undo qui change le slot joué), propriétés de piste (slot changé),
+  `_load_project` (Ctrl+O, démarrage), import MIDI (`mw_project.py`) ; et
+  son **contenu** change par l'Explorateur (Kit, Patch, Banque, SFZ) quand
+  il vise le slot joué, ou par un Undo.
+
+### Décisions validées (utilisateur, 2026-11-07)
+
+**K1 — Banque et Synth SFZ → mode Clavier d'office** (rien à calculer) ;
+un synthé WAV garde le mode en cours (son pré-calcul reste au choix de
+l'utilisateur, Ctrl+2).
+
+**K2 — Kit → mode Pad d'office** (les pads jouent la batterie).
+
+**K3 — une batterie sur une banque ou un SFZ** (piste au canal 10)
+**passe aussi en Clavier**, comme les autres instruments de banque.
+
+**K4 — un choix manuel est gardé jusqu'au prochain changement du slot
+joué** : Ctrl+1 sur un piano de banque laisse le mode Pad tant qu'on reste
+sur ce slot ; le passage d'office ne se refait qu'en arrivant sur un autre
+slot, ou quand le contenu du slot joué change de type.
+
+### Choix de conception proposés
+
+**K5 — une seule méthode, `_apply_auto_input_mode()`** (`main_window.py`),
+appelée après chaque changement du slot joué ou de son contenu (liste
+de l'état des lieux) :
+- clé = `(_cur_slot, type du slot)` ; si elle est la même qu'au dernier
+  appel, rien (K4) ; sinon elle est retenue, puis la règle s'applique :
+  Banque ou SFZ → « keyboard », Kit → « pad », autre (synthé WAV, slot
+  vide) → mode inchangé ;
+- rien si le mode voulu est déjà le mode en cours ;
+- pas de passage d'office pendant l'enregistrement ou le décompte (le
+  changement de piste y est déjà refusé).
+
+**K6 — annonce** : le passage d'office complète l'annonce du changement
+de slot au lieu de l'effacer : « Piste 3 — Discord GM — Melodic — Mode
+Clavier » ; « … — Mode Pad » pour un kit. `_set_input_mode` reçoit un
+argument `announce` (vrai par défaut : Ctrl+1 / Ctrl+2 inchangés) ; en
+Clavier, la gamme d'entrée est mise à jour comme aujourd'hui (pas de
+pré-calcul : seul un synthé WAV en a besoin, K1).
+
+**K7 — démarrage et ouverture d'un projet** : la règle s'applique au slot
+joué une fois le projet chargé (projet dont la piste courante est sur une
+banque → Clavier d'office).
+
+**K8 — le mode reste de session** (pas sauvegardé dans le `.gvp`), comme
+aujourd'hui.
+
+### Portée exclue
+
+- Mode d'office pour les synthés WAV (K1) ; préférence pour couper la
+  règle (préférences, catégorie Audio ou Clavier, plus tard).
+- Mode différent par piste mémorisé ; mode de l'éditeur MIDI.
+
+### Découpage
+
+| Étape | Contenu | Fichiers |
+|---|---|---|
+| **9a** | Doc — ce plan. | `docs/DESIGN.md` |
+| **9b1** | Implémentation — `_apply_auto_input_mode` (K5), appels aux changements du slot joué et de son contenu, annonce (K6), démarrage et projet (K7). Essai au clavier MIDI et au pavé numérique avec Orca. | `src/ui/main_window.py`, `src/ui/mw_tracks.py`, `src/ui/mw_project.py`, `src/ui/mw_pads.py` |
+| **9c1** | Tests — règle (Banque, SFZ, Kit, synthé, vide), choix manuel gardé (K4), contenu du slot changé, chaque appelant, pas pendant l'enregistrement, annonces. | `tests/test_auto_input_mode.py` (nouveau), `docs/SPECS.md` |
+| **9d1** | Doc — clôture (DESIGN, SPECS : Modes de jeu ; aide F1), `check_specs_tests`, `pytest` complet, mémoire. | `docs/DESIGN.md`, `docs/SPECS.md`, `docs/shortcuts.md` |
