@@ -117,7 +117,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._vel_level        = 4
         self._init_sound()
         self._synths_dir  = os.path.join(self._base_dir, "synths")
-        cfg = AppConfig(self._base_dir)
+        cfg = self._cfg
         self._patches_dir  = cfg.patches_dir
         self._samples_dir  = cfg.samples_dir
         self._kits_dir     = cfg.kits_dir
@@ -215,6 +215,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._base_dir = os.path.dirname(os.path.dirname(ui_dir))
         base_dir = self._base_dir
         cfg = AppConfig(base_dir)
+        self._cfg = cfg       # config + préférences (Phase 8 étape 10b1)
         media_dir = cfg.media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
         # limiteur du mix à l'écoute (Phase 8 étape 8c1, L3)

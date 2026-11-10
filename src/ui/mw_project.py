@@ -886,6 +886,30 @@ class ProjectMixin:
             msg += " ; " + " ; ".join(details)
         status(msg)
 
+    def _relocate_rack_files(self):
+        """Soundfonts et sources SFZ absolues introuvables du projet chargé :
+        cherchées dans les nouveaux dossiers (Phase 8 étape 10b1, docs/DESIGN.md
+        § 10a P9, AppConfig.relocate) ; le projet garde le nouveau chemin à
+        son prochain enregistrement."""
+        cfg = getattr(self, "_cfg", None)
+        if cfg is None:
+            return
+        rack = self._rack
+        for i, path in enumerate(rack.bank_files):
+            new = cfg.relocate(path) if path else path
+            if new != path:
+                rack.set_bank_file(i, new)
+        for i in range(rack.NUM_SLOTS):
+            slot = rack.get_slot(i)
+            if slot.type != InstrumentType.SFZ:
+                continue
+            for key in ("sfz_source", "sfz_file"):
+                value = slot.config.get(key)
+                if isinstance(value, str) and os.path.isabs(value.strip()):
+                    new = cfg.relocate(value.strip())
+                    if new != value.strip():
+                        slot.config = {**slot.config, key: new}   # pas en place
+
     def _update_title(self):
         name = os.path.basename(self._project_path)
         star = "*" if self._project_modified else ""
@@ -1042,6 +1066,7 @@ class ProjectMixin:
         self._rewind_playback()                # lecture arrêtée, au début (Phase 8 étape 7d2)
         if "rack" in data:
             self._rack.from_dict(data["rack"])
+            self._relocate_rack_files()
             self._update_slot_list()
         for i, p in enumerate(data.get("patterns", [])):
             if i >= len(self._pattern_list):

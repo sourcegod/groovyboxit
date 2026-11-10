@@ -3,28 +3,104 @@
     File: src/app_config.py
     Chargement de la configuration applicative depuis data/config.json.
     Les chemins manquants tombent back sur des sous-dossiers relatifs au projet.
+    Préférences de l'utilisateur (Phase 8 étape 10b1, docs/DESIGN.md § 10a
+    P1) : ~/.config/groovyboxit/preferences.json, lu par-dessus
+    data/config.json (valeurs par défaut, jamais écrit) ; seul le dialogue
+    des Préférences l'écrit (save_preferences).
     Date: Mon, 26/05/2026
     Author: Coolbrother
 """
 import os
 import json
+import tempfile
 
 
 class AppConfig:
     """
-    Charge data/config.json depuis la racine du projet.
+    Charge data/config.json depuis la racine du projet, puis les préférences
+    de l'utilisateur par-dessus (une clé de preferences.json l'emporte).
     Fournit les chemins configurables avec fallback relatif si absent.
     """
 
     CONFIG_RELATIVE = os.path.join("data", "config.json")
 
-    def __init__(self, base_dir):
+    # Préférences de l'utilisateur (10b1, P1). La variable d'environnement
+    # GROOVYBOXIT_PREFS désigne un autre fichier (tests, essais).
+    PREFS_ENV     = "GROOVYBOXIT_PREFS"
+    PREFS_DEFAULT = os.path.join("~", ".config", "groovyboxit", "preferences.json")
+
+    def __init__(self, base_dir, prefs_path=None):
+        """prefs_path : fichier des préférences ; défaut : variable
+        GROOVYBOXIT_PREFS, sinon ~/.config/groovyboxit/preferences.json."""
         self._base_dir = base_dir
-        self._data = {}
+        self._defaults = {}
         config_path = os.path.join(base_dir, self.CONFIG_RELATIVE)
         if os.path.isfile(config_path):
             with open(config_path, "r", encoding="utf-8") as f:
-                self._data = json.load(f)
+                self._defaults = json.load(f)
+        if prefs_path is None:
+            prefs_path = os.environ.get(self.PREFS_ENV) or self.PREFS_DEFAULT
+        self._prefs_path = os.path.expanduser(prefs_path)
+        self._prefs = self._read_prefs()
+        self._data = {**self._defaults, **self._prefs}
+
+    # ------------------------------------------------------------------
+    # Préférences de l'utilisateur (10b1, P1)
+    # ------------------------------------------------------------------
+
+    @property
+    def prefs_path(self):
+        return self._prefs_path
+
+    def _read_prefs(self):
+        """Contenu de preferences.json ; {} s'il manque, ou s'il est illisible
+        (JSON invalide, pas un objet)."""
+        try:
+            with open(self._prefs_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def preferences(self):
+        """Copie des clés écrites par l'utilisateur."""
+        return dict(self._prefs)
+
+    def default(self, key, fallback=None):
+        """Valeur de data/config.json pour key (sans les préférences)."""
+        return self._defaults.get(key, fallback)
+
+    def save_preferences(self, values):
+        """Écrit values dans preferences.json et les applique à cette
+        instance. Une valeur None retire la clé (retour à la valeur de
+        data/config.json). Les autres clés du fichier sont gardées, relues
+        juste avant l'écriture ; un fichier illisible est gardé en .bak.
+        Écriture sûre : fichier temporaire du même dossier, puis renommage.
+        Retourne le chemin du fichier."""
+        path = self._prefs_path
+        folder = os.path.dirname(path) or "."
+        os.makedirs(folder, exist_ok=True)
+        current = self._read_prefs()
+        if not current and os.path.isfile(path) and os.path.getsize(path) > 0:
+            os.replace(path, path + ".bak")          # illisible : rien de perdu
+        for key, value in values.items():
+            if value is None:
+                current.pop(key, None)
+            else:
+                current[key] = value
+        fd, tmp = tempfile.mkstemp(prefix=".preferences-", suffix=".json", dir=folder)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(current, f, ensure_ascii=False, indent=2, sort_keys=True)
+                f.write("\n")
+            os.replace(tmp, path)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise
+        self._prefs = current
+        self._data = {**self._defaults, **current}
+        return path
 
     def _get_dir(self, key, default_name):
         """Retourne le chemin pour 'key'.
@@ -58,17 +134,25 @@ class AppConfig:
     def media_dir(self):
         return self._get_dir("media_dir", "media")
 
+    # Kits, patchs, samples (10b1, P8) : clé absente → sous-dossier du
+    # parent des banques de l'utilisateur (user_banks_dir).
+
+    def _user_bank_dir(self, key, subdir):
+        if self._get_str(key):
+            return self._get_dir(key, subdir)
+        return os.path.join(self.user_banks_dir, subdir)
+
     @property
     def patches_dir(self):
-        return self._get_dir("patches_dir", "patches")
+        return self._user_bank_dir("patches_dir", "PATCHS")
 
     @property
     def samples_dir(self):
-        return self._get_dir("samples_dir", "samples")
+        return self._user_bank_dir("samples_dir", "SAMPLES")
 
     @property
     def kits_dir(self):
-        return self._get_dir("kits_dir", "kits")
+        return self._user_bank_dir("kits_dir", "KITS")
 
     @property
     def presets_dir(self):
@@ -158,10 +242,13 @@ class AppConfig:
 
     @property
     def soundfonts_dir(self):
-        """Dossier des soundfonts (absolu, ou relatif à base_dir)."""
+        """Dossier des soundfonts (absolu, ou relatif à base_dir). Défaut
+        (10b1, P8) : <user_banks_dir>/banks/sf2 s'il existe, sinon l'ancien
+        dossier système /usr/share/sounds/sf2 (fichiers pas encore rangés)."""
         value = self._get_str("soundfonts_dir")
         if not value:
-            return self.SOUNDFONTS_DIR_DEFAULT
+            new = os.path.join(self.user_banks_dir, self.BANKS_SUBDIR, self.SF2_SUBDIR)
+            return new if os.path.isdir(new) else self.SOUNDFONTS_DIR_DEFAULT
         if os.path.isabs(value):
             return value
         return os.path.join(self._base_dir, value)
@@ -197,14 +284,21 @@ class AppConfig:
     SFIZZ_GAIN_DEFAULT = 1.5
 
     @property
+    def legacy_sfz_dir(self):
+        """Ancien dossier des SFZ (avant 10b1) : media/sfz à côté du dossier
+        des projets (/home/com/groovybox/media/sfz)."""
+        return os.path.join(os.path.dirname(os.path.normpath(self.projects_dir)),
+                            "media", "sfz")
+
+    @property
     def sfz_dir(self):
         """Dossier des instruments SFZ (absolu, ou relatif à base_dir).
-        Défaut : media/sfz à côté du dossier des projets
-        (/home/com/groovybox/media/sfz)."""
+        Défaut (10b1, P8) : <user_banks_dir>/banks/sfz s'il existe, sinon
+        l'ancien media/sfz (legacy_sfz_dir, fichiers pas encore rangés)."""
         value = self._get_str("sfz_dir")
         if not value:
-            return os.path.join(os.path.dirname(os.path.normpath(self.projects_dir)),
-                                "media", "sfz")
+            new = os.path.join(self.user_banks_dir, self.BANKS_SUBDIR, self.SFZ_SUBDIR)
+            return new if os.path.isdir(new) else self.legacy_sfz_dir
         if os.path.isabs(value):
             return value
         return os.path.join(self._base_dir, value)
@@ -238,3 +332,103 @@ class AppConfig:
         """Clé "sfizz" (défaut true) : false = moteur sfizz coupé, slots
         Synth SFZ muets (Z7)."""
         return self._get_bool("sfizz", True)
+
+    # ------------------------------------------------------------------
+    # Préférences du dialogue (Phase 8 étape 10b1, docs/DESIGN.md § 10a)
+    # ------------------------------------------------------------------
+
+    # Général (P5)
+    STARTUP_LAST = "last"      # ouvrir le dernier projet (défaut)
+    STARTUP_NEW  = "new"       # nouveau projet
+    STARTUP_CHOICES = (STARTUP_LAST, STARTUP_NEW)
+
+    @property
+    def startup(self):
+        """Clé "startup" : "last" (défaut) ou "new"."""
+        value = self._get_str("startup").lower()
+        return value if value in self.STARTUP_CHOICES else self.STARTUP_LAST
+
+    @property
+    def last_project(self):
+        """Clé "last_project" : chemin du dernier projet ouvert ou enregistré
+        (absolu ; "~" développé), ou "" ."""
+        value = self._get_str("last_project")
+        return os.path.expanduser(value) if value else ""
+
+    @property
+    def autoplay(self):
+        """Clé "autoplay" (défaut true) : le pad joue en naviguant dans la
+        grille et dans la liste des pads."""
+        return self._get_bool("autoplay", True)
+
+    @property
+    def explorer_autoplay(self):
+        """Clé "explorer_autoplay" (défaut true) : audition dans
+        l'Explorateur (à construire)."""
+        return self._get_bool("explorer_autoplay", True)
+
+    # Projet (P8) : projets et banques de l'appli et de l'utilisateur
+    BANKS_SUBDIR = "banks"     # sous user_banks_dir : SF2 et SFZ réunis
+    SF2_SUBDIR   = "sf2"
+    SFZ_SUBDIR   = "sfz"
+
+    def _get_path(self, key, default):
+        """Chemin de key : absolu tel quel ("~" développé), relatif à
+        base_dir ; default si la clé manque ou est vide."""
+        value = self._get_str(key)
+        if not value:
+            return default
+        value = os.path.expanduser(value)
+        if os.path.isabs(value):
+            return value
+        return os.path.join(self._base_dir, value)
+
+    @property
+    def app_projects_dir(self):
+        """Démos de patterns livrées avec l'appli ; défaut <base_dir>/projects."""
+        return self._get_path("app_projects_dir", os.path.join(self._base_dir, "projects"))
+
+    @property
+    def app_banks_dir(self):
+        """Banques livrées avec l'appli ; défaut <base_dir>/banks."""
+        return self._get_path("app_banks_dir", os.path.join(self._base_dir, "banks"))
+
+    @property
+    def user_banks_dir(self):
+        """Parent des banques de l'utilisateur (KITS, PATCHS, SAMPLES,
+        banks/sf2, banks/sfz) ; défaut : le parent du dossier des projets
+        (/home/com/groovybox)."""
+        return self._get_path("user_banks_dir",
+                              os.path.dirname(os.path.normpath(self.projects_dir)))
+
+    # Fichiers déplacés (P9)
+
+    SF_EXTS = (".sf2", ".sf3")
+
+    def relocate(self, path):
+        """Chemin d'un fichier de banque (soundfont, source SFZ) enregistré
+        dans un projet :
+        - sous un ancien dossier (/usr/share/sounds/sf2 → soundfonts_dir,
+          media/sfz → sfz_dir) : le même chemin relatif dans le nouveau
+          dossier s'il s'y trouve, même si l'ancien fichier existe encore
+          (soundfonts copiées, originaux du système laissés en place) ;
+        - sinon tel quel s'il existe ;
+        - sinon le même nom dans soundfonts_dir (soundfont) ou sfz_dir
+          (autre) ; inchangé si rien n'est trouvé."""
+        if not isinstance(path, str) or not path:
+            return path
+        norm = os.path.normpath(path)
+        pairs = ((self.SOUNDFONTS_DIR_DEFAULT, self.soundfonts_dir),
+                 (self.legacy_sfz_dir, self.sfz_dir))
+        for old, new in pairs:
+            old = os.path.normpath(old)
+            if os.path.normpath(new) != old and norm.startswith(old + os.sep):
+                cand = os.path.join(new, os.path.relpath(norm, old))
+                if os.path.exists(cand):
+                    return cand
+        if os.path.exists(path):
+            return path
+        is_sf = os.path.splitext(norm)[1].lower() in self.SF_EXTS
+        folder = self.soundfonts_dir if is_sf else self.sfz_dir
+        cand = os.path.join(folder, os.path.basename(norm))
+        return cand if os.path.exists(cand) else path

@@ -12,3 +12,17 @@ def wx_app():
     app = wx.App(False)
     yield app
     app.Destroy()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_preferences(tmp_path_factory):
+    """Préférences de l'utilisateur hors de ~/.config pendant les tests
+    (Phase 8 étape 10b1) : un fichier absent, dans un dossier temporaire."""
+    path = tmp_path_factory.mktemp("prefs") / "preferences.json"
+    old = os.environ.get("GROOVYBOXIT_PREFS")
+    os.environ["GROOVYBOXIT_PREFS"] = str(path)
+    yield path
+    if old is None:
+        os.environ.pop("GROOVYBOXIT_PREFS", None)
+    else:
+        os.environ["GROOVYBOXIT_PREFS"] = old

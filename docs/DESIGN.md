@@ -11582,7 +11582,7 @@ implémentation → tests et ses essais.
   par-dessus `data/config.json` et écrit les préférences (P1) ; nouvelles
   clés `startup`, `last_project`, `autoplay`, `explorer_autoplay`,
   `app_projects_dir`, `app_banks_dir`, `user_banks_dir` ; défauts
-  `banks/SF2` et `banks/SFZ` (P8) ; recherche par nom des fichiers
+  `banks/sf2` et `banks/sfz` (P8) ; recherche par nom des fichiers
   déplacés (P9).
 - **10d1 / 10e1 — le dialogue** : onglets, Gauche / Droite sur l'onglet,
   Ctrl+Tab / Ctrl+Shift+Tab (P4), Alt+Shift+P depuis les trois fenêtres
@@ -11664,9 +11664,9 @@ chemins, chacun avec un champ texte et un bouton « Parcourir… » :
   **absentes, elles se déduisent du parent de l'utilisateur**.
 - **Soundfonts et SFZ (validé, 2026-11-10)** : un nouveau dossier
   **`banks`** sous le parent de l'utilisateur les réunit :
-  `/home/com/groovybox/banks/SF2` (défaut de `soundfonts_dir`, au lieu du
+  `/home/com/groovybox/banks/sf2` (défaut de `soundfonts_dir`, au lieu du
   dossier système `/usr/share/sounds/sf2`) et
-  `/home/com/groovybox/banks/SFZ` (défaut de `sfz_dir`, au lieu de
+  `/home/com/groovybox/banks/sfz` (défaut de `sfz_dir`, au lieu de
   `/home/com/groovybox/media/sfz`). Kits, patchs, samples restent dans
   `KITS`, `PATCHS`, `SAMPLES`.
 
@@ -11674,7 +11674,7 @@ chemins, chacun avec un champ texte et un bouton « Parcourir… » :
 chemin absolu des soundfonts et des SFZ (essais 17d1, 17f1, 7d1, 7f1 :
 `/usr/share/sounds/sf2/FluidR3_GM.sf2`…). Au chargement, un fichier
 introuvable est **recherché par son nom** dans le nouveau dossier
-(`banks/SF2`, `banks/SFZ`, en gardant le chemin relatif sous l'ancien
+(`banks/sf2`, `banks/sfz`, en gardant le chemin relatif sous l'ancien
 dossier pour un SFZ) ; il est ensuite enregistré avec le nouveau chemin.
 Le rangement des fichiers se fait à l'essai, avec l'accord de
 l'utilisateur : les SFZ **déplacés** de `media/sfz` (1,5 Go), les SF2
@@ -11693,3 +11693,57 @@ en place).
 - **Q5** (étape 11) : boutons Tester. Sortie audio : un court bip ;
   sortie MIDI : une note de test ; entrée MIDI : la prochaine note reçue
   annoncée ; entrée audio : un niveau.
+
+### Avancement 10b1 (implémentation — configuration)
+
+- **`AppConfig(base_dir, prefs_path=None)`** (`src/app_config.py`) : lit
+  `data/config.json` (valeurs par défaut), puis `preferences.json` par
+  dessus. Fichier : `prefs_path`, sinon la variable `GROOVYBOXIT_PREFS`,
+  sinon `~/.config/groovyboxit/preferences.json`. Fichier absent ou
+  illisible : aucune préférence.
+- **`save_preferences(values)`** : relit le fichier, applique les clés
+  (`None` = clé retirée, retour au défaut), garde les autres, écrit par
+  fichier temporaire puis renommage (dossier créé au besoin) ; un fichier
+  illisible est gardé en `preferences.json.bak`. `preferences()`,
+  `default(key)` pour le dialogue.
+- **Nouvelles clés** : `startup` (« last » / « new »), `last_project`,
+  `autoplay`, `explorer_autoplay`, `app_projects_dir`
+  (`<racine>/projects`), `app_banks_dir` (`<racine>/banks`),
+  `user_banks_dir` (parent du dossier des projets).
+- **Défauts** : `kits_dir`, `patches_dir`, `samples_dir` absents →
+  `KITS`, `PATCHS`, `SAMPLES` sous `user_banks_dir` ; `soundfonts_dir` →
+  `banks/sf2`, `sfz_dir` → `banks/sfz` sous `user_banks_dir`.
+- **Écart au plan** : tant que `banks/sf2` ou `banks/sfz` n'existe pas,
+  l'ancien dossier sert encore (`/usr/share/sounds/sf2`, `media/sfz`) :
+  l'appli marche avant le rangement des fichiers.
+- **`relocate(path)`** (P9) : un chemin sous un ancien dossier passe au
+  même chemin relatif dans le nouveau dossier **dès que le fichier s'y
+  trouve, même si l'ancien existe encore** (écart au plan : les SF2 sont
+  copiés, les originaux du système restent) ; sinon tel quel s'il existe ;
+  sinon le même nom dans `banks/sf2` ou `banks/sfz`.
+- **`MainWindow._cfg`** garde la configuration ; `_load_project` appelle
+  `_relocate_rack_files()` (fichiers des emplacements de banque, sources
+  SFZ absolues) après la lecture du rack. Le nouveau chemin est écrit au
+  prochain enregistrement du projet.
+- **Tests** : `conftest.py` pointe `GROOVYBOXIT_PREFS` vers un fichier
+  temporaire absent (les tests ne lisent jamais les préférences réelles).
+  Suite : 3752 verts, **10 rouges jusqu'à 10c1** : les tests des défauts
+  de `soundfonts_dir` et `sfz_dir` (`test_app_config.py`) attendent les
+  anciens dossiers, et `/home/com/groovybox/banks` existe maintenant.
+- Sous-dossiers en minuscules, comme `/usr/share/sounds/` (demande de
+  l'utilisateur) : `banks/sf2`, `banks/sfz`.
+
+**Essai 10b1** : ranger les fichiers (SFZ déplacés de `media/sfz` vers
+`banks/sfz`, SF2 copiés vers `banks/sf2`), puis ouvrir les projets
+d'essai d'une banque (`essai_banque_17d1.gvp`) et d'un SFZ
+(`essai_sfz_7d1.gvp`) : ils doivent sonner comme avant.
+
+**Essai 10b1** (utilisateur, 2026-11-10) : concluant (fichiers rangés :
+SFZ déplacés dans `banks/sfz`, SF2 copiés dans `banks/sf2`). Le
+violoncelle de `essai_sfz_7d1.gvp` est muet, « (preset absent) » : **pas
+lié au rangement** (le fichier se charge et joue depuis `banks/sfz`). La
+source est un seul `.sfz` (programme 0), et la piste 3 commence par un
+Program Change 48 : depuis la Phase 8 étape 7f1 (Z22), le programme
+absent ne sonne pas. **Suite notée** (Phase 8 étape 7, après l'étape
+10) : une source à un seul programme ignore le numéro du Program Change
+et joue son unique programme, comme en 7d1.
