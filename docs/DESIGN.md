@@ -11481,3 +11481,215 @@ comportement d'avant ce chantier.
 **Suite notée** (Phase 8 étape 7) : audition dans l'Explorateur (un court
 extrait audio par banque / SFZ) ; dialogue des préférences (catégorie
 Audio : `live_limiter`, gains, moteurs).
+
+---
+
+## Phase 8 étape 10a — Dialogue des Préférences à onglets
+
+### Numérotation des commits de ce chantier
+
+`10a` = ce plan (doc seule). Le code commence à `10b1` (implémentation),
+puis `10c1` (tests), etc. ; `10b2`… pour un commit imprévu. Décisions
+notées **P1, P2…**.
+
+### Origine du besoin (utilisateur, 2026-10-26, 2026-11-07, 2026-11-10)
+
+Un dialogue des Préférences à onglets, qui écrit la configuration :
+Général, Matériel, Audio, Midi, Projet, Raccourcis, Divers.
+- Ctrl+Tab / Ctrl+Shift+Tab passent d'un onglet à l'autre ; **le focus
+  sur un onglet, Gauche / Droite passent à l'onglet voisin** (comme les
+  lecteurs d'écran l'attendent sous Windows et Linux).
+- **Alt+Shift+P** ouvre le dialogue **depuis toutes les fenêtres**.
+- Les entrées et sorties MIDI choisies ici **remplacent la liste « MIDI: »
+  de la fenêtre principale**.
+- Les entrées et sorties audio et MIDI choisies ici apparaîtront dans les
+  **propriétés des pistes**.
+- **Général** : démarrage sur un projet existant ou sur un nouveau
+  projet ; case Autoplay (lecture automatique dans l'Explorateur).
+- **Matériel** : pilotes de la carte audio, entrées audio, sorties audio,
+  boutons « Détecter les périphériques audio » et « Tester les
+  périphériques audio » ; entrées MIDI, sorties MIDI, boutons « Détecter
+  les périphériques MIDI » et « Tester les périphériques MIDI ». Si la
+  bibliothèque FluidSynth est installée, « Synthé FluidSynth » figure dans
+  les sorties MIDI et y est proposé par défaut.
+- **Audio**, **Midi** : les réglages correspondants de `config.json`.
+- **Projet** : chemins des projets de l'appli, des projets de
+  l'utilisateur, des banques de l'appli, des banques de l'utilisateur.
+- **Raccourcis**, **Divers** : plus tard.
+
+### État des lieux constaté en code (2026-11-10, 3762 tests verts)
+
+- **Configuration** : `AppConfig` (`src/app_config.py`) **lit seulement**
+  `data/config.json` (suivi par git, avec des chemins propres à cette
+  machine) ; l'appli ne l'écrit jamais (Phase 7 étape 15a1, D3). Lu dans
+  `MainWindow.__init__`, `_init_sound`, et les démos des moteurs. Clés :
+  - chemins : `media_dir`, `patches_dir`, `samples_dir`, `kits_dir`,
+    `presets_dir`, `projects_dir`, `exports_dir`, `sound_cache_dir`,
+    `click1_file`, `click2_file`, `soundfonts_dir`, `gm_soundfont`,
+    `sfz_dir` ;
+  - audio : `live_limiter`, `fluidsynth`, `sfizz`, `fluidsynth_gain`,
+    `sfizz_gain`, `master_volume`, `master_pan` ;
+  - MIDI : `midi_bank_select`.
+- **Sortie audio** : `SoundDeviceDriver` ouvre un `sd.OutputStream` sur
+  le **périphérique par défaut** de PortAudio (pas de `device=`), 44 100
+  Hz, bloc de 512. Sur cette machine, PortAudio voit les pilotes (« host
+  API ») ALSA et OSS ; côté ALSA : `default`, `pipewire`, `pulse`, la
+  carte `HDA Intel PCH` (analogique, HDMI)… **Aucune entrée audio**
+  utilisée par l'appli : pas de piste audio.
+- **Entrée MIDI** : `MidiManager` (python-rtmidi) ouvre **un seul port**
+  à la fois. La liste « MIDI: » de la fenêtre principale
+  (`_midi_port_list`) : double-clic / Alt+M connecte ou déconnecte le
+  port choisi, Alt+Shift+M recharge la liste. Le port **n'est pas ouvert
+  au démarrage** ; `open_by_name` / `open_first` existent, jamais appelés.
+- **Sortie MIDI** : **aucune**. Les notes vont aux moteurs internes
+  (échantillonneur, FluidSynth par ctypes, sfizz), qui sortent sur la
+  carte son. Pas de `rtmidi.MidiOut`. FluidSynth est détecté par
+  `ctypes.util.find_library("fluidsynth")` (`fluidsynth_engine.py`).
+- **Démarrage** : `_resolve_project_path` ouvre
+  `PROJECTS/project_01.gvp` (ou l'ancien `preset_01.json`), pas le
+  dernier projet ouvert ; aucun « dernier projet » n'est retenu.
+- **Autoplay** : `MainWindow._autoplay` (toujours vrai, sans réglage)
+  fait entendre le pad en naviguant dans la grille et dans la liste des
+  pads. L'**Explorateur** (Alt+X, `ExplorerDialog`) choisit un type puis
+  un fichier, **sans audition** (suite notée en Phase 8 étape 7).
+- **Propriétés de piste** (`TrackPropertiesDialog`) : slot, canal,
+  programme GM, banque, transposition, gain, volume, pan ; ni entrée ni
+  sortie.
+- **Alt+Shift+P** : libre partout. Fenêtre principale : Alt traité avant
+  P (lecture) et Shift+P (pattern aléatoire). Éditeur MIDI et fenêtre
+  Songs : à vérifier à l'implémentation, P / Shift+P y étant aussi pris.
+
+### Découpage en étapes (validé, 2026-11-10)
+
+Le cahier des charges touche des parties qui n'existent pas encore :
+pistes audio, sorties MIDI externes, audition dans l'Explorateur.
+Proposition : une étape par ensemble, chacune avec ses paires
+implémentation → tests et ses essais.
+
+- **Étape 10 — le dialogue, l'écriture des préférences, les onglets sans
+  matériel** : Général, Audio, Midi, Projet (Raccourcis et Divers
+  présents, vides).
+- **Étape 11 — onglet Matériel** : pilote et sortie audio (flux rouvert),
+  entrée MIDI ouverte au démarrage, liste « MIDI: » retirée de la fenêtre
+  principale, sorties MIDI (Synthé FluidSynth, ports externes), boutons
+  Détecter et Tester.
+- **Étape 12 — entrées et sorties dans les propriétés des pistes** :
+  sortie MIDI par piste ; entrée audio quand les pistes audio existeront.
+
+### Commits de l'étape 10 (validé, 2026-11-10)
+
+- **10b1 / 10c1 — configuration** : `AppConfig` lit `preferences.json`
+  par-dessus `data/config.json` et écrit les préférences (P1) ; nouvelles
+  clés `startup`, `last_project`, `autoplay`, `explorer_autoplay`,
+  `app_projects_dir`, `app_banks_dir`, `user_banks_dir` ; défauts
+  `banks/SF2` et `banks/SFZ` (P8) ; recherche par nom des fichiers
+  déplacés (P9).
+- **10d1 / 10e1 — le dialogue** : onglets, Gauche / Droite sur l'onglet,
+  Ctrl+Tab / Ctrl+Shift+Tab (P4), Alt+Shift+P depuis les trois fenêtres
+  (P3), champs de Général, Audio, Midi, Projet (P5-P8), Ok / Annuler /
+  Appliquer.
+- **10f1 / 10g1 — les effets** : démarrage sur le dernier projet ou un
+  nouveau projet, les deux cases Autoplay, l'Explorateur (utilisateur
+  puis appli), effet immédiat ou au prochain lancement (P2).
+- **10h1 — clôture**.
+
+### Choix de conception proposés (étape 10)
+
+**P1 — fichier des préférences (validé, 2026-11-10)** : les
+changements s'écrivent dans un fichier de l'utilisateur,
+**`preferences.json`**, rangé dans `~/.config/groovyboxit/` (emplacement validé).
+`data/config.json` garde les **valeurs par défaut** (suivi par git,
+jamais écrit). `AppConfig` lit les
+deux : la clé du fichier utilisateur l'emporte. Le dialogue n'écrit que
+les clés qu'il règle et garde celles qu'il ne connaît pas. Écriture
+sûre : fichier temporaire, puis renommage.
+
+**P2 — prise d'effet** : immédiate quand c'est simple (Autoplay, chemins
+pour le prochain parcours, gains FluidSynth / sfizz, limiteur, banque
+MIDI) ; **au prochain lancement** pour les moteurs FluidSynth / sfizz
+activés ou coupés (le dialogue le dit en fermant). Volume et pan globaux
+par défaut : pour le prochain nouveau projet, comme aujourd'hui.
+
+**P3 — ouverture : Alt+Shift+P** depuis la fenêtre principale,
+l'éditeur MIDI et la fenêtre Songs (un seul dialogue, ouvert par la
+fenêtre principale, parent = la fenêtre qui a le focus). Aide F1 mise à
+jour.
+
+**P4 — onglets** : `wx.Notebook`.
+- Le focus sur l'onglet : **Gauche / Droite** passent à l'onglet voisin
+  (comportement natif du `GtkNotebook`, à vérifier avec Orca ; géré par
+  le dialogue s'il manque).
+- **Ctrl+Tab / Ctrl+Shift+Tab** depuis n'importe quel champ : onglet
+  suivant / précédent, en boucle, géré par le dialogue (`EVT_CHAR_HOOK`),
+  le focus posé sur l'onglet pour qu'Orca l'annonce.
+- Tab parcourt l'onglet puis les champs de la page, puis Ok / Annuler /
+  Appliquer, en bas du dialogue.
+
+**P5 — Général** :
+- liste « Au démarrage » : « Ouvrir le dernier projet » (défaut) /
+  « Nouveau projet ». Nouvelle clé `startup` ; le dernier projet ouvert
+  ou enregistré est retenu dans la clé `last_project` (écrite par Ctrl+O,
+  Ctrl+S, Ctrl+Shift+S). Fichier absent : repli sur le comportement
+  actuel ;
+- **deux cases Autoplay (validé, 2026-11-10)** :
+  - « Autoplay de la grille et des pads » : clé `autoplay` (défaut
+    vrai), règle `MainWindow._autoplay`, effet immédiat ;
+  - « Autoplay de l'Explorateur » : clé `explorer_autoplay` (défaut
+    vrai), gardée dès l'étape 10 ; elle prendra effet avec l'audition de
+    l'Explorateur, à construire (suite de la Phase 8 étape 7).
+
+**P6 — Audio** : case « Limiteur à l'écoute » (`live_limiter`), cases
+« Moteur FluidSynth » et « Moteur sfizz », gains FluidSynth et sfizz,
+volume et pan globaux par défaut. SpinCtrl pour les nombres (gains en
+dixièmes).
+
+**P7 — Midi** : « Sélection de banque » (`midi_bank_select` : GS / MMA).
+
+**P8 — Projet (précisé par l'utilisateur, 2026-11-10)** : quatre
+chemins, chacun avec un champ texte et un bouton « Parcourir… » :
+- **projets de l'appli** : les **démos de patterns livrées avec
+  l'installation** (nouvelle clé `app_projects_dir`, défaut
+  `<racine de l'appli>/projects`, à créer) ;
+- **projets de l'utilisateur** : `projects_dir` (aujourd'hui
+  `/home/com/groovybox/PROJECTS`) ;
+- **banques de l'appli** et **banques de l'utilisateur** : « banques »
+  veut dire **tout** (banques, kits, patchs, SFZ), réunis sous **un
+  répertoire parent**, chacun dans son propre sous-répertoire, comme
+  aujourd'hui (`/home/com/groovybox/KITS`, `PATCHS`, …). Nouvelles clés
+  `app_banks_dir` (défaut `<racine de l'appli>/banks`, à créer) et
+  `user_banks_dir` (défaut `/home/com/groovybox`).
+- Les sous-répertoires gardent leurs noms ; les clés actuelles
+  (`kits_dir`, `patches_dir`, `samples_dir`, `sfz_dir`…) restent
+  possibles dans `data/config.json` pour un dossier placé ailleurs, mais
+  **absentes, elles se déduisent du parent de l'utilisateur**.
+- **Soundfonts et SFZ (validé, 2026-11-10)** : un nouveau dossier
+  **`banks`** sous le parent de l'utilisateur les réunit :
+  `/home/com/groovybox/banks/SF2` (défaut de `soundfonts_dir`, au lieu du
+  dossier système `/usr/share/sounds/sf2`) et
+  `/home/com/groovybox/banks/SFZ` (défaut de `sfz_dir`, au lieu de
+  `/home/com/groovybox/media/sfz`). Kits, patchs, samples restent dans
+  `KITS`, `PATCHS`, `SAMPLES`.
+
+**P9 — fichiers déplacés et anciens projets** : les `.gvp` gardent le
+chemin absolu des soundfonts et des SFZ (essais 17d1, 17f1, 7d1, 7f1 :
+`/usr/share/sounds/sf2/FluidR3_GM.sf2`…). Au chargement, un fichier
+introuvable est **recherché par son nom** dans le nouveau dossier
+(`banks/SF2`, `banks/SFZ`, en gardant le chemin relatif sous l'ancien
+dossier pour un SFZ) ; il est ensuite enregistré avec le nouveau chemin.
+Le rangement des fichiers se fait à l'essai, avec l'accord de
+l'utilisateur : les SFZ **déplacés** de `media/sfz` (1,5 Go), les SF2
+**copiés** depuis `/usr/share/sounds/sf2` (fichiers du système, laissés
+en place).
+- **Explorateur (validé, 2026-11-10)** : il cherche **d'abord dans le
+  dossier de l'utilisateur**, puis dans celui de l'appli.
+
+### Questions à trancher avant le code
+
+- ~~Q1~~ : tranchée, fichier utilisateur `preferences.json` (P1).
+- ~~Q2~~ : tranchée, trois étapes (10, 11, 12), voir le découpage.
+- ~~Q3~~ : tranchée, deux cases Autoplay (P5).
+- ~~Q4~~ : tranchée, démos livrées avec l'appli ; banques = tout, sous
+  un parent (P8).
+- **Q5** (étape 11) : boutons Tester. Sortie audio : un court bip ;
+  sortie MIDI : une note de test ; entrée MIDI : la prochaine note reçue
+  annoncée ; entrée audio : un niveau.
