@@ -11747,3 +11747,27 @@ Program Change 48 : depuis la Phase 8 étape 7f1 (Z22), le programme
 absent ne sonne pas. **Suite notée** (Phase 8 étape 7, après l'étape
 10) : une source à un seul programme ignore le numéro du Program Change
 et joue son unique programme, comme en 7d1.
+
+### Avancement 10c1 (tests — configuration)
+
+- **`tests/test_preferences.py`** (nouveau, 62 tests) :
+  - lecture par-dessus `data/config.json`, fichier absent ou illisible,
+    `default()`, emplacement (`prefs_path`, `GROOVYBOXIT_PREFS`,
+    `~/.config`), isolation par le `conftest` ;
+  - `save_preferences` : dossier créé, instance mise à jour, clés gardées
+    et relues avant l'écriture, `None`, `.bak`, pas de fichier temporaire
+    laissé, échec d'écriture sans perte, UTF-8 ;
+  - clés du dialogue (`startup`, `last_project`, les deux Autoplay),
+    dossiers de l'appli et de l'utilisateur, `KITS` / `PATCHS` /
+    `SAMPLES`, `banks/sf2` et `banks/sfz` (en minuscules), anciens
+    dossiers tant qu'ils manquent ;
+  - `relocate` (ancien dossier, copie préférée, nom, `.sf3`, introuvable,
+    valeurs invalides) et `_relocate_rack_files` (emplacements de banque,
+    sources SFZ absolues, relatives laissées, dictionnaire et liste
+    remplacés, pas modifiés en place).
+- **`test_app_config.py`** : les 10 tests rouges de 10b1 placent les
+  banques de l'utilisateur dans un dossier temporaire (le vrai
+  `/home/com/groovybox/banks` existe).
+- Mutations vérifiées (copie non préférée ; instance modifiée avant
+  l'écriture) : chacune fait échouer un test.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 3824 verts.

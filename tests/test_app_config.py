@@ -8,7 +8,11 @@
     Synth SFZ et moteurs optionnels (Phase 8 étape 7c1, § 7a2 Z7, Z13) :
     sfz_dir, sfizz_gain, fluidsynth / sfizz.
     Les clés master_volume / master_pan sont testées dans
-    test_master_mix.py.
+    test_master_mix.py. Depuis la Phase 8 étape 10b1, les anciens dossiers
+    par défaut (/usr/share/sounds/sf2, media/sfz) ne servent que si
+    banks/sf2 / banks/sfz manquent : ces tests placent les banques de
+    l'utilisateur dans un dossier temporaire (le vrai /home/com/groovybox/banks
+    existe) ; les nouveaux défauts sont testés dans test_preferences.py.
     Date: Mon, 26/10/2026
     Author: Coolbrother
 """
@@ -34,15 +38,21 @@ def _cfg(tmp_path, data=None):
 # soundfonts_dir / gm_soundfont (D7)
 # ---------------------------------------------------------------------------
 
+def _no_banks(tmp_path, data=None):
+    """Banques de l'utilisateur dans un dossier sans banks/ (10c1)."""
+    return {"user_banks_dir": str(tmp_path / "user"), **(data or {})}
+
+
 def test_soundfont_defaults_without_file(tmp_path):
-    cfg = _cfg(tmp_path)
+    cfg = _cfg(tmp_path, _no_banks(tmp_path))
     assert cfg.soundfonts_dir == "/usr/share/sounds/sf2"
     assert cfg.gm_soundfont == "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
 
 @pytest.mark.parametrize("value", ["", "   ", None, 3])
 def test_empty_or_invalid_soundfonts_dir_gives_default(tmp_path, value):
-    assert _cfg(tmp_path, {"soundfonts_dir": value}).soundfonts_dir == "/usr/share/sounds/sf2"
+    cfg = _cfg(tmp_path, _no_banks(tmp_path, {"soundfonts_dir": value}))
+    assert cfg.soundfonts_dir == "/usr/share/sounds/sf2"
 
 
 def test_absolute_soundfonts_dir(tmp_path):
@@ -111,8 +121,9 @@ def test_fluidsynth_gain_invalid_gives_default(tmp_path, bad):
 # ---------------------------------------------------------------------------
 
 def test_sfz_dir_default_next_to_projects_dir(tmp_path):
-    # projects_dir par défaut : /home/com/groovybox/PROJECTS
-    assert _cfg(tmp_path).sfz_dir == "/home/com/groovybox/media/sfz"
+    # sans banks/sfz : l'ancien media/sfz, à côté du dossier des projets
+    cfg = _cfg(tmp_path, {"projects_dir": str(tmp_path / "gb" / "PROJECTS")})
+    assert cfg.sfz_dir == str(tmp_path / "gb" / "media" / "sfz")
 
 
 def test_sfz_dir_default_follows_projects_dir(tmp_path):
@@ -131,7 +142,8 @@ def test_sfz_dir_relative_to_base_dir(tmp_path):
 
 @pytest.mark.parametrize("bad", ["", "   ", None, 3])
 def test_sfz_dir_empty_or_invalid_gives_default(tmp_path, bad):
-    assert _cfg(tmp_path, {"sfz_dir": bad}).sfz_dir == "/home/com/groovybox/media/sfz"
+    cfg = _cfg(tmp_path, {"projects_dir": str(tmp_path / "gb" / "PROJECTS"), "sfz_dir": bad})
+    assert cfg.sfz_dir == str(tmp_path / "gb" / "media" / "sfz")
 
 
 def test_sfizz_gain_default(tmp_path):
