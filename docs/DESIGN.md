@@ -11831,3 +11831,36 @@ Ctrl+Shift+Tab (onglet voisin en boucle, `SetFocus()` sur le notebook
 pour l'annonce) et Gauche / Droite quand `FindFocus()` est le notebook ;
 toute autre touche `event.Skip()` ; libellé créé avant son champ ;
 SpinCtrl pour les nombres.
+
+### Avancement 10e1 (tests — le dialogue)
+
+- **`tests/test_preferences_dialog.py`** (nouveau, 60 tests) :
+  - sept onglets dans l'ordre, titre et boutons, page de départ bornée,
+    pages « à venir » ;
+  - valeurs par défaut et lues dans `preferences.json`, champs affichés,
+    bornes des SpinCtrl, gains arrondis au dixième ;
+  - `changes()` : rien à l'ouverture, seulement ce qui a bougé, retour à
+    la valeur d'origine = rien, champ vidé = `None` ;
+  - Appliquer (reste ouvert, nouveau point de départ, rien sans
+    changement), Ok (applique puis ferme ; rien de plus après Appliquer ;
+    sans `on_apply`), Annuler ;
+  - Parcourir… (Ok remplit le champ, Annuler le garde, dialogue détruit) ;
+  - onglets au clavier : boucle dans les deux sens, Ctrl+Tab et
+    Ctrl+Shift+Tab depuis un champ (focus sur l'onglet), Gauche / Droite
+    seulement sur l'onglet, flèches modifiées et autres touches laissées
+    passer ;
+  - accessibilité : chaque SpinCtrl, liste et champ texte suit son
+    libellé (non-régression de l'essai de 10d1) ;
+  - `_apply_preferences` (écriture, annonce, erreur, statut fourni),
+    `_open_preferences` (parent et statut, dialogue détruit même sur
+    erreur) ;
+  - Alt+Shift+P : fenêtre principale (vrai `KeyManager`), éditeur MIDI,
+    fenêtre Songs ; Alt+P et Ctrl+Alt+Shift+P n'ouvrent rien ; P joue
+    toujours dans la fenêtre Songs.
+- **Piège de test noté** : `FindWindowById` est une recherche globale (il
+  trouvait le bouton Ok d'un dialogue d'un test précédent) ; chercher un
+  enfant par `dlg.FindWindow(id)`. `EndModal` se remplace sur la classe,
+  pas sur l'objet wx.
+- Mutations vérifiées (libellé créé après son champ ; onglets sans
+  boucle) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 3884 verts.

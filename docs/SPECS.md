@@ -196,6 +196,7 @@ groovyboxit/
     ├── test_playback_loop.py
     ├── test_playback_rewind.py
     ├── test_preferences.py
+    ├── test_preferences_dialog.py
     ├── test_pygame_driver.py
     ├── test_quantize.py
     ├── test_rack_mode.py
@@ -2283,6 +2284,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_playback_loop.py` | Boucle de lecture : _build_measure_events (ordre de _tape à temps égal), _dispatch_event, _on_measure_end (rappel de fin de lecture) |
 | `test_playback_rewind.py` | Lecture remise au début (Phase 8 étape 7e2) : _rewind_playback (arrêt, mode Song quitté, début) ; vraie fenêtre principale : après une pause, Ctrl+N, Ctrl+O (lecture en cours arrêtée), ouverture et fermeture de la fenêtre Song repartent du début ; fenêtre Song déjà ouverte : position gardée (8 tests) |
 | `test_preferences.py` | Préférences de l'utilisateur (Phase 8 étape 10b1) : preferences.json par-dessus data/config.json, emplacement (variable GROOVYBOXIT_PREFS, ~/.config/groovyboxit), save_preferences (clés gardées, None = défaut, .bak d'un fichier illisible, écriture par renommage, échec sans perte), clés startup / last_project / autoplay / explorer_autoplay, dossiers de l'appli et de l'utilisateur, banks/sf2 et banks/sfz (anciens dossiers tant qu'ils manquent), relocate et _relocate_rack_files (62 tests) |
+| `test_preferences_dialog.py` | Dialogue des Préférences (Phase 8 étape 10d1) : sept onglets, valeurs lues dans AppConfig, réglages changés (champ vidé = défaut), Ok / Annuler / Appliquer, Parcourir…, Ctrl+Tab / Ctrl+Shift+Tab et Gauche / Droite sur l'onglet (en boucle, autres touches laissées passer), libellé créé avant chaque champ (Orca) ; _open_preferences / _apply_preferences ; Alt+Shift+P dans la fenêtre principale, l'éditeur MIDI et la fenêtre Songs (60 tests) |
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
 | `test_rack_mode.py` | Mode Rack 16 canaux, moteur (Phase 8 étape 5c1) : `_rack_mode` du pattern (défaut, .gvp, clé absente ou non booléenne, copy_from, song figé), slot effectif (canal N → slot N, repli sur le premier slot Banque, slot vide muet sans banque, `_track_slots` intact, mode normal), lecture par canal (PATCH, KIT, cases de grille, Pitch Bend et modulation, batterie GM au canal 10, mute), note PATCH sur un kit par sa note GM (deux modes), Program Change sans pont (la piste suit son canal et son slot, ignoré sur un synthé, instrument d'une banque ou du repli, rejeu), pont gardé en mode normal, poursuite de toutes les pistes, moteurs des slots synthé des canaux joués, `render_copy`, kit du pattern (canal 10 d'abord, autres kits, canaux muets), `kit_note_of_gm` et `kit_path`, `_apply_rack_kit` (sans renommer les pads, pas de rechargement, avertissements, sons par défaut, mode normal), mode posé au changement de pattern, à l'avance du song et à l'export WAV (62 tests) |
