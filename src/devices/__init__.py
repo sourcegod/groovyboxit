@@ -5,10 +5,10 @@
 
     Paquet AUTONOME : il n'importe rien de GroovyboxIt et peut être copié
     tel quel dans une autre application audio / MIDI. Dépendances :
-    sounddevice et numpy (devices.audio) ; python-rtmidi (devices.midi, à
+    sounddevice et numpy (devices.audio_device) ; python-rtmidi (devices.midi_device, à
     venir en 11d1).
 
-    - devices.audio : pilotes (host API) et périphériques de PortAudio par
+    - devices.audio_device : pilotes (host API) et périphériques de PortAudio par
       nom, relecture, La 440 Hz de test, crête d'une entrée ;
     - python3 -m devices : liste des pilotes et des périphériques (essai
       d'une carte son).

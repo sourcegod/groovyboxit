@@ -4,7 +4,7 @@ import wx
 import numpy as np
 from audio.sound_manager import SoundManager
 from audio.sound_device_driver import SoundDeviceDriver, SdSound
-from devices import audio as audio_devices
+from devices import audio_device as audio_devices
 from player.drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType

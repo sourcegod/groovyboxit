@@ -281,7 +281,8 @@ def _live_win(cfg):
                           _router=SimpleNamespace(sfz_dir="ancien"),
                           _master_defaults=(100, 0),
                           PREFS_DIR_KEYS=ProjectMixin.PREFS_DIR_KEYS,
-                          PREFS_AT_RESTART=ProjectMixin.PREFS_AT_RESTART)
+                          PREFS_AT_RESTART=ProjectMixin.PREFS_AT_RESTART,
+                          PREFS_AUDIO_OUT_KEYS=ProjectMixin.PREFS_AUDIO_OUT_KEYS)
     win._refresh_dirs_from_cfg = lambda: ProjectMixin._refresh_dirs_from_cfg(win)
     return win
 

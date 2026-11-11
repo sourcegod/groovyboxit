@@ -421,6 +421,7 @@ def _host(cfg):
     win._apply_preferences = lambda changes, status=None: \
         ProjectMixin._apply_preferences(win, changes, status)
     win._apply_preferences_now = lambda changes: []    # effets : test_preferences_effects.py
+    win.PREFS_AUDIO_OUT_KEYS = ProjectMixin.PREFS_AUDIO_OUT_KEYS   # sortie audio (11b1)
     return win
 
 

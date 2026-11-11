@@ -1,6 +1,6 @@
 #python3
 """
-    File: src/devices/audio.py
+    File: src/devices/audio_device.py
     Pilotes et périphériques audio de PortAudio, par nom (Phase 8 étape
     11b1, docs/DESIGN.md § Phase 8 étape 11a H1-H5, H12-H16) : les numéros
     de PortAudio changent d'un lancement à l'autre, les noms restent.

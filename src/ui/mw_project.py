@@ -15,7 +15,7 @@ from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 from audio import audio_export
-from devices import audio as audio_devices
+from devices import audio_device as audio_devices
 from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog, \
     ImportModeDialog
 from tempo_map import format_bpm

@@ -12228,7 +12228,7 @@ la fenêtre principale est retirée.
 
 ### Avancement 11b1 (implémentation — audio)
 
-- **`src/devices/audio.py`** (nouveau ; paquet autonome `src/devices/`, voir plus bas) : `hostapis()`,
+- **`src/devices/audio_device.py`** (nouveau ; paquet autonome `src/devices/`, voir plus bas) : `hostapis()`,
   `default_hostapi()`, `devices(pilote, "input" | "output")`,
   `default_device`, `find_device(nom, pilote, sens)` (par nom),
   `resolve_output(sortie principale, pilote)` (indice ou défaut, avec
@@ -12272,16 +12272,16 @@ passe par le défaut.
 l'utilisateur, 2026-11-11 : « ce module de détection des périphériques
 audio / MIDI est très important… l'isoler comme un module autonome, il
 sera très utile dans d'autres applications audio / MIDI ») :
-- `src/devices/audio.py` (l'ancien `audio_devices.py`), `__init__.py`
+- `src/devices/audio_device.py` (l'ancien `audio_devices.py`), `__init__.py`
   (présentation, dépendances), et la partie MIDI viendra en
-  `src/devices/midi.py` (11d1) ;
+  `src/devices/midi_device.py` (11d1) ;
 - **aucun import de l'appli** (seulement sounddevice, numpy ; rtmidi pour
   le MIDI) : le paquet se copie tel quel ;
 - **`python3 -m devices`** (depuis `src/`) : liste les pilotes et les
   périphériques ; `--tone SORTIE` joue le La 440 Hz, `--input ENTRÉE`
   mesure la crête — pour l'essai de plusieurs cartes son prévu par
   l'utilisateur à la fin de l'étape 11 ;
-- l'appli l'importe par `from devices import audio as audio_devices`.
+- l'appli l'importe par `from devices import audio_device as audio_devices`.
 
 **Avenant 11b1 — boîte de message au démarrage** (demande de
 l'utilisateur, 2026-11-11) : un périphérique introuvable ou refusé au
@@ -12301,3 +12301,41 @@ distincte des notes des moteurs ; vaudra aussi pour les ports MIDI
 **Essais 11b1** (utilisateur, 2026-11-11) : 1 (sans réglage), 2
 (`pipewire`), 3 (sortie inexistante : boîte, nom, bip) concluants. Le
 réglage d'essai est retiré de `preferences.json`.
+
+**Avenant 11c1 — noms des fichiers du paquet** (suggestion de
+l'utilisateur, 2026-11-11, pour la lisibilité dans une autre appli) :
+`src/devices/audio.py` → **`audio_device.py`** ; le MIDI sera
+**`midi_device.py`** (11d1).
+
+### Avancement 11c1 (tests — audio)
+
+- **`tests/test_audio_device.py`** (nouveau, 70 tests) :
+  - paquet autonome : aucun fichier de `src/devices/` n'importe un
+    module de l'appli (analyse des imports) ; noms des fichiers ;
+  - `devices.audio_device` sur un **PortAudio factice** : pilotes, pilote
+    par défaut et replis, périphériques par sens, défauts, recherche par
+    nom (et nom retrouvé après renumérotation), sortie absente,
+    relecture, La 440 Hz (440 Hz mesuré par FFT, niveau, fondus), crête
+    d'une entrée (canaux, durée, refus) ; `python3 -m devices` (liste,
+    `--tone`, `--input`, introuvable, refus, autre pilote) ;
+  - `SoundDeviceDriver` sur un flux factice : périphérique donné ou
+    défaut, `set_device` (refus → précédent rouvert), voix et sources de
+    rendu gardées, `stop_stream` / `start_stream`, `close` ;
+  - clés `audio_hostapi`, `audio_inputs`, `audio_outputs` (nettoyées),
+    `audio_main_output` (cochée, décochée, sans sortie cochée) ;
+  - démarrage : sortie enregistrée, sans réglage, absente, refusée,
+    défaut refusé, pilote enregistré, limiteur transmis ; boîte
+    « Périphérique introuvable » (un ou plusieurs, Ok, avertissement) et
+    bip (deux bips descendants, repli sur `wx.Bell`, sans pilote) ;
+  - sortie changée depuis les Préférences : bascule, retour au défaut,
+    rien si inchangée, absente, refusée, sans pilote ; annonce dans
+    `_apply_preferences`, clés qui déclenchent ou non ;
+  - vraie fenêtre principale : sortie absente au démarrage → boîte,
+    défaut, barre d'état.
+- **7 tests rouges de 11b1 corrigés** (pilote factice avec `device`,
+  hôtes avec `PREFS_AUDIO_OUT_KEYS`).
+- Mutations vérifiées (précédent non rouvert après un refus ;
+  périphériques non filtrés par pilote) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`src/devices/`) et table. Suite :
+  3998 verts (un échec isolé non reproduit en trois passages, sans
+  doute le test de gain de sfizz déjà noté).

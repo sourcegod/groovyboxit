@@ -12,7 +12,7 @@ import argparse
 import sys
 import time
 
-from devices import audio
+from devices import audio_device as audio
 
 
 def main(argv=None):

@@ -327,9 +327,11 @@ class _RecordingDriver(Mixer):
     l'argument limiter."""
     made = []
 
-    def __init__(self, samplerate=Mixer.SAMPLERATE, blocksize=Mixer.BLOCKSIZE, limiter=True):
+    def __init__(self, samplerate=Mixer.SAMPLERATE, blocksize=Mixer.BLOCKSIZE, limiter=True,
+                 device=None):                      # sortie principale (Phase 8 étape 11b1)
         super().__init__(samplerate)
         self.limiter_arg = limiter
+        self.device = device
         _RecordingDriver.made.append(self)
 
     def close(self):
