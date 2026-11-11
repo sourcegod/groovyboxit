@@ -12026,3 +12026,202 @@ fichiers déplacés), arborescence, tableau des dialogues, tests.
   l'appli et de l'utilisateur quand l'appli livrera des banques ;
 - source SFZ à un seul programme qui ignore le numéro du Program Change
   (essai de 10b1, Phase 8 étape 7).
+
+---
+
+## Phase 8 étape 11a — Onglet Matériel des Préférences
+
+### Numérotation des commits de ce chantier
+
+`11a` = ce plan (doc seule). Le code commence à `11b1` ; paires
+implémentation → tests, `11b2`… pour un commit imprévu. Décisions notées
+**H1, H2…**.
+
+### Origine du besoin (cahier des charges du 2026-11-10)
+
+Onglet **Matériel** : pilotes de la carte audio ; entrées et sorties
+audio, puis boutons « Détecter les périphériques audio » et « Tester les
+périphériques audio » ; entrées et sorties MIDI, puis boutons « Détecter
+les périphériques MIDI » et « Tester les périphériques MIDI » ; si
+FluidSynth est installé, « Synthé FluidSynth » parmi les sorties MIDI,
+proposé par défaut. Les listes MIDI **remplacent la liste « MIDI: » de la
+fenêtre principale**.
+
+### État des lieux constaté en code (2026-11-11, 3928 tests verts)
+
+- **PortAudio** (V19.6.0, par sounddevice) voit deux pilotes (« host
+  API ») : **ALSA** (16 périphériques : `default`, `pipewire`, `pulse`,
+  la carte `HDA Intel PCH` analogique et HDMI…) et **OSS** (`/dev/dsp`,
+  entrée seule). Ni JACK ni PulseAudio comme pilotes PortAudio (pas
+  compilés) : PipeWire et Pulse passent par des périphériques ALSA.
+  Défaut : `default` (ALSA) en entrée et en sortie.
+- **Sortie audio** : `SoundDeviceDriver` ouvre un seul `sd.OutputStream`
+  au démarrage, sur le périphérique par défaut (pas de `device=`), 44 100
+  Hz, bloc de 512 ; `close()` l'arrête. Aucun moyen de changer de
+  périphérique en cours de route. La liste des périphériques de
+  PortAudio est **figée à son initialisation** : une carte branchée après
+  le lancement n'apparaît qu'après une réinitialisation de PortAudio, qui
+  coupe le flux ouvert.
+- **Entrée audio** : aucune (pas de piste audio).
+- **Entrée MIDI** : `MidiManager` (python-rtmidi) ouvre **un seul port**,
+  par indice (`open`) ; `open_by_name` / `open_first` existent, jamais
+  appelés ; **pas d'ouverture au démarrage**. La liste des ports
+  (`get_ports`) est relue à chaque appel. Fenêtre principale : liste
+  « MIDI: » (`_midi_port_list`), double-clic et Alt+M = connecter /
+  déconnecter le port choisi, Alt+Shift+M = relire la liste. 26 usages
+  dans `src/` et `tests/` (`main_window`, `midi_handler_window`,
+  `key_manager`, `key_handler_navigation`, quatre fichiers de tests).
+- **Sortie MIDI** : **aucune** ; les notes vont aux moteurs internes.
+  rtmidi voit ici une seule sortie, `Midi Through`. FluidSynth est le
+  moteur interne des slots Banque (`fluidsynth_available()`).
+
+### Choix de conception proposés
+
+**H1 — clés de `preferences.json`** (par **nom**, les numéros de
+PortAudio et de rtmidi changent d'un lancement à l'autre) :
+`audio_hostapi` (« ALSA »), `audio_output`, `audio_input` (nom du
+périphérique, vide = défaut du pilote), `midi_input` (nom du port, vide
+= aucun), `midi_output` (« Synthé FluidSynth » par défaut si la
+bibliothèque est là, sinon le premier port, sinon aucun).
+
+**H2 — sortie audio : effet immédiat**, le flux est rouvert sur le
+périphérique choisi (`SoundDeviceDriver.set_device`) : arrêt, nouveau
+`OutputStream(device=…)`, voix et sources de rendu gardées ; échec
+(périphérique occupé, absent) → retour au précédent et annonce. Au
+démarrage : le périphérique enregistré, ou le défaut s'il n'est plus là
+(annoncé).
+
+**H3 — pilote** : la liste « Pilote » (ALSA, OSS…) filtre les listes des
+périphériques ; changer de pilote propose son périphérique par défaut.
+
+**H4 — entrée audio** : choix enregistré seulement (aucune piste audio
+ne l'utilise encore ; servira aux pistes audio, étape 12 et au-delà).
+
+**H5 — « Détecter les périphériques audio »** : réinitialise PortAudio
+pour voir une carte branchée depuis le lancement ; le flux est arrêté le
+temps de la relecture, puis rouvert (un court silence). Les listes sont
+relues, le choix gardé s'il existe encore ; annonce du nombre de
+périphériques.
+
+**H6 — entrée MIDI** : le port choisi est ouvert **au démarrage** par
+son nom, et tout de suite quand on le change ; port absent → annoncé,
+rien d'ouvert. Alt+M garde son rôle (connecter / déconnecter ce port).
+
+**H7 — liste « MIDI: » retirée de la fenêtre principale** ; Alt+Shift+M
+ouvre les Préférences **sur l'onglet Matériel** (au lieu de relire la
+liste) ; le double-clic disparaît avec la liste.
+
+**H8 — sorties MIDI** : « Synthé FluidSynth » (si la bibliothèque est
+là), puis les ports de sortie de rtmidi. À l'étape 11, le choix est
+enregistré et testable ; **l'envoi réel des pistes vers un port externe
+vient à l'étape 12** (sortie par piste, la sortie choisie ici servant de
+défaut).
+
+**H9 — « Détecter les périphériques MIDI »** : relit les ports d'entrée
+et de sortie (rtmidi les relit sans rien couper), choix gardés s'ils
+existent encore ; annonce.
+
+**H10 — « Tester »** (proposition, à trancher, Q2) :
+- **audio** : un court bip (440 Hz, 0,3 s) sur la sortie choisie ; puis,
+  si une entrée est choisie, une seconde d'écoute et le niveau mesuré
+  annoncé (« Entrée : crête −18 dB ») ;
+- **MIDI** : une note (do 3, 0,5 s) sur la sortie choisie (FluidSynth :
+  le premier slot Banque, ou le programme 1 de la soundfont par défaut ;
+  port externe : note on / note off par `rtmidi.MidiOut`) ; puis, pendant
+  5 secondes, la prochaine note reçue sur l'entrée choisie est annoncée
+  (« Entrée MIDI : note do 3, vélocité 90 ») ;
+- **résultat** affiché dans un champ en lecture seule « Résultat du
+  test » au bas de l'onglet, qui prend le focus pour qu'Orca le lise.
+
+**H11 — accessibilité** : listes déroulantes (`wx.Choice`) pour les
+pilotes et les périphériques, libellé créé avant chaque liste (recette
+de 10d1) ; ordre de Tab : Pilote, Sortie audio, Entrée audio, Détecter
+audio, Tester audio, Entrée MIDI, Sortie MIDI, Détecter MIDI, Tester
+MIDI, Résultat, Valeurs par défaut.
+
+### Découpage proposé
+
+- **11b1 / 11c1 — audio** : `src/audio/audio_devices.py` (pilotes et
+  périphériques par nom, défaut, relecture de PortAudio, bip, mesure
+  d'entrée), `SoundDeviceDriver.set_device`, clés, sortie ouverte au
+  démarrage.
+- **11d1 / 11e1 — MIDI** : ports d'entrée et de sortie par nom, entrée
+  ouverte au démarrage et au changement, sorties (Synthé FluidSynth,
+  ports), note de test, écoute de la prochaine note.
+- **11f1 / 11g1 — l'onglet et la fenêtre principale** : onglet Matériel
+  (H11), boutons, champ Résultat, effets (H2, H6) ; liste « MIDI: »
+  retirée, Alt+M, Alt+Shift+M ; aide F1.
+- **11h1 — clôture**.
+
+### Décisions de l'utilisateur (2026-11-11) — révisent H1, H6, H7, H10, H11
+
+**H12 — plusieurs entrées et sorties à la fois, audio comme MIDI**
+(réponse à Q1, qui révise H1 et H6) : chaque liste est une **liste à
+cases à cocher** ; les périphériques cochés sont ceux que l'appli
+**ouvre au démarrage** et met à disposition des pistes. À l'étape 12,
+l'entrée ou la sortie d'une piste se choisira dans ses propriétés
+**parmi les périphériques cochés**, sans revenir aux Préférences ; au
+démarrage, les pistes retrouvent directement leurs entrées et sorties.
+Clés (par nom) : `audio_inputs`, `audio_outputs`, `midi_inputs`,
+`midi_outputs` (listes).
+- **Entrées MIDI** : tous les ports cochés écoutés ensemble (un
+  `rtmidi.MidiIn` par port ; les messages vont au même gestionnaire).
+- **Sorties audio** : le mix de l'appli va à **la sortie principale**
+  (première sortie cochée, réglable : à préciser, Q5) ; les autres sont
+  prêtes pour les pistes de l'étape 12.
+- **Sorties MIDI** : « Synthé FluidSynth » coché par défaut s'il est
+  installé ; les ports externes cochés sont ouverts pour l'étape 12.
+- **Entrées audio** : cochées et enregistrées ; aucune piste audio ne
+  les utilise encore.
+
+**H13 — ordre des listes** (révise H11) : **Entrées audio, Sorties
+audio, Entrées MIDI, Sorties MIDI**, chacune précédée de son libellé et
+suivie de ses boutons ; pilote audio en tête.
+
+**H14 — Tester** (révise H10) : agit sur **la ligne sélectionnée** de la
+liste (cochée ou non) :
+- **sortie audio** : un **La 440 Hz d'une seconde** envoyé à la carte ;
+- **sortie MIDI** : un **A4 (note 69) d'une seconde** ;
+- entrées : niveau d'une seconde d'écoute (audio), prochaine note reçue
+  pendant 5 secondes (MIDI) — proposition gardée, à confirmer (Q6).
+
+**H15 — Shift+F12 = reconnecter tous les périphériques MIDI** (révise
+H7), à côté de Ctrl+F12 (Panic) : relit les ports et rouvre toutes les
+entrées et sorties MIDI cochées (après un débranchement, par exemple) ;
+annonce du résultat. **Remplace Alt+Shift+M**. Disponible dans toutes
+les fenêtres (`handle_transport`, comme Ctrl+F12). Alt+M garde son rôle :
+connecter / déconnecter les entrées MIDI cochées. La liste « MIDI: » de
+la fenêtre principale est retirée.
+
+### Questions tranchées (utilisateur, 2026-11-11)
+
+- **Q5 → H16 — liste « Sortie principale »** à part, sous la liste des
+  sorties audio : elle propose les sorties cochées ; le mix de l'appli y
+  va (flux rouvert tout de suite, H2). Clé `audio_main_output`. Sortie
+  principale décochée → la première sortie cochée la remplace (annoncé) ;
+  aucune sortie cochée → le défaut du pilote.
+- **Q6 → H17 — résultat dans un champ** « Résultat du test » en lecture
+  seule au bas de l'onglet, qui prend le focus pour qu'Orca le lise.
+  Tests des entrées gardés comme proposé (H14).
+- **Q4 → H8 confirmé** : sortie MIDI externe ouverte et testable à
+  l'étape 11 ; envoi réel des pistes à l'étape 12.
+- Reste à vérifier à l'essai : `wx.CheckListBox` lu par Orca avec l'état
+  de chaque case (Espace pour cocher).
+
+### Découpage (révisé)
+
+- **11b1 / 11c1 — audio** : `src/audio/audio_devices.py` (pilotes et
+  périphériques par nom, défaut, relecture de PortAudio, La 440 Hz d'une
+  seconde, niveau d'une entrée) ; `SoundDeviceDriver.set_device` ; clés
+  `audio_hostapi`, `audio_inputs`, `audio_outputs`,
+  `audio_main_output` ; sortie principale ouverte au démarrage.
+- **11d1 / 11e1 — MIDI** : plusieurs entrées ouvertes ensemble
+  (`MidiManager`), sorties (Synthé FluidSynth, ports par
+  `rtmidi.MidiOut`), A4 d'une seconde, écoute de la prochaine note ;
+  ouverture au démarrage ; Shift+F12 (reconnecter), Alt+M (toutes les
+  entrées cochées).
+- **11f1 / 11g1 — l'onglet et la fenêtre principale** : onglet Matériel
+  (H13 : pilote, quatre listes à cases, Sortie principale, boutons,
+  Résultat, Valeurs par défaut), effets ; liste « MIDI: » retirée,
+  Alt+Shift+M retiré ; aide F1.
+- **11h1 — clôture**.
