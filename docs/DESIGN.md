@@ -11976,3 +11976,53 @@ les autres onglets gardent leurs réglages.
 - Mutations vérifiées (« Nouveau projet » ignoré ; valeur par défaut
   écrite au lieu d'être retirée) : chacune fait échouer des tests.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 3928 verts.
+
+### Clôture de l'étape 10 (10h1)
+
+**Bilan** (Phase 8 étapes 10a à 10g1, 2026-11-10 / 11, 3928 tests verts) :
+dialogue des Préférences à onglets ouvert par Alt+Shift+P depuis les
+trois fenêtres ; réglages de l'utilisateur dans
+`~/.config/groovyboxit/preferences.json`, par-dessus `data/config.json`
+(valeurs par défaut, jamais écrit) ; onglets Général (démarrage,
+deux Autoplay), Audio, Midi, Projet (projets et banques de l'appli et de
+l'utilisateur) ; effet immédiat ou annoncé au prochain lancement ; bouton
+« Valeurs par défaut » de l'onglet ; soundfonts et SFZ rangés dans
+`/home/com/groovybox/banks/sf2` et `banks/sfz`, anciens projets
+retrouvés.
+
+**Commits** : 10a (plan), 10b1 / 10c1 (configuration), 10d1 / 10e1 (le
+dialogue), 10f1 (effets), 10f2 (avenant : Valeurs par défaut), 10g1
+(tests des effets), 10h1 (clôture).
+
+**Écarts au plan et imprévus** :
+- anciens dossiers gardés tant que `banks/sf2` / `banks/sfz` manquent ;
+  une copie dans le nouveau dossier l'emporte sur l'original (10b1) ;
+- sous-dossiers en minuscules, comme `/usr/share/sounds/` (10b1) ;
+- libellés créés avant leur champ, sinon Orca ne les lit pas (10d1) ;
+- l'Explorateur part d'un seul dossier (utilisateur, sinon appli), pas
+  d'une liste réunie (10f1) ;
+- sélection de banque prise au prochain lancement (réglage posé à la
+  création de FluidSynth) (10f1) ;
+- avenant 10f2 (Valeurs par défaut), demandé à l'essai de 10f1.
+
+**Essais de l'utilisateur** : 10b1 (rangement des fichiers), 10d1
+(onglets et Orca ; libellés de l'onglet Audio corrigés), 10f1, 10f2 :
+concluants.
+
+**`docs/SPECS.md`** : ligne Phase 8, « Configuration et Préférences »
+(deux fichiers, dialogue, tableau des réglages, dossiers des banques,
+fichiers déplacés), arborescence, tableau des dialogues, tests.
+**`docs/shortcuts.md`** (aide F1) : Alt+Shift+P (10d1).
+
+**Recette réutilisable** : dialogue de réglages à onglets accessible
+(§ Essai 10d1).
+
+**Suites notées** :
+- **étape 11 — onglet Matériel** (plan 11a, boutons Tester à trancher) ;
+- **étape 12 — entrées et sorties dans les propriétés des pistes** ;
+- Ctrl+Z dans le dialogue des Préférences (plan noté en 10f2, pas
+  nécessaire pour le moment) ;
+- audition dans l'Explorateur (case déjà prête) ; liste réunie de
+  l'appli et de l'utilisateur quand l'appli livrera des banques ;
+- source SFZ à un seul programme qui ignore le numéro du Program Change
+  (essai de 10b1, Phase 8 étape 7).

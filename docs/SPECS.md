@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) | en cours |
 
 ---
 
@@ -46,7 +46,7 @@ groovyboxit/
 ├── main.py               # Point d'entrée
 ├── requirements.txt      # Dépendances (pip3 install -r requirements.txt --break-system-packages)
 ├── src/
-│   ├── app_config.py     # Chargement data/config.json, chemins configurables
+│   ├── app_config.py     # data/config.json + preferences.json, chemins configurables
 │   ├── bend_log.py       # Traces pitch bend dans bend_log.txt (si GROOVY_BEND_LOG=1)
 │   ├── loop_manager.py   # LoopManager + LoopWindow : fenêtre de boucle pattern
 │   ├── main.py           # Point d'entrée secondaire (importé par main.py racine)
@@ -97,6 +97,7 @@ groovyboxit/
 │       ├── dialogs_bank.py     # BankSlotDialog : fichier et emplacement d'un slot Banque
 │       ├── dialogs_sfz.py      # SfzSlotDialog (source et gain d'un slot Synth SFZ), SfzBankDialog (composer une banque SFZ)
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
+│       ├── dialogs_preferences.py # PreferencesDialog : Préférences à onglets (Alt+Shift+P)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
 │       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
@@ -240,7 +241,60 @@ groovyboxit/
 
 ---
 
-## Configuration (`data/config.json`)
+## Configuration (`data/config.json`) et Préférences
+
+**Deux fichiers** (Phase 8 étape 10) : `data/config.json` (suivi par
+git) donne les **valeurs par défaut** et n'est jamais écrit par l'appli ;
+`~/.config/groovyboxit/preferences.json` (variable `GROOVYBOXIT_PREFS`
+pour un autre fichier ; les tests la pointent vers un fichier temporaire)
+garde les **réglages de l'utilisateur**, écrits par le dialogue des
+Préférences, et l'emporte clé par clé. Une valeur égale à sa valeur par
+défaut est retirée du fichier ; les clés inconnues sont gardées ; un
+fichier illisible est ignoré à la lecture et gardé en `.bak` à
+l'écriture ; écriture par fichier temporaire et renommage.
+
+### Dialogue des Préférences (Alt+Shift+P)
+
+Depuis la fenêtre principale, l'éditeur MIDI et la fenêtre Songs.
+Onglets **Général**, **Matériel** (étape 11), **Audio**, **Midi**,
+**Projet**, **Raccourcis** et **Divers** (plus tard). Focus sur l'onglet :
+Gauche / Droite = onglet voisin ; Ctrl+Tab / Ctrl+Shift+Tab = onglet
+suivant / précédent depuis n'importe quel champ (en boucle, focus remis
+sur l'onglet). Ok / Annuler / Appliquer : seuls les réglages changés
+sont écrits. Bouton **« Valeurs par défaut »** au bas des onglets
+réglables : les champs de l'onglet seul reviennent aux valeurs de
+`config.json`, sans rien appliquer.
+
+| Onglet | Réglage | Clé | Effet |
+|---|---|---|---|
+| Général | Au démarrage : Ouvrir le dernier projet / Nouveau projet | `startup` (`"last"` / `"new"`) ; `last_project` retenu par Ctrl+O, l'Explorateur, Ctrl+S, Ctrl+Shift+S | au lancement ; dernier projet introuvable → `project_01.gvp` |
+| Général | Autoplay de la grille et des pads | `autoplay` | immédiat |
+| Général | Autoplay de l'Explorateur | `explorer_autoplay` | gardé ; l'audition est à construire |
+| Audio | Limiteur à l'écoute | `live_limiter` | immédiat |
+| Audio | Moteur FluidSynth, Moteur sfizz | `fluidsynth`, `sfizz` | au prochain lancement (annoncé) |
+| Audio | Gains FluidSynth et sfizz (en dixièmes) | `fluidsynth_gain`, `sfizz_gain` | immédiat |
+| Audio | Volume et pan globaux d'un nouveau projet | `master_volume`, `master_pan` | prochain nouveau projet |
+| Midi | Sélection de banque (GS / MMA) | `midi_bank_select` | au prochain lancement (annoncé) |
+| Projet | Projets de l'appli (démos) | `app_projects_dir` (défaut `<racine>/projects`) | immédiat |
+| Projet | Projets de l'utilisateur | `projects_dir` | immédiat |
+| Projet | Banques de l'appli | `app_banks_dir` (défaut `<racine>/banks` : `KITS`, `PATCHS`, `SAMPLES`, `sf2`, `sfz`) | immédiat |
+| Projet | Banques de l'utilisateur | `user_banks_dir` (défaut : parent du dossier des projets, `/home/com/groovybox`) | immédiat |
+
+**Dossiers des banques de l'utilisateur** : sous `user_banks_dir`,
+`KITS`, `PATCHS`, `SAMPLES` (clés `kits_dir`, `patches_dir`,
+`samples_dir` absentes) et `banks/sf2`, `banks/sfz` (défauts de
+`soundfonts_dir` et `sfz_dir`). Tant que `banks/sf2` ou `banks/sfz`
+manque, l'ancien dossier sert (`/usr/share/sounds/sf2`, `media/sfz`).
+**Explorateur** : dossier de l'utilisateur s'il existe, sinon celui de
+l'appli, sinon le dossier personnel.
+
+**Fichiers déplacés** : à l'ouverture d'un projet, une soundfont ou une
+source SFZ absolue rangée sous un ancien dossier passe au même chemin
+dans le nouveau dossier dès que le fichier s'y trouve (même si l'original
+du système existe encore) ; un fichier introuvable est cherché par son nom.
+Le projet garde le nouveau chemin à son prochain enregistrement.
+
+### Clés de `data/config.json`
 
 ```json
 {
@@ -256,11 +310,11 @@ groovyboxit/
   "master_volume": 100,
   "live_limiter":  true,
   "master_pan":    0,
-  "soundfonts_dir":   "/usr/share/sounds/sf2",
+  "soundfonts_dir":   "/home/com/groovybox/banks/sf2",
   "gm_soundfont":     "FluidR3_GM.sf2",
   "midi_bank_select": "gs",
   "fluidsynth_gain":  0.4,
-  "sfz_dir":          "/home/com/groovybox/media/sfz",
+  "sfz_dir":          "/home/com/groovybox/banks/sfz",
   "sfizz_gain":       1.5,
   "fluidsynth":       true,
   "sfizz":            true
@@ -268,7 +322,8 @@ groovyboxit/
 ```
 
 Slot Banque (Phase 7 étape 17) : `soundfonts_dir` (dossier ouvert par
-« Parcourir… », défaut `/usr/share/sounds/sf2`), `gm_soundfont` (fichier
+« Parcourir… », défaut `banks/sf2` sous `user_banks_dir` depuis la Phase 8
+étape 10, `/usr/share/sounds/sf2` avant), `gm_soundfont` (fichier
 proposé pour un emplacement vide, absolu ou relatif à `soundfonts_dir`,
 défaut `FluidR3_GM.sf2`), `midi_bank_select` (`"gs"` : le MSB seul choisit
 la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
@@ -277,8 +332,8 @@ la banque ; `"mma"` : banque = MSB × 128 + LSB), `fluidsynth_gain` (0.0 à
 
 Slot Synth SFZ (Phase 8 étape 7) : `sfz_dir` (dossier des instruments SFZ,
 parcouru par le dialogue du slot ; absolu ou relatif à la racine ; défaut
-`media/sfz` à côté du dossier des projets, soit
-`/home/com/groovybox/media/sfz`), `sfizz_gain` (gain du rendu de sfizz,
+`banks/sfz` sous `user_banks_dir` depuis la Phase 8 étape 10, soit
+`/home/com/groovybox/banks/sfz` ; `media/sfz` avant), `sfizz_gain` (gain du rendu de sfizz,
 0.0 à 10.0, défaut 1.5 : un peu plus fort que FluidR3 à 0.4, plus clair à
 l'écoute).
 
@@ -294,14 +349,14 @@ désactivé (--no-sfizz) : slots Synth SFZ muets »), et à chaque choix d'un
 tel slot (Explorateur, Ctrl+T) ; kits, synthés WAV, séquenceur, MIDI et
 exports marchent ; les tests qui en dépendent sont sautés.
 
-`master_volume` (0..200 depuis la Phase 8 étape 8, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : on le modifie à la main (un dialogue de réglage est prévu plus tard).
+`master_volume` (0..200 depuis la Phase 8 étape 8, défaut 100) et `master_pan` (−100..100, défaut 0) sont le volume et le pan globaux **par défaut** (Phase 7 étape 15d1) : ils servent au lancement, à Ctrl+N, et à l'ouverture d'un ancien projet qui n'a pas sa clé `master`. Un projet garde ensuite ses propres valeurs. Une valeur hors bornes est bornée ; une valeur invalide donne le défaut. L'appli n'écrit jamais `config.json` : les réglages de l'utilisateur vont dans `preferences.json` (dialogue des Préférences, Phase 8 étape 10).
 
 `exports_dir` (export MIDI, Alt+Shift+E ; premier dossier proposé par l'import, Alt+Shift+I) vaut par défaut le dossier `EXPORTS`
 voisin du dossier des projets (`/home/com/groovybox/EXPORTS`).
 
-Chaque clé est facultative : si absente ou vide, le chemin correspondant tombe en fallback sur un sous-dossier relatif à la racine du projet (`patches/`, `samples/`, `kits/`, `presets/`).
+Chaque clé est facultative : si absente ou vide, le chemin correspondant prend son défaut (`KITS`, `PATCHS`, `SAMPLES` sous `user_banks_dir` depuis la Phase 8 étape 10 ; `presets/`, `media/` relatifs à la racine du projet).
 
-Chargement via `AppConfig(base_dir)` au démarrage.
+Chargement via `AppConfig(base_dir, prefs_path=None)` au démarrage (`MainWindow._cfg`).
 
 ---
 
@@ -2115,6 +2170,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `UndoHistoryDialog` | dialogs_simple | Ctrl+Shift+Z | Historique des annulations |
 | `ExplorerDialog` | dialogs | Alt+X | Sélection du type de ressource à charger |
 | `BankSlotDialog` | dialogs_bank | Alt+X → Banque | Emplacement (1 à 4) et fichier SF2/SF3 du slot courant |
+| `PreferencesDialog` | dialogs_preferences | Alt+Shift+P (fenêtre principale, éditeur MIDI, fenêtre Songs) | Préférences à onglets : Général, Matériel, Audio, Midi, Projet, Raccourcis, Divers ; Gauche / Droite sur l'onglet, Ctrl+Tab / Ctrl+Shift+Tab ; Ok, Annuler, Appliquer, Valeurs par défaut de l'onglet (Phase 8 étape 10) |
 | `ExportTargetDialog` | dialogs_simple | Alt+Shift+E, Alt+Shift+W (fenêtre principale, éditeur MIDI) | Ce qu'on exporte : pattern courant ou song courant ; dernier choix gardé (Phase 8 étape 4) |
 | `ImportModeDialog` | dialogs_simple | Alt+Shift+I, après le fichier | Import en Banque GM ou en Rack 16 canaux ; dernier choix gardé (Phase 8 étape 5f1) |
 | `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1 et 2) |
