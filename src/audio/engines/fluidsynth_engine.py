@@ -38,6 +38,7 @@ def _declare(lib):
         "delete_fluid_settings":         ([vp], None),
         "fluid_settings_setnum":         ([vp, c_char_p, c_double], c_int),
         "fluid_settings_setint":         ([vp, c_char_p, c_int], c_int),
+        "fluid_synth_set_gain":          ([vp, ctypes.c_float], None),
         "fluid_settings_setstr":         ([vp, c_char_p, c_char_p], c_int),
         "new_fluid_synth":               ([vp], vp),
         "delete_fluid_synth":            ([vp], None),
@@ -129,6 +130,16 @@ class FluidSynthEngine(BankEngine):
         self._sfont_ids = [None] * self.NUM_BANK_SLOTS
         self._paths     = [None] * self.NUM_BANK_SLOTS
         self._buf       = np.zeros((0, 2), dtype=np.float32)
+
+    @property
+    def gain(self):
+        return self._gain
+
+    def set_gain(self, gain):
+        """synth.gain en cours de route (Préférences, Phase 8 étape 10f1),
+        borné à 0.0..10.0 ; FluidSynth le prend sous son propre verrou."""
+        self._gain = max(0.0, min(10.0, float(gain)))
+        self._lib.fluid_synth_set_gain(self._synth, self._gain)
 
     # -- banques ---------------------------------------------------------
 

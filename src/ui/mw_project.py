@@ -45,6 +45,16 @@ class ProjectMixin:
     _mix_undo_last  = None       # (key, entrée Undo, instant) du dernier réglage
 
     def _resolve_project_path(self):
+        """Projet ouvert au démarrage (Phase 8 étape 10f1, § 10a P5) :
+        « Nouveau projet » → un nom libre (noname_NNN.gvp, rien à charger) ;
+        « Ouvrir le dernier projet » → last_project s'il existe ; sinon,
+        comme avant, project_01.gvp (ou l'ancien preset_01.json)."""
+        cfg = getattr(self, "_cfg", None)
+        if cfg is not None:
+            if cfg.startup == cfg.STARTUP_NEW:
+                return self._find_free_project_path()
+            if cfg.last_project and os.path.isfile(cfg.last_project):
+                return cfg.last_project
         default = os.path.join(self._projects_dir, ProjectManager.DEFAULT_NAME)
         legacy  = os.path.join(self._presets_dir, "preset_01.json")
         if os.path.exists(default):
@@ -908,8 +918,76 @@ class ProjectMixin:
         except OSError as e:
             say(f"ERREUR Préférences : {e}")
             return False
-        say(f"Préférences enregistrées ({len(changes)} réglage{'s' if len(changes) > 1 else ''})")
+        later = self._apply_preferences_now(changes)
+        msg = f"Préférences enregistrées ({len(changes)} réglage{'s' if len(changes) > 1 else ''})"
+        if later:
+            msg += " ; au prochain lancement : " + ", ".join(later)
+        say(msg)
         return True
+
+    # Réglages pris au prochain lancement (P2) : moteurs créés au démarrage
+    PREFS_AT_RESTART = {"fluidsynth": "moteur FluidSynth", "sfizz": "moteur sfizz",
+                        "midi_bank_select": "sélection de banque"}
+    # Clés qui changent un dossier de l'appli
+    PREFS_DIR_KEYS = {"projects_dir", "user_banks_dir", "app_projects_dir", "app_banks_dir",
+                      "kits_dir", "patches_dir", "samples_dir", "presets_dir",
+                      "exports_dir", "soundfonts_dir", "gm_soundfont", "sfz_dir"}
+
+    def _apply_preferences_now(self, changes):
+        """Effet immédiat des réglages changés (Phase 8 étape 10f1, § 10a
+        P2), lus dans self._cfg déjà à jour : Autoplay, dossiers (prochain
+        parcours), limiteur, gains FluidSynth et sfizz, volume et pan d'un
+        nouveau projet. Retourne les libellés des réglages pris au prochain
+        lancement."""
+        cfg = self._cfg
+        if "autoplay" in changes:
+            self._autoplay = cfg.autoplay
+        if self.PREFS_DIR_KEYS & changes.keys():
+            self._refresh_dirs_from_cfg()
+        if "live_limiter" in changes:
+            driver = getattr(self, "_audio_driver", None)
+            if driver is not None and hasattr(driver, "set_limiter"):
+                driver.set_limiter(cfg.live_limiter_enabled)
+        if "fluidsynth_gain" in changes and getattr(self, "_bank_engine", None) is not None:
+            self._bank_engine.set_gain(cfg.fluidsynth_gain)
+        if "sfizz_gain" in changes and getattr(self, "_sfz_engine", None) is not None:
+            self._sfz_engine.gain = cfg.sfizz_gain
+        if {"master_volume", "master_pan"} & changes.keys():
+            self._master_defaults = (cfg.master_volume, cfg.master_pan)
+        return [label for key, label in self.PREFS_AT_RESTART.items() if key in changes]
+
+    def _refresh_dirs_from_cfg(self):
+        """Dossiers de l'appli relus dans self._cfg (Préférences, 10f1)."""
+        cfg = self._cfg
+        self._patches_dir    = cfg.patches_dir
+        self._samples_dir    = cfg.samples_dir
+        self._kits_dir       = cfg.kits_dir
+        self._presets_dir    = cfg.presets_dir
+        self._projects_dir   = cfg.projects_dir
+        self._exports_dir    = cfg.exports_dir
+        self._soundfonts_dir = cfg.soundfonts_dir
+        self._gm_soundfont   = cfg.gm_soundfont
+        self._sfz_dir        = cfg.sfz_dir
+        router = getattr(self, "_router", None)
+        if router is not None:
+            router.sfz_dir = self._sfz_dir
+
+    def _remember_project(self):
+        """Retient le projet courant dans last_project (Phase 8 étape 10f1,
+        § 10a P5) après Ctrl+O, Ctrl+S, Ctrl+Shift+S et l'Explorateur :
+        seulement un fichier existant, et seulement s'il a changé ; une
+        erreur d'écriture est ignorée (le projet, lui, est bien là)."""
+        cfg = getattr(self, "_cfg", None)
+        path = getattr(self, "_project_path", "")
+        if cfg is None or not path or not os.path.isfile(path):
+            return
+        path = os.path.abspath(path)
+        if cfg.last_project == path:
+            return
+        try:
+            cfg.save_preferences({"last_project": path})
+        except OSError:
+            pass
 
     def _relocate_rack_files(self):
         """Soundfonts et sources SFZ absolues introuvables du projet chargé :
@@ -961,6 +1039,7 @@ class ProjectMixin:
                 "master":   self._master_dict(),        # 15d1 D2
             }
             ProjectManager.save(self._project_path, data)
+            self._remember_project()                   # dernier projet (10f1, P5)
             self._project_modified = False
             self._update_title()
             self._show_status(f"Projet sauvegardé : {os.path.basename(self._project_path)}")
@@ -1045,6 +1124,7 @@ class ProjectMixin:
             return
         self._project_path = path
         self._load_project()
+        self._remember_project()                       # dernier projet (10f1, P5)
         self._show_status(self._project_loaded_msg())
 
     def _apply_kit_rule(self):

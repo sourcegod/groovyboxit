@@ -209,9 +209,23 @@ class PadMixin:
         elif choice == "SFZ":
             self._explorer_sfz()
 
+    def _explorer_dir(self, user_dir, app_sub=""):
+        """Dossier de départ de l'Explorateur (Phase 8 étape 10f1, § 10a P8) :
+        celui de l'utilisateur s'il existe, sinon celui de l'appli (projets
+        de démonstration, ou sous-dossier app_sub des banques de l'appli),
+        sinon le dossier personnel."""
+        cfg = getattr(self, "_cfg", None)
+        candidates = [user_dir]
+        if cfg is not None:
+            candidates.append(os.path.join(cfg.app_banks_dir, app_sub) if app_sub
+                              else cfg.app_projects_dir)
+        for path in candidates:
+            if path and os.path.isdir(path):
+                return path
+        return os.path.expanduser("~")
+
     def _explorer_projects(self):
-        projects_dir = self._projects_dir
-        os.makedirs(projects_dir, exist_ok=True)
+        projects_dir = self._explorer_dir(self._projects_dir)
         dlg = wx.FileDialog(self, "Ouvrir un projet…",
                             defaultDir=projects_dir,
                             wildcard=ProjectManager.WILDCARD,
@@ -219,6 +233,7 @@ class PadMixin:
         if dlg.ShowModal() == wx.ID_OK:
             self._project_path = dlg.GetPath()
             self._load_project()
+            self._remember_project()                 # dernier projet (10f1, P5)
             self._show_status(self._project_loaded_msg())
         dlg.Destroy()
 
@@ -235,7 +250,7 @@ class PadMixin:
         dlg.Destroy()
 
     def _explorer_kit(self):
-        start = self._kits_dir if os.path.isdir(self._kits_dir) else os.path.expanduser("~")
+        start = self._explorer_dir(self._kits_dir, "KITS")
         dlg = wx.FileDialog(self, "Choisir un kit (*.json)",
                             defaultDir=start,
                             wildcard="Kit JSON (*.json)|*.json",
@@ -255,7 +270,7 @@ class PadMixin:
         dlg.Destroy()
 
     def _explorer_patch(self):
-        start = self._patches_dir if os.path.isdir(self._patches_dir) else os.path.expanduser("~")
+        start = self._explorer_dir(self._patches_dir, "PATCHS")
         dlg = wx.FileDialog(self, "Choisir un patch (*.json)",
                             defaultDir=start,
                             wildcard="Patch JSON (*.json)|*.json",
@@ -286,8 +301,9 @@ class PadMixin:
         else:   # premier emplacement vide, sinon le premier
             bank_slot = next((i for i, f in enumerate(files) if f is None), 0)
         self._add_undo(f"Banque slot {target + 1:02d}")
-        dlg = BankSlotDialog(self, target, files, bank_slot,
-                             self._gm_soundfont, self._soundfonts_dir)
+        dlg = BankSlotDialog(self, target, files, bank_slot, self._gm_soundfont,
+                             self._explorer_dir(self._soundfonts_dir,
+                                                "sf2"))   # 10f1
         if dlg.ShowModal() != wx.ID_OK:
             dlg.Destroy()
             self._pop_last_undo()
@@ -342,7 +358,8 @@ class PadMixin:
         current = self._router.sfz_path(slot) if is_sfz else None
         gain = slot.sfz_gain_db() if is_sfz else 0
         self._add_undo(f"SFZ slot {target + 1:02d}")
-        dlg = SfzSlotDialog(self, target, self._sfz_dir, current, gain)
+        sfz_dir = self._explorer_dir(self._sfz_dir, "sfz")   # 10f1
+        dlg = SfzSlotDialog(self, target, sfz_dir, current, gain)
         if dlg.ShowModal() != wx.ID_OK or dlg.get_source() is None:
             dlg.Destroy()
             self._pop_last_undo()
@@ -385,7 +402,7 @@ class PadMixin:
         self._show_status(msg + self._engine_off_note(InstrumentType.SFZ))
 
     def _explorer_sound(self):
-        start = self._samples_dir if os.path.isdir(self._samples_dir) else os.path.expanduser("~")
+        start = self._explorer_dir(self._samples_dir, "SAMPLES")
         dlg = wx.FileDialog(self, "Choisir un sample (*.wav)",
                             defaultDir=start,
                             wildcard="Fichiers WAV (*.wav)|*.wav",

@@ -11864,3 +11864,49 @@ SpinCtrl pour les nombres.
 - Mutations vérifiées (libellé créé après son champ ; onglets sans
   boucle) : chacune fait échouer des tests.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 3884 verts.
+
+### Avancement 10f1 (implémentation — les effets)
+
+- **Démarrage** (`_resolve_project_path`, P5) : « Nouveau projet » → un
+  nom libre `noname_NNN.gvp` (rien à charger, patterns neufs) ;
+  « Ouvrir le dernier projet » → `last_project` s'il existe ; sinon,
+  comme avant, `project_01.gvp`.
+- **Dernier projet** (`_remember_project`) : écrit dans `last_project`
+  après Ctrl+O, l'Explorateur (Projects), Ctrl+S et Ctrl+Shift+S ;
+  seulement un fichier existant, seulement s'il a changé ; erreur
+  d'écriture ignorée.
+- **Autoplay de la grille et des pads** : `MainWindow._autoplay` lu au
+  démarrage. **Autoplay de l'Explorateur** : gardé, sans effet tant que
+  l'audition n'existe pas.
+- **Explorateur** (`_explorer_dir`, P8) : dossier de l'utilisateur s'il
+  existe, sinon celui de l'appli (`app_projects_dir` pour Projects ;
+  `KITS`, `PATCHS`, `SAMPLES`, `sf2`, `sfz` sous `app_banks_dir`), sinon
+  le dossier personnel. **Écart au plan** : un seul dossier de départ, pas
+  une liste réunissant les deux ; à revoir quand l'appli livrera des
+  banques. Banques de l'appli rangées directement sous `app_banks_dir`
+  (`<racine>/banks/sf2`, pas `banks/banks/sf2`).
+- **Effet immédiat** (`_apply_preferences_now`, P2) : Autoplay ; dossiers
+  relus (`_refresh_dirs_from_cfg`, aussi `TrackRouter.sfz_dir`) ;
+  limiteur (`SoundDeviceDriver.set_limiter`) ; gain FluidSynth
+  (`FluidSynthEngine.set_gain`, nouveau : `fluid_synth_set_gain`) ; gain
+  sfizz (`SfzEngine.gain`) ; volume et pan d'un nouveau projet. **Au
+  prochain lancement**, annoncé : moteurs FluidSynth et sfizz, sélection
+  de banque (réglage de FluidSynth posé à sa création) — « Préférences
+  enregistrées (3 réglages) ; au prochain lancement : moteur FluidSynth ».
+- Vérifié sur une vraie fenêtre principale : démarrage « new »
+  (`noname_001.gvp`), « last » (le projet), « last » introuvable
+  (`project_01.gvp`) ; Autoplay lu ; limiteur coupé tout de suite.
+- Suite : 3866 verts, **18 rouges jusqu'à 10g1** (fenêtres factices sans
+  `_explorer_dir` / `_apply_preferences_now` : `test_explorer_actions.py`,
+  `test_preferences_dialog.py`).
+
+**Essai 10f1** : « Au démarrage : Nouveau projet », relancer → nouveau
+projet ; revenir à « Ouvrir le dernier projet », ouvrir un projet (Ctrl+O),
+relancer → ce projet ; décocher l'Autoplay de la grille → la navigation
+dans la grille ne joue plus, tout de suite ; changer le gain FluidSynth →
+le volume des banques change tout de suite ; décocher le limiteur ;
+Explorateur (Alt+X) : dossiers de l'utilisateur.
+
+**Essai 10f1** (utilisateur, 2026-11-11) : concluant. Demande : pouvoir
+**annuler** un réglage appliqué (gain FluidSynth porté à 3,6 par
+Appliquer, sans retour possible) → avenant à trancher (10f2).

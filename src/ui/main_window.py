@@ -118,6 +118,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._init_sound()
         self._synths_dir  = os.path.join(self._base_dir, "synths")
         cfg = self._cfg
+        self._autoplay     = cfg.autoplay       # Préférences (Phase 8 étape 10f1)
         self._patches_dir  = cfg.patches_dir
         self._samples_dir  = cfg.samples_dir
         self._kits_dir     = cfg.kits_dir
