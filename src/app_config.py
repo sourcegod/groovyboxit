@@ -438,3 +438,46 @@ class AppConfig:
         folder = self.soundfonts_dir if is_sf else self.sfz_dir
         cand = os.path.join(folder, os.path.basename(norm))
         return cand if os.path.exists(cand) else path
+
+    # ------------------------------------------------------------------
+    # Matériel (Phase 8 étape 11b1, docs/DESIGN.md § 11a H1, H12, H16) :
+    # périphériques par nom ; listes = périphériques cochés, ouverts au
+    # démarrage et proposés aux pistes (étape 12).
+    # ------------------------------------------------------------------
+
+    def _get_names(self, key):
+        """Liste de noms (chaînes non vides, sans doublon, ordre gardé) ;
+        [] si la clé manque ou n'est pas une liste."""
+        value = self._data.get(key, [])
+        if not isinstance(value, list):
+            return []
+        names = []
+        for v in value:
+            if isinstance(v, str) and v.strip() and v.strip() not in names:
+                names.append(v.strip())
+        return names
+
+    @property
+    def audio_hostapi(self):
+        """Pilote audio de PortAudio (« ALSA »…) ; "" = celui de la sortie
+        par défaut."""
+        return self._get_str("audio_hostapi")
+
+    @property
+    def audio_inputs(self):
+        return self._get_names("audio_inputs")
+
+    @property
+    def audio_outputs(self):
+        return self._get_names("audio_outputs")
+
+    @property
+    def audio_main_output(self):
+        """Sortie où va le mix de l'appli (H16) : la clé si elle est parmi
+        les sorties cochées, sinon la première sortie cochée, sinon "" (le
+        défaut du pilote)."""
+        outputs = self.audio_outputs
+        main = self._get_str("audio_main_output")
+        if main and (main in outputs or not outputs):
+            return main
+        return outputs[0] if outputs else ""

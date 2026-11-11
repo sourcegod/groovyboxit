@@ -15,6 +15,7 @@ from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 from audio import audio_export
+from devices import audio as audio_devices
 from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog, \
     ImportModeDialog
 from tempo_map import format_bpm
@@ -920,10 +921,36 @@ class ProjectMixin:
             return False
         later = self._apply_preferences_now(changes)
         msg = f"Préférences enregistrées ({len(changes)} réglage{'s' if len(changes) > 1 else ''})"
+        if self.PREFS_AUDIO_OUT_KEYS & changes.keys():
+            note = self._apply_audio_output()
+            if note:
+                msg += " ; " + note
         if later:
             msg += " ; au prochain lancement : " + ", ".join(later)
         say(msg)
         return True
+
+    # Clés qui changent la sortie principale (Phase 8 étape 11b1, H2, H16)
+    PREFS_AUDIO_OUT_KEYS = {"audio_hostapi", "audio_outputs", "audio_main_output"}
+
+    def _apply_audio_output(self):
+        """Flux du pilote rouvert sur la sortie principale des Préférences
+        (11b1, H2). Retourne l'annonce : « sortie audio : <nom> », la sortie
+        absente (défaut gardé), ou le refus de PortAudio (sortie précédente
+        gardée)."""
+        cfg = self._cfg
+        driver = getattr(self, "_audio_driver", None)
+        if driver is None or not hasattr(driver, "set_device"):
+            return ""
+        hostapi = cfg.audio_hostapi or audio_devices.default_hostapi()
+        device, note = audio_devices.resolve_output(cfg.audio_main_output, hostapi)
+        if device == driver.device:
+            return note
+        try:
+            driver.set_device(device)
+        except Exception as e:                      # PortAudioError, ValueError
+            return f"sortie audio refusée ({e}) : sortie précédente gardée"
+        return note or f"sortie audio : {cfg.audio_main_output or 'défaut'}"
 
     # Réglages pris au prochain lancement (P2) : moteurs créés au démarrage
     PREFS_AT_RESTART = {"fluidsynth": "moteur FluidSynth", "sfizz": "moteur sfizz",

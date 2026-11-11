@@ -516,25 +516,74 @@ class SoundDeviceDriver(Mixer):
     Méthodes en plus de Mixer
     -------------------------
     close()
+    set_device(device)              sortie changée en cours de route (11b1)
+    stop_stream() / start_stream()  flux arrêté le temps de relire PortAudio
     """
 
     def __init__(self, samplerate: int = Mixer.SAMPLERATE,
-                 blocksize: int = Mixer.BLOCKSIZE, limiter: bool = True):
+                 blocksize: int = Mixer.BLOCKSIZE, limiter: bool = True,
+                 device=None):
         """limiter : limiteur du mix à l'écoute (Phase 8 étape 8c1, L3, L6),
         à la place de l'écrêtage ; False = écrêtage seul (clé
-        "live_limiter" de config.json)."""
+        "live_limiter" de config.json). device : périphérique de sortie
+        (indice PortAudio, None = défaut ; Phase 8 étape 11b1, H2)."""
         super().__init__(samplerate)
         self._blocksize = blocksize
         self._limiter   = LiveLimiter(samplerate) if limiter else None
+        self._device    = device
+        self._stream    = None
+        self.start_stream()
 
-        self._stream = sd.OutputStream(
+    # ------------------------------------------------------------------
+    # Flux PortAudio et périphérique (Phase 8 étape 11b1, § 11a H2, H5)
+    # ------------------------------------------------------------------
+
+    @property
+    def device(self):
+        """Périphérique de sortie (indice PortAudio), None = défaut."""
+        return self._device
+
+    def _open(self, device):
+        stream = sd.OutputStream(
             samplerate = self._sr,
             blocksize  = self._blocksize,
             channels   = self.CHANNELS,
             dtype      = self.DTYPE,
             callback   = self._callback,
+            device     = device,
         )
-        self._stream.start()
+        stream.start()
+        return stream
+
+    def start_stream(self, device=...):
+        """Ouvre et démarre le flux (sur device si donné, sinon le
+        périphérique courant) ; sans effet s'il tourne déjà."""
+        if device is not ...:
+            self._device = device
+        if self._stream is None:
+            self._stream = self._open(self._device)
+
+    def stop_stream(self):
+        """Arrête et ferme le flux ; les voix et les sources de rendu restent
+        (le mix reprend à start_stream)."""
+        stream, self._stream = self._stream, None
+        if stream is not None:
+            stream.stop()
+            stream.close()
+
+    def set_device(self, device):
+        """Sortie changée en cours de route : flux rouvert sur device. Échec
+        (périphérique occupé ou absent) : flux rouvert sur le périphérique
+        précédent, puis l'erreur de PortAudio est relevée."""
+        previous = self._device
+        self.stop_stream()
+        try:
+            self._stream = self._open(device)
+            self._device = device
+        except (sd.PortAudioError, ValueError):
+            self._stream = self._open(previous)
+            self._device = previous
+            raise
 
     # ------------------------------------------------------------------
     # Callback audio (thread PortAudio)
@@ -564,5 +613,4 @@ class SoundDeviceDriver(Mixer):
 
     def close(self):
         """Ferme le flux PortAudio."""
-        self._stream.stop()
-        self._stream.close()
+        self.stop_stream()

@@ -12225,3 +12225,79 @@ la fenêtre principale est retirée.
   Résultat, Valeurs par défaut), effets ; liste « MIDI: » retirée,
   Alt+Shift+M retiré ; aide F1.
 - **11h1 — clôture**.
+
+### Avancement 11b1 (implémentation — audio)
+
+- **`src/devices/audio.py`** (nouveau ; paquet autonome `src/devices/`, voir plus bas) : `hostapis()`,
+  `default_hostapi()`, `devices(pilote, "input" | "output")`,
+  `default_device`, `find_device(nom, pilote, sens)` (par nom),
+  `resolve_output(sortie principale, pilote)` (indice ou défaut, avec
+  l'annonce d'une sortie absente), `rescan()` (réinitialise PortAudio),
+  `tone()` (La 440 Hz d'une seconde, −10 dBFS, fondus de 10 ms),
+  `play_tone(device)`, `input_peak_db(device)` (une seconde d'écoute,
+  crête en dBFS), `format_db`, `AudioDeviceError`.
+- **`SoundDeviceDriver`** : argument `device` ; `device`,
+  `start_stream()`, `stop_stream()` (voix et sources de rendu gardées),
+  **`set_device(device)`** : flux rouvert sur le nouveau périphérique ;
+  refus de PortAudio → flux rouvert sur le précédent, erreur relevée.
+- **`AppConfig`** : `audio_hostapi`, `audio_inputs`, `audio_outputs`
+  (listes de noms, sans doublon), `audio_main_output` (la clé si elle est
+  cochée, sinon la première sortie cochée, sinon le défaut).
+- **Démarrage** (`MainWindow._open_audio_driver`) : sortie principale
+  enregistrée si elle est là, sinon le défaut, annoncé (« Sortie audio
+  « X » absente : sortie par défaut ») ; refusée par PortAudio → défaut,
+  annoncé.
+- **Effet immédiat** (`_apply_audio_output`, appelé par
+  `_apply_preferences` quand le pilote, les sorties ou la sortie
+  principale changent) : flux rouvert, annonce « sortie audio : X », ou
+  refus (sortie précédente gardée).
+- Vérifié sur le vrai matériel : ALSA et OSS ; flux passé sur
+  `pipewire` ; refus d'un périphérique inexistant (précédent gardé) ;
+  relecture de PortAudio puis flux rouvert ; crête de l'entrée mesurée.
+  **Constat** : la sortie analogique de la carte (`hw:0,0`) n'apparaît
+  pas en sortie, PipeWire la tenant ; on y passe par `pipewire`, `pulse`
+  ou `default`. Les greffons ALSA (`lavrate`, `speex`, `upmix`…)
+  apparaissent comme périphériques : à filtrer peut-être (11f1).
+- Suite : 3921 verts, **7 rouges jusqu'à 11c1** (pilote factice sans
+  `device` dans `test_live_limiter.py`, hôtes factices sans
+  `PREFS_AUDIO_OUT_KEYS` dans `test_preferences_dialog.py` et
+  `test_preferences_effects.py`).
+
+**Essai 11b1** : sans réglage, l'appli sonne comme avant ; avec
+`"audio_main_output": "pipewire"` dans `preferences.json`, elle sonne
+aussi ; avec un nom inexistant, l'annonce de démarrage le dit et le son
+passe par le défaut.
+
+**Avenant 11b1 — paquet autonome `src/devices/`** (demande de
+l'utilisateur, 2026-11-11 : « ce module de détection des périphériques
+audio / MIDI est très important… l'isoler comme un module autonome, il
+sera très utile dans d'autres applications audio / MIDI ») :
+- `src/devices/audio.py` (l'ancien `audio_devices.py`), `__init__.py`
+  (présentation, dépendances), et la partie MIDI viendra en
+  `src/devices/midi.py` (11d1) ;
+- **aucun import de l'appli** (seulement sounddevice, numpy ; rtmidi pour
+  le MIDI) : le paquet se copie tel quel ;
+- **`python3 -m devices`** (depuis `src/`) : liste les pilotes et les
+  périphériques ; `--tone SORTIE` joue le La 440 Hz, `--input ENTRÉE`
+  mesure la crête — pour l'essai de plusieurs cartes son prévu par
+  l'utilisateur à la fin de l'étape 11 ;
+- l'appli l'importe par `from devices import audio as audio_devices`.
+
+**Avenant 11b1 — boîte de message au démarrage** (demande de
+l'utilisateur, 2026-11-11) : un périphérique introuvable ou refusé au
+démarrage est annoncé dans une **boîte de message bloquante** avec un
+bouton Ok (`MainWindow._show_device_notes`, titre « Périphériques
+introuvables »), mieux vue par un lecteur d'écran que la barre d'état ;
+le message reste aussi dans la barre d'état. Liste `_device_notes`,
+distincte des notes des moteurs ; vaudra aussi pour les ports MIDI
+(11d1).
+- Essai 3 (utilisateur) : boîte vue ; demandes : **nom du périphérique
+  mis en avant** (« Sortie audio introuvable : Carte inexistante. Sortie
+  par défaut utilisée. », titre « Périphérique introuvable » ou « N
+  périphériques introuvables ») et **bip d'alerte** à l'ouverture de la
+  boîte (`_alert_beep` : deux bips descendants 880 puis 660 Hz joués par
+  le pilote audio de l'appli, `wx.Bell()` étant souvent muet).
+
+**Essais 11b1** (utilisateur, 2026-11-11) : 1 (sans réglage), 2
+(`pipewire`), 3 (sortie inexistante : boîte, nom, bip) concluants. Le
+réglage d'essai est retiré de `preferences.json`.

@@ -1,8 +1,10 @@
 import os
 import threading
 import wx
+import numpy as np
 from audio.sound_manager import SoundManager
-from audio.sound_device_driver import SoundDeviceDriver
+from audio.sound_device_driver import SoundDeviceDriver, SdSound
+from devices import audio as audio_devices
 from player.drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
@@ -92,6 +94,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._no_fluidsynth = no_fluidsynth
         self._no_sfizz      = no_sfizz
         self._engine_notes  = []    # messages de démarrage des moteurs (Z14)
+        self._device_notes  = []    # périphériques introuvables ou refusés (11b1)
         self._cur_row = 0
         self._cur_col = 0
         self._cells = []
@@ -200,8 +203,42 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Centre()
-        if self._engine_notes:      # moteurs coupés ou absents (Phase 8 étape 7b1, Z14)
-            wx.CallAfter(self._show_status, " ; ".join(self._engine_notes))
+        notes = self._device_notes + self._engine_notes
+        if notes:                   # moteurs coupés ou absents (Phase 8 étape 7b1, Z14)
+            wx.CallAfter(self._show_status, " ; ".join(notes))
+        if self._device_notes:      # boîte bloquante, lue par Orca (11b1)
+            wx.CallAfter(self._show_device_notes)
+
+    def _show_device_notes(self):
+        """Périphériques introuvables ou refusés au démarrage (Phase 8 étape
+        11b1, demande de l'utilisateur) : une boîte de message bloquante avec
+        un bouton Ok, mieux vue par un lecteur d'écran que la barre d'état."""
+        n = len(self._device_notes)
+        title = "Périphérique introuvable" if n == 1 else f"{n} périphériques introuvables"
+        dlg = wx.MessageDialog(self, "\n".join(self._device_notes), title,
+                               wx.OK | wx.ICON_WARNING)
+        self._alert_beep()
+        try:
+            dlg.ShowModal()
+        finally:
+            dlg.Destroy()
+
+    ALERT_FREQS = (880.0, 660.0)     # deux bips descendants, 0,15 s chacun
+
+    def _alert_beep(self):
+        """Bip d'alerte joué par le pilote audio de l'appli (sortie ouverte,
+        quelle qu'elle soit) : wx.Bell() dépend du bureau et reste souvent
+        muet. Rien si le pilote manque."""
+        driver = getattr(self, "_audio_driver", None)
+        if driver is None:
+            return
+        sr = driver.samplerate
+        beep = np.concatenate([audio_devices.tone(sr, freq=f, seconds=0.15, level=0.3)
+                               for f in self.ALERT_FREQS])
+        try:
+            driver.play(SdSound(beep, sr))
+        except Exception:
+            wx.Bell()
 
     def wait_loaded(self):
         """Affiche 'Chargement…' et bloque jusqu'à ce que tous les sons soient prêts."""
@@ -219,8 +256,9 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._cfg = cfg       # config + préférences (Phase 8 étape 10b1)
         media_dir = cfg.media_dir
         media_lst = [os.path.join(media_dir, f"{i}.wav") for i in range(1, 17)]
-        # limiteur du mix à l'écoute (Phase 8 étape 8c1, L3)
-        self._audio_driver = SoundDeviceDriver(limiter=cfg.live_limiter_enabled)
+        # limiteur du mix à l'écoute (Phase 8 étape 8c1, L3) ; sortie
+        # principale des Préférences (Phase 8 étape 11b1, H2, H16)
+        self._audio_driver = self._open_audio_driver(cfg)
         self._init_bank_engine(cfg)
         self._init_sfz_engine(cfg)
         self._snd = SoundManager(media_lst, cfg.click1_file, cfg.click2_file,
@@ -233,6 +271,23 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             self._on_note_replaced, pad, bar, step
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
+
+    def _open_audio_driver(self, cfg):
+        """Pilote audio sur la sortie principale (11b1) : le périphérique
+        enregistré s'il est là, sinon le défaut (annoncé au démarrage) ; un
+        périphérique refusé par PortAudio → le défaut, annoncé aussi."""
+        hostapi = cfg.audio_hostapi or audio_devices.default_hostapi()
+        device, note = audio_devices.resolve_output(cfg.audio_main_output, hostapi)
+        if note:
+            self._device_notes.append(note)
+        try:
+            return SoundDeviceDriver(limiter=cfg.live_limiter_enabled, device=device)
+        except Exception as e:                      # PortAudioError, ValueError
+            if device is None:
+                raise
+            self._device_notes.append(f"Sortie audio refusée : {cfg.audio_main_output} ({e}). "
+                                      f"Sortie par défaut utilisée.")
+            return SoundDeviceDriver(limiter=cfg.live_limiter_enabled)
 
     def _init_bank_engine(self, cfg):
         """Moteur de banque FluidSynth branché au pilote audio (Phase 7
