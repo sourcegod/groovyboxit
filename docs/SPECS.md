@@ -78,8 +78,9 @@ groovyboxit/
 │   │       └── sfizz_engine.py      # SfzEngine : sfizz par ctypes (SFZ), une instance par canal
 │   ├── devices/          # Paquet AUTONOME (sans import de l'appli) : périphériques audio / MIDI (Phase 8 étape 11)
 │   │   ├── __init__.py
-│   │   ├── __main__.py   # python3 -m devices : liste, --tone, --input
-│   │   └── audio_device.py # Pilotes et périphériques PortAudio par nom, La 440 Hz, crête d'une entrée
+│   │   ├── __main__.py   # python3 -m devices : liste, --tone, --input, --note, --listen
+│   │   ├── audio_device.py # Pilotes et périphériques PortAudio par nom, La 440 Hz, crête d'une entrée
+│   │   └── midi_device.py  # Ports MIDI par nom, plusieurs entrées ensemble, sorties, A4, prochaine note
 │   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10, import en Phase 7 étape 18)
 │   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
 │   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
@@ -175,6 +176,7 @@ groovyboxit/
     ├── test_loop_select_dialog.py
     ├── test_loop_undo.py
     ├── test_master_mix.py
+    ├── test_midi_device.py
     ├── test_midi_constants.py
     ├── test_midi_editor.py
     ├── test_midi_editor_filter.py
@@ -2320,6 +2322,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_loop_select_dialog.py` | LoopSelectDialog (42 tests) |
 | `test_loop_undo.py` | Undo des points de boucle (Ctrl+L, Shift+L, Alt+L, dialogue) et de la case Boucler du song |
 | `test_master_mix.py` | Volume et pan globaux : défauts de config.json, clé « master » du .gvp, Nouveau projet, Undo, raccourcis et champs |
+| `test_midi_device.py` | Périphériques MIDI (Phase 8 étape 11d1) : devices.midi_device sur un rtmidi factice (noms des notes, ports, sans rtmidi, adresse ALSA changée, nom exact préféré, plusieurs entrées ensemble, message vide, port déjà ouvert ou refusé, fermeture, sorties, A4 d'une seconde, prochaine note, délai) ; python3 -m devices (ports MIDI, --note, --listen) ; MidiManager.open_names ; clés midi_* ; DevicesMixin (ouverture au démarrage, Shift+F12, Ctrl+Shift+F12, boîte bloquante, A4 sur un port ou le Synthé FluidSynth, écoute d'une entrée) ; boîte devant la fenêtre active ; raccourcis F12 dans les trois fenêtres, Alt+M retiré ; vraie fenêtre principale (69 tests) |
 | `test_midi_constants.py` | midi_constants : tables CC/GM/GM2, noms des percussions GM, note GM devinée, courbe gm_gain |
 | `test_midi_editor.py` | MidiEditor : get_note_events, get_cc_pgm_events, sélection, édition |
 | `test_midi_editor_filter.py` | MidiEditor.filter_events : type/note/vélocité/bend/CC/program/position (30 tests) |

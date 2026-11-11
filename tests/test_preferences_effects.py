@@ -518,6 +518,7 @@ def test_real_main_window_startup_new_and_live_settings(isolated_preferences, mo
         assert win._status_ctrl.GetString(0).startswith("Préférences enregistrées (2 réglages)")
     finally:
         if win is not None:
+            win._router.wait_loaded()     # fils de chargement finis avant Destroy
             win._midi.close()
             win._audio_driver.close()
             win.Destroy()

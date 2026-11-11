@@ -729,6 +729,7 @@ def test_real_main_window_missing_output(isolated_preferences, monkeypatch):
         assert "Carte inexistante" in win._status_ctrl.GetString(0)
     finally:
         if win is not None:
+            win._router.wait_loaded()     # fils de chargement finis avant Destroy
             win._midi.close()
             win._audio_driver.close()
             win.Destroy()

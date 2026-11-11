@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import midi.midi_manager as mm_module
 from midi.midi_manager import MidiManager
+from devices import midi_device       # ports ouverts par MidiInputs (Phase 8 étape 11d1)
 
 
 # ---------------------------------------------------------------------------
@@ -34,11 +35,13 @@ def make_mgr(ports=DEFAULT_PORTS, **kwargs):
     mock_rt = MagicMock()
     mock_rt.MidiIn.return_value.get_ports.return_value = list(ports)
     p_rt    = patch.object(mm_module, "rtmidi",             mock_rt)
+    p_dev   = patch.object(midi_device, "rtmidi",           mock_rt)
     p_avail = patch.object(mm_module, "_RTMIDI_AVAILABLE",  True)
     p_rt.start()
+    p_dev.start()
     p_avail.start()
     mgr = MidiManager(**kwargs)
-    def stop(): p_rt.stop(); p_avail.stop()
+    def stop(): p_rt.stop(); p_dev.stop(); p_avail.stop()
     return mgr, mock_rt, stop
 
 
@@ -166,14 +169,18 @@ def test_open_notifies_on_connect():
 def test_open_calls_set_callback():
     mgr, mock_rt, stop = make_mgr()
     mgr.open(0)
-    mgr._midi_in.set_callback.assert_called_once_with(mgr._callback)
+    # par MidiInputs : (sa méthode, nom du port) ; le message va à mgr._callback
+    midi_in = mock_rt.MidiIn.return_value
+    midi_in.set_callback.assert_called_once()
+    assert midi_in.set_callback.call_args[0][1] == "Port A"
     stop()
     ok("open() appelle set_callback")
 
 def test_open_calls_ignore_types():
     mgr, mock_rt, stop = make_mgr()
     mgr.open(0)
-    mgr._midi_in.ignore_types.assert_called_once()
+    mock_rt.MidiIn.return_value.ignore_types.assert_called_once_with(
+        sysex=True, timing=True, active_sense=True)
     stop()
     ok("open() appelle ignore_types")
 

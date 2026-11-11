@@ -12410,3 +12410,40 @@ jusqu'au retrait de la liste en 11f1.
   la fenêtre active pour que le focus y revienne).
 - Troisième essai (boîte et bip par Shift+F12, Ctrl+Shift+F12, depuis
   l'éditeur MIDI) : concluant.
+
+### Avancement 11e1 (tests — MIDI)
+
+- **`tests/test_midi_device.py`** (nouveau, 69 tests) :
+  - `devices.midi_device` sur un **rtmidi factice** : noms des notes,
+    ports, sans rtmidi, `base_name` / `find_port` (adresse ALSA changée,
+    nom exact préféré), `MidiInputs` (plusieurs ports ensemble, messages
+    avec leur port, message vide, déjà ouvert, refusé, adresse changée,
+    fermeture), sorties (adresse changée, introuvable, refusée), A4 d'une
+    seconde (Note Off par minuterie, canal), `is_note_on`, `wait_note`
+    (note reçue, CC ignoré, délai, port introuvable, accès refermé) ;
+    `python3 -m devices` (ports MIDI, `--note`, `--listen`) ;
+  - `MidiManager.open_names` (deux ports, même décodage, annonces,
+    silencieux, sans rtmidi, `open(indice)` ferme les autres, refus) ;
+    clés `midi_inputs` / `midi_outputs` ;
+  - `DevicesMixin` : ouverture au démarrage (synthé interne pas un port,
+    sorties gardées), fermeture, Shift+F12 (déconnecte / connecte,
+    introuvable → boîte, sans entrée cochée → liste), Ctrl+Shift+F12
+    (reconnecté, introuvable → boîte, rien de coché), A4 sur un port
+    ouvert, temporaire (refermé), introuvable, Synthé FluidSynth (moteur
+    factice : source branchée puis retirée, Note On / Off, soundfont
+    introuvable, bibliothèque absente), écoute d'une entrée ;
+  - boîte devant la fenêtre active ; F12 dans la fenêtre principale,
+    l'éditeur MIDI et la fenêtre Songs, Alt+M et Alt+Shift+F12 sans
+    effet ; vraie fenêtre principale (entrée introuvable → boîte).
+- **11 tests rouges de 11d1 corrigés** (`test_midi_manager.py` : rtmidi
+  factice aussi dans `devices.midi_device`, appels de `MidiInputs`).
+- **Pièges de test** : la wx.App de la session détruite par un fichier
+  précédent (recréée et gardée dans le module) ; les tests à vraie
+  fenêtre attendent les fils de chargement (`wait_loaded`) avant
+  `Destroy` (sinon un `wx.CallAfter` tardif lève une exception dans un
+  test suivant) — ajouté aussi à `test_audio_device.py` et
+  `test_preferences_effects.py`.
+- Mutations vérifiées (nom sans l'adresse ALSA ignoré ; boîte absente à
+  Ctrl+Shift+F12) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`midi_device.py`) et table. Suite :
+  4068 verts (aussi avec les exceptions de fil traitées en erreurs).
