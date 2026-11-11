@@ -9,7 +9,11 @@
       précédent, en boucle, le focus posé sur l'onglet (annoncé par Orca).
     - Ok / Annuler / Appliquer : Ok et Appliquer passent les réglages changés
       à on_apply(changes) ; changes = {clé: valeur}, None = clé retirée
-      (retour à la valeur de data/config.json).
+      (retour à la valeur de data/config.json) : un réglage égal à sa valeur
+      par défaut est passé à None, preferences.json ne garde que les écarts.
+    - Bouton « Valeurs par défaut » au bas des onglets réglables (Phase 8
+      étape 10f2) : remet les champs de l'onglet aux valeurs par défaut,
+      sans rien appliquer (Ok ou Appliquer ensuite).
     Date: Wed, 11/11/2026
     Author: Coolbrother
 """
@@ -26,6 +30,15 @@ class PreferencesDialog(wx.Dialog):
     STARTUP_LABELS = ["Ouvrir le dernier projet", "Nouveau projet"]     # AppConfig.STARTUP_CHOICES
     BANK_SELECT_LABELS = ["GS (MSB seul)", "MMA (MSB × 128 + LSB)"]
     BANK_SELECT_VALUES = ["gs", "mma"]
+
+    # Clés réglées par chaque onglet (bouton « Valeurs par défaut », 10f2)
+    TAB_KEYS = {
+        "Général": ("startup", "autoplay", "explorer_autoplay"),
+        "Audio":   ("live_limiter", "fluidsynth", "sfizz", "fluidsynth_gain",
+                    "sfizz_gain", "master_volume", "master_pan"),
+        "Midi":    ("midi_bank_select",),
+        "Projet":  ("app_projects_dir", "projects_dir", "app_banks_dir", "user_banks_dir"),
+    }
 
     # (clé, libellé) des chemins de l'onglet Projet (P8)
     PATH_FIELDS = [
@@ -59,6 +72,17 @@ class PreferencesDialog(wx.Dialog):
             builders[label](panel)
             self._book.AddPage(panel, label)
             self._pages[label] = panel
+
+        # Valeurs par défaut (10f2) : bouton créé en dernier, au bas de l'onglet
+        self._defaults = self.values_of(cfg.defaults_only())
+        self._default_btns = {}
+        for label in self.TAB_KEYS:
+            panel = self._pages[label]
+            btn = wx.Button(panel, label="Valeurs par défaut")
+            btn.SetName(f"Valeurs par défaut — onglet {label}")
+            btn.Bind(wx.EVT_BUTTON, lambda e, t=label: self.restore_defaults(t))
+            panel.GetSizer().Add(btn, 0, wx.LEFT | wx.BOTTOM, 10)
+            self._default_btns[label] = btn
 
         ok_btn = wx.Button(self, wx.ID_OK, "Ok")
         ok_btn.SetDefault()
@@ -222,12 +246,62 @@ class PreferencesDialog(wx.Dialog):
             vals[key] = text.GetValue().strip() or None      # vide : retour au défaut
         return vals
 
+    def values_of(self, cfg):
+        """Réglages d'une configuration, comme values() les rendrait (gains
+        au dixième, chemins tels que les champs les montrent)."""
+        vals = {
+            "startup": cfg.startup,
+            "autoplay": cfg.autoplay,
+            "explorer_autoplay": cfg.explorer_autoplay,
+            "live_limiter": cfg.live_limiter_enabled,
+            "fluidsynth": cfg.fluidsynth_enabled,
+            "sfizz": cfg.sfizz_enabled,
+            "fluidsynth_gain": round(cfg.fluidsynth_gain * 10) / 10,
+            "sfizz_gain": round(cfg.sfizz_gain * 10) / 10,
+            "master_volume": cfg.master_volume,
+            "master_pan": cfg.master_pan,
+            "midi_bank_select": cfg.midi_bank_select,
+        }
+        for key, _ in self.PATH_FIELDS:
+            vals[key] = getattr(cfg, key) or None
+        return vals
+
+    def show_values(self, vals):
+        """Met les champs aux valeurs données (clés de values(), sous-ensemble
+        permis) ; n'applique rien."""
+        setters = {
+            "startup": lambda v: self._startup.SetSelection(AppConfig.STARTUP_CHOICES.index(v)),
+            "autoplay": self._autoplay.SetValue,
+            "explorer_autoplay": self._explorer_autoplay.SetValue,
+            "live_limiter": self._live_limiter.SetValue,
+            "fluidsynth": self._fluidsynth.SetValue,
+            "sfizz": self._sfizz.SetValue,
+            "fluidsynth_gain": lambda v: self._fluidsynth_gain.SetValue(round(v * 10)),
+            "sfizz_gain": lambda v: self._sfizz_gain.SetValue(round(v * 10)),
+            "master_volume": self._master_volume.SetValue,
+            "master_pan": self._master_pan.SetValue,
+            "midi_bank_select": lambda v: self._bank_select.SetSelection(
+                self.BANK_SELECT_VALUES.index(v)),
+        }
+        for key, value in vals.items():
+            if key in self._paths:
+                self._paths[key].SetValue(value or "")
+            else:
+                setters[key](value)
+
+    def restore_defaults(self, tab):
+        """Bouton « Valeurs par défaut » (10f2) : champs de l'onglet tab remis
+        aux valeurs par défaut ; Ok ou Appliquer les appliquent."""
+        self.show_values({k: self._defaults[k] for k in self.TAB_KEYS[tab]})
+
     def changes(self):
         """Réglages changés depuis l'ouverture ou le dernier Appliquer."""
         return {k: v for k, v in self.values().items() if self._baseline.get(k) != v}
 
     def _apply(self):
-        changes = self.changes()
+        # valeur par défaut → None : la clé quitte preferences.json (10f2)
+        changes = {k: (None if v == self._defaults.get(k) else v)
+                   for k, v in self.changes().items()}
         if changes and self._on_apply is not None:
             self._on_apply(changes)
         self._baseline = self.values()

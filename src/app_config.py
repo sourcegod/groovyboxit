@@ -66,6 +66,12 @@ class AppConfig:
         """Copie des clés écrites par l'utilisateur."""
         return dict(self._prefs)
 
+    def defaults_only(self):
+        """Configuration sans les préférences de l'utilisateur : les valeurs
+        de data/config.json et les défauts du code (bouton « Valeurs par
+        défaut » des Préférences, Phase 8 étape 10f2)."""
+        return AppConfig(self._base_dir, prefs_path=os.devnull)
+
     def default(self, key, fallback=None):
         """Valeur de data/config.json pour key (sans les préférences)."""
         return self._defaults.get(key, fallback)

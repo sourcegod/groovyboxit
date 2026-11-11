@@ -11910,3 +11910,38 @@ Explorateur (Alt+X) : dossiers de l'utilisateur.
 **Essai 10f1** (utilisateur, 2026-11-11) : concluant. Demande : pouvoir
 **annuler** un réglage appliqué (gain FluidSynth porté à 3,6 par
 Appliquer, sans retour possible) → avenant à trancher (10f2).
+
+## Phase 8 étape 10f2 — Avenant : bouton « Valeurs par défaut » de l'onglet
+
+**Origine** (essai de 10f1, 2026-11-11) : un réglage appliqué (gain
+FluidSynth à 3,6) ne pouvait pas être défait.
+
+**Décision de l'utilisateur** : pour l'instant, un bouton « Valeurs par
+défaut » sur l'onglet courant suffit.
+
+**Noté, pas nécessaire pour le moment** — plan du Ctrl+Z dans le
+dialogue : le dialogue garde la liste de ses Appliquer ; Ctrl+Z revient
+sur le dernier (réglage rétabli tout de suite) ; Annuler après des
+Appliquer remet tout comme à l'ouverture. Hors de l'historique du projet
+(qui est vidé par Ctrl+O et marquerait le projet modifié).
+
+**Avancement 10f2** :
+- `AppConfig.defaults_only()` : la configuration sans les préférences
+  (`data/config.json` et défauts du code).
+- `PreferencesDialog` : bouton « Valeurs par défaut », créé en dernier au
+  bas des onglets Général, Audio, Midi et Projet (dernier arrêt de Tab
+  dans la page ; nom « Valeurs par défaut — onglet Audio »).
+  `restore_defaults(onglet)` remet les champs de cet onglet seulement,
+  **sans appliquer** : Ok ou Appliquer ensuite, Annuler pour renoncer.
+  `values_of(cfg)`, `show_values(vals)`, `TAB_KEYS`.
+- À l'application, un réglage égal à sa valeur par défaut est passé à
+  `None` : la clé quitte `preferences.json`, qui ne garde que les écarts.
+- Suite : 5 rouges dans `test_preferences_dialog.py` jusqu'à 10g1 (les 4
+  de 10f1, et l'onglet Projet qui compte un bouton de plus), 14 dans
+  `test_explorer_actions.py`.
+
+**Essai 10f2** : onglet Audio, « Valeurs par défaut » puis Appliquer →
+gain FluidSynth à 4 (0,4), le volume des banques revient tout de suite ;
+les autres onglets gardent leurs réglages.
+
+**Essai 10f2** (utilisateur, 2026-11-11) : concluant.
