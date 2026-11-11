@@ -8,6 +8,12 @@ Ctrl+Shift+S     Enregistrer le projet sous...
 Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
 Shift+Z          Refaire
 Ctrl+Shift+Z     Afficher l'historique des annulations
+Alt+Shift+P      Préférences (depuis toutes les fenêtres) : onglets Général, Matériel,
+                 Audio, Midi, Projet, Raccourcis, Divers ; focus sur l'onglet :
+                 Gauche / Droite = onglet voisin ; Ctrl+Tab / Ctrl+Shift+Tab =
+                 onglet suivant / précédent depuis n'importe quel champ ; Ok,
+                 Annuler, Appliquer (réglages écrits dans
+                 ~/.config/groovyboxit/preferences.json)
 
 --- Pattern ---
 Ctrl+W           Enregistrer le pattern courant

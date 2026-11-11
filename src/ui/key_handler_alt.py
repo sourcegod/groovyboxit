@@ -80,6 +80,9 @@ class AltHandler:
         if not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             win._open_explorer()
             return True
+        if not ctrl and shift and (ukey in (ord('p'), ord('P')) or key == ord('P')):
+            win._open_preferences()     # Alt+Shift+P : Préférences (Phase 8 étape 10d1)
+            return True
         if not ctrl and shift and (ukey in (ord('e'), ord('E')) or key == ord('E')):
             win._export_midi_choose()   # Alt+Shift+E : pattern ou song en MIDI (Phase 8 étape 4b1)
             return True

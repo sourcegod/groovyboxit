@@ -15,6 +15,12 @@ class KeymapMixin:
             self.Close()
             return
 
+        # Alt+Shift+P : Préférences (Phase 8 étape 10d1, même raccourci que
+        # la fenêtre principale), avant les autres usages de P
+        if not ctrl and shift and alt and (ukey in (ord('p'), ord('P')) or key == ord('P')):
+            self._parent._open_preferences(parent=self, status=self._set_status)
+            return
+
         # Ctrl+1 : mode notes de la piste courante
         if ctrl and not shift and (ukey == ord('1') or key == ord('1')):
             self._view_mode = self.MODE_NOTES

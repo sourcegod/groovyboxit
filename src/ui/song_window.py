@@ -292,6 +292,13 @@ class SongWindow(wx.Frame):
             self.Close()
             return
 
+        # Alt+Shift+P : Préférences (Phase 8 étape 10d1, même raccourci que
+        # la fenêtre principale), avant P (lecture)
+        if not ctrl and shift and evt.AltDown() \
+                and (ukey in (ord('p'), ord('P')) or key == ord('P')):
+            self._parent._open_preferences(parent=self, status=self._set_status)
+            return
+
         # Alt+Shift+E : export MIDI du song courant (Phase 8 étape 2f1, § 2a E15)
         if not ctrl and shift and evt.AltDown() \
                 and (ukey in (ord('e'), ord('E')) or key == ord('E')):

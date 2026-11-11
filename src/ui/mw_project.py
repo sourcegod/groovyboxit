@@ -886,6 +886,31 @@ class ProjectMixin:
             msg += " ; " + " ; ".join(details)
         status(msg)
 
+    def _open_preferences(self, parent=None, status=None):
+        """Alt+Shift+P (Phase 8 étape 10d1, docs/DESIGN.md § 10a P3) :
+        dialogue des Préférences, depuis la fenêtre principale, l'éditeur MIDI
+        ou la fenêtre Songs (parent et statut de la fenêtre appelante)."""
+        from ui.dialogs_preferences import PreferencesDialog
+        say = status or self._show_status
+        dlg = PreferencesDialog(parent or self, self._cfg,
+                                on_apply=lambda changes: self._apply_preferences(changes, say))
+        try:
+            dlg.ShowModal()
+        finally:
+            dlg.Destroy()
+
+    def _apply_preferences(self, changes, status=None):
+        """Écrit les réglages changés dans preferences.json (P1). Les effets
+        sur l'appli viennent en 10f1."""
+        say = status or self._show_status
+        try:
+            self._cfg.save_preferences(changes)
+        except OSError as e:
+            say(f"ERREUR Préférences : {e}")
+            return False
+        say(f"Préférences enregistrées ({len(changes)} réglage{'s' if len(changes) > 1 else ''})")
+        return True
+
     def _relocate_rack_files(self):
         """Soundfonts et sources SFZ absolues introuvables du projet chargé :
         cherchées dans les nouveaux dossiers (Phase 8 étape 10b1, docs/DESIGN.md

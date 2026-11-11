@@ -11771,3 +11771,63 @@ et joue son unique programme, comme en 7d1.
 - Mutations vérifiées (copie non préférée ; instance modifiée avant
   l'écriture) : chacune fait échouer un test.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 3824 verts.
+
+### Avancement 10d1 (implémentation — le dialogue)
+
+- **`PreferencesDialog(parent, cfg, on_apply, page=0)`**
+  (`src/ui/dialogs_preferences.py`, nouveau) : `wx.Notebook` à sept
+  onglets (Général, Matériel, Audio, Midi, Projet, Raccourcis, Divers ;
+  Matériel, Raccourcis et Divers portent une phrase « à venir »).
+  - **Général** : liste « Au démarrage » (Ouvrir le dernier projet /
+    Nouveau projet), cases « Autoplay de la grille et des pads » et
+    « Autoplay de l'Explorateur ».
+  - **Audio** : cases Limiteur à l'écoute, Moteur FluidSynth et Moteur
+    sfizz (« au prochain lancement ») ; SpinCtrl des gains en dixièmes
+    (0 à 100), volume (0 à 200) et pan (−100 à 100) d'un nouveau projet.
+  - **Midi** : liste « Sélection de banque » (GS / MMA).
+  - **Projet** : quatre chemins, chacun avec « Parcourir… »
+    (`wx.DirDialog`) ; un champ vidé retire la clé (retour au défaut).
+  - `values()`, `changes()` (réglages changés depuis l'ouverture ou le
+    dernier Appliquer) ; Ok et Appliquer passent `changes()` à
+    `on_apply`, rien s'il n'y a aucun changement.
+  - **Clavier** (P4) : `EVT_CHAR_HOOK` du dialogue ; Ctrl+Tab /
+    Ctrl+Shift+Tab = onglet suivant / précédent en boucle, focus posé sur
+    l'onglet ; Gauche / Droite quand le focus est sur l'onglet (géré par
+    le dialogue, pas laissé au `GtkNotebook`) ; autres touches laissées
+    passer.
+- **`ProjectMixin._open_preferences(parent, status)`** et
+  **`_apply_preferences(changes, status)`** (`mw_project.py`) : écrit
+  `preferences.json`, annonce « Préférences enregistrées (N réglages) »
+  ou l'erreur. Les effets sur l'appli en cours viennent en 10f1 (d'ici
+  là, l'appli relancée relit les réglages).
+- **Alt+Shift+P** : fenêtre principale (`key_handler_alt.py`), éditeur
+  MIDI (`mew_keymap.py`) et fenêtre Songs (`song_window.py`), testé avant
+  les autres usages de P ; parent et statut de la fenêtre appelante.
+- **Aide F1** : Alt+Shift+P sous « Projet ». Suite : 3824 verts (tests en
+  10e1).
+
+**Essai 10d1** : Alt+Shift+P depuis les trois fenêtres ; onglets
+annoncés par Orca, Gauche / Droite sur l'onglet, Ctrl+Tab /
+Ctrl+Shift+Tab depuis un champ ; Tab dans chaque page ; Appliquer puis
+Ok écrivent `~/.config/groovyboxit/preferences.json` ; Annuler n'écrit
+rien.
+
+**Essai 10d1** (utilisateur, 2026-11-11) : concluant pour les onglets
+(annoncés par Orca, Gauche / Droite, Ctrl+Tab / Ctrl+Shift+Tab) et
+Alt+Shift+P dans les trois fenêtres ; réglages bien enregistrés.
+- **Corrigé (10d1)** : onglet Audio, Orca ne lisait pas les libellés des
+  quatre SpinCtrl. Cause : chaque libellé était créé **après** son champ ;
+  Orca nomme un champ d'après le texte qui le précède dans l'ordre de
+  création (wxGTK ne pose pas de relation « libellé de »). Tous les
+  libellés du dialogue sont maintenant créés juste avant leur champ
+  (`_labeled`).
+- « Au démarrage : Nouveau projet » sans effet au relancement : normal à
+  ce stade, l'effet vient en 10f1.
+
+**Recette d'un dialogue de réglages à onglets** (à réutiliser) :
+`wx.Notebook` (les onglets sont des « onglets de page » accessibles de
+GTK, nom annoncé par Orca) ; `EVT_CHAR_HOOK` du dialogue pour Ctrl+Tab /
+Ctrl+Shift+Tab (onglet voisin en boucle, `SetFocus()` sur le notebook
+pour l'annonce) et Gauche / Droite quand `FindFocus()` est le notebook ;
+toute autre touche `event.Skip()` ; libellé créé avant son champ ;
+SpinCtrl pour les nombres.
