@@ -40,6 +40,7 @@ from ui.mw_tracks      import TrackMixin
 from ui.mw_pads        import PadMixin
 from ui.mw_midi_editor import MidiEditorMixin
 from ui.mw_tempo       import TempoMixin
+from ui.mw_devices     import DevicesMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -70,7 +71,7 @@ class _LoadingDialog(wx.Dialog):
 
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
-                 MidiEditorMixin, TempoMixin, wx.Frame):
+                 MidiEditorMixin, TempoMixin, DevicesMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
@@ -189,6 +190,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             on_pitch_bend     = lambda b, c:     wx.CallAfter(self._midi_handler.on_pitch_bend, b, c),
             on_program_change = lambda p, c:     wx.CallAfter(self._midi_handler.on_program_change, p, c),
         )
+        # entrées et sorties MIDI cochées dans les Préférences (Phase 8 étape 11d1)
+        self._midi_outs = {}
+        _opened, notes = self._open_midi_devices()
+        self._device_notes.extend(notes)
         self._track_editor = TrackEditor()
         self._pattern_cache       = [None] * len(self._pattern_list)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
@@ -209,13 +214,19 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         if self._device_notes:      # boîte bloquante, lue par Orca (11b1)
             wx.CallAfter(self._show_device_notes)
 
-    def _show_device_notes(self):
-        """Périphériques introuvables ou refusés au démarrage (Phase 8 étape
-        11b1, demande de l'utilisateur) : une boîte de message bloquante avec
-        un bouton Ok, mieux vue par un lecteur d'écran que la barre d'état."""
-        n = len(self._device_notes)
+    def _show_device_notes(self, notes=None):
+        """Périphériques introuvables ou refusés (Phase 8 étape 11b1, demande
+        de l'utilisateur) : une boîte de message bloquante avec un bouton Ok
+        et un bip, mieux vue par un lecteur d'écran que la barre d'état. Au
+        démarrage (notes = _device_notes), et par Shift+F12 /
+        Ctrl+Shift+F12 (11d1) : parent = la fenêtre active (éditeur MIDI,
+        fenêtre Songs), pour que le focus y revienne."""
+        notes = self._device_notes if notes is None else notes
+        n = len(notes)
         title = "Périphérique introuvable" if n == 1 else f"{n} périphériques introuvables"
-        dlg = wx.MessageDialog(self, "\n".join(self._device_notes), title,
+        focus = wx.Window.FindFocus()
+        parent = wx.GetTopLevelParent(focus) if focus is not None else None
+        dlg = wx.MessageDialog(parent or self, "\n".join(notes), title,
                                wx.OK | wx.ICON_WARNING)
         self._alert_beep()
         try:

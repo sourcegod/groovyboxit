@@ -12339,3 +12339,74 @@ l'utilisateur, 2026-11-11, pour la lisibilité dans une autre appli) :
 - **`docs/SPECS.md`** : arborescence (`src/devices/`) et table. Suite :
   3998 verts (un échec isolé non reproduit en trois passages, sans
   doute le test de gain de sfizz déjà noté).
+
+### Avancement 11d1 (implémentation — MIDI)
+
+- **`src/devices/midi_device.py`** (nouveau, autonome : seulement
+  python-rtmidi) : `input_ports()`, `output_ports()`, **`MidiInputs`**
+  (plusieurs ports ouverts ensemble, `open_names` → (ouverts, absents),
+  `close_all`, callback `(message, port)`), `open_output(nom)`,
+  `send_test_note` (A4 d'une seconde, Note Off par minuterie),
+  `wait_note(port, 5 s)` (ouvre son propre accès au port, possible sous
+  ALSA même s'il est déjà ouvert), `note_name(69)` → « A4 ».
+  `python3 -m devices` liste aussi les ports MIDI ; `--note PORT`,
+  `--listen PORT`.
+- **`MidiManager`** : ports par `MidiInputs` ; `open_names(noms)`
+  (plusieurs ensemble), `port_names` ; `open(indice)` garde son rôle (un
+  port, jusqu'au retrait de la liste en 11f1) ; `close()` ferme tout.
+- **`AppConfig`** : `midi_inputs`, `midi_outputs` (clé absente →
+  [« Synthé FluidSynth »]), `MIDI_SYNTH_OUTPUT`.
+- **`src/ui/mw_devices.py`** (nouveau, `DevicesMixin` de `MainWindow`) :
+  - `_open_midi_devices` au démarrage : entrées cochées ouvertes,
+    sorties externes cochées ouvertes (`_midi_outs`, pour l'étape 12) ;
+    introuvables → boîte « Périphérique introuvable » (« Entrée MIDI
+    introuvable : X. ») ;
+  - **Alt+M** (`_toggle_midi_inputs`) : déconnecte les entrées ouvertes,
+    sinon connecte les entrées cochées (sans entrée cochée : le port de
+    la liste « MIDI: », jusqu'à 11f1) ;
+  - **Shift+F12** (`_reconnect_midi`, fenêtre principale et
+    `handle_transport` pour les autres fenêtres) : tout fermer, relire,
+    rouvrir ; annonce « MIDI reconnecté : … — Entrée MIDI introuvable :
+    X. » ;
+  - `_test_midi_output(nom)` : A4 d'une seconde (port externe : par
+    rtmidi ; « Synthé FluidSynth » : FluidSynth **à part**, soundfont par
+    défaut, branché au pilote le temps de la note, sans toucher aux slots
+    Banque) ; `_listen_midi_input(nom, done)` : écoute dans un fil,
+    résultat « Entrée MIDI X : note A4, vélocité 100, canal 1 » ou
+    « aucune note reçue en 5 secondes ». Boutons en 11f1.
+- Vérifié de bout en bout par **Midi Through** : A4 envoyé sur la
+  sortie, reçu par l'entrée (`MidiInputs`, `wait_note`, `MidiManager`) ;
+  A4 du Synthé FluidSynth rendu (crête 0,09) puis source retirée ;
+  soundfont introuvable annoncée.
+- Suite : 3988 verts, **11 rouges jusqu'à 11e1** (`test_midi_manager.py`
+  simule rtmidi dans l'ancien module).
+
+**Essai 11d1** : contrôleur branché et coché (`midi_inputs` dans
+`preferences.json`) → connecté au démarrage, sans passer par la liste ;
+Alt+M déconnecte / reconnecte ; débrancher puis Shift+F12 → introuvable
+annoncé ; rebrancher puis Shift+F12 → reconnecté ; port inexistant
+coché → boîte au démarrage.
+- **Ajout pendant la préparation de l'essai** : sous ALSA, rtmidi termine
+  le nom d'un port par son adresse (« MPK mini Plus:MPK mini Plus MIDI 1
+  20:0 »), donnée au branchement et qui peut changer. Un nom enregistré
+  retrouve son port par le nom exact, sinon par le même nom sans
+  l'adresse (`midi_device.base_name`, `find_port`).
+
+**Essai 11d1** (utilisateur, 2026-11-11) : concluant (Akai connecté au
+démarrage, déconnexion / reconnexion, débranchement puis
+réinitialisation). Demande : **raccourcis MIDI regroupés sur F12**
+(révise H15) :
+- **Ctrl+F12** : Panic (inchangé) ;
+- **Shift+F12** : connecter / déconnecter les entrées MIDI (remplace
+  **Alt+M**, retiré) ;
+- **Ctrl+Shift+F12** : réinitialiser tous les périphériques MIDI
+  (l'ancien Shift+F12 de ce chantier).
+Fenêtre principale (`key_manager`) et autres fenêtres
+(`handle_transport`). Alt+Shift+M (relire la liste « MIDI: ») reste
+jusqu'au retrait de la liste en 11f1.
+- Second essai concluant ; demande : un port MIDI introuvable par
+  Shift+F12 ou Ctrl+Shift+F12 s'affiche aussi dans la **boîte bloquante
+  avec bip**, comme au démarrage (`_show_device_notes(notes)`, parent =
+  la fenêtre active pour que le focus y revienne).
+- Troisième essai (boîte et bip par Shift+F12, Ctrl+Shift+F12, depuis
+  l'éditeur MIDI) : concluant.

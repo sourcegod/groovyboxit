@@ -25,6 +25,16 @@ class TransportHandler:
             win._show_status("Panic: All Sounds Off + Reset All Controllers")
             return True
 
+        # Shift+F12 : connecter / déconnecter les entrées MIDI ; Ctrl+Shift+F12 :
+        # réinitialiser les périphériques MIDI (Phase 8 étape 11d1), depuis
+        # toutes les fenêtres, comme Ctrl+F12
+        if shift and not event.AltDown() and key == wx.WXK_F12:
+            if ctrl:
+                win._reconnect_midi()
+            else:
+                win._toggle_midi_inputs()
+            return True
+
         # PageUp / PageDown : navigation bar / beat / tick
         if key in (wx.WXK_PAGEUP, wx.WXK_PAGEDOWN):
             direction = -1 if key == wx.WXK_PAGEUP else 1

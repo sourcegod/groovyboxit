@@ -481,3 +481,18 @@ class AppConfig:
         if main and (main in outputs or not outputs):
             return main
         return outputs[0] if outputs else ""
+
+    # MIDI (Phase 8 étape 11d1, § 11a H8, H12) : ports cochés, par nom.
+    # « Synthé FluidSynth » = le moteur interne, sortie cochée par défaut.
+    MIDI_SYNTH_OUTPUT = "Synthé FluidSynth"
+
+    @property
+    def midi_inputs(self):
+        return self._get_names("midi_inputs")
+
+    @property
+    def midi_outputs(self):
+        """Sorties MIDI cochées ; clé absente → [« Synthé FluidSynth »]."""
+        if "midi_outputs" not in self._data:
+            return [self.MIDI_SYNTH_OUTPUT]
+        return self._get_names("midi_outputs")

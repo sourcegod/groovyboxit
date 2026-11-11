@@ -15,6 +15,7 @@ except ImportError:
     _RTMIDI_AVAILABLE = False
 
 from midi.midi_parser import decode_message, CVoice
+from devices import midi_device
 
 
 class MidiManager:
@@ -35,6 +36,10 @@ class MidiManager:
     Décodage bas niveau délégué à midi_parser.decode_message (voir
     Phase 7 étape 2f) : ce module ne fait plus que la gestion de port
     rtmidi, le threading et le filtrage de canal.
+
+    Plusieurs ports ouverts ensemble (Phase 8 étape 11d1, § 11a H12) :
+    devices.midi_device.MidiInputs ; tous les messages vont au même
+    décodage. open(indice) et open_by_name gardent leur rôle (un port).
     """
 
     def __init__(self, on_note_on=None, on_note_off=None, on_status=None,
@@ -47,9 +52,8 @@ class MidiManager:
         self._on_program_change = on_program_change
 
         self.channel    = None   # None = tous les canaux, 0–15 = filtre
-        self._midi_in   = None
-        self._port_idx  = None
-        self._port_name = None
+        self._inputs    = midi_device.MidiInputs(
+            lambda message, _port: self._callback((message, 0.0), None))
 
         if not _RTMIDI_AVAILABLE:
             self._notify("python-rtmidi non disponible — entrée MIDI désactivée")
@@ -70,22 +74,30 @@ class MidiManager:
     # Connexion / déconnexion
 
     def open(self, port_index):
-        """Ouvre le port MIDI d'entrée par index. Ferme le port précédent si ouvert."""
+        """Ouvre le port MIDI d'entrée par index. Ferme les ports précédents."""
         if not _RTMIDI_AVAILABLE:
             return False
-        self.close()
         ports = self.list_ports()
         if port_index < 0 or port_index >= len(ports):
             self._notify(f"Port MIDI {port_index} introuvable")
             return False
-        self._midi_in = rtmidi.MidiIn()
-        self._midi_in.open_port(port_index)
-        self._midi_in.set_callback(self._callback)
-        self._midi_in.ignore_types(sysex=True, timing=True, active_sense=True)
-        self._port_idx  = port_index
-        self._port_name = ports[port_index]
-        self._notify(f"MIDI connecté : {self._port_name}")
+        self.close()
+        opened, _missing = self.open_names([ports[port_index]], notify=False)
+        if not opened:
+            self._notify(f"Port MIDI {ports[port_index]} refusé")
+            return False
+        self._notify(f"MIDI connecté : {ports[port_index]}")
         return True
+
+    def open_names(self, names, notify=True):
+        """Ouvre les ports nommés, ensemble (Phase 8 étape 11d1, H12) ; ceux
+        déjà ouverts sont gardés. Retourne (ouverts, absents)."""
+        if not _RTMIDI_AVAILABLE:
+            return [], list(names)
+        opened, missing = self._inputs.open_names(names)
+        if notify and opened:
+            self._notify("MIDI connecté : " + ", ".join(opened))
+        return opened, missing
 
     def open_by_name(self, name):
         """Ouvre le premier port dont le nom contient 'name' (insensible à la casse)."""
@@ -104,21 +116,22 @@ class MidiManager:
         return self.open(0)
 
     def close(self):
-        """Ferme le port MIDI et libère les ressources."""
-        if self._midi_in is not None:
-            self._midi_in.close_port()
-            del self._midi_in
-            self._midi_in   = None
-            self._port_idx  = None
-            self._port_name = None
+        """Ferme tous les ports MIDI d'entrée."""
+        if self._inputs.is_open():
+            self._inputs.close_all()
             self._notify("MIDI déconnecté")
 
     def is_open(self):
-        return self._midi_in is not None
+        return self._inputs.is_open()
+
+    @property
+    def port_names(self):
+        """Ports d'entrée ouverts."""
+        return self._inputs.names
 
     @property
     def port_name(self):
-        return self._port_name or ""
+        return ", ".join(self._inputs.names)
 
     # ------------------------------------------------------------------
     # Callback interne rtmidi
@@ -172,7 +185,10 @@ class MidiManager:
     # ------------------------------------------------------------------
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 # ======================================================================

@@ -77,6 +77,7 @@ U                Afficher l'état du player et la position (Lecture|Pause|Arrêt
 Ctrl+G           Aller à une position (boîte de dialogue Unité + Valeur + bar:beat:tick)
 Ctrl+Shift+G     Ouvrir la boîte de grille (résolution de navigation et quantisation)
 Ctrl+F12         Panic : arrêt immédiat de tous les sons + Reset All Controllers
+                 (Shift+F12, Ctrl+Shift+F12 : périphériques MIDI, voir --- MIDI ---)
                  (rarement utile : les Mute / Solo et les changements de son
                  coupent déjà les notes, et une note tenue au contrôleur
                  s'arrête toujours au relâchement)
@@ -322,7 +323,12 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
   Suppr            Effacer piste(s) sélectionnée(s) sans presse-papier
 
 --- MIDI ---
-Alt+M            Connecter / déconnecter le port MIDI sélectionné
+Shift+F12        Connecter / déconnecter les entrées MIDI cochées dans les Préférences
+                 (sans entrée cochée : le port sélectionné dans la liste) ; toutes
+                 les fenêtres
+Ctrl+Shift+F12   Réinitialiser les périphériques MIDI : relire les ports et rouvrir
+                 les entrées et sorties cochées (après un débranchement) ; toutes
+                 les fenêtres
 Alt+Shift+M      Actualiser la liste des ports MIDI
 Double-clic      Connecter le port MIDI sélectionné (liste des ports)
 Contrôleur       Une note tenue s'arrête au relâchement là où elle a été jouée, même
