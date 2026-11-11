@@ -289,7 +289,7 @@ def test_browse_cancel_keeps_the_field(make):
 def test_browse_button_per_path(make):
     children = make()._pages["Projet"].GetChildren()
     buttons = [c for c in children if isinstance(c, wx.Button)]
-    assert [b.GetLabel() for b in buttons] == ["Parcourir…"] * 4
+    assert [b.GetLabel() for b in buttons] == ["Parcourir…"] * 4 + ["Valeurs par défaut"]
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +420,7 @@ def _host(cfg):
     win._show_status = win.statuses.append
     win._apply_preferences = lambda changes, status=None: \
         ProjectMixin._apply_preferences(win, changes, status)
+    win._apply_preferences_now = lambda changes: []    # effets : test_preferences_effects.py
     return win
 
 

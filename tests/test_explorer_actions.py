@@ -76,7 +76,11 @@ class FakeWindow:
     def _set_kb_play_root(self, root):
         pass
 
-    pass
+    # dossier de départ de l'Explorateur (Phase 8 étape 10f1) : la vraie
+    # méthode, sans configuration (dossier de l'utilisateur, sinon ~) ;
+    # testée dans tests/test_preferences_effects.py
+    _explorer_dir = MainWindow._explorer_dir
+    _remember_project = lambda self: None
 
 
 def make_win(tmp):

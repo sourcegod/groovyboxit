@@ -11945,3 +11945,34 @@ gain FluidSynth à 4 (0,4), le volume des banques revient tout de suite ;
 les autres onglets gardent leurs réglages.
 
 **Essai 10f2** (utilisateur, 2026-11-11) : concluant.
+
+### Avancement 10g1 (tests — les effets)
+
+- **`tests/test_preferences_effects.py`** (nouveau, 44 tests) :
+  - démarrage : « Nouveau projet » (nom libre, rien à charger), dernier
+    projet, dernier projet introuvable ou dossier → `project_01.gvp`,
+    sans préférence (ancien `preset_01.json`), sans configuration ;
+  - dernier projet : chemin absolu, fichier absent, inchangé (pas
+    d'écriture), erreur ignorée ; retenu après le chargement par Ctrl+O
+    et l'Explorateur, après l'écriture par Ctrl+S, pas après un échec ;
+  - Explorateur : dossier de l'utilisateur, banques ou projets de
+    l'appli, dossier personnel, sans configuration ;
+  - effet immédiat : Autoplay, limiteur, gains (moteurs absents compris),
+    réglages non touchés pas réappliqués, volume / pan d'un nouveau
+    projet, dossiers (`KITS`, `PATCHS`, `SAMPLES`, `EXPORTS`, `banks/sfz`,
+    `TrackRouter.sfz_dir`) ; au prochain lancement : moteurs et sélection
+    de banque, annoncés ; rien d'appliqué si l'écriture échoue ;
+  - `FluidSynthEngine.set_gain` (vraie bibliothèque, bornes) ;
+  - « Valeurs par défaut » : `defaults_only`, bouton sur les quatre
+    onglets réglables, onglet seul, rien d'appliqué tout seul, clé retirée
+    (`None`), valeurs de `config.json`, chemins, clic du bouton ;
+  - vraie fenêtre principale (une seule) : démarrage « Nouveau projet »,
+    Autoplay lu, limiteur coupé par `_apply_preferences`.
+- **19 tests rouges de 10f1 / 10f2 corrigés** : `_explorer_dir` (vraie
+  méthode) et `_remember_project` dans la `FakeWindow` de
+  `test_explorer_actions.py` ; `_apply_preferences_now` dans l'hôte de
+  `test_preferences_dialog.py` ; bouton « Valeurs par défaut » compté sur
+  l'onglet Projet.
+- Mutations vérifiées (« Nouveau projet » ignoré ; valeur par défaut
+  écrite au lieu d'être retirée) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 3928 verts.
