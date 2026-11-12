@@ -40,9 +40,12 @@ class _CheckList:
 
     NONE_LABEL = "(Aucun)"
 
-    def __init__(self, panel):
+    def __init__(self, panel, on_change=None):
+        """on_change() : appelé après chaque case cochée ou décochée, une fois
+        « (Aucun) » mis à jour (la page y relit la sortie principale)."""
         self.ctrl = wx.CheckListBox(panel, size=(420, 90))
         self.names = []
+        self._on_change = on_change
         self.ctrl.Bind(wx.EVT_CHECKLISTBOX, self._on_check)
 
     def fill(self, present, checked):
@@ -66,7 +69,8 @@ class _CheckList:
             for i in range(1, len(self.names) + 1):
                 self.ctrl.Check(i, False)
         self._sync_none()
-        event.Skip()                                # la page suit (sortie principale)
+        if self._on_change is not None:
+            self._on_change()
 
     def checked(self):
         return [n for i, n in enumerate(self.names) if self.ctrl.IsChecked(i + 1)]
@@ -122,7 +126,7 @@ class HardwarePage:
         row_with_button(self.audio_in.ctrl, self.test_audio_in_btn)
 
         label("Sorties audio :")
-        self.audio_out = _CheckList(panel)
+        self.audio_out = _CheckList(panel, on_change=self._fill_main_output)
         self.test_audio_out_btn = button("Tester la sortie audio", self.test_audio_output)
         row_with_button(self.audio_out.ctrl, self.test_audio_out_btn)
 
@@ -157,7 +161,6 @@ class HardwarePage:
         panel.SetSizer(box)
 
         self.hostapi.Bind(wx.EVT_CHOICE, lambda e: self._on_hostapi())
-        self.audio_out.ctrl.Bind(wx.EVT_CHECKLISTBOX, lambda e: self._fill_main_output())
         self.show_values(self.values_of(cfg))
 
     # ------------------------------------------------------------------
@@ -181,11 +184,12 @@ class HardwarePage:
 
     def values(self):
         main = self.main_output.GetSelection()
+        names = getattr(self, "_main_names", [""])
         return {
             "audio_hostapi": self.hostapi.GetStringSelection(),
             "audio_inputs": self.audio_in.checked(),
             "audio_outputs": self.audio_out.checked(),
-            "audio_main_output": self._main_names[main] if main > 0 else "",
+            "audio_main_output": names[main] if 0 <= main < len(names) else "",
             "midi_inputs": self.midi_in.checked(),
             "midi_outputs": self.midi_out.checked(),
         }
@@ -210,16 +214,19 @@ class HardwarePage:
                            vals.get("midi_outputs", current.get("midi_outputs", [])))
 
     def _fill_main_output(self, keep=None):
-        """Liste « Sortie principale » : le défaut du pilote, puis les sorties
-        cochées (H16) ; garde le choix s'il est encore coché."""
+        """Liste « Sortie principale » (H16) : les sorties cochées, ou « Défaut
+        du pilote » quand aucune ne l'est (comme AppConfig.audio_main_output :
+        sinon le dialogue montrerait un choix et l'appli en ferait un autre) ;
+        garde le choix s'il est encore coché, sinon la première cochée."""
         if keep is None:
             sel = self.main_output.GetSelection()
-            keep = self._main_names[sel] if hasattr(self, "_main_names") and sel > 0 else ""
-        self._main_names = [""] + self.audio_out.checked()
-        self.main_output.Set([MAIN_DEFAULT_LABEL] + self._main_names[1:])
+            names = getattr(self, "_main_names", [])
+            keep = names[sel] if 0 <= sel < len(names) else ""
+        checked = self.audio_out.checked()
+        self._main_names = checked or [""]
+        self.main_output.Set(checked or [MAIN_DEFAULT_LABEL])
         self.main_output.SetSelection(self._main_names.index(keep)
-                                      if keep in self._main_names else
-                                      (1 if len(self._main_names) > 1 else 0))
+                                      if keep in self._main_names else 0)
 
     def _on_hostapi(self):
         """Autre pilote : listes audio relues, cases gardées par nom."""

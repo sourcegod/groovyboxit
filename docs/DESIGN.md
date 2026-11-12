@@ -12545,3 +12545,22 @@ Détecter ; décocher l'Akai, Appliquer → déconnecté.
 corrections (focus gardé, écoute de 3 s avec diagnostic et réécoute,
 « (Aucun) » en tête des listes, Akai recoché). OSS gardé dans la liste
 des pilotes (il marche ici par l'émulation du noyau).
+
+## Phase 8 étape 11f2 — Corrections trouvées par les tests de 11g1
+
+- **Liste des sorties audio** : la page captait l'événement de case
+  cochée sans le transmettre ; les règles de « (Aucun) » (coché quand
+  rien d'autre ne l'est, le cocher décoche tout) ne s'appliquaient pas à
+  cette liste. Désormais `_CheckList(…, on_change)` traite la case, puis
+  appelle la page (sortie principale relue).
+- **Sortie principale** : la liste proposait « Défaut du pilote » même
+  avec des sorties cochées, alors qu'`AppConfig.audio_main_output` prend
+  alors la première sortie cochée (le dialogue aurait montré un choix et
+  l'appli en aurait fait un autre). Désormais, comme H16 : les sorties
+  cochées, ou « Défaut du pilote » quand aucune ne l'est ; choix gardé
+  s'il reste coché, sinon la première cochée.
+
+**Essai 11f2** : cocher puis décocher des sorties audio, cocher
+« (Aucun) » dans les sorties audio ; la liste « Sortie principale » ne
+propose que les sorties cochées.
+- Essai 11f2 (utilisateur, 2026-11-12) : concluant.
