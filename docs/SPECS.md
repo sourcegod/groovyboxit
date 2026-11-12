@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` | en cours |
 
 ---
 
@@ -266,7 +266,7 @@ l'écriture ; écriture par fichier temporaire et renommage.
 ### Dialogue des Préférences (Alt+Shift+P)
 
 Depuis la fenêtre principale, l'éditeur MIDI et la fenêtre Songs.
-Onglets **Général**, **Matériel** (étape 11), **Audio**, **Midi**,
+Onglets **Général**, **Matériel**, **Audio**, **Midi**,
 **Projet**, **Raccourcis** et **Divers** (plus tard). Focus sur l'onglet :
 Gauche / Droite = onglet voisin ; Ctrl+Tab / Ctrl+Shift+Tab = onglet
 suivant / précédent depuis n'importe quel champ (en boucle, focus remis
@@ -280,6 +280,11 @@ réglables : les champs de l'onglet seul reviennent aux valeurs de
 | Général | Au démarrage : Ouvrir le dernier projet / Nouveau projet | `startup` (`"last"` / `"new"`) ; `last_project` retenu par Ctrl+O, l'Explorateur, Ctrl+S, Ctrl+Shift+S | au lancement ; dernier projet introuvable → `project_01.gvp` |
 | Général | Autoplay de la grille et des pads | `autoplay` | immédiat |
 | Général | Autoplay de l'Explorateur | `explorer_autoplay` | gardé ; l'audition est à construire |
+| Matériel | Pilote audio (ALSA, OSS…) | `audio_hostapi` (vide = pilote de la sortie par défaut) | immédiat |
+| Matériel | Entrées audio (cases) | `audio_inputs` | gardées ; pour les pistes audio (étape 12 et au-delà) |
+| Matériel | Sorties audio (cases), Sortie principale | `audio_outputs`, `audio_main_output` | immédiat : le mix passe par la sortie principale (flux rouvert) |
+| Matériel | Entrées MIDI (cases) | `midi_inputs` | immédiat ; ouvertes ensemble au démarrage |
+| Matériel | Sorties MIDI (cases) | `midi_outputs` (défaut : « Synthé FluidSynth ») | immédiat ; envoi des pistes à l'étape 12 |
 | Audio | Limiteur à l'écoute | `live_limiter` | immédiat |
 | Audio | Moteur FluidSynth, Moteur sfizz | `fluidsynth`, `sfizz` | au prochain lancement (annoncé) |
 | Audio | Gains FluidSynth et sfizz (en dixièmes) | `fluidsynth_gain`, `sfizz_gain` | immédiat |
@@ -303,6 +308,41 @@ source SFZ absolue rangée sous un ancien dossier passe au même chemin
 dans le nouveau dossier dès que le fichier s'y trouve (même si l'original
 du système existe encore) ; un fichier introuvable est cherché par son nom.
 Le projet garde le nouveau chemin à son prochain enregistrement.
+
+### Onglet Matériel et périphériques (Phase 8 étape 11)
+
+- **Listes à cases à cocher** (Espace), chacune précédée de
+  « **(Aucun)** » (coché quand rien d'autre ne l'est ; le cocher décoche
+  tout) : les périphériques cochés sont **ouverts au démarrage** et
+  proposés aux pistes (étape 12). Un périphérique coché mais débranché
+  reste listé (« — absent ») et coché. Greffons ALSA (`lavrate`,
+  `speex`, `upmix`…) et clients rtmidi masqués. Périphériques retrouvés
+  **par nom** ; un port MIDI ALSA dont l'adresse finale (« 20:0 ») a
+  changé au rebranchement est retrouvé quand même.
+- **Sortie principale** : les sorties cochées, ou « Défaut du pilote »
+  quand aucune ne l'est.
+- **Tester** (ligne sous le curseur, cochée ou non) : sortie audio = La
+  440 Hz d'une seconde ; entrée audio = 3 secondes d'écoute, diagnostic
+  (« silence », « signal bloqué à pleine échelle », « signal présent —
+  niveau moyen, crête ») et **réécoute** de ce qui a été capté ; sortie
+  MIDI = A4 d'une seconde (« Synthé FluidSynth » : un FluidSynth à part,
+  soundfont par défaut) ; entrée MIDI = prochaine note reçue en 5
+  secondes. **Détecter** relit les périphériques (audio : flux arrêté le
+  temps de relire PortAudio). Résultat dans le champ « Résultat du test »,
+  **sans déplacer le focus**.
+- **Périphérique introuvable** (au démarrage, Shift+F12,
+  Ctrl+Shift+F12, Appliquer) : **boîte bloquante** « Périphérique
+  introuvable » avec un bouton Ok, le nom du périphérique et deux bips
+  d'alerte (joués par l'appli) ; aussi dans la barre d'état.
+- **Raccourcis MIDI sur F12** (toutes les fenêtres) : **Ctrl+F12** Panic,
+  **Shift+F12** connecter / déconnecter les entrées MIDI cochées,
+  **Ctrl+Shift+F12** réinitialiser les périphériques MIDI (relire et
+  tout rouvrir). La liste « MIDI: » de la fenêtre principale, Alt+M et
+  Alt+Shift+M sont retirés.
+- **Paquet autonome `src/devices/`** (`audio_device`, `midi_device`,
+  aucun import de l'appli, réutilisable ailleurs) ; **`python3 -m
+  devices`** (depuis `src/`) liste les pilotes, périphériques et ports ;
+  `--tone`, `--input`, `--note`, `--listen` pour les essayer.
 
 ### Clés de `data/config.json`
 

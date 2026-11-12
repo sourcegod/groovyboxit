@@ -12604,3 +12604,54 @@ propose que les sorties cochées.
 - **`docs/SPECS.md`** : arborescence (`prefs_hardware.py`,
   `mw_devices.py`) et table. Suite : 4139 verts (aussi avec les
   exceptions de fil traitées en erreurs).
+
+### Clôture de l'étape 11 (11h1)
+
+**Bilan** (Phase 8 étapes 11a à 11g1, 2026-11-11 / 12, 4139 tests
+verts) : onglet **Matériel** des Préférences — pilote audio, entrées et
+sorties audio et MIDI à cases à cocher (« (Aucun) » en tête), ouvertes
+ensemble au démarrage, sortie principale, Tester (La 440 Hz, A4, écoute
+de 3 s avec diagnostic et réécoute, prochaine note), Détecter, résultat
+sans déplacer le focus ; périphérique introuvable en boîte bloquante avec
+bip ; raccourcis MIDI sur F12 ; liste « MIDI: », Alt+M et Alt+Shift+M
+retirés ; **paquet autonome `src/devices/`** et `python3 -m devices`.
+
+**Commits** : 11a (plan), 11b1 / 11c1 (audio), 11d1 / 11e1 (MIDI), 11f1
+(onglet et fenêtre principale), 11f2 (corrections trouvées par les
+tests), 11g1 (tests de l'onglet), 11h1 (clôture).
+
+**Écarts au plan et imprévus** (demandes de l'utilisateur aux essais
+pour la plupart) :
+- plusieurs entrées **et** sorties, audio comme MIDI (H12) ; ordre
+  Entrées audio, Sorties audio, Entrées MIDI, Sorties MIDI ; un bouton
+  Tester par liste ;
+- paquet autonome `src/devices/` (`audio_device.py`, `midi_device.py`)
+  et sa commande d'essai ;
+- boîte bloquante avec le nom du périphérique et un bip, au démarrage
+  puis pour le MIDI à F12 ;
+- raccourcis MIDI regroupés sur F12 (Shift+F12 remplace Alt+M,
+  Ctrl+Shift+F12 réinitialise) ;
+- adresse ALSA des ports MIDI tolérée ; clients rtmidi et greffons ALSA
+  retirés des listes ;
+- résultat sans focus (futur SpeechAccess) ; écoute d'entrée de 3 s avec
+  diagnostic et réécoute ; « (Aucun) » en tête des listes ;
+- 11f2 : deux défauts trouvés par les tests.
+
+**Essais de l'utilisateur** : 11b1 (sortie inexistante, boîte, bip),
+11d1 (Akai, F12), 11f1 (onglet, Orca, Tester, Détecter), 11f2 :
+concluants. OSS gardé (il marche ici par l'émulation du noyau).
+
+**`docs/SPECS.md`** : ligne Phase 8, « Onglet Matériel et
+périphériques », tableau des réglages, arborescence, tests.
+**`docs/shortcuts.md`** (aide F1) : Alt+Shift+P (onglet Matériel),
+Shift+F12, Ctrl+Shift+F12 ; Alt+M, Alt+Shift+M, double-clic retirés.
+
+**Suites notées** :
+- **essai de l'utilisateur avec plusieurs cartes son** (et
+  `python3 -m devices`) ;
+- **étape 12 — entrées et sorties dans les propriétés des pistes**
+  (choix parmi les périphériques cochés, envoi des pistes vers une
+  sortie MIDI externe) ;
+- **module SpeechAccess** (synthèse vocale des messages) ;
+- Ctrl+Z du dialogue des Préférences (noté en 10f2) ; audition dans
+  l'Explorateur ; source SFZ à un seul programme (10b1).
