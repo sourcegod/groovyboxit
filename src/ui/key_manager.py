@@ -51,7 +51,6 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
             on_track_list   = focused == win._track_list,
             on_pad_list          = focused == win._pad_list,
             on_vel_list          = focused == win._vel_list,
-            on_midi_port_list    = focused == win._midi_port_list,
             on_status_ctrl       = focused == win._status_ctrl,
         )
 

@@ -897,14 +897,17 @@ class ProjectMixin:
             msg += " ; " + " ; ".join(details)
         status(msg)
 
-    def _open_preferences(self, parent=None, status=None):
+    def _open_preferences(self, parent=None, status=None, page=0):
         """Alt+Shift+P (Phase 8 étape 10d1, docs/DESIGN.md § 10a P3) :
         dialogue des Préférences, depuis la fenêtre principale, l'éditeur MIDI
-        ou la fenêtre Songs (parent et statut de la fenêtre appelante)."""
+        ou la fenêtre Songs (parent et statut de la fenêtre appelante) ;
+        onglet Matériel par le matériel de l'appli (11f1)."""
         from ui.dialogs_preferences import PreferencesDialog
         say = status or self._show_status
+        hardware = self._hardware() if hasattr(self, "_hardware") else None
         dlg = PreferencesDialog(parent or self, self._cfg,
-                                on_apply=lambda changes: self._apply_preferences(changes, say))
+                                on_apply=lambda changes: self._apply_preferences(changes, say),
+                                page=page, hardware=hardware)
         try:
             dlg.ShowModal()
         finally:
@@ -925,6 +928,9 @@ class ProjectMixin:
             note = self._apply_audio_output()
             if note:
                 msg += " ; " + note
+        if self.PREFS_MIDI_KEYS & changes.keys() and hasattr(self, "_apply_midi_devices"):
+            notes = self._apply_midi_devices()
+            msg += " ; MIDI rouvert" + (" — " + " ".join(notes) if notes else "")
         if later:
             msg += " ; au prochain lancement : " + ", ".join(later)
         say(msg)
@@ -932,6 +938,8 @@ class ProjectMixin:
 
     # Clés qui changent la sortie principale (Phase 8 étape 11b1, H2, H16)
     PREFS_AUDIO_OUT_KEYS = {"audio_hostapi", "audio_outputs", "audio_main_output"}
+    # Clés qui rouvrent les ports MIDI (Phase 8 étape 11f1)
+    PREFS_MIDI_KEYS = {"midi_inputs", "midi_outputs"}
 
     def _apply_audio_output(self):
         """Flux du pilote rouvert sur la sortie principale des Préférences

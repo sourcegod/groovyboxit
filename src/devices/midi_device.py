@@ -33,6 +33,13 @@ LISTEN_SECONDS = 5.0
 
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
+# Chaque rtmidi.MidiIn / MidiOut ouvert est lui-même un client MIDI, que les
+# autres listes montrent (« RtMidiIn Client:RtMidi input 133:0 ») : ces
+# clients, ceux de rtmidi par défaut comme ceux nommés par ce module, sont
+# retirés des listes (essai de 11f1).
+CLIENT_NAME = "devices"
+OWN_CLIENTS = ("RtMidiIn Client", "RtMidiOut Client", CLIENT_NAME)
+
 
 class MidiDeviceError(Exception):
     """Port introuvable, ou refusé par rtmidi."""
@@ -53,18 +60,48 @@ def note_name(note):
 # Ports
 # ---------------------------------------------------------------------------
 
+def is_own_port(name):
+    """Vrai pour un port d'un client rtmidi (le nôtre ou celui d'une autre
+    instance) : partie avant le premier « : »."""
+    return name.split(":", 1)[0] in OWN_CLIENTS
+
+
+def _new_in():
+    try:
+        return rtmidi.MidiIn(name=CLIENT_NAME)
+    except TypeError:                    # rtmidi factice ou ancien
+        return rtmidi.MidiIn()
+
+
+def _new_out():
+    try:
+        return rtmidi.MidiOut(name=CLIENT_NAME)
+    except TypeError:
+        return rtmidi.MidiOut()
+
+
+def _ports(probe):
+    try:
+        return [p for p in probe.get_ports() if not is_own_port(p)]
+    finally:
+        if hasattr(probe, "delete"):
+            probe.delete()
+
+
 def input_ports():
-    """Noms des ports MIDI d'entrée (relus à chaque appel)."""
+    """Noms des ports MIDI d'entrée (relus à chaque appel), sans les clients
+    rtmidi."""
     if rtmidi is None:
         return []
-    return list(rtmidi.MidiIn().get_ports())
+    return _ports(_new_in())
 
 
 def output_ports():
-    """Noms des ports MIDI de sortie (relus à chaque appel)."""
+    """Noms des ports MIDI de sortie (relus à chaque appel), sans les clients
+    rtmidi."""
     if rtmidi is None:
         return []
-    return list(rtmidi.MidiOut().get_ports())
+    return _ports(_new_out())
 
 
 # Sous ALSA, rtmidi termine le nom par « client:port » (« … MIDI 1 20:0 ») :
@@ -134,7 +171,7 @@ class MidiInputs:
             if idx is None:
                 missing.append(name)
                 continue
-            midi_in = rtmidi.MidiIn()
+            midi_in = _new_in()
             try:
                 midi_in.open_port(idx)
             except Exception:            # rtmidi.SystemError, InvalidPortError…
@@ -174,7 +211,7 @@ def open_output(name):
     idx = _index(output_ports(), name)
     if idx is None:
         raise MidiDeviceError(f"port de sortie introuvable : {name}")
-    out = rtmidi.MidiOut()
+    out = _new_out()
     try:
         out.open_port(idx)
     except Exception as e:

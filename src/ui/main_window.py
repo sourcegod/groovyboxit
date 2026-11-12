@@ -451,15 +451,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._vel_list.SetSelection(self._vel_level)
         self._vel_list.Bind(wx.EVT_LISTBOX, self._midi_handler.on_vel_level_select)
 
-        midi_label = wx.StaticText(panel, label="MIDI:")
-        self._midi_port_list = wx.ListBox(
-            panel,
-            choices=self._midi.list_ports() or ["(aucun port)"],
-            style=wx.LB_SINGLE,
-        )
-        if self._midi.list_ports():
-            self._midi_port_list.SetSelection(0)
-        self._midi_port_list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_midi_port_activate)
+        # Liste « MIDI: » retirée (Phase 8 étape 11f1, § 11a H7) : les entrées
+        # et sorties MIDI se cochent dans les Préférences, onglet Matériel
 
         hbox3 = wx.BoxSizer(wx.HORIZONTAL)
         hbox3.Add(track_label,           0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -467,9 +460,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         hbox3.Add(pad_label,             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         hbox3.Add(self._pad_list,        0, wx.EXPAND | wx.RIGHT, 8)
         hbox3.Add(vel_label,             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        hbox3.Add(self._vel_list,        0, wx.EXPAND | wx.RIGHT, 8)
-        hbox3.Add(midi_label,            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        hbox3.Add(self._midi_port_list,  0, wx.EXPAND)
+        hbox3.Add(self._vel_list,        0, wx.EXPAND)
 
         self._mute_btns = []
         self._solo_btns = []
@@ -529,7 +520,6 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             self._track_list,
             self._pad_list,
             self._vel_list,
-            self._midi_port_list,
         ]
 
         self.Fit()

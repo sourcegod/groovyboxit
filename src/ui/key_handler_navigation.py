@@ -20,7 +20,6 @@ class NavigationHandler:
         on_track_list        = ctx.on_track_list
         on_pad_list          = ctx.on_pad_list
         on_vel_list          = ctx.on_vel_list
-        on_midi_port_list    = ctx.on_midi_port_list
 
         if key == wx.WXK_TAB:
             win._on_tab_order(shift)
@@ -84,7 +83,7 @@ class NavigationHandler:
                     wx.CallAfter(win._on_pad_list_key_nav, None)
             elif on_quant_list or on_pattern_list or on_mode_choice \
                     or on_scale_choice or on_slot_choice or on_track_list \
-                    or on_pad_list or on_vel_list or on_midi_port_list:
+                    or on_pad_list or on_vel_list:
                 event.Skip()
             elif on_volume and key in (wx.WXK_UP, wx.WXK_DOWN):
                 event.Skip()
@@ -118,7 +117,7 @@ class NavigationHandler:
             elif on_pad_list:
                 win._cells[win._cur_row][win._cur_col].SetFocus()
             elif on_track_list or on_vel_list or on_scale_choice \
-                    or on_mode_choice or on_slot_choice or on_midi_port_list:
+                    or on_mode_choice or on_slot_choice:
                 pass  # GTK transforme Enter en DCLICK sur les ListBox
             else:
                 r, c = win._cur_row, win._cur_col

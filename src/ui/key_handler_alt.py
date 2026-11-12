@@ -104,10 +104,6 @@ class AltHandler:
         if not ctrl and not shift and (ukey == ord('5') or key == ord('5')):
             win._open_song_window()
             return True
-        if not ctrl and shift and (ukey in (ord('m'), ord('M')) or key == ord('M')):
-            win._midi_handler.refresh_ports()
-            win._show_status("MIDI: liste des ports actualisée")
-            return True
         if not ctrl and not shift and key == ord('L'):   # Alt+L : réinitialiser loop points
             p   = win._player
             pat = p._pattern

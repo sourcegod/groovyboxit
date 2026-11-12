@@ -12447,3 +12447,101 @@ jusqu'au retrait de la liste en 11f1.
   Ctrl+Shift+F12) : chacune fait échouer des tests.
 - **`docs/SPECS.md`** : arborescence (`midi_device.py`) et table. Suite :
   4068 verts (aussi avec les exceptions de fil traitées en erreurs).
+
+### Avancement 11f1 (implémentation — l'onglet et la fenêtre principale)
+
+- **`src/ui/prefs_hardware.py`** (nouveau, `HardwarePage`) : Pilote
+  audio (liste), **Entrées audio**, **Sorties audio**, **Entrées MIDI**,
+  **Sorties MIDI** (listes à cases à cocher `wx.CheckListBox`, Espace
+  coche) chacune suivie de son bouton Tester (« Tester l'entrée audio »,
+  « Tester la sortie audio »…), **Sortie principale** (« Défaut du
+  pilote » puis les sorties cochées, mise à jour en cochant), « Détecter
+  les périphériques audio » / « MIDI », **Résultat du test** (lecture
+  seule, prend le focus), puis Valeurs par défaut. Un périphérique coché
+  mais absent reste listé (« — absent ») et coché. Changer de pilote
+  relit les listes audio (cases gardées par nom). Tester agit sur la
+  ligne sélectionnée ; les tests d'entrée rendent leur résultat plus tard
+  (« écoute d'une seconde… », « jouez une note (5 secondes)… »).
+- **`PreferencesDialog(…, hardware=None)`** : onglet Matériel construit
+  avec l'objet `hardware` (sinon une phrase) ; clés `audio_hostapi`,
+  `audio_inputs`, `audio_outputs`, `audio_main_output`, `midi_inputs`,
+  `midi_outputs` dans `values()` / `values_of()` / Valeurs par défaut.
+- **`mw_devices.HardwareAccess`** : listes par le paquet devices
+  (« Synthé FluidSynth » en tête des sorties MIDI si la bibliothèque est
+  là) ; Détecter audio = flux arrêté, PortAudio relu, flux rouvert sur la
+  même sortie retrouvée par son nom (`audio_device.device_name`) ; Tester
+  la sortie audio = La 440 Hz par le pilote de l'appli si c'est sa sortie,
+  sinon directement ; Tester l'entrée audio = crête d'une seconde dans un
+  fil ; MIDI par `_test_midi_output` / `_listen_midi_input`.
+- **Effet immédiat** : entrées / sorties MIDI cochées changées → ports
+  fermés puis rouverts (`_apply_midi_devices`, introuvables en boîte) ;
+  sortie principale → flux rouvert (11b1).
+- **`devices.midi_device`** : les clients rtmidi eux-mêmes (« RtMidiIn
+  Client:RtMidi input 133:0 », un par port ouvert) apparaissaient dans les
+  listes → retirés (`is_own_port`) ; nos clients s'appellent « devices ».
+- **Fenêtre principale** : liste « MIDI: » retirée, ainsi
+  qu'**Alt+Shift+M**, le double-clic, `MidiHandler.connect / toggle /
+  refresh_ports`, `on_midi_port_list` ; Shift+F12 sans entrée cochée
+  annonce « aucune entrée cochée — Alt+Shift+P, onglet Matériel ».
+- **Aide F1** : Alt+Shift+P (onglet Matériel), Shift+F12 ; Alt+Shift+M
+  et le double-clic retirés.
+- Vérifié sur le vrai matériel : ALSA, 12 entrées et 7 sorties audio,
+  Akai coché, « Synthé FluidSynth » coché par défaut ; ordre des
+  contrôles conforme à H13.
+- Suite : 4058 verts, **10 rouges jusqu'à 11g1** (hôtes et dialogue
+  factices, test de la liste « MIDI: » retirée, Shift+F12 sans entrée).
+
+**Essai 11f1** : Alt+Shift+P, onglet Matériel : Orca lit les listes à
+cases (état de chaque case) ; cocher une sortie, la choisir comme
+principale, Appliquer → son par elle ; Tester la sortie audio (La 440) ;
+Tester l'entrée audio (crête) ; Tester la sortie MIDI sur « Synthé
+FluidSynth » (A4) ; Tester l'entrée MIDI (jouer une note sur l'Akai) ;
+Détecter ; décocher l'Akai, Appliquer → déconnecté.
+- **Avant l'essai, demande de l'utilisateur** : greffons ALSA masqués des
+  listes à cocher (`audio_device.devices(…, hide_plugins=True)`,
+  `is_alsa_plugin`) : restent les cartes (« (hw:… ) »), `default`,
+  `pipewire`, `pulse`. `find_device` les trouve toujours (réglage écrit à
+  la main).
+
+**Essai 11f1, remarques de l'utilisateur (2026-11-12)** :
+- **Résultat du test** : le focus ne va plus sur le champ (il fallait
+  revenir où l'on était) ; le champ reste, pour contrôler ce qui s'est
+  passé. L'énoncé viendra du futur module **SpeechAccess** (synthèse
+  vocale des barres d'état et autres messages).
+- **Tester l'entrée audio** affichait toujours 0 dB de crête, sans dire
+  si le son entrait. Mesure des quatre entrées : `hw:0,0` bloquée à −1
+  (pleine échelle) ; `pipewire`, `pulse`, `default` : souffle, crête de
+  −4 à −1 dB pour un niveau moyen de −17 à −24 dB. Désormais :
+  **3 secondes** d'écoute (« parlez ou jouez pendant 3 secondes… ») ;
+  **diagnostic** `audio_device.analyse_input` / `describe_input` :
+  « silence (rien ne rentre) » (niveau moyen sous −70 dB), « signal
+  bloqué à pleine échelle : entrée saturée ou inutilisable » (plus de la
+  moitié des échantillons à pleine échelle), sinon « signal présent —
+  niveau moyen −19 dB, crête −4 dB » ; **réécoute** des 3 secondes
+  captées sur la sortie principale quand un signal est présent (pas pour
+  un signal bloqué, qui serait un bruit à pleine échelle). Nouvelles
+  fonctions `record_input`, `rms_db`, `to_stereo`.
+- Second essai : réécoute appréciée. Toutes les entrées rendent la même
+  voix : normal, l'ordinateur n'a qu'un micro intégré (`hw:0,0` en accès
+  direct, `pipewire` / `pulse` / `default` par PipeWire) ; l'essai de
+  plusieurs cartes les distinguera. **Corrigé** : chaque liste
+  sélectionnait d'office sa première ligne, si bien que Tester écoutait
+  une entrée non choisie ; désormais aucune ligne n'est sélectionnée à
+  l'ouverture (« Choisissez d'abord une entrée audio dans la liste. »),
+  et une sélection est gardée par nom quand la liste est relue. Tester
+  agit toujours sur la ligne sous le curseur, cochée ou non (on peut
+  tester avant de cocher).
+
+- Troisième essai : Tester écoutait encore sans entrée choisie (GTK place
+  le curseur, donc la sélection, sur la première ligne en entrant dans la
+  liste). **Corrigé** : « **(Aucun)** » en tête des quatre listes, coché
+  quand rien d'autre ne l'est ; le cocher décoche tout ; Tester sur lui
+  répond « Choisissez d'abord… ».
+- **OSS** : le test de `/dev/dsp` marche sur cette machine, par
+  l'émulation OSS du noyau (`snd_pcm_oss` chargé, `/dev/dsp` présent),
+  qui passe par ALSA ; entrée seule, aucune sortie.
+
+**Essai 11f1** (utilisateur, 2026-11-12) : concluant après les
+corrections (focus gardé, écoute de 3 s avec diagnostic et réécoute,
+« (Aucun) » en tête des listes, Akai recoché). OSS gardé dans la liste
+des pilotes (il marche ici par l'émulation du noyau).

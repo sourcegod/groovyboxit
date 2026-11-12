@@ -13,9 +13,11 @@
 """
 import threading
 
+import numpy as np
 import wx
 
 from app_config import AppConfig
+from devices import audio_device
 from devices import midi_device
 
 
@@ -59,16 +61,28 @@ class DevicesMixin:
                 pass
         self._midi_outs = {}
 
+    def _hardware(self):
+        return HardwareAccess(self)
+
+    def _apply_midi_devices(self):
+        """Entrées et sorties MIDI cochées changées dans les Préférences :
+        tout fermé puis rouvert tout de suite (11f1) ; retourne les notes des
+        ports introuvables (boîte bloquante)."""
+        self._close_midi_devices()
+        _opened, notes = self._open_midi_devices()
+        if notes:
+            self._show_device_notes(notes)
+        return notes
+
     def _toggle_midi_inputs(self):
         """Shift+F12 : déconnecte les entrées ouvertes, sinon connecte les entrées
-        cochées dans les Préférences ; sans entrée cochée, le port choisi
-        dans la liste « MIDI: » de la fenêtre principale (jusqu'à 11f1)."""
+        cochées dans les Préférences (onglet Matériel)."""
         if self._midi.is_open():
             self._midi.close()
             return
         names = self._cfg.midi_inputs
         if not names:
-            self._midi_handler.connect()
+            self._show_status("MIDI : aucune entrée cochée — Alt+Shift+P, onglet Matériel")
             return
         opened, missing = self._midi.open_names(names)
         if missing:
@@ -157,3 +171,118 @@ class DevicesMixin:
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
         return thread
+
+
+class HardwareAccess:
+    """Le matériel vu par l'onglet Matériel des Préférences (Phase 8 étape
+    11f1, prefs_hardware.HardwarePage) : listes par le paquet devices,
+    tests et relectures par la fenêtre principale."""
+
+    def __init__(self, win):
+        self._win = win
+
+    # -- listes ----------------------------------------------------------
+
+    def hostapis(self):
+        return audio_device.hostapis()
+
+    def default_hostapi(self):
+        return audio_device.default_hostapi()
+
+    def audio_devices(self, hostapi, kind):
+        """Sans les greffons ALSA (lavrate, speex, upmix…, essai de 11f1)."""
+        return audio_device.devices(hostapi, kind, hide_plugins=True)
+
+    def midi_inputs(self):
+        return midi_device.input_ports()
+
+    def midi_outputs(self):
+        """« Synthé FluidSynth » (si la bibliothèque est là, H8), puis les
+        ports de sortie."""
+        from audio.engines.fluidsynth_engine import fluidsynth_available
+        synth = [DevicesMixin.SYNTH_OUTPUT] if fluidsynth_available() else []
+        return synth + midi_device.output_ports()
+
+    # -- Détecter (H5, H9) -----------------------------------------------
+
+    def detect_audio(self):
+        """Relit PortAudio : flux arrêté le temps de la relecture, puis
+        rouvert sur la même sortie, retrouvée par son nom."""
+        driver = getattr(self._win, "_audio_driver", None)
+        name = ""
+        if driver is not None and hasattr(driver, "stop_stream"):
+            name = audio_device.device_name(driver.device)
+            driver.stop_stream()
+        try:
+            audio_device.rescan()
+        finally:
+            if driver is not None and hasattr(driver, "start_stream"):
+                api = self._win._cfg.audio_hostapi or audio_device.default_hostapi()
+                idx = audio_device.find_device(name, api, audio_device.OUTPUT) if name else None
+                try:
+                    driver.start_stream(idx)
+                except Exception:
+                    driver.start_stream(None)
+        n = sum(len(audio_device.devices(api, kind)) for api in audio_device.hostapis()
+                for kind in (audio_device.INPUT, audio_device.OUTPUT))
+        return f"Périphériques audio relus : {n} entrées et sorties"
+
+    def detect_midi(self):
+        ins, outs = midi_device.input_ports(), midi_device.output_ports()
+        return f"Périphériques MIDI relus : {len(ins)} entrées, {len(outs)} sorties"
+
+    # -- Tester (H14) ----------------------------------------------------
+
+    def test_audio_output(self, hostapi, name):
+        """La 440 Hz d'une seconde : par le pilote de l'appli si c'est sa
+        sortie (périphérique déjà ouvert), sinon directement."""
+        from audio.sound_device_driver import SdSound
+        idx = audio_device.find_device(name, hostapi, audio_device.OUTPUT)
+        if idx is None:
+            return f"Sortie audio {name} : introuvable"
+        driver = getattr(self._win, "_audio_driver", None)
+        try:
+            if driver is not None and idx == getattr(driver, "device", "?"):
+                sr = driver.samplerate
+                driver.play(SdSound(audio_device.tone(sr), sr))
+            else:
+                audio_device.play_tone(idx)
+        except Exception as e:                      # AudioDeviceError, PortAudioError
+            return f"Sortie audio {name} : refusée ({e})"
+        return f"Sortie audio {name} : La 440 Hz joué pendant une seconde"
+
+    def test_audio_input(self, hostapi, name, done):
+        """Trois secondes d'écoute dans un fil, diagnostic (silence, bloqué,
+        présent) avec niveau moyen et crête, puis réécoute de ce qui a été
+        capté sur la sortie principale si un signal est présent (essai de
+        11f1 : la crête seule ne disait rien) ; done(message) dans le fil de
+        l'interface."""
+        from audio.sound_device_driver import SdSound
+        driver = getattr(self._win, "_audio_driver", None)
+        sr = driver.samplerate if driver is not None else 44100
+
+        def run():
+            idx = audio_device.find_device(name, hostapi, audio_device.INPUT)
+            if idx is None:
+                msg = f"Entrée audio {name} : introuvable"
+            else:
+                try:
+                    data = audio_device.record_input(idx, samplerate=sr)
+                except audio_device.AudioDeviceError as e:
+                    msg = f"Entrée audio {name} : refusée ({e})"
+                else:
+                    verdict, rms, peak = audio_device.analyse_input(data)
+                    msg = f"Entrée audio {name} : " + audio_device.describe_input(verdict, rms, peak)
+                    if verdict == audio_device.PRESENT and driver is not None:
+                        driver.play(SdSound(audio_device.to_stereo(data), sr))
+                        msg += " ; réécoute des 3 secondes captées"
+            wx.CallAfter(done, msg)
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        return thread
+
+    def test_midi_output(self, name):
+        return self._win._test_midi_output(name)
+
+    def test_midi_input(self, name, done):
+        return self._win._listen_midi_input(name, done)

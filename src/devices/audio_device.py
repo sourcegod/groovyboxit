@@ -28,7 +28,9 @@ _CHANNELS = {INPUT: "max_input_channels", OUTPUT: "max_output_channels"}
 TONE_FREQ    = 440.0      # La 440 Hz
 TONE_SECONDS = 1.0
 TONE_LEVEL   = 0.3        # environ −10 dBFS, fondu de 10 ms aux deux bouts
-INPUT_SECONDS = 1.0
+INPUT_SECONDS = 3.0      # écoute d'une entrée (essai de 11f1 : 3 s, puis réécoute)
+SILENCE_DB    = -70.0    # niveau moyen sous lequel l'entrée est muette
+STUCK_RATIO   = 0.5      # part d'échantillons à pleine échelle : signal bloqué
 
 
 class AudioDeviceError(Exception):
@@ -74,9 +76,25 @@ def _devices(hostapi, kind):
             if d["hostapi"] == api and d[key] > 0]
 
 
-def devices(hostapi, kind):
-    """Noms des périphériques d'entrée ou de sortie du pilote."""
-    return [name for _, name in _devices(hostapi, kind)]
+# Greffons ALSA (convertisseurs, mixages) que PortAudio liste comme des
+# périphériques : masqués des listes à cocher sur demande (essai de 11f1).
+# Restent les cartes (« … (hw:1,0) ») et les serveurs de son.
+ALSA_KEPT = ("default", "pipewire", "pulse")
+
+
+def is_alsa_plugin(name, hostapi):
+    """Vrai pour un greffon ALSA : ni une carte (« (hw:… ) »), ni default,
+    pipewire, pulse ; toujours faux hors du pilote ALSA."""
+    return hostapi == "ALSA" and "(hw:" not in name and name not in ALSA_KEPT
+
+
+def devices(hostapi, kind, hide_plugins=False):
+    """Noms des périphériques d'entrée ou de sortie du pilote ;
+    hide_plugins : sans les greffons ALSA (is_alsa_plugin)."""
+    names = [name for _, name in _devices(hostapi, kind)]
+    if hide_plugins:
+        names = [n for n in names if not is_alsa_plugin(n, hostapi)]
+    return names
 
 
 def default_device(hostapi, kind):
@@ -96,6 +114,16 @@ def find_device(name, hostapi, kind):
         if dev_name == name:
             return idx
     return None
+
+
+def device_name(index):
+    """Nom du périphérique d'indice PortAudio index (None → "")."""
+    if index is None:
+        return ""
+    try:
+        return sd.query_devices(index)["name"]
+    except (sd.PortAudioError, ValueError, IndexError):
+        return ""
 
 
 def resolve_output(main_output, hostapi):
@@ -149,18 +177,67 @@ def peak_db(data):
     return 20.0 * math.log10(peak) if peak > 0.0 else float("-inf")
 
 
-def input_peak_db(device, seconds=INPUT_SECONDS, samplerate=44100):
-    """Écoute l'entrée pendant seconds (bloquant) et retourne sa crête en
-    dBFS ; AudioDeviceError si PortAudio la refuse."""
+def record_input(device, seconds=INPUT_SECONDS, samplerate=44100):
+    """Enregistre l'entrée pendant seconds (bloquant) : tableau float32
+    (trames, 1 ou 2 canaux) ; AudioDeviceError si PortAudio la refuse."""
     try:
         channels = min(2, int(sd.query_devices(device)["max_input_channels"])) \
             if device is not None else 1
-        data = sd.rec(int(samplerate * seconds), samplerate=samplerate,
+        return sd.rec(int(samplerate * seconds), samplerate=samplerate,
                       channels=max(1, channels), dtype="float32",
                       device=device, blocking=True)
     except (sd.PortAudioError, ValueError) as e:
         raise AudioDeviceError(str(e)) from e
-    return peak_db(data)
+
+
+def input_peak_db(device, seconds=INPUT_SECONDS, samplerate=44100):
+    """Crête en dBFS d'une écoute de l'entrée (record_input)."""
+    return peak_db(record_input(device, seconds, samplerate))
+
+
+def rms_db(data):
+    """Niveau moyen (RMS) d'un tampon en dBFS (−inf pour un silence)."""
+    if not len(data):
+        return float("-inf")
+    rms = float(np.sqrt(np.mean(np.square(data, dtype=np.float64))))
+    return 20.0 * math.log10(rms) if rms > 0.0 else float("-inf")
+
+
+SILENT, STUCK, PRESENT = "silence", "bloqué", "présent"
+
+
+def analyse_input(data):
+    """(diagnostic, niveau moyen dB, crête dB) d'un enregistrement :
+    SILENT (niveau moyen sous SILENCE_DB), STUCK (plus de la moitié des
+    échantillons à pleine échelle : entrée saturée, ou tenue par un autre
+    programme), PRESENT sinon. La crête seule ne suffit pas : un pic de
+    souffle la porte près de 0 dB (essai de 11f1)."""
+    rms, peak = rms_db(data), peak_db(data)
+    if len(data) and np.mean(np.abs(data) >= 0.999) > STUCK_RATIO:
+        return STUCK, rms, peak
+    if rms < SILENCE_DB:
+        return SILENT, rms, peak
+    return PRESENT, rms, peak
+
+
+def describe_input(verdict, rms, peak):
+    """Phrase du diagnostic : « signal présent — niveau moyen −19 dB, crête
+    −4 dB »."""
+    if verdict == SILENT:
+        return "silence (rien ne rentre)"
+    if verdict == STUCK:
+        return "signal bloqué à pleine échelle : entrée saturée ou inutilisable"
+    return f"signal présent — niveau moyen {format_db(rms)}, crête {format_db(peak)}"
+
+
+def to_stereo(data):
+    """Tampon (trames, 1 ou 2) → stéréo float32 contigu (réécoute)."""
+    data = np.asarray(data, dtype=np.float32)
+    if data.ndim == 1:
+        data = data[:, None]
+    if data.shape[1] == 1:
+        data = np.repeat(data, 2, axis=1)
+    return np.ascontiguousarray(data[:, :2])
 
 
 def format_db(db):

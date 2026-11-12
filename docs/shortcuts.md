@@ -8,8 +8,11 @@ Ctrl+Shift+S     Enregistrer le projet sous...
 Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
 Shift+Z          Refaire
 Ctrl+Shift+Z     Afficher l'historique des annulations
-Alt+Shift+P      Préférences (depuis toutes les fenêtres) : onglets Général, Matériel,
-                 Audio, Midi, Projet, Raccourcis, Divers ; focus sur l'onglet :
+Alt+Shift+P      Préférences (depuis toutes les fenêtres) : onglets Général, Matériel
+                 (pilote audio ; entrées et sorties audio et MIDI à cocher, Espace ;
+                 sortie principale ; Tester : La 440 Hz / A4 d'une seconde, niveau
+                 d'une entrée audio, prochaine note d'une entrée MIDI ; Détecter ;
+                 Résultat du test), Audio, Midi, Projet, Raccourcis, Divers ; focus sur l'onglet :
                  Gauche / Droite = onglet voisin ; Ctrl+Tab / Ctrl+Shift+Tab =
                  onglet suivant / précédent depuis n'importe quel champ ; Ok,
                  Annuler, Appliquer (réglages écrits dans
@@ -324,13 +327,10 @@ Alt+0            Recentrer le pan de la piste (Pan 0)
 
 --- MIDI ---
 Shift+F12        Connecter / déconnecter les entrées MIDI cochées dans les Préférences
-                 (sans entrée cochée : le port sélectionné dans la liste) ; toutes
-                 les fenêtres
+                 (Alt+Shift+P, onglet Matériel) ; toutes les fenêtres
 Ctrl+Shift+F12   Réinitialiser les périphériques MIDI : relire les ports et rouvrir
                  les entrées et sorties cochées (après un débranchement) ; toutes
                  les fenêtres
-Alt+Shift+M      Actualiser la liste des ports MIDI
-Double-clic      Connecter le port MIDI sélectionné (liste des ports)
 Contrôleur       Une note tenue s'arrête au relâchement là où elle a été jouée, même
                  après un changement de piste, de slot, de canal ou de programme :
                  on peut tenir une note, changer de piste et en jouer une autre

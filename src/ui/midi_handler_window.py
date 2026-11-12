@@ -59,43 +59,6 @@ class MidiHandler:
         engine.play(played, vol, pan, 0)
         self._live_held[note] = (engine, played)
 
-    # ------------------------------------------------------------------
-    # Connexion MIDI
-    # ------------------------------------------------------------------
-
-    def connect(self):
-        """Connecte le port MIDI sélectionné dans la liste."""
-        win   = self._win
-        ports = win._midi.list_ports()
-        if not ports:
-            win._show_status("MIDI: aucun port disponible")
-            return
-        idx = win._midi_port_list.GetSelection()
-        if idx == wx.NOT_FOUND:
-            idx = 0
-        win._midi.open(idx)
-
-    def disconnect(self):
-        self._win._midi.close()
-
-    def toggle(self):
-        """Connecte si déconnecté, déconnecte sinon."""
-        if self._win._midi.is_open():
-            self.disconnect()
-        else:
-            self.connect()
-
-    def refresh_ports(self):
-        """Recharge la liste des ports MIDI disponibles."""
-        win   = self._win
-        ports = win._midi.list_ports()
-        sel   = win._midi_port_list.GetSelection()
-        win._midi_port_list.Set(ports if ports else ["(aucun port)"])
-        if ports:
-            win._midi_port_list.SetSelection(
-                min(sel, len(ports) - 1) if sel != wx.NOT_FOUND else 0
-            )
-
     def toggle_erase(self):
         """Bascule le mode Erase et vide les notes MIDI tenues."""
         self._erase_held.clear()

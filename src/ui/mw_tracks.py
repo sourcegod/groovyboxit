@@ -411,9 +411,6 @@ class TrackMixin:
     def _on_slot_list_activate(self, event):
         self._assign_track_slot()
 
-    def _on_midi_port_activate(self, event):
-        self._midi_handler.connect()
-
     def _on_track_select(self, event):
         idx = self._track_list.GetSelection()
         if idx < 0:

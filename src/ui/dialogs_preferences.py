@@ -14,12 +14,15 @@
     - Bouton « Valeurs par défaut » au bas des onglets réglables (Phase 8
       étape 10f2) : remet les champs de l'onglet aux valeurs par défaut,
       sans rien appliquer (Ok ou Appliquer ensuite).
+    - Onglet Matériel (Phase 8 étape 11f1) : prefs_hardware.HardwarePage,
+      construit si l'appli passe l'objet hardware (sinon une phrase).
     Date: Wed, 11/11/2026
     Author: Coolbrother
 """
 import wx
 
 from app_config import AppConfig
+from ui.prefs_hardware import HardwarePage
 
 
 class PreferencesDialog(wx.Dialog):
@@ -48,19 +51,25 @@ class PreferencesDialog(wx.Dialog):
         ("user_banks_dir",   "Banques de l'utilisateur :"),
     ]
 
-    def __init__(self, parent, cfg, on_apply=None, page=0):
+    PAGE_HARDWARE = 1                  # Alt+Shift+P sur l'onglet Matériel
+
+    def __init__(self, parent, cfg, on_apply=None, page=0, hardware=None):
         super().__init__(parent, title="Préférences",
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._cfg      = cfg
         self._on_apply = on_apply
         self._dir_dialog = None        # fabrique de wx.DirDialog (tests)
+        self._hardware = hardware
+        self._hw_page  = None
+        self._tab_keys = dict(self.TAB_KEYS)
+        if hardware is not None:
+            self._tab_keys["Matériel"] = HardwarePage.KEYS
 
         self._book = wx.Notebook(self)
         self._pages = {}
         builders = {
             "Général": self._build_general,
-            "Matériel": lambda p: self._build_later(p, "Les pilotes et les périphériques audio et "
-                                                       "MIDI viendront à l'étape 11."),
+            "Matériel": self._build_hardware,
             "Audio": self._build_audio,
             "Midi": self._build_midi,
             "Projet": self._build_project,
@@ -76,7 +85,7 @@ class PreferencesDialog(wx.Dialog):
         # Valeurs par défaut (10f2) : bouton créé en dernier, au bas de l'onglet
         self._defaults = self.values_of(cfg.defaults_only())
         self._default_btns = {}
-        for label in self.TAB_KEYS:
+        for label in self._tab_keys:
             panel = self._pages[label]
             btn = wx.Button(panel, label="Valeurs par défaut")
             btn.SetName(f"Valeurs par défaut — onglet {label}")
@@ -144,6 +153,13 @@ class PreferencesDialog(wx.Dialog):
         box = wx.BoxSizer(wx.VERTICAL)
         box.Add(wx.StaticText(panel, label=text), 0, wx.ALL, 10)
         self._finish(panel, box)
+
+    def _build_hardware(self, panel):
+        if self._hardware is None:
+            self._build_later(panel, "Les pilotes et les périphériques audio et MIDI "
+                                     "demandent l'appli.")
+            return
+        self._hw_page = HardwarePage(panel, self._cfg, self._hardware)
 
     def _build_general(self, panel):
         cfg = self._cfg
@@ -244,6 +260,8 @@ class PreferencesDialog(wx.Dialog):
         }
         for key, text in self._paths.items():
             vals[key] = text.GetValue().strip() or None      # vide : retour au défaut
+        if self._hw_page is not None:
+            vals.update(self._hw_page.values())
         return vals
 
     def values_of(self, cfg):
@@ -264,6 +282,8 @@ class PreferencesDialog(wx.Dialog):
         }
         for key, _ in self.PATH_FIELDS:
             vals[key] = getattr(cfg, key) or None
+        if self._hw_page is not None:
+            vals.update(self._hw_page.values_of(cfg))
         return vals
 
     def show_values(self, vals):
@@ -283,7 +303,12 @@ class PreferencesDialog(wx.Dialog):
             "midi_bank_select": lambda v: self._bank_select.SetSelection(
                 self.BANK_SELECT_VALUES.index(v)),
         }
+        hw = {k: v for k, v in vals.items() if k in HardwarePage.KEYS}
+        if hw and self._hw_page is not None:
+            self._hw_page.show_values(hw)
         for key, value in vals.items():
+            if key in HardwarePage.KEYS:
+                continue
             if key in self._paths:
                 self._paths[key].SetValue(value or "")
             else:
@@ -292,7 +317,7 @@ class PreferencesDialog(wx.Dialog):
     def restore_defaults(self, tab):
         """Bouton « Valeurs par défaut » (10f2) : champs de l'onglet tab remis
         aux valeurs par défaut ; Ok ou Appliquer les appliquent."""
-        self.show_values({k: self._defaults[k] for k in self.TAB_KEYS[tab]})
+        self.show_values({k: self._defaults[k] for k in self._tab_keys[tab]})
 
     def changes(self):
         """Réglages changés depuis l'ouverture ou le dernier Appliquer."""
