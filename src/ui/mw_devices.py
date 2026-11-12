@@ -61,6 +61,36 @@ class DevicesMixin:
                 pass
         self._midi_outs = {}
 
+    def _warn_track_midi_outs(self):
+        """Pistes du pattern courant dont la sortie MIDI externe n'est pas
+        ouverte : elles jouent le son interne de leur slot (Phase 8 étape
+        12b1, § 12a T10) ; avertissement une fois par port et par session —
+        boîte « Périphérique introuvable » avec bip et barre d'état, ou, au
+        démarrage, ajouté aux notes de la boîte de démarrage."""
+        router = getattr(self, "_router", None)
+        if router is None or not hasattr(router, "missing_midi_outs"):
+            return []
+        warned = getattr(self, "_warned_midi_outs", None)
+        if warned is None:
+            warned = self._warned_midi_outs = set()
+        by_port = {}
+        for t, name in router.missing_midi_outs():
+            if name not in warned:
+                by_port.setdefault(name, []).append(t + 1)
+        notes = []
+        for name, tracks in by_port.items():
+            warned.add(name)
+            label = "Piste" if len(tracks) == 1 else "Pistes"
+            notes.append(f"Sortie MIDI introuvable : {name}. {label} "
+                         f"{', '.join(map(str, tracks))} : son interne.")
+        if notes:
+            if getattr(self, "_started", False):
+                self._show_status(" ".join(notes))
+                self._show_device_notes(notes)
+            else:
+                self._device_notes.extend(notes)
+        return notes
+
     def _hardware(self):
         return HardwareAccess(self)
 

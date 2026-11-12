@@ -194,6 +194,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._midi_outs = {}
         _opened, notes = self._open_midi_devices()
         self._device_notes.extend(notes)
+        # sortie MIDI externe des pistes : ports ouverts ci-dessus (12b1, T1)
+        self._router.midi_out_lookup = lambda name: self._midi_outs.get(name)
         self._track_editor = TrackEditor()
         self._pattern_cache       = [None] * len(self._pattern_list)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
@@ -208,6 +210,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Centre()
+        self._started = True        # avertissements suivants : boîte tout de suite (12b1)
         notes = self._device_notes + self._engine_notes
         if notes:                   # moteurs coupés ou absents (Phase 8 étape 7b1, Z14)
             wx.CallAfter(self._show_status, " ; ".join(notes))

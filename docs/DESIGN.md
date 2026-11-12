@@ -12767,3 +12767,52 @@ seulement ; « — absent » pour un port enregistré mais débranché).
   listes « Entrée MIDI » et « Sortie MIDI » avant Canal dans les
   propriétés (T7), effet immédiat ; aide F1.
 - **12f1 — clôture**.
+
+### Avancement 12b1 (implémentation — sortie MIDI des pistes)
+
+- **`src/midi/track_midi_out.py`** (nouveau, `TrackMidiOutMixin` de
+  `TrackRouter`) : `_track_midi_outs` (nom du port de chaque piste, ""
+  = interne), `midi_out_lookup(nom)` fourni par la fenêtre (None : rendu
+  WAV, tests → toujours le son interne) ; `ext_grid` (grille : banque /
+  SFZ au canal 10 → 36 + pad, slot qui joue des notes → gamme du
+  clavier, kit → note GM du son du pad par `gm_note_map`, vélocité comme
+  les banques), `ext_kit`, `ext_patch` (Note Off programmé), `ext_cc`,
+  `ext_bend`, `ext_program`, `ext_mix` (CC7 / CC10 comme l'export),
+  `ext_chase` (CC0, CC32, programme, volume, pan au départ de la
+  lecture), `ext_notes_off` (All Notes Off sur les canaux des ports
+  utilisés ; Panic : aussi All Sound Off, Reset All Controllers),
+  `missing_midi_outs`.
+- **`TrackRouter`** : chaque `on_play` / `on_kit_tape` / `on_patch_tape`
+  / `on_bend_tape` / `on_mod_tape` / `on_cc_tape` (sauf CC7 / CC10, qui
+  passent par `set_track_volume` / `set_track_pan`) /
+  `on_program_change_tape` part vers le port si la piste en a un ouvert,
+  et le son interne se tait ; `chase` poursuit aussi les pistes
+  externes ; `on_play_stop`, `cut_all_notes`, `cut_track_notes`, `panic`
+  coupent les notes des ports.
+- **`Pattern`** : `_track_midi_ins`, `_track_midi_outs` (noms, "" par
+  défaut), clés `track_midi_ins` / `track_midi_outs` du `.gvp` (absentes
+  → ""), complétées au redimensionnement ; copiées vers et depuis le
+  routeur comme les canaux (`mw_patterns`, `mw_songs`, `song`,
+  `audio_export`).
+- **Fenêtre** : `router.midi_out_lookup` = ports ouverts (`_midi_outs`) ;
+  **port absent → son interne avec avertissement** (`_warn_track_midi_outs`
+  au chargement d'un pattern : « Sortie MIDI introuvable : X. Piste 3 :
+  son interne. », une fois par port et par session ; boîte avec bip et
+  barre d'état, ou boîte de démarrage).
+- **Rendu WAV** : les pistes externes y sont rendues avec le son interne
+  (pas de port dans le rendu hors temps réel).
+- Vérifié de bout en bout par **Midi Through** (vraie fenêtre) : note de
+  grille d'un kit au canal 10 (note GM 35, vélocité 102), note PATCH,
+  CC1, Pitch Bend (+4096 → 0 / 96), CC7 / CC10 au réglage du volume,
+  Note Off, All Notes Off à l'arrêt ; port absent annoncé une fois.
+- Suite : 4109 verts, **30 rouges jusqu'à 12c1** (fenêtres et routeurs
+  factices sans `_warn_track_midi_outs` ni `_track_midi_outs`).
+- Le choix du port dans les propriétés de piste vient en 12d1 : pas
+  d'essai à l'écoute avant ; essai de non-régression (lecture normale
+  inchangée).
+
+**Essai 12b1** (utilisateur, 2026-11-12) : concluant (non-régression ;
+nouvelle piste enregistrée sur le slot TR-707 dans `essai_sfz_7f1.gvp`,
+pattern 1). **Remarque notée pour un autre chantier** : à
+l'enregistrement MIDI depuis un contrôleur, la même note jouée au même
+temps avec des vélocités différentes n'est pas prise en compte.

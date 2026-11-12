@@ -13,6 +13,7 @@ from rack import InstrumentType
 from pattern import Pattern, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from bend_log import bend_log
 from midi.midi_export import volume_to_cc7, pan_to_cc10
+from midi.track_midi_out import TrackMidiOutMixin
 
 
 class BankPreview:
@@ -90,7 +91,7 @@ class BankPreview:
         self.sustain    = False
 
 
-class TrackRouter:
+class TrackRouter(TrackMidiOutMixin):
     """
     Gère l'association piste → slot → SynthEngine et le dispatch sonore.
 
@@ -179,6 +180,8 @@ class TrackRouter:
         # docs/DESIGN.md § 5a M1, M2, M13) : le canal courant N d'une piste
         # joue le slot N ; posé au chargement du pattern, comme les canaux.
         self.rack_mode      = False
+        # Sortie MIDI externe des pistes (Phase 8 étape 12b1, § 12a T1, T8)
+        self._init_midi_out()
 
     @staticmethod
     def _timer_schedule(delay_ms, fn, *args):
@@ -783,7 +786,8 @@ class TrackRouter:
         chan_bend = [0] * 16
         found = []
         for t, events in enumerate(tape[:self.NUM_TRACKS]):
-            if not self.rack_mode and self._chan_slot_of(t) is None:
+            if not self.rack_mode and self._chan_slot_of(t) is None \
+                    and self._ext_port(t) is None:     # port externe aussi (12b1)
                 continue
             for seq, ev in enumerate(events):
                 if ev.time > pos:
@@ -816,6 +820,7 @@ class TrackRouter:
                 for cc in self._CHASED_CCS:
                     engine.cc(ch, cc, chan_cc[cc][ch])
                 engine.pitch_bend(ch, chan_bend[ch])
+        self.ext_chase()                             # ports externes (12b1)
 
     def _prefetch_sfz(self, tape):
         """Préchargement (Phase 8 étape 7f1, § 7a3 Z19) : pour chaque canal
@@ -862,6 +867,7 @@ class TrackRouter:
                 for cc in self._CHASED_CCS:
                     engine.cc(ch, cc, 0)
                 engine.pitch_bend(ch, 0)
+        self.ext_notes_off()                         # ports externes (12b1)
 
     def set_master_pan(self, pan):
         """Pan global, ajouté au CC10 des canaux de banque (D13)."""
@@ -978,6 +984,8 @@ class TrackRouter:
 
     def set_track_volume(self, track_idx, vol):
         self._track_volumes[track_idx] = max(0, min(100, vol))
+        if self.ext_mix(track_idx):                  # port externe : CC7 / CC10 (12b1)
+            return
         if self._chan_slot_of(track_idx) is not None:
             self._send_bank_mix(track_idx)
 
@@ -986,6 +994,8 @@ class TrackRouter:
 
     def set_track_pan(self, track_idx, pan):
         self._track_pans[track_idx] = max(-100, min(100, pan))
+        if self.ext_mix(track_idx):                  # port externe : CC7 / CC10 (12b1)
+            return
         if self._chan_slot_of(track_idx) is not None:
             self._send_bank_mix(track_idx)
 
@@ -1137,13 +1147,15 @@ class TrackRouter:
             engine.all_sounds_off()
             for ch in range(16):
                 engine.cc(ch, 64, 0)
+        self.ext_notes_off()                         # ports externes (12b1)
 
     def cut_track_notes(self, track_idx):
         """Avant un changement de slot, de canal ou de programme de la piste
         (N2, N9) : son canal courant sur une banque, le moteur de son slot
         sur un synthé, et toujours la préécoute (notes tenues au clavier,
         dont l'arrêt partirait sinon ailleurs). Un kit n'a que des
-        one-shots : rien à couper."""
+        one-shots : rien à couper. Port externe : All Notes Off (12b1)."""
+        self.ext_notes_off(track_idx)
         slot_idx, slot = self._eff_slot(track_idx)
         channels, engines = [], []
         if slot.type in self.CHAN_TYPES:
@@ -1167,13 +1179,17 @@ class TrackRouter:
             self._cut_synth(engine)
 
     def panic(self):
-        """Coupure d'urgence : All Sounds Off + Reset All Controllers."""
+        """Coupure d'urgence : All Sounds Off + Reset All Controllers ; aussi
+        sur les ports externes utilisés (12b1)."""
         self.stop_all_sounds()
         self.reset_all_controls()
+        self.ext_notes_off(panic=True)
 
     def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500):
         """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
         if not self._track_is_audible(track_idx):
+            return
+        if self.ext_grid(track_idx, pad_idx, vol_factor, duration_ms):   # port externe (12b1)
             return
         slot_idx, slot = self._eff_slot(track_idx)
         if self.rack_mode and slot.is_empty:      # canal muet (M5)
@@ -1207,6 +1223,8 @@ class TrackRouter:
         jouée comme une note PATCH ; sur un slot vide, muette."""
         if not self._track_is_audible(track_idx):
             return
+        if self.ext_kit(track_idx, midi_note, velocity, duration_ms):    # port externe (12b1)
+            return
         if self._chan_slot_of(track_idx) is not None:          # 17d1, 7d1 : note telle quelle
             engine = self._track_engine(track_idx)
             if engine is not None:
@@ -1231,6 +1249,8 @@ class TrackRouter:
         chargé dont la note GM est midi_note, sinon la note telle quelle,
         sans durée (one-shot)."""
         if not self._track_is_audible(track_idx):
+            return
+        if self.ext_patch(track_idx, midi_note, velocity, duration_ms):  # port externe (12b1)
             return
         slot_idx, slot = self._eff_slot(track_idx)
         if slot.type in self.CHAN_TYPES:                       # 17d1, 7d1
@@ -1264,6 +1284,8 @@ class TrackRouter:
         """Applique un point d'automation pitch bend au moteur du slot de la piste."""
         if not self._track_is_audible(track_idx):
             return
+        if self.ext_bend(track_idx, bend_value):                         # port externe (12b1)
+            return
         slot_idx, slot = self._eff_slot(track_idx)
         if slot.type in self.CHAN_TYPES:                       # 17d1, 7d1 : état du canal
             engine = self._engine_of(slot)
@@ -1282,6 +1304,8 @@ class TrackRouter:
     def on_mod_tape(self, track_idx, mod_value):
         """Applique un point d'automation mod wheel au moteur du slot de la piste."""
         if not self._track_is_audible(track_idx):
+            return
+        if self.ext_cc(track_idx, 1, mod_value):                          # port externe (12b1)
             return
         slot_idx, slot = self._eff_slot(track_idx)
         if slot.type in self.CHAN_TYPES:                       # 17d1, 7d1
@@ -1303,7 +1327,13 @@ class TrackRouter:
         mod wheel (1, délégué à on_mod_tape) appliqués à track_idx, la
         piste d'origine de l'événement (pas de notion de focus UI à la
         lecture). channel : canal de l'événement, pour CC0 / CC32 d'une
-        piste Banque (§ 17e3 O3) ; None = canal courant de la piste."""
+        piste Banque (§ 17e3 O3) ; None = canal courant de la piste.
+        Piste sur un port externe (12b1) : le CC part vers le port (CC0 /
+        CC32 sur le canal de l'événement), sauf volume et pan, réglages de la
+        piste envoyés par set_track_volume / set_track_pan."""
+        if cc_num not in (7, 10) and self.ext_cc(
+                track_idx, cc_num, value, channel if cc_num in (0, 32) else None):
+            return
         if cc_num == 120:                         # CC#120 : All Sounds Off
             self.stop_all_sounds()
             return
@@ -1350,7 +1380,13 @@ class TrackRouter:
         (MidiHandler.on_program_change) — assign_slot sur le Rack — mais
         ciblant track_idx, la piste d'origine de l'événement, plutôt que
         la piste courante. Piste sur slot Banque : instrument du canal de
-        l'événement, où la piste passe (17f1, § 17e3 O1, O3)."""
+        l'événement, où la piste passe (17f1, § 17e3 O1, O3). Port externe
+        (12b1) : envoyé au port, la piste passe au canal de l'événement."""
+        if self._ext_port(track_idx) is not None:
+            if channel is not None:
+                self._track_cur_channels[track_idx] = max(0, min(15, channel))
+            self.ext_program(track_idx, program)
+            return
         self.program_change(track_idx, program, channel)
 
     def play_kit_pitched(self, note_idx, pad_idx, wav_path, fallback_play_fn):

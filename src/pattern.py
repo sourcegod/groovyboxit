@@ -205,6 +205,11 @@ class Pattern:
         self._track_pans    = [0]     * self._num_tracks
         # canal MIDI (0..15) de chaque piste, utilisé par l'export (10f1)
         self._track_channels = [Pattern.default_channel(t) for t in range(self._num_tracks)]
+        # Entrée et sortie MIDI de chaque piste (Phase 8 étape 12b1, § 12a
+        # T8) : nom du port coché dans les Préférences, "" = « Toutes » /
+        # « Interne » (son du slot)
+        self._track_midi_ins  = [""] * self._num_tracks
+        self._track_midi_outs = [""] * self._num_tracks
         # Pistes sur un kit : canal 10, posé par apply_kit_channels (le
         # Pattern ne connaît pas le Rack), Phase 8 étape 3b1
         # Mode Rack 16 canaux : le canal N joue le slot N (Phase 8 étape
@@ -666,6 +671,8 @@ class Pattern:
             "track_volumes": self._track_volumes,
             "track_pans":    self._track_pans,
             "track_channels": self._track_channels,
+            "track_midi_ins":  self._track_midi_ins,           # 12b1, T8
+            "track_midi_outs": self._track_midi_outs,
             "rack_mode":     self._rack_mode,                  # 5b1, M13
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
@@ -767,6 +774,9 @@ class Pattern:
         # que l'objet portait déjà — Ctrl+O recharge dans les Pattern existants.
         self._track_channels = list(d.get("track_channels") or
                                     [Pattern.default_channel(t) for t in range(self._num_tracks)])
+        # Clés absentes (projets d'avant 12b1) : « Toutes » / « Interne »
+        self._track_midi_ins  = self._port_names(d.get("track_midi_ins"))
+        self._track_midi_outs = self._port_names(d.get("track_midi_outs"))
         if "voices"        in d: self._voices        = d["voices"]
         # Clé absente (projets d'avant 5b1) : mode normal (M13)
         self._rack_mode    = d.get("rack_mode") is True
@@ -814,6 +824,15 @@ class Pattern:
         self._track_pans    = pad(self._track_pans,    0)
         self._track_channels = list(self._track_channels) + [
             Pattern.default_channel(t) for t in range(len(self._track_channels), nt)]
+        self._track_midi_ins  = pad(self._track_midi_ins,  "")       # 12b1
+        self._track_midi_outs = pad(self._track_midi_outs, "")
+
+    def _port_names(self, value):
+        """Noms de ports d'une clé du .gvp : une chaîne par piste ("" sinon),
+        complétée jusqu'au nombre de pistes (Phase 8 étape 12b1)."""
+        names = [v if isinstance(v, str) else "" for v in value] \
+            if isinstance(value, list) else []
+        return names + [""] * (self._num_tracks - len(names))
 
     def apply_kit_channels(self, is_kit_slot):
         """Règle « kit → canal 10 » des données (Phase 8 étape 3b1,

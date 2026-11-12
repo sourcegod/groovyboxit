@@ -77,6 +77,8 @@ class PatternMixin:
         pat._track_volumes = self._router._track_volumes[:]
         pat._track_pans    = self._router._track_pans[:]
         pat._track_channels = self._router._track_channels[:]
+        pat._track_midi_outs = self._router._track_midi_outs[:]   # 12b1
+        pat._track_midi_ins  = self._router._track_midi_ins[:]
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
@@ -92,9 +94,12 @@ class PatternMixin:
         self._router._track_volumes[:] = new._track_volumes
         self._router._track_pans[:]    = new._track_pans
         self._router._track_channels[:] = new._track_channels
+        self._router._track_midi_outs[:] = new._track_midi_outs   # 12b1, T8
+        self._router._track_midi_ins[:]  = new._track_midi_ins
         self._router.rack_mode = new._rack_mode        # Phase 8 étape 5b1, M13
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
         self._set_kb_play_root(new._kb_root_midi)       # Phase 8 étape 9b2
+        self._warn_track_midi_outs()                    # port absent : son interne (T10)
         # instruments des canaux de banque à la position courante (17f1, § 17e3 O4)
         self._router.chase(live._tape, self._player._current_offset())
         if new._rack_mode:
