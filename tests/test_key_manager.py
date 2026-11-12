@@ -244,7 +244,6 @@ class FakeWindow:
         self._track_list      = FakeWidget()
         self._pad_list        = FakeWidget()
         self._vel_list        = FakeWidget()
-        self._midi_port_list  = FakeWidget()
         self._status_ctrl     = FakeWidget()
         self._vol_ctrls       = [FakeWidget() for _ in range(16)]
         self._pan_ctrls       = [FakeWidget() for _ in range(16)]
@@ -984,13 +983,13 @@ def test_enter_on_slot_choice_no_set_cell():
     teardown(app)
     print("  Entrée sur slot_choice → pas de _set_cell (GTK gère) : OK")
 
-def test_enter_on_midi_port_list_no_set_cell():
+def test_midi_port_list_removed():
+    # liste « MIDI: » de la fenêtre principale retirée (Phase 8 étape 11f1) :
+    # le KeyManager ne la cherche plus
     app, win, km = make_km()
-    with patch('wx.Window.FindFocus', return_value=win._midi_port_list):
-        km.handle(FakeEvent(key=wx.WXK_RETURN))
-    assert not any(isinstance(c, tuple) and c[0] == '_set_cell' for c in win.calls)
+    assert not hasattr(win, "_midi_port_list")
+    km.handle(FakeEvent(key=wx.WXK_RETURN))
     teardown(app)
-    print("  Entrée sur midi_port_list → pas de _set_cell (GTK gère) : OK")
 
 
 # ---------------------------------------------------------------------------
@@ -1077,5 +1076,5 @@ if __name__ == "__main__":
     # Enter sur les ListBox — branche pass
     test_enter_on_track_list_no_set_cell()
     test_enter_on_slot_choice_no_set_cell()
-    test_enter_on_midi_port_list_no_set_cell()
+    test_midi_port_list_removed()
     print("Tous les tests : OK")

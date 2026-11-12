@@ -345,7 +345,7 @@ def _ctx(key, ukey=0, ctrl=False, on_pan=False):
         on_volume=False, on_pan=on_pan, on_voice_spin=False,
         on_mode_choice=False, on_scale_choice=False, on_slot_choice=False,
         on_track_list=False, on_pad_list=False, on_vel_list=False,
-        on_midi_port_list=False, on_status_ctrl=False,
+        on_status_ctrl=False,
     )
 
 

@@ -12564,3 +12564,43 @@ des pilotes (il marche ici par l'émulation du noyau).
 « (Aucun) » dans les sorties audio ; la liste « Sortie principale » ne
 propose que les sorties cochées.
 - Essai 11f2 (utilisateur, 2026-11-12) : concluant.
+
+### Avancement 11g1 (tests — l'onglet Matériel)
+
+- **`tests/test_prefs_hardware.py`** (nouveau, 71 tests) :
+  - `HardwarePage` sur un matériel factice : sans matériel (phrase),
+    ordre des contrôles (H13) et libellés, résultat en lecture seule ;
+    « (Aucun) » en tête, curseur dessus, coché quand rien d'autre ne
+    l'est, le cocher décoche tout, impossible à décocher seul ;
+    périphérique absent gardé et coché ; sélection gardée par nom ;
+    valeurs lues, défauts affichés, Synthé FluidSynth seulement s'il est
+    proposé, pilote inconnu → défaut, changement de pilote (cases gardées),
+    sortie principale (sorties cochées ou défaut, choix gardé, principale
+    décochée) ; réglages changés et valeur par défaut retirée ; Valeurs
+    par défaut de l'onglet ;
+  - Tester : rien de sélectionné (quatre listes), sortie audio, ligne non
+    cochée, entrées en différé (message d'attente puis résultat) ; le
+    focus ne va jamais sur le résultat ; Détecter relit les listes ;
+    résultat après fermeture sans erreur ;
+  - `audio_device` : greffons ALSA, `devices(…, hide_plugins)`,
+    diagnostic (silence, bloqué, présent malgré un pic de souffle, très
+    faible = silence), `rms_db`, `to_stereo`, écoute de 3 s,
+    `device_name` ; `midi_device` : clients rtmidi retirés, nos clients
+    nommés « devices » ;
+  - `HardwareAccess` : listes (greffons masqués, Synthé FluidSynth selon
+    la bibliothèque), Détecter audio (flux arrêté, relu, rouvert sur la
+    même sortie retrouvée par son nom ; défaut), Détecter MIDI, La 440 par
+    le pilote de l'appli (sans ouverture en double) ou directement,
+    introuvable, refus ; écoute : présent → réécoute en stéréo, bloqué ou
+    silence → pas de réécoute, introuvable, refus ; tests MIDI délégués ;
+  - ports MIDI rouverts depuis les Préférences (`_apply_midi_devices`,
+    annonce « MIDI rouvert »), matériel passé au dialogue.
+- **11 tests rouges de 11f1 corrigés** ; traces de la liste « MIDI: »
+  retirées des tests (`test_key_manager`, `test_exclusive_mute_solo`,
+  `test_master_mix`, `test_mix_undo`).
+- Les tests ont trouvé les deux défauts corrigés en 11f2.
+- Mutations vérifiées (« (Aucun) » ne décoche rien ; signal bloqué non
+  détecté) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`prefs_hardware.py`,
+  `mw_devices.py`) et table. Suite : 4139 verts (aussi avec les
+  exceptions de fil traitées en erreurs).

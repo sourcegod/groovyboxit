@@ -290,7 +290,7 @@ class _KeyEvent:
 
 def _press(win, key, **mods):
     for name in ("_quant_list", "_volume_ctrl", "_pan_ctrl", "_mode_choice",
-                 "_scale_choice", "_pad_list", "_vel_list", "_midi_port_list",
+                 "_scale_choice", "_pad_list", "_vel_list",
                  "_status_ctrl"):
         if not hasattr(win, name):
             setattr(win, name, None)

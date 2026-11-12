@@ -252,12 +252,13 @@ def test_play_tone_refused(fake_sd):
 
 
 def test_input_peak_db(fake_sd):
-    rec = np.zeros((44100, 2), np.float32)
+    rec = np.zeros((3 * 44100, 2), np.float32)
     rec[100, 1] = -0.125
     fake_sd.recorded = rec
     assert ad.input_peak_db(0) == pytest.approx(20 * math.log10(0.125))
     kind, frames, sr, channels, device, blocking = fake_sd.calls[0]
-    assert (frames, sr, channels, device, blocking) == (44100, 44100, 2, 0, True)
+    # écoute de 3 secondes (essai de 11f1)
+    assert (frames, sr, channels, device, blocking) == (3 * 44100, 44100, 2, 0, True)
 
 
 def test_input_peak_db_mono_device_and_default(fake_sd):
@@ -680,6 +681,7 @@ def test_apply_output_without_driver(tmp_path, fake_sd):
 def _prefs_win(tmp_path, driver):
     win = _out_win(tmp_path, {}, driver)
     win.PREFS_AUDIO_OUT_KEYS = ProjectMixin.PREFS_AUDIO_OUT_KEYS
+    win.PREFS_MIDI_KEYS = ProjectMixin.PREFS_MIDI_KEYS
     win._apply_preferences_now = lambda changes: []
     win._apply_audio_output = lambda: ProjectMixin._apply_audio_output(win)
     return win

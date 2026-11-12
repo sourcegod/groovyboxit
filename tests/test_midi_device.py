@@ -474,10 +474,12 @@ def test_shift_f12_missing_shows_the_box(tmp_path, rt):
     assert win.boxes == [[f"Entrée MIDI introuvable : {MPK}."]]
 
 
-def test_shift_f12_without_checked_input_uses_the_list(tmp_path, rt):
+def test_shift_f12_without_checked_input_points_to_preferences(tmp_path, rt):
+    # liste « MIDI: » retirée (11f1) : on renvoie à l'onglet Matériel
     win = _win(tmp_path, {})
     DevicesMixin._toggle_midi_inputs(win)
-    assert win.statuses == ["liste"]
+    assert win.statuses == ["MIDI : aucune entrée cochée — Alt+Shift+P, onglet Matériel"]
+    assert not win._midi.is_open() and win.boxes == []
 
 
 def test_ctrl_shift_f12_reconnects(tmp_path, rt):

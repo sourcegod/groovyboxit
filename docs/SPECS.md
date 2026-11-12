@@ -103,6 +103,7 @@ groovyboxit/
 │       ├── dialogs_sfz.py      # SfzSlotDialog (source et gain d'un slot Synth SFZ), SfzBankDialog (composer une banque SFZ)
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
 │       ├── dialogs_preferences.py # PreferencesDialog : Préférences à onglets (Alt+Shift+P)
+│       ├── prefs_hardware.py   # HardwarePage : onglet Matériel (pilote, entrées et sorties audio / MIDI)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
 │       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
@@ -117,6 +118,7 @@ groovyboxit/
 │       ├── main_window.py      # Fenêtre principale (mixins)
 │       ├── midi_editor_window.py # Fenêtre Éditeur MIDI (Alt+4)
 │       ├── midi_handler_window.py # Logique MIDI (séparée de MainWindow)
+│       ├── mw_devices.py       # Mixin MainWindow : périphériques MIDI (démarrage, F12, tests), HardwareAccess
 │       ├── mw_midi_editor.py   # Mixin MainWindow : ouverture éditeur MIDI
 │       ├── mw_pads.py          # Mixin MainWindow : pads et grille
 │       ├── mw_patterns.py      # Mixin MainWindow : gestion patterns
@@ -206,6 +208,7 @@ groovyboxit/
     ├── test_preferences.py
     ├── test_preferences_dialog.py
     ├── test_preferences_effects.py
+    ├── test_prefs_hardware.py
     ├── test_pygame_driver.py
     ├── test_quantize.py
     ├── test_rack_mode.py
@@ -2352,6 +2355,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_preferences.py` | Préférences de l'utilisateur (Phase 8 étape 10b1) : preferences.json par-dessus data/config.json, emplacement (variable GROOVYBOXIT_PREFS, ~/.config/groovyboxit), save_preferences (clés gardées, None = défaut, .bak d'un fichier illisible, écriture par renommage, échec sans perte), clés startup / last_project / autoplay / explorer_autoplay, dossiers de l'appli et de l'utilisateur, banks/sf2 et banks/sfz (anciens dossiers tant qu'ils manquent), relocate et _relocate_rack_files (62 tests) |
 | `test_preferences_dialog.py` | Dialogue des Préférences (Phase 8 étape 10d1) : sept onglets, valeurs lues dans AppConfig, réglages changés (champ vidé = défaut), Ok / Annuler / Appliquer, Parcourir… et Valeurs par défaut, Ctrl+Tab / Ctrl+Shift+Tab et Gauche / Droite sur l'onglet (en boucle, autres touches laissées passer), libellé créé avant chaque champ (Orca) ; _open_preferences / _apply_preferences ; Alt+Shift+P dans la fenêtre principale, l'éditeur MIDI et la fenêtre Songs (60 tests) |
 | `test_preferences_effects.py` | Effets des Préférences (Phase 8 étapes 10f1, 10f2) : projet au démarrage (nouveau, dernier, repli), dernier projet retenu par Ctrl+O / Explorateur / Ctrl+S, dossier de départ de l'Explorateur (utilisateur, appli, ~), effet immédiat (Autoplay, limiteur, gains, dossiers, volume / pan d'un nouveau projet) ou au prochain lancement, FluidSynthEngine.set_gain, bouton « Valeurs par défaut » ; vraie fenêtre principale (44 tests) |
+| `test_prefs_hardware.py` | Onglet Matériel des Préférences (Phase 8 étape 11f1) : HardwarePage sur un matériel factice (ordre des contrôles, libellés, « (Aucun) » coché quand rien d'autre ne l'est et qui décoche tout, périphérique absent gardé, sélection gardée, pilote, sortie principale = sorties cochées ou défaut, réglages changés, valeur par défaut retirée, Valeurs par défaut, Tester sans sélection / ligne non cochée / entrées en différé, focus jamais déplacé, Détecter) ; greffons ALSA, diagnostic d'une entrée (silence, bloqué, présent malgré un pic), RMS, stéréo, écoute de 3 s, nom d'un indice ; clients rtmidi retirés ; HardwareAccess (listes, Synthé FluidSynth, Détecter audio sur la même sortie, La 440 par le pilote ou directement, écoute avec réécoute ou non) ; ports MIDI rouverts depuis les Préférences (71 tests) |
 | `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
 | `test_rack_mode.py` | Mode Rack 16 canaux, moteur (Phase 8 étape 5c1) : `_rack_mode` du pattern (défaut, .gvp, clé absente ou non booléenne, copy_from, song figé), slot effectif (canal N → slot N, repli sur le premier slot Banque, slot vide muet sans banque, `_track_slots` intact, mode normal), lecture par canal (PATCH, KIT, cases de grille, Pitch Bend et modulation, batterie GM au canal 10, mute), note PATCH sur un kit par sa note GM (deux modes), Program Change sans pont (la piste suit son canal et son slot, ignoré sur un synthé, instrument d'une banque ou du repli, rejeu), pont gardé en mode normal, poursuite de toutes les pistes, moteurs des slots synthé des canaux joués, `render_copy`, kit du pattern (canal 10 d'abord, autres kits, canaux muets), `kit_note_of_gm` et `kit_path`, `_apply_rack_kit` (sans renommer les pads, pas de rechargement, avertissements, sons par défaut, mode normal), mode posé au changement de pattern, à l'avance du song et à l'export WAV (62 tests) |

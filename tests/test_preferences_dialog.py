@@ -422,6 +422,7 @@ def _host(cfg):
         ProjectMixin._apply_preferences(win, changes, status)
     win._apply_preferences_now = lambda changes: []    # effets : test_preferences_effects.py
     win.PREFS_AUDIO_OUT_KEYS = ProjectMixin.PREFS_AUDIO_OUT_KEYS   # sortie audio (11b1)
+    win.PREFS_MIDI_KEYS = ProjectMixin.PREFS_MIDI_KEYS             # ports MIDI (11f1)
     return win
 
 
@@ -456,9 +457,10 @@ class _ShownDialog:
     """Remplace PreferencesDialog : retient ses arguments, simule Ok."""
     last = None
 
-    def __init__(self, parent, cfg, on_apply=None, page=0):
+    def __init__(self, parent, cfg, on_apply=None, page=0, hardware=None):
         _ShownDialog.last = self
         self.parent, self.cfg, self.on_apply = parent, cfg, on_apply
+        self.page, self.hardware = page, hardware
         self.destroyed = False
     def ShowModal(self):
         self.on_apply({"autoplay": False})
