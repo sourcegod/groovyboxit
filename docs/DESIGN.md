@@ -12655,3 +12655,115 @@ Shift+F12, Ctrl+Shift+F12 ; Alt+M, Alt+Shift+M, double-clic retirés.
 - **module SpeechAccess** (synthèse vocale des messages) ;
 - Ctrl+Z du dialogue des Préférences (noté en 10f2) ; audition dans
   l'Explorateur ; source SFZ à un seul programme (10b1).
+
+---
+
+## Phase 8 étape 12a — Entrées et sorties dans les propriétés des pistes
+
+### Numérotation des commits de ce chantier
+
+`12a` = ce plan (doc seule). Le code commence à `12b1` ; paires
+implémentation → tests ; `12b2`… pour un commit imprévu. Décisions notées
+**T1, T2…**.
+
+### Origine du besoin
+
+Cahier des charges du 2026-11-10 : « les entrées / sorties audio et MIDI
+choisies dans les Préférences doivent apparaître dans les propriétés des
+pistes ». Précisé le 2026-11-11 (H12) : l'entrée ou la sortie d'une piste
+se choisit **parmi les périphériques cochés** dans l'onglet Matériel,
+sans revenir aux Préférences ; au démarrage, les pistes retrouvent leurs
+entrées et sorties directement.
+
+### État des lieux constaté en code (2026-11-12, 4139 tests verts)
+
+- **Données d'une piste** : par pattern (`Pattern`) — slot, canal MIDI,
+  programme / banque (en-têtes de la piste), mute, solo, volume, pan.
+  Aucune entrée ni sortie.
+- **Sorties : tout passe par les moteurs internes.** `TrackRouter`
+  (`on_play` pour la grille, `on_kit_tape`, `on_patch_tape`,
+  `on_cc_tape`, `on_bend_tape`, `on_program_change_tape`…) envoie chaque
+  événement au moteur du slot de la piste (échantillonneur, synthé WAV,
+  FluidSynth, sfizz) ; tout est mélangé par le `Mixer` et va à la
+  **sortie audio principale**. Les ports MIDI de sortie cochés sont
+  ouverts (`_midi_outs`, 11d1) mais rien n'y est envoyé.
+- **Notes d'une piste en MIDI** : l'export MIDI sait déjà traduire chaque
+  piste en messages (grille de kit → notes GM, `pad_notes` ; PATCH / KIT
+  ; CC, Pitch Bend, Program Change ; en-têtes banque / programme ;
+  volume et pan en CC7 / CC10) — réutilisable pour un envoi en direct.
+- **Entrée en direct** : toutes les entrées MIDI cochées arrivent au même
+  décodage (`MidiManager`, sans le nom du port), puis à la **piste
+  courante** seule (`MidiHandler.on_note_on` : mode Pad ou Clavier,
+  enregistrement, effacement).
+- **Audio** : un seul flux (la sortie principale) ; les autres sorties
+  cochées ne servent pas ; les entrées audio ne servent pas (pas de piste
+  audio).
+- **Propriétés de piste** (`TrackPropertiesDialog`, Alt+Entrée) :
+  Mute, Solo, Slot, Canal, Programme, Banque MSB / LSB, Transposition et
+  Gain GM, Volume, Pan.
+
+### Choix de conception proposés
+
+**T1 — Sortie MIDI de la piste** : « Interne (son du slot) » (défaut, le
+comportement actuel) ou une des sorties MIDI externes cochées. Sur une
+sortie externe, les événements de la piste partent vers le port, sur le
+canal de la piste, traduits comme à l'export (notes de grille d'un kit en
+notes GM, PATCH / KIT, CC, Pitch Bend, Program Change et en-têtes
+banque / programme au départ, volume et pan en CC7 / CC10) ; **le son
+interne de la piste se tait**. Note Off programmés comme pour les
+moteurs ; Stop, Panic (Ctrl+F12), Mute / Solo → All Notes Off sur le
+canal du port.
+
+**T2 — Entrée MIDI de la piste** : « Toutes » (défaut, comme
+aujourd'hui) ou une des entrées MIDI cochées. Le nom du port est
+transmis avec chaque message (`MidiInputs` le connaît déjà) ; une note
+n'arrive à la piste courante que si son entrée est « Toutes » ou ce
+port.
+
+**T3 — Sortie audio de la piste** : sortie principale seulement à cette
+étape (liste affichée, une seule entrée) ; l'envoi d'une piste vers une
+autre sortie audio demande un flux et un mélange par sortie, synchronisés
+— chantier à part.
+
+**T4 — Entrée audio de la piste** : quand les pistes audio existeront ;
+hors de cette étape.
+
+**T5 — Propriétés de piste** : deux listes, « Entrée MIDI » et « Sortie
+MIDI », après Canal (libellé avant chaque liste ; périphériques cochés
+seulement ; « — absent » pour un port enregistré mais débranché).
+
+**T6 — Export MIDI** : inchangé (un fichier .mid ne garde pas de port).
+
+### Décisions de l'utilisateur (2026-11-12)
+
+- **Q1 → T7 — MIDI seulement** à cette étape (sortie audio par piste et
+  entrée audio plus tard) ; dans les propriétés de piste, **les listes
+  des ports viennent avant la liste des canaux** (révise T5) : Mute,
+  Solo, Slot, **Entrée MIDI**, **Sortie MIDI**, Canal, Programme…
+- **Q2 → T8 — par pattern**, comme le canal (les pistes sont
+  indépendantes d'un pattern à l'autre) : `Pattern._track_midi_in` et
+  `_track_midi_out` (noms ; "" = « Toutes » / « Interne »), enregistrés
+  dans le `.gvp` (clés absentes des anciens projets → ""), copiés avec la
+  piste (presse-papier, duplication de pattern) et pris par l'Undo comme
+  le canal.
+- **Q3 → T9 — piste courante seulement**, pour l'instant (simplicité) :
+  le jeu en direct va à la piste courante si son entrée est « Toutes » ou
+  le port d'où vient la note ; sinon la note est ignorée.
+- **Q4 → T10 — port externe absent : son interne avec avertissement**,
+  pour jouer quand même : la piste joue le son de son slot ;
+  avertissement au chargement du pattern (ou quand on choisit le port),
+  une fois par port absent et par session : boîte « Périphérique
+  introuvable » avec bip (« Sortie MIDI introuvable : X. Piste 3 : son
+  interne. ») et barre d'état.
+
+### Découpage
+
+- **12b1 / 12c1 — sortie MIDI des pistes** : données par pattern (T8) ;
+  envoi des événements d'une piste vers son port (T1 : traduction comme
+  l'export, en-têtes au départ, Note Off, Stop / Panic / Mute → All
+  Notes Off) ; repli sur le son interne (T10).
+- **12d1 / 12e1 — entrée MIDI des pistes et propriétés** : nom du port
+  transmis avec chaque message, filtre de la piste courante (T9) ;
+  listes « Entrée MIDI » et « Sortie MIDI » avant Canal dans les
+  propriétés (T7), effet immédiat ; aide F1.
+- **12f1 — clôture**.
