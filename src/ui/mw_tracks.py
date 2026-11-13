@@ -253,6 +253,25 @@ class TrackMixin:
             kind = {InstrumentType.SYNTH: "synth", InstrumentType.KIT: "kit"}.get(slot_obj.type)
             return kind, slot_obj.gm_program()
 
+        # Entrée et sortie MIDI de la piste (Phase 8 étape 12d1, § 12a T7) :
+        # ports cochés dans les Préférences, effet immédiat, Annuler les remet
+        orig_ports = (self._router._track_midi_ins[tidx], self._router._track_midi_outs[tidx])
+        cfg = getattr(self, "_cfg", None)
+        midi_ports = None if cfg is None else dict(
+            inputs=cfg.midi_inputs,
+            outputs=[n for n in cfg.midi_outputs if n != cfg.MIDI_SYNTH_OUTPUT],
+            midi_in=orig_ports[0], midi_out=orig_ports[1])
+
+        def apply_ports(midi_in, midi_out):
+            r = self._router
+            if midi_out != r._track_midi_outs[tidx]:
+                r.cut_track_notes(tidx)              # notes de l'ancienne sortie (N2)
+                r._track_midi_outs[tidx] = midi_out
+                if r._ext_port(tidx) is not None:
+                    r.ext_mix(tidx)                  # volume et pan sur le port
+                self._warn_track_midi_outs()         # port absent : son interne (T10)
+            r._track_midi_ins[tidx] = midi_in
+
         dlg    = TrackPropertiesDialog(
             self, tidx, self._rack,
             orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'],
@@ -266,19 +285,23 @@ class TrackMixin:
             rack_slot_of=self._router.rack_slot_idx if rack_mode else None,
             channel_labels=[f"Canal {c + 1} — {self._rack_channel_desc(c)}" for c in range(16)]
                            if rack_mode else None,
+            midi_ports=midi_ports, on_ports_change=apply_ports,
         )
         result = dlg.ShowModal()
         values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
                   dlg.get_mute(), dlg.get_solo(), dlg.get_channel(), dlg.get_program(),
                   dlg.get_transpose(), dlg.get_gain_db(), dlg.get_msb(), dlg.get_lsb())
-        if result == wx.ID_OK and values != tuple(orig.values()):
+        ports = orig_ports if midi_ports is None else (dlg.get_midi_in(), dlg.get_midi_out())
+        if result == wx.ID_OK and (values != tuple(orig.values()) or ports != orig_ports):
             apply(*values)
+            apply_ports(*ports)
             others = bank_state["others"]
             self._show_status(f"Piste {tidx + 1}: propriétés mises à jour" + (
                 "; entête mis à jour aussi sur les pistes "
                 + ", ".join(str(t + 1) for t in others) if others else ""))
         else:
             apply(*orig.values())
+            apply_ports(*orig_ports)
             for slot, config in saved_configs.items():
                 self._rack.get_slot(slot).config = config
             self._pop_last_undo()

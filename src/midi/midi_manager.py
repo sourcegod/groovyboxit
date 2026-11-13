@@ -52,8 +52,12 @@ class MidiManager:
         self._on_program_change = on_program_change
 
         self.channel    = None   # None = tous les canaux, 0–15 = filtre
+        # Filtre par port (Phase 8 étape 12d1, § 12a T9) : port_filter(nom)
+        # → False refuse le message (sauf les Note Off, toujours passés pour
+        # ne pas laisser de note tenue) ; None = tous les ports
+        self.port_filter = None
         self._inputs    = midi_device.MidiInputs(
-            lambda message, _port: self._callback((message, 0.0), None))
+            lambda message, port: self._callback((message, 0.0), port))
 
         if not _RTMIDI_AVAILABLE:
             self._notify("python-rtmidi non disponible — entrée MIDI désactivée")
@@ -136,8 +140,9 @@ class MidiManager:
     # ------------------------------------------------------------------
     # Callback interne rtmidi
 
-    def _callback(self, event, _data):
-        """Appelé par rtmidi dans son propre thread à chaque message reçu."""
+    def _callback(self, event, data=None):
+        """Appelé par rtmidi dans son propre thread à chaque message reçu ;
+        data : nom du port d'où vient le message (MidiInputs), ou None."""
         message, _delta = event
         if not message:
             return
@@ -147,6 +152,11 @@ class MidiManager:
             return
 
         if self.channel is not None and msg.channel != self.channel:
+            return
+
+        port = data if isinstance(data, str) else None
+        if port is not None and self.port_filter is not None and not self._is_note_off(msg) \
+                and not self.port_filter(port):
             return
 
         if msg.mtype == CVoice.NoteOn:
@@ -174,6 +184,11 @@ class MidiManager:
         elif msg.mtype == CVoice.PitchBend:
             if self._on_pitch_bend:
                 self._on_pitch_bend(msg.payload["bend"], msg.channel)
+
+    @staticmethod
+    def _is_note_off(msg):
+        return msg.mtype == CVoice.NoteOff or (
+            msg.mtype == CVoice.NoteOn and msg.payload.get("vel", 0) == 0)
 
     # ------------------------------------------------------------------
     # Utilitaire interne

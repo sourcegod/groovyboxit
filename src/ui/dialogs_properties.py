@@ -12,7 +12,8 @@ class TrackPropertiesDialog(wx.Dialog):
     def __init__(self, parent, track_idx, rack, cur_slot_idx, volume, pan, mute, solo,
                  on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None,
                  slot_program=None, slot_gm_tuning=None, bank_info=None,
-                 rack_slot_of=None, channel_labels=None):
+                 rack_slot_of=None, channel_labels=None, midi_ports=None,
+                 on_ports_change=None):
         """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
         channel) -> canal : règle appliquée quand l'utilisateur change de slot
         (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé.
@@ -32,7 +33,12 @@ class TrackPropertiesDialog(wx.Dialog):
         Rack (Phase 8 étape 5d1, docs/DESIGN.md § 5a M15) ; le slot choisi
         est alors le canal (slot N = canal N), et programmes, banque et
         réglages GM sont ceux du slot que joue le canal. channel_labels :
-        libellés des 16 canaux (« Canal 3 — Slot_03 Piano »)."""
+        libellés des 16 canaux (« Canal 3 — Slot_03 Piano »).
+        midi_ports (Phase 8 étape 12d1, docs/DESIGN.md § 12a T7) : dict
+        inputs / outputs (noms des ports cochés dans les Préférences),
+        midi_in / midi_out (ports de la piste, "" = « Toutes » / « Interne ») ;
+        None = pas de listes. on_ports_change(entrée, sortie) : appelé à
+        chaque choix (effet immédiat)."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
         self._on_change          = on_change
@@ -44,8 +50,11 @@ class TrackPropertiesDialog(wx.Dialog):
         self._bank_info          = bank_info
         self._is_bank            = False
         self._rack_slot_of       = rack_slot_of
+        self._on_ports_change    = on_ports_change
+        self._in_names = self._out_names = None
 
-        # Ordre Tab : Mute → Solo → Slots → Canal → Programme → Banque MSB
+        # Ordre Tab : Mute → Solo → Slots → Entrée MIDI → Sortie MIDI (12d1)
+        # → Canal → Programme → Banque MSB
         # → Banque LSB → Transposition → Gain → Volume → Pan
         self._mute = wx.CheckBox(self, label="Mute")
         self._mute.SetValue(mute)
@@ -55,6 +64,27 @@ class TrackPropertiesDialog(wx.Dialog):
         slot_label  = wx.StaticText(self, label="Slot :")
         self._slots = wx.ListBox(self, choices=rack.labels(), style=wx.LB_SINGLE)
         select_with_cursor(self._slots, cur_slot_idx)
+
+        # Entrée et sortie MIDI de la piste (12d1, T7) : avant la liste des
+        # canaux ; libellé créé avant chaque liste (lu par Orca)
+        self._port_rows = []
+        if midi_ports is not None:
+            self._in_names, in_labels = self._port_choices(
+                midi_ports.get("inputs", []), midi_ports.get("midi_in", ""), self.ALL_INPUTS)
+            in_label = wx.StaticText(self, label="Entrée MIDI :")
+            self._midi_in = wx.ListBox(self, choices=in_labels, style=wx.LB_SINGLE,
+                                       size=(-1, self._PORT_H))
+            select_with_cursor(self._midi_in, self._in_names.index(midi_ports.get("midi_in", "")))
+            self._out_names, out_labels = self._port_choices(
+                midi_ports.get("outputs", []), midi_ports.get("midi_out", ""), self.INTERNAL)
+            out_label = wx.StaticText(self, label="Sortie MIDI :")
+            self._midi_out = wx.ListBox(self, choices=out_labels, style=wx.LB_SINGLE,
+                                        size=(-1, self._PORT_H))
+            select_with_cursor(self._midi_out,
+                               self._out_names.index(midi_ports.get("midi_out", "")))
+            self._port_rows = [(in_label, self._midi_in), (out_label, self._midi_out)]
+            self._midi_in.Bind(wx.EVT_LISTBOX, self._on_ports)
+            self._midi_out.Bind(wx.EVT_LISTBOX, self._on_ports)
 
         channel_label  = wx.StaticText(self, label="Canal :")
         self._channels = wx.ListBox(
@@ -113,6 +143,9 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(slot_label,  0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
         vbox.Add(self._slots, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        for label, lst in self._port_rows:              # entrée / sortie MIDI (12d1)
+            vbox.Add(label, 0, wx.LEFT | wx.RIGHT, 8)
+            vbox.Add(lst,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(channel_label,  0, wx.LEFT | wx.RIGHT, 8)
         vbox.Add(self._channels, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(self._program_label, 0, wx.LEFT | wx.RIGHT, 8)
@@ -274,6 +307,41 @@ class TrackPropertiesDialog(wx.Dialog):
                 self._on_play_toggle()
         else:
             event.Skip()
+
+    # Entrée / sortie MIDI de la piste (Phase 8 étape 12d1, T7)
+    ALL_INPUTS = "Toutes les entrées"
+    INTERNAL   = "Interne (son du slot)"
+    ABSENT     = " — absent"
+    _PORT_H    = 70
+
+    @classmethod
+    def _port_choices(cls, names, current, first_label):
+        """(noms, libellés) : "" (« Toutes » / « Interne »), les ports cochés,
+        puis le port de la piste s'il n'est plus coché ou plus branché."""
+        values = [""] + [n for n in names if n]
+        labels = [first_label] + [n for n in names if n]
+        if current and current not in values:
+            values.append(current)
+            labels.append(current + cls.ABSENT)
+        return values, labels
+
+    def _on_ports(self, event):
+        if self._on_ports_change:
+            self._on_ports_change(self.get_midi_in(), self.get_midi_out())
+
+    def get_midi_in(self):
+        """Entrée MIDI choisie ("" = toutes), ou None sans listes."""
+        if self._in_names is None:
+            return None
+        i = self._midi_in.GetSelection()
+        return self._in_names[i] if 0 <= i < len(self._in_names) else ""
+
+    def get_midi_out(self):
+        """Sortie MIDI choisie ("" = interne), ou None sans listes."""
+        if self._out_names is None:
+            return None
+        i = self._midi_out.GetSelection()
+        return self._out_names[i] if 0 <= i < len(self._out_names) else ""
 
     def get_slot_idx(self): return self._slots.GetSelection()
     def get_volume(self):   return self._vol.GetValue()

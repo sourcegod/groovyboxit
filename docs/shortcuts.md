@@ -258,8 +258,12 @@ Ctrl+T / Entrée  Assigner le slot sélectionné dans la liste des slots à la p
                  coupées avant
 Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
-                 Mute, Solo, Slot, Canal MIDI (1 à 16), Programme GM du slot
-                 (instruments pour un synthé, kits GM2 pour un kit), Volume, Pan
+                 Mute, Solo, Slot, Entrée MIDI (« Toutes les entrées » ou une entrée
+                 cochée dans les Préférences : la piste ne reçoit que ce port),
+                 Sortie MIDI (« Interne (son du slot) » ou une sortie externe cochée :
+                 la piste y envoie ses notes, son son interne se tait ; port absent :
+                 son interne, avec avertissement), Canal MIDI (1 à 16), Programme GM
+                 du slot (instruments pour un synthé, kits GM2 pour un kit), Volume, Pan
                  Sur un slot Banque, en direct : Programme du canal (liste de la
                  soundfont), Banque MSB et LSB ; changer de canal fait entendre
                  l'instrument de ce canal ; note d'aperçu ; Ok écrit l'entête

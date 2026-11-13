@@ -12845,3 +12845,34 @@ temps avec des vélocités différentes n'est pas prise en compte.
 - **`docs/SPECS.md`** : arborescence (`track_midi_out.py`) et table.
   Suite : 4185 verts (aussi avec les exceptions de fil traitées en
   erreurs).
+
+### Avancement 12d1 (implémentation — entrée MIDI et propriétés)
+
+- **`TrackPropertiesDialog(…, midi_ports, on_ports_change)`** : listes
+  **« Entrée MIDI »** (« Toutes les entrées », puis les entrées cochées)
+  et **« Sortie MIDI »** (« Interne (son du slot) », puis les sorties
+  externes cochées — « Synthé FluidSynth » est le son interne), créées
+  après Slot et avant Canal (ordre de Tab, libellé avant chaque liste) ;
+  un port de la piste qui n'est plus coché reste listé (« — absent ») ;
+  `get_midi_in()`, `get_midi_out()` ; sans `midi_ports`, pas de listes.
+- **`mw_tracks._track_properties_dialog`** : effet immédiat
+  (`apply_ports` : notes de l'ancienne sortie coupées, volume et pan
+  envoyés au nouveau port, avertissement si le port est absent) ; Ok
+  garde, Annuler remet les ports d'origine ; un changement de port seul
+  compte comme une modification (Undo gardé).
+- **Filtre du jeu en direct** (T9) : `MidiManager` transmet le port de
+  chaque message et applique `port_filter` (sauf aux Note Off, toujours
+  passés pour ne pas laisser de note tenue en changeant de piste) ;
+  `DevicesMixin._midi_port_accepted` : piste courante en « Toutes », ou
+  même port (nom exact ou sans l'adresse ALSA).
+- **Aide F1** : Alt+Entrée (Entrée MIDI, Sortie MIDI).
+- Suite : 4185 verts (tests en 12e1).
+
+**Essai 12d1** : Alt+Entrée sur une piste : Entrée MIDI et Sortie MIDI
+avant Canal, lues par Orca ; Sortie MIDI vers un port externe → la piste
+n'est plus entendue en interne (ou l'est sur le synthé externe) ; Annuler
+remet ; Entrée MIDI sur l'Akai MIDI 1 → le jeu passe ; sur « Midi
+Through » → l'Akai n'est plus reçu sur cette piste.
+
+**Essai 12d1** (utilisateur, 2026-11-13) : concluant (listes lues par
+Orca avant Canal, piste tue vers Midi Through, Annuler, entrée filtrée).

@@ -61,6 +61,19 @@ class DevicesMixin:
                 pass
         self._midi_outs = {}
 
+    def _midi_port_accepted(self, port):
+        """Filtre du jeu en direct (Phase 8 étape 12d1, § 12a T9) : la piste
+        courante reçoit une note si son entrée MIDI est « Toutes » ("") ou le
+        port d'où vient la note (même nom, ou même nom sans l'adresse ALSA).
+        Appelé dans le fil de rtmidi : lectures seules."""
+        router = getattr(self, "_router", None)
+        if router is None:
+            return True
+        ins = getattr(router, "_track_midi_ins", None)
+        track = self._player._cur_track
+        name = ins[track] if ins and 0 <= track < len(ins) else ""
+        return not name or name == port or midi_device.base_name(name) == midi_device.base_name(port)
+
     def _warn_track_midi_outs(self):
         """Pistes du pattern courant dont la sortie MIDI externe n'est pas
         ouverte : elles jouent le son interne de leur slot (Phase 8 étape

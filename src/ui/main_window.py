@@ -196,6 +196,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._device_notes.extend(notes)
         # sortie MIDI externe des pistes : ports ouverts ci-dessus (12b1, T1)
         self._router.midi_out_lookup = lambda name: self._midi_outs.get(name)
+        # entrée MIDI de la piste courante : filtre du jeu en direct (12d1, T9)
+        self._midi.port_filter = self._midi_port_accepted
         self._track_editor = TrackEditor()
         self._pattern_cache       = [None] * len(self._pattern_list)
         self._pattern_cache_dirty = set(range(len(self._pattern_list)))
