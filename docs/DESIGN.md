@@ -12900,3 +12900,44 @@ Orca avant Canal, piste tue vers Midi Through, Annuler, entrée filtrée).
   ports) : chacune fait échouer un test.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 4209 verts (aussi
   avec les exceptions de fil traitées en erreurs).
+
+### Clôture de l'étape 12 (12f1)
+
+**Bilan** (Phase 8 étapes 12a à 12e1, 2026-11-12 / 13, 4209 tests
+verts) : **entrée et sortie MIDI par piste**, choisies dans les
+propriétés de piste parmi les ports cochés dans l'onglet Matériel, par
+pattern ; sortie externe (événements traduits comme l'export, son interne
+tu, coupures) ; port absent → son interne avec avertissement ; jeu en
+direct filtré par l'entrée de la piste courante.
+
+**Commits** : 12a (plan), 12b1 / 12c1 (sortie MIDI des pistes), 12d1 /
+12e1 (entrée MIDI et propriétés), 12f1 (clôture).
+
+**Décisions de l'utilisateur** : MIDI seulement (T7) ; listes des ports
+avant Canal ; réglage par pattern (T8) ; piste courante seule en direct
+(T9) ; port absent → son interne avec avertissement (T10).
+
+**Écarts et imprévus** : aucun écart au plan ; les Note Off passent
+toujours le filtre de l'entrée (une note tenue ne reste pas bloquée en
+changeant de piste) ; « Synthé FluidSynth » ne figure pas dans la liste
+Sortie MIDI d'une piste (c'est le son interne).
+
+**Essais de l'utilisateur** : 12b1 (non-régression, piste enregistrée sur
+le TR-707), 12d1 (listes lues par Orca, piste tue vers Midi Through,
+Annuler, entrée filtrée) : concluants.
+
+**`docs/SPECS.md`** : ligne Phase 8, « Entrée et sortie MIDI des
+pistes », arborescence, tests. **`docs/shortcuts.md`** (aide F1) :
+Alt+Entrée (Entrée MIDI, Sortie MIDI).
+
+**Suites notées** :
+- sortie audio par piste (un flux et un mélange par sortie, synchronisés)
+  et entrée audio (avec les pistes audio) ;
+- jeu en direct sur plusieurs pistes à la fois, chacune sur son port ;
+- écho du jeu en direct vers le port externe de la piste courante (le
+  jeu au contrôleur passe aujourd'hui par le son interne du slot) ;
+- **bug d'enregistrement** noté à l'essai de 12b1 : même note au même
+  temps avec des vélocités différentes non prise en compte ;
+- essai de l'utilisateur avec plusieurs cartes son ; SpeechAccess ;
+  Ctrl+Z des Préférences ; audition dans l'Explorateur ; source SFZ à un
+  seul programme.
