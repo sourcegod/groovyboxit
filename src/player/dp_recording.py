@@ -63,7 +63,8 @@ class RecordingMixin:
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
-        self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, 100)
+        # toutes les frappes gardées (Phase 8 étape 13b1, § 13a V5)
+        self._pattern.add_grid_note(self._cur_track, pad_idx, bar_idx, step_idx, 100)
 
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
@@ -117,7 +118,10 @@ class RecordingMixin:
     def record_hit(self, pad_idx, velocity=100, channel=0):
         float_offset, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
-        self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, vel, channel=channel)
+        # overdub comme Sonar : la frappe est ajoutée, même s'il y a déjà une
+        # note sur la case (Phase 8 étape 13b1, § 13a V5)
+        self._pattern.add_grid_note(self._cur_track, pad_idx, bar_idx, step_idx, vel,
+                                    channel=channel)
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
@@ -149,13 +153,9 @@ class RecordingMixin:
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
             self._pattern._chase_bend(track, time_val, bend, channel)
-            events = self._pattern._tape[track]
-            for i, ev in enumerate(events):
-                if ev.time == time_val and ev.etype == ETYPE_PATCH and ev.payload.get("note") == midi_note:
-                    events[i] = new_ev
-                    break
-            else:
-                events.append(new_ev)
+            # overdub comme Sonar : toujours ajoutée, plus de remplacement de
+            # la note au même temps (Phase 8 étape 13b1, § 13a V5)
+            self._pattern._tape[track].append(new_ev)
         if duration_ms is None:
             # Suivi par id (pas par index) : robuste si d'autres événements de
             # cette piste sont insérés/supprimés d'ici le note_off. Choix fait
@@ -213,18 +213,19 @@ class RecordingMixin:
     #--------------------------------------------------------------------------
 
     def record_kit_note(self, midi_note, velocity=100, channel=0):
-        """Enregistre une note MIDI brute dans _tape (etype=ETYPE_KIT) sans passer par la grille."""
+        """Enregistre une note MIDI brute dans _tape (etype=ETYPE_KIT) sans passer par la grille.
+        Overdub comme Sonar (Phase 8 étape 13b1, § 13a V5) : toujours ajoutée,
+        même si la même note est déjà au même temps (avant : ignorée, la
+        nouvelle vélocité était perdue) ; la quantisation enlève les doublons."""
         _, bar_idx, step_idx = self._compute_record_offset()
         vel = max(1, min(127, int(velocity)))
         track = self._cur_track
         time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
-            events = self._pattern._tape[track]
-            if not any(ev.time == time_val and ev.etype == ETYPE_KIT and ev.payload.get("note") == midi_note
-                       for ev in events):
-                events.append(TapeEvent(ETYPE_KIT, channel=channel,
-                                         payload={"note": midi_note, "vel": vel}, time=time_val))
+            self._pattern._tape[track].append(
+                TapeEvent(ETYPE_KIT, channel=channel,
+                          payload={"note": midi_note, "vel": vel}, time=time_val))
         return bar_idx, step_idx
 
     #--------------------------------------------------------------------------
@@ -232,8 +233,8 @@ class RecordingMixin:
     def record_cc(self, cc_num, value, channel=0):
         """Enregistre un Control Change générique dans _tape (etype=ETYPE_CC).
 
-        Pas de dédoublonnage (contrairement à record_kit_note) : deux CC de
-        même valeur au même tick sont des données valides.
+        Pas de dédoublonnage (comme toutes les notes depuis la Phase 8 étape
+        13b1) : deux CC de même valeur au même tick sont des données valides.
 
         Position flottante brute, ni arrondie au pas ni quantifiée (comme
         record_bend) : un CC est un contrôleur continu, un balayage de

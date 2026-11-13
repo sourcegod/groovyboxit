@@ -302,14 +302,17 @@ class Pattern:
     #--------------------------------------------------------------------------
 
     def get_cell(self, track, pad, bar, step):
-        """Vélocité (0..127) de la note grille (track,pad) à (bar,step). 0 si absente."""
+        """Vélocité (0..127) de la note grille (track,pad) à (bar,step). 0 si absente.
+        Plusieurs notes sur la case (overdub, Phase 8 étape 13b1, § 13a V5) :
+        celle de la dernière jouée."""
         if track >= len(self._tape):
             return 0
         time = self._bar_step_to_time(bar, step)
+        vel = 0
         for ev in self._tape[track]:
             if ev.time == time and ev.etype == ETYPE_GRID and ev.payload.get("pad") == pad:
-                return ev.payload.get("vel")
-        return 0
+                vel = ev.payload.get("vel")
+        return vel
 
     def set_cell(self, track, pad, bar, step, value, channel=0, dur=0):
         """Écrit (value>0) ou efface (value<=0) la note grille (track,pad) à (bar,step).
@@ -327,6 +330,20 @@ class Pattern:
             if vel > 0:
                 track_list.append(TapeEvent(ETYPE_GRID, dur=dur, channel=channel,
                                              payload={"pad": pad, "vel": vel}, time=time))
+
+    def add_grid_note(self, track, pad, bar, step, value, channel=0, dur=0):
+        """Ajoute une note grille (track,pad) à (bar,step) sans effacer celles
+        déjà sur la case : en overdub, toutes les frappes sont gardées, comme
+        dans Sonar (Phase 8 étape 13b1, docs/DESIGN.md § 13a V5) ; la
+        quantisation enlève les doublons (V7). value <= 0 : rien."""
+        vel = Pattern._norm_vel(value)
+        if vel <= 0:
+            return
+        time = self._bar_step_to_time(bar, step)
+        with self._lock:
+            self._ensure_track_count(track + 1)
+            self._tape[track].append(TapeEvent(ETYPE_GRID, dur=dur, channel=channel,
+                                               payload={"pad": pad, "vel": vel}, time=time))
 
     def clear_grid_pad(self, track, pad):
         """Efface toutes les notes GRID d'un pad sur une piste (toutes mesures)."""
@@ -356,7 +373,8 @@ class Pattern:
         """Snapshot list[int] (longueur _num_steps) — lecture seule.
 
         Un seul passage sur la piste (même résultat que get_cell case par
-        case : la première note GRID trouvée à un pas l'emporte). Case par
+        case : la dernière note GRID d'un pas l'emporte, Phase 8 étape 13b1).
+        Case par
         case, une piste importée de milliers de notes coûtait 300 ms au
         thread de l'UI à chaque changement de piste, et la lecture sautait
         (Phase 7 étape 18d3)."""
@@ -365,14 +383,12 @@ class Pattern:
         if track >= len(self._tape):
             return row
         start = self._bar_step_to_time(bar, 0)
-        found = [False] * num_steps
         for ev in self._tape[track]:
             if ev.etype != ETYPE_GRID or ev.payload.get("pad") != pad:
                 continue
             step = ev.time - start
-            if 0 <= step < num_steps and step == int(step) and not found[int(step)]:
-                found[int(step)] = True
-                row[int(step)] = ev.payload.get("vel")
+            if 0 <= step < num_steps and step == int(step):
+                row[int(step)] = ev.payload.get("vel")      # la dernière jouée (13b1)
         return row
 
     def set_grid_row(self, track, pad, bar, values):

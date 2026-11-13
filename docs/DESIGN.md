@@ -13041,3 +13041,30 @@ MIDI) : doublons, vélocité quantisée ou non, valeur.
   « Enlever les doublons » (V7), « Quantiser la vélocité » et sa liste
   (V8), réglages retenus (V9) ; aide F1.
 - **13f1 — clôture**.
+
+### Avancement 13b1 (implémentation — enregistrement)
+
+- **`Pattern.add_grid_note`** (nouveau) : ajoute une note GRID sans
+  effacer celles de la case ; `set_cell` garde son rôle (écrire ou
+  effacer une case, toutes ses notes) pour la saisie à la main,
+  l'effacement, le mode Remplacement et l'éditeur MIDI.
+- **Plusieurs notes sur une case** : `get_cell` et `grid_row` donnent la
+  vélocité de **la dernière jouée** (avant : la première trouvée).
+- **Enregistrement** (`dp_recording.py`) : `record_hit` (grille) et
+  `_record_nr_hit` (Note Repeat) passent par `add_grid_note` ;
+  `record_kit_note` n'ignore plus une note déjà au même temps ;
+  `record_patch_note` ne la remplace plus — **toutes les frappes sont
+  gardées** (V5). Un Pitch Bend n'est pas dupliqué (la poursuite ne pose
+  un point que si la valeur change).
+- Suite : 4204 verts, **5 rouges jusqu'à 13c1** (tests de l'ancien
+  comportement : doublon ignoré, note remplacée, case réécrite, première
+  note gagnante).
+- Jusqu'à 13d1 (quantisation avec « Enlever les doublons »), deux frappes
+  au même pas se rejouent toutes les deux.
+
+**Essai 13b1** : enregistrer en overdub sur le TR-707, rejouer le même
+pad au même temps avec une autre vélocité : les deux frappes sont gardées
+(on entend les deux, plus fort) ; même chose au pavé et sur un synthé.
+
+**Essai 13b1** (utilisateur, 2026-11-14) : concluant (les deux frappes
+gardées). Remarque qui donne 13b2.
