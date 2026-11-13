@@ -12941,3 +12941,103 @@ Alt+Entrée (Entrée MIDI, Sortie MIDI).
 - essai de l'utilisateur avec plusieurs cartes son ; SpeechAccess ;
   Ctrl+Z des Préférences ; audition dans l'Explorateur ; source SFZ à un
   seul programme.
+
+---
+
+## Phase 8 étape 13a — Overdub : toutes les frappes gardées, « Enlever les doublons » à la quantisation
+
+### Numérotation des commits de ce chantier
+
+`13a` = ce plan (doc seule). Le code commence à `13b1` ; paires
+implémentation → tests ; `13b2`… pour un commit imprévu. Décisions notées
+**V1, V2…**.
+
+### Origine du besoin (essai de la Phase 8 étape 12b1, 2026-11-12)
+
+À l'enregistrement depuis un contrôleur (slot TR-707, `essai_sfz_7f1.gvp`,
+pattern 1), la même note jouée au même temps avec des vélocités
+différentes n'est pas prise en compte.
+
+### État des lieux constaté en code (2026-11-13, 4209 tests verts)
+
+- **`record_kit_note`** (`dp_recording.py`, kit avec table de notes
+  joué au contrôleur) : si une note KIT **de même hauteur au même temps**
+  existe déjà dans la piste, **la nouvelle frappe est ignorée** (la
+  première vélocité reste) — la cause du défaut. Avec la quantisation à
+  l'enregistrement, deux frappes proches tombent sur le même pas : en
+  overdub, la vélocité du passage suivant est perdue.
+- **`record_patch_note`** (synthé, banque, SFZ) : la note de même hauteur
+  au même temps est **remplacée**.
+- **`record_hit`** (grille : pavé, kit sans table) : une case par pad et
+  par pas ; la vélocité est réécrite.
+- **Quantisation** (`QuantizeManager.apply_quant_to_pattern`, dialogue
+  `QuantizeDialog`, Ctrl+Q / Shift+Q, éditeur MIDI) : KIT / PATCH
+  déplacés, sans dédoublonnage ; **les notes de grille sont réécrites
+  avec une vélocité de 100** (les vélocités de la grille sont perdues —
+  défaut constaté à cette occasion).
+
+### Décision de l'utilisateur (2026-11-13)
+
+**V1 — comme Sonar : en overdub, toutes les frappes sont gardées**, sans
+remplacement ; c'est **la quantisation** qui, avec une **nouvelle case
+« Enlever les doublons »**, garde **la dernière note jouée** parmi les
+notes de même hauteur au même temps.
+
+### Choix de conception proposés
+
+**V2 — enregistrement** : `record_kit_note` et `record_patch_note`
+ajoutent toujours la note (plus de recherche d'une note au même temps) ;
+le mode Remplacement (Shift+R) garde son effet (il vide la plage jouée).
+
+**V3 — « Enlever les doublons »** (`QuantizeDialog`, après « Quantiser
+les durées ») : après le déplacement des notes, parmi les notes KIT / PATCH
+de la piste de **même type, même hauteur, même canal et même temps**, ne
+garder que **la dernière jouée** (la dernière dans l'ordre
+d'enregistrement de la piste) ; aussi quand « Quantiser les débuts » est
+décoché (doublons déjà alignés). Retenu avec les autres réglages (Shift+Q,
+éditeur MIDI).
+
+**V4 — grille** : une case par pad et par pas, pas de doublon possible ;
+la quantisation **garde la vélocité** de chaque case au lieu de la mettre
+à 100 (correctif du défaut constaté).
+
+### Décisions de l'utilisateur (2026-11-13) — révisent V2 à V4
+
+**V5 — même traitement pour toutes les notes**, d'où qu'elles viennent
+(kit, pads, grille, contrôleur, synthé) : c'est le sens du chantier
+d'unification des données (Phase 7 étape 1, `TapeEvent`). En overdub,
+**toutes les frappes sont gardées** : `record_hit` (grille),
+`record_kit_note` et `record_patch_note` **ajoutent** toujours leur
+événement (GRID, KIT, PATCH), sans chercher ni remplacer une note au
+même temps. Une case de la grille reste cochée tant qu'au moins une note
+GRID y est. Le mode Remplacement (Shift+R) garde son effet.
+
+**V6 — quantisation de la grille réécrite** : les notes GRID sont
+quantisées **comme les notes KIT / PATCH**, à partir de leurs événements
+(temps, vélocité, durée, canal) — plus de reconstruction de la grille
+depuis `float_offsets` avec une vélocité de 100.
+
+**V7 — « Enlever les doublons »**, **cochée par défaut** : après le
+déplacement, parmi les notes de **même type, même hauteur (note, ou pad
+pour la grille), même canal et même temps**, ne garder que **la dernière
+jouée** (ordre d'enregistrement de la piste) ; aussi sans « Quantiser
+les débuts ».
+
+**V8 — « Quantiser la vélocité »** : case, et **liste des vélocités**
+(127, 120, 110, **100**, 90, 80, 70, 64, 50, 40, 30, 20, 10 ; 100 par
+défaut) ; cochée, toutes les notes quantisées prennent cette vélocité.
+**Case décochée par défaut** (proposition : sinon chaque quantisation
+effacerait les nuances jouées ; à confirmer à l'essai).
+
+**V9 — réglages retenus** comme les autres (Ctrl+Q, Shift+Q, éditeur
+MIDI) : doublons, vélocité quantisée ou non, valeur.
+
+### Découpage
+
+- **13b1 / 13c1 — enregistrement** : toutes les frappes gardées (V5) ;
+  grille : plusieurs notes GRID sur une case, affichage et effacement de
+  la case.
+- **13d1 / 13e1 — quantisation** : grille par ses événements (V6),
+  « Enlever les doublons » (V7), « Quantiser la vélocité » et sa liste
+  (V8), réglages retenus (V9) ; aide F1.
+- **13f1 — clôture**.
