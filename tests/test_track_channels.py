@@ -159,6 +159,9 @@ class _FakeStoreWindow(PatternMixin, SongMixin):
     def _apply_auto_input_mode(self):
         return None
 
+    def _warn_track_midi_outs(self):      # port absent → son interne (Phase 8 étape 12b1)
+        return []
+
     def _set_kb_play_root(self, root):
         pass
 
@@ -211,6 +214,9 @@ class _FakeTrackWindow(TrackMixin):
     # testées sur la vraie fenêtre dans tests/test_auto_input_mode.py
     def _apply_auto_input_mode(self):
         return None
+
+    def _warn_track_midi_outs(self):      # port absent → son interne (Phase 8 étape 12b1)
+        return []
 
     def _set_kb_play_root(self, root):
         pass

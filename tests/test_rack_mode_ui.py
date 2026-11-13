@@ -101,6 +101,9 @@ class _RackWin(TrackMixin, PatternMixin, PadMixin):
     def _apply_auto_input_mode(self):
         return None
 
+    def _warn_track_midi_outs(self):      # port absent → son interne (Phase 8 étape 12b1)
+        return []
+
     def _set_kb_play_root(self, root):
         pass
 

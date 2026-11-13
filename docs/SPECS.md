@@ -87,7 +87,8 @@ groovyboxit/
 │   │   ├── midi_export.py    # Export du pattern ou d'un song en fichier .mid (mido, SMF type 1)
 │   │   ├── midi_import.py    # Import d'un fichier .mid en pattern (Phase 7 étape 18b1)
 │   │   ├── midi_manager.py   # Connexion ports MIDI in/out
-│   │   └── midi_parser.py    # Décodage des messages MIDI temps réel
+│   │   ├── midi_parser.py    # Décodage des messages MIDI temps réel
+│   │   └── track_midi_out.py # TrackMidiOutMixin : sortie MIDI externe des pistes (Phase 8 étape 12b1)
 │   ├── player/           # Séquenceur DrumPlayer (Phase 7 étape 8)
 │   │   ├── drum_player.py  # DrumPlayer : état (__init__), propriétés, délégations quantisation
 │   │   ├── dp_transport.py # Mixin : thread, play/stop/pause, song, click, BPM
@@ -239,6 +240,7 @@ groovyboxit/
     ├── test_tempo_map.py
     ├── test_tempo_playback.py
     ├── test_track_channels.py
+    ├── test_track_midi_out.py
     ├── test_track_editor.py
     ├── test_track_properties_dialog.py
     ├── test_track_router.py
@@ -2426,6 +2428,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_tempo_map.py` | Carte de tempo : TempoMap (pas ↔ secondes par morceaux, tempo en vigueur), changements de tempo du pattern (.gvp, copie, redimensionner, doubler, diviser), import et export de la carte, durées au tempo local, aller-retour |
 | `test_tempo_playback.py` | Player sur la carte de tempo : tempo en vigueur, tempo changé à la position ou partout en proportion, position dans la fenêtre, minutage (événements, métronome, Note Repeat, décompte), tempos franchis signalés, pause, position gardée, song, ms par pas, Aller à en secondes, champ BPM, lecture chronométrée |
 | `test_track_channels.py` | Canal MIDI par piste : défauts, migration, règle du kit, Ctrl+T et propriétés de piste (Undo) |
+| `test_track_midi_out.py` | Sortie MIDI externe des pistes (Phase 8 étape 12b1) : port de la piste (ouvert, absent, sans fournisseur), notes de grille traduites (kit → note GM, synthé → gamme, banque au canal 10 → 36 + pad), KIT / PATCH, Note Off, bornes, piste muette, son interne tu ou repli si le port manque, port débranché ; CC (canal de l'événement pour CC0 / CC32, CC globaux gardés au port), CC7 / CC10 en mixage, Pitch Bend, Program Change (la piste suit le canal), poursuite ; All Notes Off au Stop, au changement de son, au Mute, Panic ; entrée / sortie par piste dans Pattern (.gvp, anciens projets, clés invalides, redimensionnement, song figé, retour au store) ; avertissement une fois par port (boîte, démarrage) ; rendu WAV interne ; vraie fenêtre principale (46 tests) |
 | `test_track_editor.py` | TrackEditor : sélection multi-pistes, limiteurs, clipboard |
 | `test_track_properties_dialog.py` | TrackPropertiesDialog : slot, volume, pan |
 | `test_track_router.py` | TrackRouter : routing, mute/solo, SynthEngine cache |

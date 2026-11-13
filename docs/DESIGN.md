@@ -12816,3 +12816,32 @@ nouvelle piste enregistrée sur le slot TR-707 dans `essai_sfz_7f1.gvp`,
 pattern 1). **Remarque notée pour un autre chantier** : à
 l'enregistrement MIDI depuis un contrôleur, la même note jouée au même
 temps avec des vélocités différentes n'est pas prise en compte.
+
+### Avancement 12c1 (tests — sortie MIDI des pistes)
+
+- **`tests/test_track_midi_out.py`** (nouveau, 46 tests) sur un vrai
+  `TrackRouter` et un port factice : port de la piste (ouvert, absent,
+  sans fournisseur), pistes absentes ; notes de grille (kit → note GM par
+  `gm_note_map`, sans correspondance, synthé → gamme, banque au canal 10
+  → 36 + pad), KIT (GM, ou tel quel sur une banque), PATCH, Note Off
+  programmé, bornes, piste muette, son interne tu, repli sur le son
+  interne si le port manque, port débranché sans erreur ; CC, modulation,
+  pédale, CC0 / CC32 au canal de l'événement, CC globaux gardés au port,
+  CC7 / CC10 en mixage, `set_track_volume` / `set_track_pan`, Pitch Bend
+  (quatre valeurs), Program Change (la piste suit le canal), poursuite
+  (banque, programme à la position, volume, pan) ; All Notes Off au Stop
+  (canaux utilisés, puis plus rien), au changement de son, avant un
+  Mute, Panic ; données par pattern (défauts, `.gvp`, anciens projets,
+  clés invalides, redimensionnement, `frozen_pattern`, retour au store) ;
+  avertissement une fois par port (boîte et barre d'état, démarrage,
+  nouveau port) ; `render_copy` sans port ; vraie fenêtre principale
+  (fournisseur branché, pattern chargé : port absent annoncé, note
+  envoyée).
+- **30 tests rouges de 12b1 corrigés** (`_warn_track_midi_outs` dans les
+  fenêtres factices, listes de ports dans le routeur factice de
+  `test_song_segments.py`).
+- Mutations vérifiées (note de kit non traduite en GM ; son interne non
+  tu) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`track_midi_out.py`) et table.
+  Suite : 4185 verts (aussi avec les exceptions de fil traitées en
+  erreurs).

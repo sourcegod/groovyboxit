@@ -234,7 +234,8 @@ class FakeWindow(SongMixin):
         self._router = SimpleNamespace(
             _track_slots=[0] * n, _track_mutes=[False] * n, _track_solos=[False] * n,
             _track_volumes=[100] * n, _track_pans=[0] * n,
-            _track_channels=[Pattern.default_channel(t) for t in range(n)])
+            _track_channels=[Pattern.default_channel(t) for t in range(n)],
+            _track_midi_ins=[""] * n, _track_midi_outs=[""] * n)    # 12b1
 
 
 class TestStoreCurrentPattern:
