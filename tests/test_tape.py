@@ -356,14 +356,15 @@ def test_record_kit_note_stores_event():
     assert ev.dur  == 0
     print("  record_kit_note stocke TapeEvent('K', 36, 100, 0, 0) : OK")
 
-def test_record_kit_note_no_duplicate_same_note():
+def test_record_kit_note_keeps_every_hit_same_note():
+    # overdub comme Sonar (Phase 8 étape 13b1, § 13a V5) : la seconde frappe
+    # n'est plus ignorée — c'était le bug de l'essai de 12b1
     pl = _make_player()
     pl.record_kit_note(36, 100)
-    pl.record_kit_note(36, 127)   # même note, même position → pas de doublon
-    events = pl._pattern._tape[0]
-    kit_notes = [e.payload.get("note") for e in events if e.etype == ETYPE_KIT]
-    assert kit_notes.count(36) == 1, "note 36 ne doit apparaître qu'une fois"
-    print("  record_kit_note : pas de doublon sur même note : OK")
+    pl.record_kit_note(36, 127)   # même note, même position → gardée aussi
+    kit = [e for e in pl._pattern._tape[0] if e.etype == ETYPE_KIT]
+    assert [(e.payload["note"], e.payload["vel"]) for e in kit] == [(36, 100), (36, 127)]
+    assert kit[0].time == kit[1].time
 
 def test_record_kit_note_two_different_notes_same_step():
     """Deux notes MIDI différentes au même pas sont enregistrées toutes les deux."""
@@ -638,15 +639,13 @@ def test_record_patch_note_zero_duration():
     assert events[0].dur == 0
     print("  record_patch_note duration_ms=0 stocké : OK")
 
-def test_record_patch_note_replaces_same_note_at_same_step():
+def test_record_patch_note_keeps_every_hit_same_step():
+    # overdub comme Sonar (Phase 8 étape 13b1, § 13a V5) : plus de remplacement
     pl = _make_player()
     pl.record_patch_note(60, 100, 300)
-    pl.record_patch_note(60, 90, 400)   # même note, même step → remplace
-    all_events = [e for e in all_tape_events(pl._pattern) if e.etype == ETYPE_PATCH]
-    notes = [e.payload.get("note") for e in all_events]
-    assert notes.count(60) == 1, "note 60 ne doit apparaître qu'une fois"
-    assert all_events[0].dur == 400, "durée mise à jour"
-    print("  record_patch_note remplace note existante au même step : OK")
+    pl.record_patch_note(60, 90, 400)   # même note, même step → gardée aussi
+    notes = [e for e in all_tape_events(pl._pattern) if e.etype == ETYPE_PATCH]
+    assert [(e.payload["vel"], e.dur) for e in notes] == [(100, 300), (90, 400)]
 
 def test_record_patch_note_returns_bar_step():
     pl = _make_player()
@@ -1159,15 +1158,14 @@ def test_record_patch_note_bend_back_to_zero_after_bent_state():
     assert pl._pattern._bend_state_at(0, note.time) == 0
     print("  record_patch_note : retour au centre → ETYPE_BEND 0 : OK")
 
-def test_record_patch_note_replaced_note_does_not_duplicate_bend():
-    """Deux fois la même note au même pas (remplacement) avec le même bend
-    tenu : un seul ETYPE_BEND."""
+def test_record_patch_note_twice_does_not_duplicate_bend():
+    """Deux fois la même note au même pas (les deux gardées depuis 13b1)
+    avec le même bend tenu : un seul ETYPE_BEND."""
     pl = _make_player()
     pl.record_patch_note(60, 100, 500, bend=1000)
     pl.record_patch_note(60, 110, 500, bend=1000)
-    assert len(_patch_notes(pl._pattern, 0)) == 1
+    assert len(_patch_notes(pl._pattern, 0)) == 2
     assert len(_bends(pl._pattern, 0)) == 1
-    print("  note remplacée au même pas : un seul ETYPE_BEND : OK")
 
 def test_record_patch_note_off_keeps_chased_bend():
     """record_patch_note_off (durée MIDI) ne touche pas au point de bend posé
@@ -1873,17 +1871,16 @@ def test_record_hit_G_velocity_clamped():
     print("  record_hit clamp vélocité 'G' à 127 : OK")
 
 
-def test_record_hit_replaces_existing_G():
-    """record_hit au même step remplace le 'G' existant sans doublon."""
+def test_record_hit_keeps_every_hit_same_step():
+    """record_hit au même step garde les deux frappes (overdub, Phase 8 étape
+    13b1, § 13a V5) ; la case montre la vélocité de la dernière."""
     pl = _make_player()
     pl.record_hit(2, 80)
     pl.record_hit(2, 120)   # même position (_measure_start=None → step 0)
-    key = (0, 0, 0)
-    g_events = [ev for ev in tape_at(pl._pattern, *key)
+    g_events = [ev for ev in tape_at(pl._pattern, 0, 0, 0)
                 if ev.etype == ETYPE_GRID and ev.payload.get("pad") == 2]
-    assert len(g_events) == 1, f"doublon 'G' interdit, obtenu {len(g_events)}"
-    assert g_events[0].payload.get("vel") == 120, "vélocité doit être mise à jour"
-    print("  record_hit remplace 'G' existant au même step sans doublon : OK")
+    assert [ev.payload["vel"] for ev in g_events] == [80, 120]
+    assert pl._pattern.get_cell(0, 2, 0, 0) == 120
 
 
 def test_record_nr_hit_adds_G_to_tape():

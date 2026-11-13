@@ -198,6 +198,7 @@ groovyboxit/
     ├── test_multitrack.py
     ├── test_mute_groups.py
     ├── test_note_cuts.py
+    ├── test_overdub_recording.py
     ├── test_pad_properties_dialog.py
     ├── test_pattern.py
     ├── test_pattern_grid_api.py
@@ -2414,6 +2415,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |
 | `test_note_cuts.py` | Notes coupées avant un changement de son (Phase 8 étape 6c1) : CC120 d'un canal (défaut et FluidSynth), cut_all_notes (tous les moteurs une fois, kit, banque et pédale sur 16 canaux, Pitch Bend et modulation gardés, sans banque), cut_track_notes (canal courant d'une banque, préécoute une fois, note tenue au contrôleur coupée avant le changement de canal, moteur du synthé et préécoute, autres moteurs intacts, kit, mode Rack), Program Change rejoué sans coupure ; gestes : X / S / Shift+X / Shift+S (avant la bascule), pads sans coupure, propriétés de piste (canal, slot, volume sans coupure, Mute, Annuler), Ctrl+T (deux modes, même slot sans coupure), Program Change du contrôleur ; relâchement là où la note a été jouée (Phase 8 étape 6c2 : canal retenu par BankPreview, note tenue pendant la navigation des pistes arrêtée sur le canal ou le synthé de la piste précédente, fin de note enregistrée avec la note jouée, pad de batterie au canal 10) (33 tests) |
+| `test_overdub_recording.py` | Overdub comme Sonar (Phase 8 étape 13b1) : add_grid_note, case = vélocité de la dernière note jouée (get_cell, grid_row), iter_grid, saisie à la main et effacement vident la case entière, doublons gardés à la sauvegarde ; toutes les frappes gardées (grille, Note Repeat, kit, synthé, note off sur la dernière, piste courante) ; métronome rétabli au retour de l'effacement (13b2 : enregistrement, Remplacement, sans métronome, métronome lancé avant, effacement hors enregistrement) (22 tests) |
 | `test_pad_properties_dialog.py` | PadPropertiesDialog : valeurs initiales, callbacks, durée |
 | `test_pattern.py` | Pattern : création, reset, resize, double/halve, random |
 | `test_pattern_grid_api.py` | API grille de Pattern (get_cell, set_cell, iter_grid, copy_from…) au-dessus de _tape ; grid_row en un passage |

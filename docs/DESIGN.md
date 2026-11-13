@@ -13084,3 +13084,23 @@ l'entrée en effacement, rien ne change.
 
 **Essai 13b2** : R avec métronome, E (métronome coupé), E (enregistrement
 repris, métronome relancé) ; sans métronome : rien ne change.
+
+### Avancement 13c1 (tests — enregistrement et métronome)
+
+- **`tests/test_overdub_recording.py`** (nouveau, 22 tests) :
+  `add_grid_note` (ajout, vélocité nulle, canal et durée, pistes
+  ajoutées), case = vélocité de la dernière note (`get_cell`,
+  `grid_row`), `iter_grid` donne toutes les notes, `set_cell` réécrit ou
+  vide la case entière, doublons gardés à la sauvegarde ; toutes les
+  frappes gardées (grille avec son canal, Note Repeat, kit avec leurs
+  vélocités, synthé, Note Off sur la dernière frappe, piste courante) ;
+  effacement d'une case entière ; métronome au retour de l'effacement
+  (enregistrement, Remplacement, sans métronome, métronome lancé avant
+  l'enregistrement, effacement hors enregistrement, drapeau remis à
+  zéro).
+- **5 tests de l'ancien comportement réécrits** (`test_tape.py`,
+  `test_pattern_grid_api.py`) : frappes gardées, dernière vélocité, un
+  seul Pitch Bend.
+- Mutations vérifiées (même note de kit de nouveau ignorée ; métronome
+  non rétabli) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 4231 verts.

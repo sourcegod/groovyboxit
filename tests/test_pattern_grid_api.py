@@ -260,11 +260,13 @@ def test_grid_row_matches_get_cell():
     assert p.grid_row(0, 2, 0)[15] == 40 and p.grid_row(0, 2, 2)[15] == 20
 
 
-def test_grid_row_first_event_wins_like_get_cell():
+def test_grid_row_last_event_wins_like_get_cell():
+    # overdub : plusieurs notes sur une case, la dernière jouée l'emporte
+    # (Phase 8 étape 13b1, docs/DESIGN.md § 13a V5)
     p = Pattern()
     p._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 30}, time=5))
     p._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 99}, time=5))
-    assert p.grid_row(0, 1, 0)[5] == p.get_cell(0, 1, 0, 5) == 30
+    assert p.grid_row(0, 1, 0)[5] == p.get_cell(0, 1, 0, 5) == 99
 
 
 def test_grid_row_ignores_fractional_times_and_other_tracks():
