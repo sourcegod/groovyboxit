@@ -7,7 +7,10 @@ class EraseMixin:
     """DrumPlayer — mode Erase : effacement au passage et ciblé."""
 
     def toggle_erase(self):
-        """Bascule le mode Erase. Retourne True si Erase vient d'être activé."""
+        """Bascule le mode Erase. Retourne True si Erase vient d'être activé.
+        Retour à l'enregistrement : le métronome qui tournait en entrant en
+        Erase est relancé (Phase 8 étape 13b2, essai de 13b1 : sans lui, on
+        ne savait plus si l'on enregistrait encore)."""
         if self.erasing:
             self.erasing = False
             self._erase_active_pads.clear()
@@ -15,9 +18,12 @@ class EraseMixin:
             if self._erase_was_recording:
                 self.recording         = True
                 self.replace_recording = self._erase_was_replace
+                if getattr(self, "_erase_was_clicking", False) and not self.clicking:
+                    self.play_click()
         else:
             self._erase_was_recording = self.recording
             self._erase_was_replace   = self.replace_recording
+            self._erase_was_clicking  = self.recording and self.clicking
             self.erasing = True
             self._erase_active_midi_notes.clear()
             if self.recording:

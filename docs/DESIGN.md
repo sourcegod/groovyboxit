@@ -13068,3 +13068,19 @@ pad au même temps avec une autre vélocité : les deux frappes sont gardées
 
 **Essai 13b1** (utilisateur, 2026-11-14) : concluant (les deux frappes
 gardées). Remarque qui donne 13b2.
+
+## Phase 8 étape 13b2 — Correctif : métronome rétabli au retour de l'effacement
+
+**Constat** (essai de 13b1) : en enregistrement (R) avec le métronome,
+passer en effacement (E) quitte l'enregistrement et coupe le métronome
+(normal) ; ressortir de l'effacement revient à l'enregistrement, **mais
+sans métronome** : on ne sait plus si l'on enregistre encore.
+
+**Correctif** (proposition de l'utilisateur) : `DrumPlayer.toggle_erase`
+retient si le métronome tournait pendant l'enregistrement
+(`_erase_was_clicking`) ; au retour à l'enregistrement, il est relancé
+(`play_click`) — signe que l'on enregistre de nouveau. Sans métronome à
+l'entrée en effacement, rien ne change.
+
+**Essai 13b2** : R avec métronome, E (métronome coupé), E (enregistrement
+repris, métronome relancé) ; sans métronome : rien ne change.

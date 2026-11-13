@@ -70,6 +70,7 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._erase_active_midi_notes = set()   # notes MIDI tenues en Erase (patch_tape)
         self._erase_was_recording = False
         self._erase_was_replace   = False
+        self._erase_was_clicking  = False    # métronome relancé au retour (13b2)
         self.count_in_bars        = 1     # 0, 1, 2, 4 ou 8 mesures
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
