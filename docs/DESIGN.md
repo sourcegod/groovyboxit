@@ -12876,3 +12876,27 @@ Through » → l'Akai n'est plus reçu sur cette piste.
 
 **Essai 12d1** (utilisateur, 2026-11-13) : concluant (listes lues par
 Orca avant Canal, piste tue vers Midi Through, Annuler, entrée filtrée).
+
+### Avancement 12e1 (tests — entrée MIDI et propriétés)
+
+- **`tests/test_track_midi_ports.py`** (nouveau, 24 tests) :
+  - dialogue : listes « Entrée MIDI » et « Sortie MIDI » entre Slot et
+    Canal (libellés avant les listes), contenus et premiers choix, port
+    courant sélectionné, port absent gardé (« — absent »),
+    `on_ports_change` à chaque choix, sans `midi_ports` pas de listes,
+    `_port_choices` ;
+  - `_track_properties_dialog` (dialogue factice) : ports cochés passés
+    (« Synthé FluidSynth » retiré des sorties), Ok garde, Annuler remet,
+    port seul = modification (Undo gardé), rien de changé → Undo retiré,
+    effet immédiat (notes coupées, CC7 / CC10 envoyés au nouveau port,
+    avertissement), port absent → son interne et avertissement, sans
+    configuration pas de listes ;
+  - filtre : autres ports refusés (notes, CC), Note Off et Note On
+    vélocité 0 toujours passés, sans filtre ou port inconnu, ports
+    transmis par `MidiInputs` jusqu'au filtre ; `_midi_port_accepted`
+    (Toutes, même port, adresse ALSA changée, autre port, piste courante,
+    sans routeur).
+- Mutations vérifiées (Note Off filtrés ; Annuler ne remet pas les
+  ports) : chacune fait échouer un test.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 4209 verts (aussi
+  avec les exceptions de fil traitées en erreurs).

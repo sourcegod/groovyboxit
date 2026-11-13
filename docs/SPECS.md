@@ -241,6 +241,7 @@ groovyboxit/
     ├── test_tempo_playback.py
     ├── test_track_channels.py
     ├── test_track_midi_out.py
+    ├── test_track_midi_ports.py
     ├── test_track_editor.py
     ├── test_track_properties_dialog.py
     ├── test_track_router.py
@@ -2429,6 +2430,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_tempo_playback.py` | Player sur la carte de tempo : tempo en vigueur, tempo changé à la position ou partout en proportion, position dans la fenêtre, minutage (événements, métronome, Note Repeat, décompte), tempos franchis signalés, pause, position gardée, song, ms par pas, Aller à en secondes, champ BPM, lecture chronométrée |
 | `test_track_channels.py` | Canal MIDI par piste : défauts, migration, règle du kit, Ctrl+T et propriétés de piste (Undo) |
 | `test_track_midi_out.py` | Sortie MIDI externe des pistes (Phase 8 étape 12b1) : port de la piste (ouvert, absent, sans fournisseur), notes de grille traduites (kit → note GM, synthé → gamme, banque au canal 10 → 36 + pad), KIT / PATCH, Note Off, bornes, piste muette, son interne tu ou repli si le port manque, port débranché ; CC (canal de l'événement pour CC0 / CC32, CC globaux gardés au port), CC7 / CC10 en mixage, Pitch Bend, Program Change (la piste suit le canal), poursuite ; All Notes Off au Stop, au changement de son, au Mute, Panic ; entrée / sortie par piste dans Pattern (.gvp, anciens projets, clés invalides, redimensionnement, song figé, retour au store) ; avertissement une fois par port (boîte, démarrage) ; rendu WAV interne ; vraie fenêtre principale (46 tests) |
+| `test_track_midi_ports.py` | Entrée et sortie MIDI dans les propriétés de piste (Phase 8 étape 12d1) : listes entre Slot et Canal, « Toutes les entrées » / « Interne (son du slot) », port courant sélectionné, port absent gardé, on_ports_change, sans ports ; _track_properties_dialog (ports cochés passés, synthé interne retiré, Ok garde, Annuler remet, port seul = modification, notes coupées et mixage envoyé, port absent → son interne et avertissement, sans configuration) ; filtre du jeu en direct (autres ports refusés, Note Off toujours passés, port inconnu, ports transmis par MidiInputs, _midi_port_accepted : Toutes, même port, adresse ALSA changée, piste courante) (24 tests) |
 | `test_track_editor.py` | TrackEditor : sélection multi-pistes, limiteurs, clipboard |
 | `test_track_properties_dialog.py` | TrackPropertiesDialog : slot, volume, pan |
 | `test_track_router.py` | TrackRouter : routing, mute/solo, SynthEngine cache |
