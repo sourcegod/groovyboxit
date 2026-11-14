@@ -13104,3 +13104,52 @@ repris, métronome relancé) ; sans métronome : rien ne change.
 - Mutations vérifiées (même note de kit de nouveau ignorée ; métronome
   non rétabli) : chacune fait échouer des tests.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 4231 verts.
+
+### Avancement 13d1 (implémentation — quantisation)
+
+- **`QuantizeManager.apply_quant_to_pattern(…, remove_duplicates,
+  velocity)`** : **toutes les notes de la piste (GRID, KIT, PATCH)
+  quantisées de la même façon, à partir de leurs événements** (V6) —
+  temps, durée (notes qui en ont une), vélocité, canal gardés ; la
+  grille n'est plus reconstruite depuis `float_offsets` avec une
+  vélocité de 100 ; `float_offsets` recalculés ensuite
+  (`compute_offsets`). `_without_duplicates` (V7) : même type, même
+  hauteur (pad pour la grille), même canal, même temps → la dernière
+  jouée reste ; CC, Pitch Bend, Program Change jamais touchés ;
+  `velocity` (V8) donne la vélocité à toutes les notes. Rien à faire
+  (ni débuts, ni durées, ni doublons, ni vélocité) → rien ne change.
+- **`QuantizeDialog`** : cases « Enlever les doublons » (cochée par
+  défaut) et « Quantiser la vélocité » (décochée par défaut), liste
+  « Vélocité: 127 … 10 » (100 par défaut, grisée tant que la case est
+  décochée) ; `get_remove_duplicates`, `get_quant_velocity`,
+  `get_velocity_value`.
+- **Réglages retenus** (V9) : `DrumPlayer._quant_dedupe`,
+  `_quant_velocity`, `_quant_velocity_value`, et `quant_kwargs()`
+  utilisé par le dialogue, Ctrl+Q, Shift+Q, la quantisation simple
+  (fenêtre principale) et l'éditeur MIDI ; gardés par l'Undo
+  (`quant_params`).
+- **Écart au plan** : une note de grille enregistrée garde sa position
+  sur un pas entier, comme les notes KIT / PATCH ; la position brute
+  (« 2,6 pas ») que `float_offsets` gardait en mémoire le temps de la
+  session (jamais sauvegardée) ne sert plus à la quantisation. Les notes
+  en temps flottant restent une suite notée (chantier « temps
+  flottant »).
+- **Aide F1** : Quantisation (toutes les notes, doublons, vélocité),
+  Overdub.
+- Vérifié : deux frappes de grille proches → un pas, la dernière
+  (vélocité 90) reste ; même note de kit deux fois → la dernière (125) ;
+  CC intact ; note de synthé déplacée avec sa vélocité ; vélocité
+  quantisée à 64 sur toutes les notes.
+- Suite : 4212 verts, **19 rouges jusqu'à 13e1** (`test_quantize.py` :
+  notes de grille placées seulement dans `float_offsets`).
+
+**Essai 13d1** : enregistrer en overdub plusieurs passages sur le TR-707
+(mêmes pads, vélocités différentes), Ctrl+Shift+Q : cases « Enlever les
+doublons » (cochée) et « Quantiser la vélocité » (décochée, liste grisée)
+lues par Orca ; Ok → une seule frappe par pas, la dernière, les nuances
+gardées ; recommencer avec « Quantiser la vélocité » sur 64 → toutes à
+64 ; Shift+Q reprend ces réglages.
+
+**Essai 13d1** (utilisateur, 2026-11-14) : concluant. Question posée :
+avoir ces réglages de quantisation **à l'enregistrement** → proposition
+d'une case « Quantiser à l'enregistrement » (avenant 13d2, à trancher).

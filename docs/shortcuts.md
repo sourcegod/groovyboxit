@@ -52,6 +52,13 @@ Shift+E          Décocher toute la ligne courante
 Ctrl+Q           Quantiser le pattern depuis la grille courante (résolution déduite de la grille)
 Shift+Q          Quantiser le pattern avec les derniers paramètres mémorisés (sans dialog)
 Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
+                 Toutes les notes (grille, kit, synthé) sont quantisées de la même
+                 façon, avec leur vélocité. « Enlever les doublons » (cochée par
+                 défaut) : parmi les notes de même hauteur au même temps, la dernière
+                 jouée reste. « Quantiser la vélocité » : toutes les notes prennent la
+                 vélocité choisie dans la liste (100 par défaut)
+Overdub (R)      Toutes les frappes sont gardées, même au même temps ; la
+                 quantisation enlève les doublons
 
 --- Lecture ---
 Espace / P       Play / Pause pattern (reprend depuis la position pausée)

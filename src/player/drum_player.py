@@ -56,6 +56,11 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._quant_starts       = True
         self._quant_durations    = False
         self._quant_direction_idx = 0   # 0=Proche, 1=Précédente, 2=Suivante
+        # Phase 8 étape 13d1 (§ 13a V7, V8) : doublons enlevés (cochée par
+        # défaut), vélocité quantisée (décochée) et sa valeur (100)
+        self._quant_dedupe        = True
+        self._quant_velocity      = False
+        self._quant_velocity_value = 100
         # État du dialog Filtre d'événements (Ctrl+Shift+F, éditeur MIDI)
         self._event_filter_state = None   # dict de critères, ou None = jamais ouvert
         # Note Repeat (intégré dans _run_thread, synchronisé sur l'horloge de mesure)
@@ -159,6 +164,16 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
 
     def apply_quant_to_pattern(self, quant_idx=None, **kwargs):
         self._qm.apply_quant_to_pattern(quant_idx, **kwargs)
+
+    def quant_kwargs(self):
+        """Réglages retenus du dialogue Quantisation, pour Ctrl+Q, Shift+Q, le
+        dialogue et l'éditeur MIDI (Phase 8 étape 13d1, § 13a V9)."""
+        return dict(force_idx=self._quant_force_idx, swing_idx=self._quant_swing_idx,
+                    window_idx=self._quant_window_idx, quant_starts=self._quant_starts,
+                    quant_durations=self._quant_durations,
+                    direction_idx=self._quant_direction_idx,
+                    remove_duplicates=self._quant_dedupe,
+                    velocity=self._quant_velocity_value if self._quant_velocity else None)
 
     #--------------------------------------------------------------------------
 

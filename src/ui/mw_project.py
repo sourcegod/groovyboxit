@@ -1307,6 +1307,9 @@ class ProjectMixin:
                 "window_idx":     p._quant_window_idx,
                 "quant_starts":   p._quant_starts,
                 "quant_durations":p._quant_durations,
+                "dedupe":         p._quant_dedupe,               # 13d1
+                "velocity":       p._quant_velocity,
+                "velocity_value": p._quant_velocity_value,
                 "grid_idx":       p._grid_idx,
             },
             "event_filter_params": p._event_filter_state,
@@ -1475,6 +1478,9 @@ class ProjectMixin:
             p._quant_window_idx  = qp.get("window_idx",      4)
             p._quant_starts      = qp.get("quant_starts",    True)
             p._quant_durations   = qp.get("quant_durations", False)
+            p._quant_dedupe      = qp.get("dedupe",          True)    # 13d1
+            p._quant_velocity    = qp.get("velocity",        False)
+            p._quant_velocity_value = qp.get("velocity_value", 100)
             p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
         self._player._event_filter_state = state.get("event_filter_params")
         # Slot joué rétabli s'il a changé (Undo de Ctrl+T, Phase 8 étape

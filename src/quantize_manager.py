@@ -1,4 +1,4 @@
-from pattern import Pattern, TapeEvent, ETYPE_KIT, ETYPE_PATCH
+from pattern import Pattern, TapeEvent, ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH
 
 
 class QuantizeManager:
@@ -57,20 +57,29 @@ class QuantizeManager:
 
     def apply_quant_to_pattern(self, quant_idx=None, force_idx=4, swing_idx=0,
                                window_idx=4, quant_starts=True, quant_durations=False,
-                               direction_idx=0):
-        """Quantise grille (GRID) et tape (KIT/PATCH) avec force, swing, fenêtre et direction.
+                               direction_idx=0, remove_duplicates=False, velocity=None):
+        """Quantise toutes les notes de la piste courante — grille (GRID), kit
+        (KIT), synthé (PATCH) — de la même façon, à partir de leurs événements
+        (Phase 8 étape 13d1, docs/DESIGN.md § 13a V5, V6 : la grille n'est plus
+        reconstruite depuis float_offsets avec une vélocité de 100).
 
         force_idx     : 0..4 → 0/25/50/75/100 % d'attraction vers la grille
         swing_idx     : 0..4 → 0/25/50/75/100 % de décalage des temps impairs
         window_idx    : 0..4 → 0/25/50/75/100 % de la demi-division : zone de capture
         quant_starts  : aligner les débuts de notes
-        quant_durations: aligner les durées (KIT/PATCH uniquement)
+        quant_durations: aligner les durées (notes qui en ont une)
         direction_idx : 0=Proche, 1=Précédente, 2=Suivante
+        remove_duplicates : après le déplacement, parmi les notes de même type,
+                        même hauteur (pad pour la grille), même canal et même
+                        temps, garder la dernière jouée (V7)
+        velocity      : None, ou vélocité 1..127 donnée à toutes les notes (V8)
         """
         p = self._p
         if quant_idx is None:
             quant_idx = p.quant_idx
         if quant_idx < 0:
+            return
+        if not (quant_starts or quant_durations or remove_duplicates or velocity is not None):
             return
 
         _PCT       = [0, 25, 50, 75, 100]
@@ -115,42 +124,19 @@ class QuantizeManager:
                 return ng
             return pos + (ng - pos) * force_pct / 100.0
 
-        # --- Notes grille (GRID) ---
-        if quant_starts:
-            for pad_idx in range(p._pattern._num_pads):
-                active = p.float_offsets[pad_idx]
-                p._pattern.clear_grid_pad(p._cur_track, pad_idx)
-                if not active:
-                    continue
-                snapped = []
-                for pos in active:
-                    ng = _find_target(pos, full_grid)
-                    new_pos = _snap(pos, ng) if _in_window(pos, ng) else pos
-                    rounded = round(new_pos)
-                    snapped.append(float(rounded))
-                for fp in snapped:
-                    bar_idx  = int(fp) // num_steps
-                    step_idx = int(fp) % num_steps
-                    if 0 <= bar_idx < num_bars and 0 <= step_idx < num_steps:
-                        p._pattern.set_cell(p._cur_track, pad_idx, bar_idx, step_idx, 100)
-                p.float_offsets[pad_idx] = sorted(snapped)
-
-        # --- Notes tape KIT/PATCH ---
-        if not quant_starts and not quant_durations:
-            return
         pattern        = p._pattern
         tmap           = p.tempo_map()
         steps_per_beat = tmap.steps_per_beat
         dur_grid       = [max(1.0, i * step_size)
                           for i in range(1, num_bars * denom + 2)]
+        note_types     = (ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH)
         new_events = []
         with pattern._lock:
             for ev in pattern._tape[p._cur_track]:
-                if ev.etype not in (ETYPE_KIT, ETYPE_PATCH):
+                if ev.etype not in note_types:
                     new_events.append(ev)
                     continue
-                b, s = pattern._time_to_bar_step(ev.time)
-                n_bar, n_step = b, s
+                new_time = ev.time
                 if quant_starts:
                     pos = ev.time
                     ng  = _find_target(pos, full_grid)
@@ -158,6 +144,7 @@ class QuantizeManager:
                         new_pos = _snap(pos, ng)
                         n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
                         n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
+                        new_time = pattern._bar_step_to_time(n_bar, n_step)
                 n_dur = ev.dur
                 if quant_durations and ev.dur > 0:
                     # ms par pas au tempo en vigueur sur la note (19d1, T5)
@@ -166,10 +153,33 @@ class QuantizeManager:
                     ng_dur    = _find_target(dur_steps, dur_grid)
                     if _in_window(dur_steps, ng_dur):
                         n_dur = max(10, round(_snap(dur_steps, ng_dur) * ms_per_step))
-                new_time = pattern._bar_step_to_time(n_bar, n_step)
+                payload = ev.payload
+                if velocity is not None:
+                    payload = dict(payload, vel=max(1, min(127, int(velocity))))
                 new_events.append(TapeEvent(ev.etype, dur=n_dur, channel=ev.channel,
-                                             payload=ev.payload, time=new_time))
+                                             payload=payload, time=new_time))
+            if remove_duplicates:
+                new_events = self._without_duplicates(new_events)
             pattern._tape[p._cur_track] = new_events
+        self.compute_offsets()
+
+    @staticmethod
+    def _without_duplicates(events):
+        """Notes de même type, même hauteur (pad pour la grille), même canal et
+        même temps : seule la dernière jouée (la dernière de la liste) reste
+        (Phase 8 étape 13d1, § 13a V7) ; ordre gardé ; les autres événements
+        (CC, Pitch Bend, Program Change…) ne sont pas touchés."""
+        seen, kept = set(), []
+        for ev in reversed(events):
+            if ev.etype in (ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH):
+                pitch = ev.payload.get("pad") if ev.etype == ETYPE_GRID else ev.payload.get("note")
+                key = (ev.etype, pitch, ev.channel, ev.time)
+                if key in seen:
+                    continue
+                seen.add(key)
+            kept.append(ev)
+        kept.reverse()
+        return kept
 
     # ------------------------------------------------------------------
     # Géométrie du pattern

@@ -172,7 +172,7 @@ class PatternMixin:
 
     def _quantize_pattern(self):
         self._add_undo("Quantiser pattern")
-        self._player.apply_quant_to_pattern()
+        self._player.apply_quant_to_pattern(**self._player.quant_kwargs())   # 13d1
         self._refresh_grid()
         self._show_status(f"Pattern quantisé: {Pattern.QUANT_LIST[self._player.quant_idx]}")
 
@@ -186,12 +186,7 @@ class PatternMixin:
         self._add_undo("Quantiser pattern (grille)")
         p.apply_quant_to_pattern(
             res,
-            force_idx      = p._quant_force_idx,
-            swing_idx      = p._quant_swing_idx,
-            window_idx     = p._quant_window_idx,
-            quant_starts   = p._quant_starts,
-            quant_durations= p._quant_durations,
-            direction_idx  = p._quant_direction_idx,
+            **p.quant_kwargs(),             # 13d1 : doublons, vélocité (V9)
         )
         p._compute_offsets()
         self._refresh_grid()
@@ -209,12 +204,7 @@ class PatternMixin:
         self._add_undo("Quantiser pattern (derniers params)")
         p.apply_quant_to_pattern(
             res,
-            force_idx      = p._quant_force_idx,
-            swing_idx      = p._quant_swing_idx,
-            window_idx     = p._quant_window_idx,
-            quant_starts   = p._quant_starts,
-            quant_durations= p._quant_durations,
-            direction_idx  = p._quant_direction_idx,
+            **p.quant_kwargs(),             # 13d1 : doublons, vélocité (V9)
         )
         p._compute_offsets()
         self._refresh_grid()
@@ -370,7 +360,8 @@ class PatternMixin:
         p        = self._player
         old_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
                     p._quant_window_idx, p._quant_starts, p._quant_durations,
-                    p._quant_direction_idx)
+                    p._quant_direction_idx, p._quant_dedupe, p._quant_velocity,
+                    p._quant_velocity_value)
         dlg = QuantizeDialog(self,
                              res_idx        = p._quant_res_idx,
                              force_idx      = p._quant_force_idx,
@@ -378,7 +369,10 @@ class PatternMixin:
                              window_idx     = p._quant_window_idx,
                              quant_starts   = p._quant_starts,
                              quant_durations= p._quant_durations,
-                             direction_idx  = p._quant_direction_idx)
+                             direction_idx  = p._quant_direction_idx,
+                             remove_duplicates = p._quant_dedupe,
+                             quant_velocity    = p._quant_velocity,
+                             velocity_value    = p._quant_velocity_value)
         result = dlg.ShowModal()
         if result in (wx.ID_OK, wx.ID_APPLY):
             p._quant_res_idx       = dlg.get_resolution()
@@ -388,6 +382,9 @@ class PatternMixin:
             p._quant_starts        = dlg.get_quant_starts()
             p._quant_durations     = dlg.get_quant_durations()
             p._quant_direction_idx = dlg.get_direction_idx()
+            p._quant_dedupe        = dlg.get_remove_duplicates()      # 13d1
+            p._quant_velocity      = dlg.get_quant_velocity()
+            p._quant_velocity_value = dlg.get_velocity_value()
             new_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,
                         p._quant_window_idx, p._quant_starts, p._quant_durations,
                         p._quant_direction_idx)
@@ -402,12 +399,7 @@ class PatternMixin:
                 self._add_undo("Paramètres quantisation modifiés")
                 self._player.apply_quant_to_pattern(
                     res,
-                    force_idx      = p._quant_force_idx,
-                    swing_idx      = p._quant_swing_idx,
-                    window_idx     = p._quant_window_idx,
-                    quant_starts   = p._quant_starts,
-                    quant_durations= p._quant_durations,
-                    direction_idx  = p._quant_direction_idx,
+                    **p.quant_kwargs(),             # 13d1 : doublons, vélocité (V9)
                 )
                 self._player._compute_offsets()
                 self._refresh_grid()

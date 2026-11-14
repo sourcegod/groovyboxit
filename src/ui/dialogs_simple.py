@@ -129,7 +129,12 @@ class GridDialog(wx.Dialog):
 
 
 class QuantizeDialog(wx.Dialog):
-    """Boîte de quantisation du pattern : résolution, force, swing, fenêtre, débuts/durées."""
+    """Boîte de quantisation du pattern : résolution, force, swing, fenêtre,
+    débuts / durées ; « Enlever les doublons » et « Quantiser la vélocité »
+    avec sa liste (Phase 8 étape 13d1, docs/DESIGN.md § 13a V7, V8)."""
+
+    VELOCITIES = (127, 120, 110, 100, 90, 80, 70, 64, 50, 40, 30, 20, 10)
+    _VELOCITY_LABELS = [f"Vélocité: {v}" for v in VELOCITIES]
 
     _FORCE_LABELS  = [f"Force: {v} %"   for v in (0, 25, 50, 75, 100)]
     _SWING_LABELS  = [f"Swing: {v} %"   for v in (0, 25, 50, 75, 100)]
@@ -140,7 +145,8 @@ class QuantizeDialog(wx.Dialog):
 
     def __init__(self, parent, res_idx=-1, force_idx=4, swing_idx=0,
                  window_idx=4, quant_starts=True, quant_durations=False,
-                 direction_idx=0):
+                 direction_idx=0, remove_duplicates=True, quant_velocity=False,
+                 velocity_value=100):
         super().__init__(parent, title="Quantisation")
 
         res_choices = (["Résolution: Grille courante", "Résolution: Aucune"]
@@ -167,6 +173,19 @@ class QuantizeDialog(wx.Dialog):
         self._starts_cb.SetValue(quant_starts)
         self._durations_cb.SetValue(quant_durations)
 
+        # 13d1 (V7, V8) : doublons (cochée par défaut), vélocité et sa liste
+        self._dedupe_cb   = wx.CheckBox(self, label="Enlever les doublons")
+        self._dedupe_cb.SetValue(remove_duplicates)
+        self._velocity_cb = wx.CheckBox(self, label="Quantiser la vélocité")
+        self._velocity_cb.SetValue(quant_velocity)
+        self._velocity_lb = wx.ListBox(self, choices=self._VELOCITY_LABELS, style=wx.LB_SINGLE)
+        self._velocity_lb.SetSelection(self.VELOCITIES.index(velocity_value)
+                                       if velocity_value in self.VELOCITIES
+                                       else self.VELOCITIES.index(100))
+        self._velocity_lb.Enable(quant_velocity)
+        self._velocity_cb.Bind(wx.EVT_CHECKBOX,
+                               lambda e: self._velocity_lb.Enable(self._velocity_cb.GetValue()))
+
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
@@ -185,6 +204,9 @@ class QuantizeDialog(wx.Dialog):
             vbox.Add(lb, 0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._starts_cb,    0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._durations_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._dedupe_cb,    0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._velocity_cb,  0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._velocity_lb,  0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(btn_sizer,          0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
@@ -218,6 +240,16 @@ class QuantizeDialog(wx.Dialog):
     def get_direction_idx(self):
         sel = self._direction_lb.GetSelection()
         return sel if sel != wx.NOT_FOUND else 0
+
+    def get_remove_duplicates(self):
+        return self._dedupe_cb.GetValue()
+
+    def get_quant_velocity(self):
+        return self._velocity_cb.GetValue()
+
+    def get_velocity_value(self):
+        sel = self._velocity_lb.GetSelection()
+        return self.VELOCITIES[sel] if sel != wx.NOT_FOUND else 100
 
 
 class ExportTargetDialog(wx.Dialog):
