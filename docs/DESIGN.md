@@ -13153,3 +13153,54 @@ gardées ; recommencer avec « Quantiser la vélocité » sur 64 → toutes à
 **Essai 13d1** (utilisateur, 2026-11-14) : concluant. Question posée :
 avoir ces réglages de quantisation **à l'enregistrement** → proposition
 d'une case « Quantiser à l'enregistrement » (avenant 13d2, à trancher).
+
+## Phase 8 étape 13d2 — Avenant : quantisation à l'enregistrement (Alt+Shift+Q)
+
+**Origine** (essai de 13d1) : avoir les mêmes réglages de quantisation à
+l'enregistrement. Une case dans le dialogue Quantisation ne convient pas
+(remarque de l'utilisateur : Ok y quantise les notes existantes, on ne
+pourrait pas la cocher sans les modifier).
+
+**Décision de l'utilisateur** : un **dialogue à part**, ouvert par
+**Alt+Shift+Q**, avec « Enlever les doublons » **cochée par défaut**.
+
+**Avancement 13d2** :
+- **`QuantizeDialog(…, record=True, enabled)`** : titre « Quantisation à
+  l'enregistrement », case **« Quantiser à l'enregistrement »** en tête
+  (cochée par défaut : le calage actuel), résolution « Quant courante »
+  (liste Quant de la fenêtre, défaut), « Grille courante » ou une
+  valeur, force, swing, fenêtre, direction, « Enlever les doublons »,
+  « Quantiser la vélocité » et sa liste ; ni débuts / durées ni
+  Appliquer ; `get_enabled`.
+- **`DrumPlayer`** : `_quant_in_recording` (la case) et `_rq_*`
+  (réglages) ; `_record_quant_res`, `_rec_velocity`, `_rec_dedupe`,
+  `_drop_same_note`.
+- **`QuantizeManager.snap_position`** (nouveau) : la règle de position de
+  la quantisation (grille, swing, fenêtre, force, direction), utilisée
+  par `_compute_record_offset` à chaque frappe.
+- **Enregistrement** : position par les réglages d'Alt+Shift+Q ;
+  vélocité quantisée si cochée ; « Enlever les doublons » cochée → la
+  frappe **remplace** la note de même hauteur, même canal, même temps
+  (grille : la case ; kit et synthé : la note) — avec la nouvelle
+  vélocité (le défaut de départ est corrigé dans les deux cas) ;
+  décochée → toutes les frappes gardées (13b1). Case « Quantiser à
+  l'enregistrement » décochée : position jouée, frappes gardées.
+- **`_record_quantize_dialog`** (`mw_patterns`) : Ok mémorise (pas
+  d'Undo, aucune note touchée), annonce « Quantisation à
+  l'enregistrement : 1/16, doublons enlevés » ; Alt+Shift+Q dans la
+  fenêtre principale (`key_handler_alt`) et l'éditeur MIDI (avant
+  Shift+Q) ; réglages gardés dans l'état de l'Undo (`quant_params`).
+- **Aide F1** : Alt+Shift+Q, Overdub.
+- Vérifié : dialogue (ordre, sans Appliquer), doublons cochés → la
+  dernière frappe (125), décochés → toutes, vélocité 64, case décochée.
+- Suite : 4212 verts, 19 rouges de 13d1 jusqu'à 13e1.
+
+**Essai 13d2** : Alt+Shift+Q (Orca : case, listes) ; enregistrer deux
+passages sur le TR-707 : doublons cochés → une frappe par pas, la
+dernière ; décochés → toutes ; vélocité quantisée ; depuis l'éditeur MIDI.
+
+**Essai 13d2** (utilisateur, 2026-11-14) : concluant. Demande : gérer
+l'**Undo** du dialogue — ajouté avant le commit : étape « Quantisation à
+l'enregistrement » posée avant le dialogue, retirée si Annuler ou rien
+de changé ; l'Undo d'un changement remet les réglages d'avant (ils sont
+dans l'état gardé, `quant_params` « record »).

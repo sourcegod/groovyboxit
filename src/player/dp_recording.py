@@ -63,8 +63,11 @@ class RecordingMixin:
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
-        # toutes les frappes gardées (Phase 8 étape 13b1, § 13a V5)
-        self._pattern.add_grid_note(self._cur_track, pad_idx, bar_idx, step_idx, 100)
+        vel = self._rec_velocity(100)
+        if self._rec_dedupe():                                   # 13d2
+            self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, vel)
+        else:                            # toutes les frappes gardées (13b1, V5)
+            self._pattern.add_grid_note(self._cur_track, pad_idx, bar_idx, step_idx, vel)
 
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
@@ -86,15 +89,44 @@ class RecordingMixin:
         total_steps  = self._pattern._num_bars * self._pattern._num_steps
         ref          = self._measure_start if self._measure_start is not None else now
         float_offset = 0.0 if now < ref else self._position_at(now)    # 19d1
-        if self._quant_in_recording and self.quant_idx >= 0:
-            quant_size   = self._pattern.note_steps(Pattern.QUANT_STEPS[self.quant_idx])   # S6
-            float_offset = round(float_offset / quant_size) * quant_size % total_steps
+        res = self._record_quant_res()
+        if res >= 0:                     # réglages d'Alt+Shift+Q (Phase 8 étape 13d2)
+            float_offset = self._qm.snap_position(
+                float_offset, res, self._rq_force_idx, self._rq_swing_idx,
+                self._rq_window_idx, self._rq_direction_idx) % total_steps
         if round(float_offset) >= total_steps:
             float_offset = 0.0
         step     = round(float_offset) % total_steps
         bar_idx  = step // self._pattern._num_steps
         step_idx = step % self._pattern._num_steps
         return float_offset, bar_idx, step_idx
+
+    def _record_quant_res(self):
+        """Résolution de la quantisation à l'enregistrement (13d2) : -1 si la
+        case est décochée ou s'il n'y a pas de résolution."""
+        if not self._quant_in_recording:
+            return -1
+        res = getattr(self, "_rq_res_idx", -3)
+        if res == -3:                                # Quant courante
+            return self.quant_idx
+        if res == -2:                                # grille courante
+            _, kind, val = Pattern.GRID_RESOLUTIONS[self._grid_idx]
+            return Pattern.QUANT_STEPS.index(val) \
+                if kind == "snaps" and val in Pattern.QUANT_STEPS else -1
+        return res
+
+    def _rec_velocity(self, velocity):
+        """Vélocité enregistrée : celle de « Quantiser la vélocité »
+        d'Alt+Shift+Q si cochée (avec « Quantiser à l'enregistrement »),
+        sinon la frappe (13d2)."""
+        if self._quant_in_recording and getattr(self, "_rq_velocity", False):
+            return max(1, min(127, int(self._rq_velocity_value)))
+        return max(1, min(127, int(velocity)))
+
+    def _rec_dedupe(self):
+        """« Enlever les doublons » à l'enregistrement (13d2, cochée par
+        défaut) : la frappe remplace la note de même hauteur au même temps."""
+        return self._quant_in_recording and getattr(self, "_rq_dedupe", False)
 
     def _compute_float_offset(self):
         """Position d'enregistrement brute (en pas, flottante) pour les
@@ -117,11 +149,13 @@ class RecordingMixin:
 
     def record_hit(self, pad_idx, velocity=100, channel=0):
         float_offset, bar_idx, step_idx = self._compute_record_offset()
-        vel = max(1, min(127, int(velocity)))
-        # overdub comme Sonar : la frappe est ajoutée, même s'il y a déjà une
-        # note sur la case (Phase 8 étape 13b1, § 13a V5)
-        self._pattern.add_grid_note(self._cur_track, pad_idx, bar_idx, step_idx, vel,
-                                    channel=channel)
+        vel = self._rec_velocity(velocity)                      # 13d2
+        if self._rec_dedupe():           # doublons enlevés à l'enregistrement (13d2)
+            self._pattern.set_cell(self._cur_track, pad_idx, bar_idx, step_idx, vel,
+                                   channel=channel)
+        else:                            # overdub comme Sonar (13b1, § 13a V5)
+            self._pattern.add_grid_note(self._cur_track, pad_idx, bar_idx, step_idx, vel,
+                                        channel=channel)
         if not any(abs(f - float_offset) < 0.5 for f in self.float_offsets[pad_idx]):
             self.float_offsets[pad_idx].append(float_offset)
             self.float_offsets[pad_idx].sort()
@@ -143,7 +177,7 @@ class RecordingMixin:
         """
         float_offset, bar_idx, step_idx = self._compute_record_offset()
         now = time.perf_counter()
-        vel = max(1, min(127, int(velocity)))
+        vel = self._rec_velocity(velocity)                      # 13d2
         dur = 0 if duration_ms is None else max(0, int(duration_ms))
         track = self._cur_track
         time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
@@ -153,8 +187,10 @@ class RecordingMixin:
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
             self._pattern._chase_bend(track, time_val, bend, channel)
-            # overdub comme Sonar : toujours ajoutée, plus de remplacement de
-            # la note au même temps (Phase 8 étape 13b1, § 13a V5)
+            # overdub comme Sonar : ajoutée (13b1, § 13a V5) ; doublon remplacé
+            # si « Enlever les doublons » d'Alt+Shift+Q est cochée (13d2)
+            if self._rec_dedupe():
+                self._drop_same_note(track, ETYPE_PATCH, midi_note, channel, time_val)
             self._pattern._tape[track].append(new_ev)
         if duration_ms is None:
             # Suivi par id (pas par index) : robuste si d'autres événements de
@@ -167,6 +203,14 @@ class RecordingMixin:
         bend_log(f"REC note_on  note={midi_note} vel={vel} dur={dur} bend={bend} "
                   f"→ bar={bar_idx} step={step_idx} track={self._cur_track}")
         return bar_idx, step_idx
+
+    def _drop_same_note(self, track, etype, note, channel, time_val):
+        """Retire de la piste les notes etype de même hauteur, même canal et
+        même temps (doublons à l'enregistrement, 13d2) ; verrou déjà pris."""
+        events = self._pattern._tape[track]
+        events[:] = [ev for ev in events
+                     if not (ev.etype == etype and ev.time == time_val
+                             and ev.channel == channel and ev.payload.get("note") == note)]
 
     def record_patch_note_off(self, midi_note):
         """Finalise la durée d'une note patch dans _tape après le note_off MIDI."""
@@ -218,11 +262,13 @@ class RecordingMixin:
         même si la même note est déjà au même temps (avant : ignorée, la
         nouvelle vélocité était perdue) ; la quantisation enlève les doublons."""
         _, bar_idx, step_idx = self._compute_record_offset()
-        vel = max(1, min(127, int(velocity)))
+        vel = self._rec_velocity(velocity)                      # 13d2
         track = self._cur_track
         time_val = self._pattern._bar_step_to_time(bar_idx, step_idx)
         with self._pattern._lock:
             self._pattern._ensure_track_count(track + 1)
+            if self._rec_dedupe():                               # 13d2
+                self._drop_same_note(track, ETYPE_KIT, midi_note, channel, time_val)
             self._pattern._tape[track].append(
                 TapeEvent(ETYPE_KIT, channel=channel,
                           payload={"note": midi_note, "vel": vel}, time=time_val))

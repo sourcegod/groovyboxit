@@ -131,7 +131,12 @@ class GridDialog(wx.Dialog):
 class QuantizeDialog(wx.Dialog):
     """Boîte de quantisation du pattern : résolution, force, swing, fenêtre,
     débuts / durées ; « Enlever les doublons » et « Quantiser la vélocité »
-    avec sa liste (Phase 8 étape 13d1, docs/DESIGN.md § 13a V7, V8)."""
+    avec sa liste (Phase 8 étape 13d1, docs/DESIGN.md § 13a V7, V8).
+    record=True (Phase 8 étape 13d2, Alt+Shift+Q) : « Quantisation à
+    l'enregistrement » — case « Quantiser à l'enregistrement » en tête,
+    résolution « Quant courante » / « Grille courante » / QUANT_LIST, ni
+    débuts / durées ni Appliquer : Ok mémorise seulement, aucune note
+    existante n'est touchée."""
 
     VELOCITIES = (127, 120, 110, 100, 90, 80, 70, 64, 50, 40, 30, 20, 10)
     _VELOCITY_LABELS = [f"Vélocité: {v}" for v in VELOCITIES]
@@ -146,15 +151,26 @@ class QuantizeDialog(wx.Dialog):
     def __init__(self, parent, res_idx=-1, force_idx=4, swing_idx=0,
                  window_idx=4, quant_starts=True, quant_durations=False,
                  direction_idx=0, remove_duplicates=True, quant_velocity=False,
-                 velocity_value=100):
-        super().__init__(parent, title="Quantisation")
+                 velocity_value=100, record=False, enabled=True):
+        super().__init__(parent, title="Quantisation à l'enregistrement" if record
+                         else "Quantisation")
+        self._record = record
 
-        res_choices = (["Résolution: Grille courante", "Résolution: Aucune"]
-                       + [f"Résolution: {q}" for q in Pattern.QUANT_LIST])
+        self._enabled_cb = None
+        if record:
+            self._enabled_cb = wx.CheckBox(self, label="Quantiser à l'enregistrement")
+            self._enabled_cb.SetValue(enabled)
+            first = ["Résolution: Quant courante", "Résolution: Grille courante"]
+            self._res_values = [-3, -2]
+        else:
+            first = ["Résolution: Grille courante", "Résolution: Aucune"]
+            self._res_values = [-2, -1]
+        self._res_values += list(range(len(Pattern.QUANT_LIST)))
+        res_choices = first + [f"Résolution: {q}" for q in Pattern.QUANT_LIST]
 
         self._res_lb   = wx.ListBox(self, choices=res_choices, style=wx.LB_SINGLE, size=(-1, 130))
-        lb_sel = res_idx + self._RES_OFFSET if res_idx >= -1 else 0
-        self._res_lb.SetSelection(max(0, lb_sel))
+        self._res_lb.SetSelection(self._res_values.index(res_idx)
+                                  if res_idx in self._res_values else 0)
 
         self._force_lb  = wx.ListBox(self, choices=self._FORCE_LABELS, style=wx.LB_SINGLE)
         self._force_lb.SetSelection(max(0, min(force_idx, len(self._FORCE_LABELS) - 1)))
@@ -168,10 +184,12 @@ class QuantizeDialog(wx.Dialog):
         self._direction_lb = wx.ListBox(self, choices=Pattern.QUANT_DIRECTIONS, style=wx.LB_SINGLE)
         self._direction_lb.SetSelection(max(0, min(direction_idx, len(Pattern.QUANT_DIRECTIONS) - 1)))
 
-        self._starts_cb    = wx.CheckBox(self, label="Quantiser les débuts")
-        self._durations_cb = wx.CheckBox(self, label="Quantiser les durées")
-        self._starts_cb.SetValue(quant_starts)
-        self._durations_cb.SetValue(quant_durations)
+        self._starts_cb = self._durations_cb = None
+        if not record:                   # à l'enregistrement : la frappe, sans durée
+            self._starts_cb    = wx.CheckBox(self, label="Quantiser les débuts")
+            self._durations_cb = wx.CheckBox(self, label="Quantiser les durées")
+            self._starts_cb.SetValue(quant_starts)
+            self._durations_cb.SetValue(quant_durations)
 
         # 13d1 (V7, V8) : doublons (cochée par défaut), vélocité et sa liste
         self._dedupe_cb   = wx.CheckBox(self, label="Enlever les doublons")
@@ -187,23 +205,26 @@ class QuantizeDialog(wx.Dialog):
                                lambda e: self._velocity_lb.Enable(self._velocity_cb.GetValue()))
 
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
-        apply_btn  = wx.Button(self, wx.ID_APPLY,  "Appliquer")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
         ok_btn.SetDefault()
-        apply_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_APPLY))
-
         btn_sizer = wx.StdDialogButtonSizer()
         btn_sizer.AddButton(ok_btn)
-        btn_sizer.AddButton(apply_btn)
+        if not record:                   # Appliquer quantise : pas à l'enregistrement
+            apply_btn = wx.Button(self, wx.ID_APPLY, "Appliquer")
+            apply_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_APPLY))
+            btn_sizer.AddButton(apply_btn)
         btn_sizer.AddButton(cancel_btn)
         btn_sizer.Realize()
 
         vbox = wx.BoxSizer(wx.VERTICAL)
+        if self._enabled_cb is not None:
+            vbox.Add(self._enabled_cb, 0, wx.ALL, 6)
         for lb in (self._res_lb, self._force_lb, self._swing_lb, self._window_lb,
                    self._direction_lb):
             vbox.Add(lb, 0, wx.EXPAND | wx.ALL, 6)
-        vbox.Add(self._starts_cb,    0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-        vbox.Add(self._durations_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        for cb in (self._starts_cb, self._durations_cb):
+            if cb is not None:
+                vbox.Add(cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._dedupe_cb,    0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._velocity_cb,  0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._velocity_lb,  0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
@@ -213,11 +234,16 @@ class QuantizeDialog(wx.Dialog):
         self._res_lb.SetFocus()
 
     def get_resolution(self):
-        """Retourne -2 (Grille courante), -1 (Aucune) ou 0..13 (QUANT_LIST)."""
+        """Retourne -2 (Grille courante), -1 (Aucune) ou 0..13 (QUANT_LIST) ;
+        à l'enregistrement, -3 (Quant courante), -2 ou 0..13."""
         sel = self._res_lb.GetSelection()
         if sel == wx.NOT_FOUND:
             return -1
-        return sel - self._RES_OFFSET
+        return self._res_values[sel]
+
+    def get_enabled(self):
+        """Case « Quantiser à l'enregistrement » (True hors enregistrement)."""
+        return self._enabled_cb.GetValue() if self._enabled_cb is not None else True
 
     def get_force_idx(self):
         sel = self._force_lb.GetSelection()
@@ -232,10 +258,10 @@ class QuantizeDialog(wx.Dialog):
         return sel if sel != wx.NOT_FOUND else 3
 
     def get_quant_starts(self):
-        return self._starts_cb.GetValue()
+        return self._starts_cb.GetValue() if self._starts_cb is not None else True
 
     def get_quant_durations(self):
-        return self._durations_cb.GetValue()
+        return self._durations_cb.GetValue() if self._durations_cb is not None else False
 
     def get_direction_idx(self):
         sel = self._direction_lb.GetSelection()

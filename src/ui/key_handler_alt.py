@@ -95,6 +95,9 @@ class AltHandler:
         if not ctrl and shift and (ukey in (ord('i'), ord('I')) or key == ord('I')):
             win._import_midi()          # Alt+Shift+I : import MIDI (Phase 7 étape 18d1)
             return True
+        if not ctrl and shift and (ukey in (ord('q'), ord('Q')) or key == ord('Q')):
+            win._record_quantize_dialog()   # Alt+Shift+Q : à l'enregistrement (13d2)
+            return True
         if not ctrl and shift and (ukey in (ord('t'), ord('T')) or key == ord('T')):
             win._tempo_dialog()         # Alt+Shift+T : tempos (Phase 7 étape 19f1)
             return True

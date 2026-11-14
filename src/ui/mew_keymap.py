@@ -328,6 +328,12 @@ class KeymapMixin:
             self._quantize_from_grid()
             return
 
+        # Alt+Shift+Q : quantisation à l'enregistrement (Phase 8 étape 13d2),
+        # avant Shift+Q ; le dialogue s'ouvre sur l'éditeur
+        if not ctrl and shift and alt and (ukey == ord('q') or ukey == ord('Q')):
+            self._parent._record_quantize_dialog(parent=self, status=self._set_status)
+            return
+
         # Shift+Q : quantiser avec les derniers paramètres (sans dialog)
         if not ctrl and shift and (ukey == ord('q') or ukey == ord('Q')):
             self._quantize_with_last_params()

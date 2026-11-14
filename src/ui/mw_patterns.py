@@ -356,6 +356,56 @@ class PatternMixin:
             self._show_status(f"Grille : {label}")
         dlg.Destroy()
 
+    def _record_quantize_dialog(self, parent=None, status=None):
+        """Alt+Shift+Q (Phase 8 étape 13d2) : réglages de la quantisation à
+        l'enregistrement — même dialogue que Ctrl+Shift+Q en mode
+        « enregistrement » : Ok mémorise, aucune note existante n'est
+        touchée. Undo (demande de l'essai de 13d2) : posé avant le dialogue,
+        retiré si Annuler ou rien de changé ; les réglages font partie de
+        l'état gardé par l'Undo (quant_params « record »)."""
+        p   = self._player
+        say = status or self._show_status
+        keys = ("_quant_in_recording", "_rq_res_idx", "_rq_force_idx", "_rq_swing_idx",
+                "_rq_window_idx", "_rq_direction_idx", "_rq_dedupe", "_rq_velocity",
+                "_rq_velocity_value")
+        before = tuple(getattr(p, k) for k in keys)
+        self._add_undo("Quantisation à l'enregistrement")
+        dlg = QuantizeDialog(parent or self, record=True, enabled=p._quant_in_recording,
+                             res_idx=p._rq_res_idx, force_idx=p._rq_force_idx,
+                             swing_idx=p._rq_swing_idx, window_idx=p._rq_window_idx,
+                             direction_idx=p._rq_direction_idx,
+                             remove_duplicates=p._rq_dedupe,
+                             quant_velocity=p._rq_velocity,
+                             velocity_value=p._rq_velocity_value)
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                self._pop_last_undo()
+                say("Quantisation à l'enregistrement : inchangée")
+                return
+            p._quant_in_recording = dlg.get_enabled()
+            p._rq_res_idx         = dlg.get_resolution()
+            p._rq_force_idx       = dlg.get_force_idx()
+            p._rq_swing_idx       = dlg.get_swing_idx()
+            p._rq_window_idx      = dlg.get_window_idx()
+            p._rq_direction_idx   = dlg.get_direction_idx()
+            p._rq_dedupe          = dlg.get_remove_duplicates()
+            p._rq_velocity        = dlg.get_quant_velocity()
+            p._rq_velocity_value  = dlg.get_velocity_value()
+        finally:
+            dlg.Destroy()
+        if tuple(getattr(p, k) for k in keys) == before:
+            self._pop_last_undo()
+            say("Quantisation à l'enregistrement : inchangée")
+            return
+        if not p._quant_in_recording:
+            say("Quantisation à l'enregistrement : désactivée")
+            return
+        res = p._record_quant_res()
+        label = Pattern.QUANT_LIST[res] if res >= 0 else "aucune résolution"
+        say(f"Quantisation à l'enregistrement : {label}"
+            + (", doublons enlevés" if p._rq_dedupe else "")
+            + (f", vélocité {p._rq_velocity_value}" if p._rq_velocity else ""))
+
     def _quantize_pattern_dialog(self):
         p        = self._player
         old_snap = (p._quant_res_idx, p._quant_force_idx, p._quant_swing_idx,

@@ -55,6 +55,37 @@ class QuantizeManager:
         p._pattern.set_grid_row(p._cur_track, row, 0, row_vals)
         p.float_offsets[row] = sorted(grid)
 
+    def snap_position(self, pos, quant_idx, force_idx=4, swing_idx=0, window_idx=4,
+                      direction_idx=0):
+        """Position pos (en pas) quantisée comme apply_quant_to_pattern le fait
+        pour les débuts de notes — grille de la résolution, swing, fenêtre,
+        force, direction —, sans arrondi au pas (Phase 8 étape 13d2 : même
+        règle à l'enregistrement)."""
+        p = self._p
+        _PCT       = [0, 25, 50, 75, 100]
+        force_pct  = _PCT[min(force_idx,  4)]
+        swing_pct  = _PCT[min(swing_idx,  4)]
+        window_pct = _PCT[min(window_idx, 4)]
+        step_size  = p._pattern.note_steps(Pattern.QUANT_STEPS[quant_idx])
+        total      = p._pattern._num_bars * p._pattern._num_steps
+        swing_shift = swing_pct / 100.0 * step_size / 2.0
+        grid = [i * step_size + (swing_shift if i % 2 == 1 else 0.0)
+                for i in range(int(-(-total // step_size)) + 1) if i * step_size < total]
+        grid.append(float(total))                    # fin de boucle : retour au début
+        if direction_idx == 1:
+            cands = [g for g in grid if g <= pos]
+            ng = cands[-1] if cands else grid[0]
+        elif direction_idx == 2:
+            cands = [g for g in grid if g >= pos]
+            ng = cands[0] if cands else grid[-1]
+        else:
+            ng = min(grid, key=lambda g: abs(g - pos))
+        if window_pct < 100 and abs(pos - ng) > window_pct / 100.0 * step_size / 2.0:
+            return pos
+        if force_pct >= 100:
+            return ng
+        return pos + (ng - pos) * force_pct / 100.0
+
     def apply_quant_to_pattern(self, quant_idx=None, force_idx=4, swing_idx=0,
                                window_idx=4, quant_starts=True, quant_durations=False,
                                direction_idx=0, remove_duplicates=False, velocity=None):

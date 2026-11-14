@@ -89,6 +89,18 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._count_in            = 0     # mesures de count-in restantes avant Rec
         self._on_count_in_done_cb = None  # callback() quand le count-in est écoulé
         self._quant_in_recording  = True  # caler les hits enregistrés sur la grille de quantize
+        # Quantisation à l'enregistrement (Phase 8 étape 13d2, Alt+Shift+Q) :
+        # _quant_in_recording = la case « Quantiser à l'enregistrement » ;
+        # résolution -3 = Quant courante (liste de la fenêtre), -2 = grille
+        # courante, 0..13 = QUANT_LIST ; mêmes réglages que la quantisation
+        self._rq_res_idx       = -3
+        self._rq_force_idx     = 4
+        self._rq_swing_idx     = 0
+        self._rq_window_idx    = 4
+        self._rq_direction_idx = 0
+        self._rq_velocity      = False
+        self._rq_velocity_value = 100
+        self._rq_dedupe        = True
         self._resume_offset          = None  # float (pas) pour reprendre depuis une pause ; None = début
         self._count_in_resume_offset = None  # position de départ après count-in
         self._last_nav_time       = 0.0   # timestamp du dernier navigate_bar (fenêtre 100 ms)

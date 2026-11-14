@@ -57,8 +57,15 @@ Ctrl+Shift+Q     Choisir la quant et appliquer au pattern
                  défaut) : parmi les notes de même hauteur au même temps, la dernière
                  jouée reste. « Quantiser la vélocité » : toutes les notes prennent la
                  vélocité choisie dans la liste (100 par défaut)
-Overdub (R)      Toutes les frappes sont gardées, même au même temps ; la
-                 quantisation enlève les doublons
+Alt+Shift+Q      Quantisation à l'enregistrement (fenêtre principale, éditeur MIDI) :
+                 case « Quantiser à l'enregistrement » (cochée par défaut), résolution
+                 (Quant courante, Grille courante ou une valeur), force, swing,
+                 fenêtre, direction, « Enlever les doublons » (cochée par défaut : la
+                 nouvelle frappe remplace la note de même hauteur au même temps),
+                 « Quantiser la vélocité » ; Ok mémorise, sans toucher aux notes
+Overdub (R)      Sans « Enlever les doublons » à l'enregistrement (Alt+Shift+Q),
+                 toutes les frappes sont gardées, même au même temps ; la
+                 quantisation (Ctrl+Shift+Q) les enlève ensuite
 
 --- Lecture ---
 Espace / P       Play / Pause pattern (reprend depuis la position pausée)
