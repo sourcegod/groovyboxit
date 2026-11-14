@@ -169,13 +169,14 @@ class QuantizeManager:
                     continue
                 new_time = ev.time
                 if quant_starts:
+                    # hors de la fenêtre : la note reste où elle est, mais sur
+                    # le pas le plus proche, comme toute note quantisée (13d3)
                     pos = ev.time
                     ng  = _find_target(pos, full_grid)
-                    if _in_window(pos, ng):
-                        new_pos = _snap(pos, ng)
-                        n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
-                        n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
-                        new_time = pattern._bar_step_to_time(n_bar, n_step)
+                    new_pos = _snap(pos, ng) if _in_window(pos, ng) else pos
+                    n_bar   = max(0, min(int(new_pos // num_steps), num_bars - 1))
+                    n_step  = max(0, min(int(round(new_pos % num_steps)), num_steps - 1))
+                    new_time = pattern._bar_step_to_time(n_bar, n_step)
                 n_dur = ev.dur
                 if quant_durations and ev.dur > 0:
                     # ms par pas au tempo en vigueur sur la note (19d1, T5)

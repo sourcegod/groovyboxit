@@ -1024,6 +1024,48 @@ class ProjectMixin:
         except OSError:
             pass
 
+    # Réglages de quantisation gardés par l'Undo (état « quant_params »)
+    RECORD_QUANT_KEYS = ("_quant_in_recording", "_rq_res_idx", "_rq_force_idx",
+                         "_rq_swing_idx", "_rq_window_idx", "_rq_direction_idx",
+                         "_rq_dedupe", "_rq_velocity", "_rq_velocity_value")   # 13d2
+
+    def _quant_params(self):
+        """Réglages du dialogue Quantisation (Ctrl+Shift+Q) et de la
+        quantisation à l'enregistrement (Alt+Shift+Q, clé « record »)."""
+        p = self._player
+        return {
+            "res_idx":        p._quant_res_idx,
+            "force_idx":      p._quant_force_idx,
+            "swing_idx":      p._quant_swing_idx,
+            "window_idx":     p._quant_window_idx,
+            "quant_starts":   p._quant_starts,
+            "quant_durations":p._quant_durations,
+            "dedupe":         p._quant_dedupe,               # 13d1
+            "velocity":       p._quant_velocity,
+            "velocity_value": p._quant_velocity_value,
+            "record": {k: getattr(p, k) for k in self.RECORD_QUANT_KEYS},   # 13d2
+            "grid_idx":       p._grid_idx,
+        }
+
+    def _restore_quant_params(self, qp):
+        """Inverse de _quant_params ; clés absentes → valeurs par défaut,
+        clés inconnues de « record » ignorées."""
+        from pattern import Pattern
+        p = self._player
+        p._quant_res_idx     = qp.get("res_idx",        -1)
+        p._quant_force_idx   = qp.get("force_idx",       4)
+        p._quant_swing_idx   = qp.get("swing_idx",       0)
+        p._quant_window_idx  = qp.get("window_idx",      4)
+        p._quant_starts      = qp.get("quant_starts",    True)
+        p._quant_durations   = qp.get("quant_durations", False)
+        p._quant_dedupe      = qp.get("dedupe",          True)    # 13d1
+        p._quant_velocity    = qp.get("velocity",        False)
+        p._quant_velocity_value = qp.get("velocity_value", 100)
+        for k, v in (qp.get("record") or {}).items():          # 13d2
+            if k in self.RECORD_QUANT_KEYS:
+                setattr(p, k, v)
+        p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
+
     def _relocate_rack_files(self):
         """Soundfonts et sources SFZ absolues introuvables du projet chargé :
         cherchées dans les nouveaux dossiers (Phase 8 étape 10b1, docs/DESIGN.md
@@ -1300,22 +1342,7 @@ class ProjectMixin:
             "songs":           [s.to_dict() for s in self._song_list],
             "rack":            self._rack.to_dict(),
             "clipboard":       self._clipboard_to_dict(),
-            "quant_params": {
-                "res_idx":        p._quant_res_idx,
-                "force_idx":      p._quant_force_idx,
-                "swing_idx":      p._quant_swing_idx,
-                "window_idx":     p._quant_window_idx,
-                "quant_starts":   p._quant_starts,
-                "quant_durations":p._quant_durations,
-                "dedupe":         p._quant_dedupe,               # 13d1
-                "velocity":       p._quant_velocity,
-                "velocity_value": p._quant_velocity_value,
-                "record": {k: getattr(p, k) for k in (           # 13d2
-                    "_quant_in_recording", "_rq_res_idx", "_rq_force_idx",
-                    "_rq_swing_idx", "_rq_window_idx", "_rq_direction_idx",
-                    "_rq_dedupe", "_rq_velocity", "_rq_velocity_value")},
-                "grid_idx":       p._grid_idx,
-            },
+            "quant_params": self._quant_params(),
             "event_filter_params": p._event_filter_state,
             "master":              self._master_dict(),      # 15d1 D2
         }
@@ -1474,21 +1501,7 @@ class ProjectMixin:
         self._player._compute_offsets()
         qp = state.get("quant_params", {})
         if qp:
-            from pattern import Pattern
-            p = self._player
-            p._quant_res_idx     = qp.get("res_idx",        -1)
-            p._quant_force_idx   = qp.get("force_idx",       4)
-            p._quant_swing_idx   = qp.get("swing_idx",       0)
-            p._quant_window_idx  = qp.get("window_idx",      4)
-            p._quant_starts      = qp.get("quant_starts",    True)
-            p._quant_durations   = qp.get("quant_durations", False)
-            p._quant_dedupe      = qp.get("dedupe",          True)    # 13d1
-            p._quant_velocity    = qp.get("velocity",        False)
-            p._quant_velocity_value = qp.get("velocity_value", 100)
-            for k, v in (qp.get("record") or {}).items():          # 13d2
-                if hasattr(p, k):
-                    setattr(p, k, v)
-            p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
+            self._restore_quant_params(qp)
         self._player._event_filter_state = state.get("event_filter_params")
         # Slot joué rétabli s'il a changé (Undo de Ctrl+T, Phase 8 étape
         # 5d5) : préécoute ou kit rechargés ; sinon rien, pour ne pas

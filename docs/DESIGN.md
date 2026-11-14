@@ -13204,3 +13204,18 @@ l'**Undo** du dialogue — ajouté avant le commit : étape « Quantisation à
 l'enregistrement » posée avant le dialogue, retirée si Annuler ou rien
 de changé ; l'Undo d'un changement remet les réglages d'avant (ils sont
 dans l'état gardé, `quant_params` « record »).
+
+## Phase 8 étape 13d3 — Correctifs trouvés par les tests de 13e1
+
+- **Arrondi au pas hors de la fenêtre** : avec « Quantiser les débuts »,
+  une note hors de la fenêtre de capture gardait sa position exacte
+  (1,5 pas) depuis la réécriture de 13d1 ; elle est de nouveau posée sur
+  le pas le plus proche (2), comme toute note quantisée (comportement
+  d'avant 13d1 pour la grille).
+- **`_quant_params` / `_restore_quant_params`** (`mw_project`) : la
+  sauvegarde et la restauration des réglages de quantisation dans l'état
+  de l'Undo sortent de `_capture_state` / `_restore_state` (testables par
+  le vrai chemin) ; les clés « record » inconnues sont ignorées
+  (`RECORD_QUANT_KEYS`).
+
+**Essai 13d3** (utilisateur, 2026-11-14) : concluant.
