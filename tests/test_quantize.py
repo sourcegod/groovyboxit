@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from unittest.mock import patch
 from player.drum_player import DrumPlayer
-from pattern import Pattern
+from pattern import Pattern, TapeEvent as _TE, ETYPE_GRID as _GRID
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,15 @@ def make_player():
     player.bpm           = 120
     player.step_duration = 60.0 / 120 / 4   # 0.125 s/pas
     return player
+
+def _note_at(player, *times, pad=0, vel=100):
+    """Notes de grille du pad sur la piste 0, à des positions (en pas)
+    éventuellement fractionnaires : depuis la Phase 8 étape 13d1 (V6), la
+    grille est quantisée à partir de ses notes, plus de float_offsets."""
+    for t in times:
+        player._pattern._tape[0].append(
+            _TE(_GRID, payload={"pad": pad, "vel": vel}, time=float(t)))
+
 
 def active_steps(player, pad_idx, bar=0):
     return [
@@ -96,7 +105,7 @@ def test_quant_row_updates_float_offsets():
 def test_quant_pattern_snaps_2_6_to_1_4_grid():
     # grille 1/4 (0,4,8,12) : le plus proche de 2.6 est 4
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4))
     steps = active_steps(player, 0)
     assert 4 in steps and 2 not in steps and 3 not in steps
@@ -105,7 +114,7 @@ def test_quant_pattern_snaps_2_6_to_1_4_grid():
 def test_quant_pattern_snaps_3_4_to_1_8_grid():
     # grille 1/8 (0,2,4,…) : le plus proche de 3.4 est 4
     player = make_player()
-    player.float_offsets[0] = [3.4]
+    _note_at(player, 3.4)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(8))
     steps = active_steps(player, 0)
     assert 4 in steps and 3 not in steps
@@ -114,7 +123,7 @@ def test_quant_pattern_snaps_3_4_to_1_8_grid():
 def test_quant_pattern_clears_old_steps_before_snap():
     player = make_player()
     player._pattern.set_cell(0, 0, 0, 3, 100)
-    player.float_offsets[0] = [3.4]
+    _note_at(player, 3.4)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(8))
     assert not player._pattern.get_cell(0, 0, 0, 3)
     print("  quant_pattern efface les pas existants avant snap : OK")
@@ -141,7 +150,7 @@ def test_quant_pattern_snap_in_second_bar():
         [[] for _ in range(player._pattern._num_pads)]
         for _ in range(player._pattern._num_tracks)
     ]
-    player.float_offsets[0] = [18.4]
+    _note_at(player, 18.4)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4))
     assert player._pattern.get_cell(0, 0, 1, 4)
     print("  quant_pattern multi-bar : 18.4 → bar 1, step 4 : OK")
@@ -322,7 +331,7 @@ def test_player_default_quant_params():
 
 def test_quant_force_0_leaves_note_in_place():
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), force_idx=0)
     steps = active_steps(player, 0)
     assert 3 in steps and 4 not in steps
@@ -331,7 +340,7 @@ def test_quant_force_0_leaves_note_in_place():
 def test_quant_force_50_partial_snap():
     # 2.6+(4-2.6)*0.5=3.3 → round=3 (toujours en-dessous de 3.5)
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), force_idx=2)
     steps = active_steps(player, 0)
     assert 3 in steps and 4 not in steps
@@ -340,7 +349,7 @@ def test_quant_force_50_partial_snap():
 def test_quant_force_75_snaps_close_enough():
     # 2.6+(4-2.6)*0.75=3.65 → round=4
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), force_idx=3)
     steps = active_steps(player, 0)
     assert 4 in steps and 3 not in steps
@@ -349,7 +358,7 @@ def test_quant_force_75_snaps_close_enough():
 def test_quant_force_100_regression():
     # Régression : comportement original inchangé
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), force_idx=4)
     steps = active_steps(player, 0)
     assert 4 in steps and 2 not in steps and 3 not in steps
@@ -368,7 +377,7 @@ def test_quant_force_100_regression():
 def test_quant_swing_0_no_shift():
     # Sans swing : full_grid=[0,4,8,12], pos=5 → nearest=4
     player = make_player()
-    player.float_offsets[0] = [5.0]
+    _note_at(player, 5.0)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), swing_idx=0)
     assert 4 in active_steps(player, 0)
     print("  swing 0 %  : pos 5 → step 4 (aucun décalage) : OK")
@@ -376,7 +385,7 @@ def test_quant_swing_0_no_shift():
 def test_quant_swing_100_shifts_odd_grid_point():
     # Avec swing=100% : full_grid=[0,6,8,14], pos=5 → nearest=6 → step 6
     player = make_player()
-    player.float_offsets[0] = [5.0]
+    _note_at(player, 5.0)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), swing_idx=4)
     assert 6 in active_steps(player, 0)
     assert 4 not in active_steps(player, 0)
@@ -386,7 +395,7 @@ def test_quant_swing_100_even_grid_point_unaffected():
     # Point pair (i=0, i=2…) ne bouge pas même avec swing maximal
     # pos=0.2, nearest=0 avec ou sans swing
     player = make_player()
-    player.float_offsets[0] = [0.2]
+    _note_at(player, 0.2)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), swing_idx=4)
     assert 0 in active_steps(player, 0)
     print("  swing 100% : pos 0.2 → step 0 (point pair non affecté) : OK")
@@ -405,7 +414,7 @@ def test_quant_swing_100_even_grid_point_unaffected():
 def test_quant_window_100_quantizes_all():
     # pos=1.5, nearest=0, dist=1.5 ≤ seuil=2.0 → snap vers 0
     player = make_player()
-    player.float_offsets[0] = [1.5]
+    _note_at(player, 1.5)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), window_idx=4)
     assert 0 in active_steps(player, 0)
     print("  fenêtre 100% : pos 1.5 → step 0 (dans la fenêtre) : OK")
@@ -413,7 +422,7 @@ def test_quant_window_100_quantizes_all():
 def test_quant_window_50_leaves_far_note():
     # pos=1.5, nearest=0, dist=1.5 > seuil=1.0 → non quantisé → round(1.5)=2
     player = make_player()
-    player.float_offsets[0] = [1.5]
+    _note_at(player, 1.5)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), window_idx=2)
     steps = active_steps(player, 0)
     assert 2 in steps and 0 not in steps
@@ -422,7 +431,7 @@ def test_quant_window_50_leaves_far_note():
 def test_quant_window_50_quantizes_close_note():
     # pos=3.5, nearest=4, dist=0.5 ≤ seuil=1.0 → snap vers 4
     player = make_player()
-    player.float_offsets[0] = [3.5]
+    _note_at(player, 3.5)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), window_idx=2)
     assert 4 in active_steps(player, 0)
     print("  fenêtre 50 % : pos 3.5 (proche) → step 4 (quantisé) : OK")
@@ -430,7 +439,7 @@ def test_quant_window_50_quantizes_close_note():
 def test_quant_window_0_leaves_off_grid_note():
     # pos=1.0, nearest=0, dist=1.0 > seuil=0.0 → non quantisé → step 1
     player = make_player()
-    player.float_offsets[0] = [1.0]
+    _note_at(player, 1.0)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4), window_idx=0)
     steps = active_steps(player, 0)
     assert 1 in steps and 0 not in steps
@@ -574,7 +583,7 @@ def test_quant_tape_window_50_quantizes_close_note():
 def test_quant_direction_proche_snaps_to_nearest():
     # pos=2.6, nearest=4 (dist 1.4 < dist à 0=2.6) → step 4
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    force_idx=4, direction_idx=0)
     assert 4 in active_steps(player, 0)
@@ -583,7 +592,7 @@ def test_quant_direction_proche_snaps_to_nearest():
 def test_quant_direction_precedente_snaps_backward():
     # pos=2.6, précédent ≤ 2.6 → 0 → step 0
     player = make_player()
-    player.float_offsets[0] = [2.6]
+    _note_at(player, 2.6)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    force_idx=4, direction_idx=1)
     steps = active_steps(player, 0)
@@ -593,7 +602,7 @@ def test_quant_direction_precedente_snaps_backward():
 def test_quant_direction_suivante_snaps_forward():
     # pos=1.0, suivant ≥ 1.0 → 4 → step 4
     player = make_player()
-    player.float_offsets[0] = [1.0]
+    _note_at(player, 1.0)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    force_idx=4, direction_idx=2)
     steps = active_steps(player, 0)
@@ -603,7 +612,7 @@ def test_quant_direction_suivante_snaps_forward():
 def test_quant_direction_precedente_note_on_grid():
     # pos=4.0 est déjà sur la grille → précédent=4.0 → step 4 inchangé
     player = make_player()
-    player.float_offsets[0] = [4.0]
+    _note_at(player, 4.0)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    force_idx=4, direction_idx=1)
     assert 4 in active_steps(player, 0)
@@ -612,7 +621,7 @@ def test_quant_direction_precedente_note_on_grid():
 def test_quant_direction_suivante_note_on_grid():
     # pos=4.0 est déjà sur la grille → suivant=4.0 → step 4 inchangé
     player = make_player()
-    player.float_offsets[0] = [4.0]
+    _note_at(player, 4.0)
     player.apply_quant_to_pattern(Pattern.QUANT_STEPS.index(4),
                                    force_idx=4, direction_idx=2)
     assert 4 in active_steps(player, 0)

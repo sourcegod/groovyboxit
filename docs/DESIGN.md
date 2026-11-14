@@ -13219,3 +13219,29 @@ dans l'état gardé, `quant_params` « record »).
   (`RECORD_QUANT_KEYS`).
 
 **Essai 13d3** (utilisateur, 2026-11-14) : concluant.
+
+### Avancement 13e1 (tests — quantisation)
+
+- **`tests/test_quantize.py`** : les 19 tests rouges de 13d1 posent de
+  vraies notes de grille aux positions fractionnaires (`_note_at`) au
+  lieu de `float_offsets` ; ils ont trouvé le premier correctif de 13d3.
+- **`tests/test_quantize_notes.py`** (nouveau, 50 tests) : toutes les
+  notes de la même façon (positions, vélocités, canal, durée, durée de la
+  grille, contrôleurs intacts, `float_offsets` recalculés, arrondi hors
+  fenêtre, rien à faire) ; doublons (la dernière jouée, autre pad / canal
+  / type gardés, décochée, sans déplacement, contrôleurs jamais) ;
+  vélocité (toutes les notes, bornée, seule) ; réglages retenus
+  (`quant_kwargs`, Ctrl+Q, Shift+Q, dialogue, aller-retour par l'état de
+  l'Undo, défauts et clés inconnues) ; dialogue (cases, liste grisée puis
+  active, valeurs données, résolutions, mode enregistrement : titre, case
+  de tête, Quant courante / Grille courante, ni débuts / durées ni
+  Appliquer) ; `snap_position` (force, fenêtre, direction, fin de boucle,
+  swing) ; résolution à l'enregistrement ; frappes (position, case
+  décochée, vélocité, doublons remplacés par la dernière, autre canal,
+  doublons gardés, Note Repeat) ; dialogue Alt+Shift+Q (ouverture,
+  réglages et annonce, désactivée, inchangé / Annuler → Undo retiré,
+  autre fenêtre) ; Alt+Shift+Q dans les deux fenêtres.
+- Mutations vérifiées (doublons : la première gardée au lieu de la
+  dernière ; position d'enregistrement sans les réglages) : chacune fait
+  échouer des tests.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 4281 verts.
