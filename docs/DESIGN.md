@@ -13245,3 +13245,53 @@ dans l'état gardé, `quant_params` « record »).
   dernière ; position d'enregistrement sans les réglages) : chacune fait
   échouer des tests.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 4281 verts.
+
+### Clôture de l'étape 13 (13f1)
+
+**Bilan** (Phase 8 étapes 13a à 13e1, 2026-11-13 / 14, 4281 tests
+verts) : **overdub comme Sonar** — toutes les frappes gardées, même
+traitement pour toutes les notes (le bug de l'essai de 12b1 : une note de
+kit au même temps était ignorée) ; **quantisation de toutes les notes de
+la même façon** à partir de leurs événements (vélocités de la grille
+gardées), « **Enlever les doublons** » (la dernière jouée) et
+« **Quantiser la vélocité** » ; **quantisation à l'enregistrement**
+(Alt+Shift+Q, dialogue à part, doublons cochés par défaut, Undo) ;
+métronome rétabli au retour de l'effacement.
+
+**Commits** : 13a (plan), 13b1 (enregistrement), 13b2 (métronome et
+effacement), 13c1 (tests), 13d1 (quantisation), 13d2 (avenant :
+quantisation à l'enregistrement), 13d3 (correctifs trouvés par les
+tests), 13e1 (tests), 13f1 (clôture).
+
+**Décisions de l'utilisateur** : V5 (même traitement pour toutes les
+notes, overdub comme Sonar), V6 (grille quantisée comme les autres), V7
+(doublons cochés par défaut, la dernière reste), V8 (vélocité quantisée,
+liste, 100) ; dialogue à part pour l'enregistrement (une case dans
+Ctrl+Shift+Q modifierait les notes), Alt+Shift+Q, doublons cochés par
+défaut, Undo ; métronome au retour de l'effacement.
+
+**Écarts et imprévus** :
+- 13b2 (métronome) et 13d2 (quantisation à l'enregistrement) demandés aux
+  essais ;
+- une note de grille enregistrée est quantisée depuis son pas (comme
+  KIT / PATCH) : la position brute que `float_offsets` gardait en mémoire
+  le temps de la session ne sert plus ;
+- « Quantiser la vélocité » décochée par défaut (proposition retenue à
+  l'essai) ;
+- par défaut (doublons cochés à l'enregistrement), une frappe au même
+  temps remplace la précédente avec sa vélocité ; l'overdub qui garde
+  tout s'obtient en décochant la case d'Alt+Shift+Q ;
+- 13d3 : arrondi au pas hors de la fenêtre, réglages de l'Undo testables.
+
+**Essais de l'utilisateur** : 13b1, 13b2, 13d1, 13d2, 13d3 : concluants.
+
+**`docs/SPECS.md`** : ligne Phase 8, Enregistrement (Overdub,
+Quantisation à l'enregistrement, Erase), QuantizeManager.
+**`docs/shortcuts.md`** (aide F1) : Quantisation, Alt+Shift+Q, Overdub.
+
+**Suites notées** : notes en temps flottant (positions brutes gardées à
+l'enregistrement et au fichier, chantier « temps flottant » déjà noté) ;
+SpeechAccess ; sortie / entrée audio par piste ; plusieurs pistes en
+direct ; écho du jeu en direct vers le port externe ; essai
+multi-cartes ; Ctrl+Z des Préférences ; audition dans l'Explorateur ;
+source SFZ à un seul programme.

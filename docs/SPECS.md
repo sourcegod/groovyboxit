@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) | en cours |
 
 ---
 
@@ -1011,7 +1011,12 @@ Résolution par défaut : 1/16 (index 10). Modifiable via GridDialog (Ctrl+Shift
 
 ## QuantizeManager — quantisation avancée
 
-`apply_quant_to_pattern(quant_idx, force_idx, swing_idx, window_idx, quant_starts, quant_durations, direction_idx)`
+`apply_quant_to_pattern(quant_idx, force_idx, swing_idx, window_idx, quant_starts, quant_durations, direction_idx, remove_duplicates, velocity)`
+
+**Toutes les notes de la piste courante** — grille (GRID), kit (KIT),
+synthé (PATCH) — sont quantisées **de la même façon, à partir de leurs
+événements** (Phase 8 étape 13) : temps, durée, vélocité et canal gardés ;
+CC, Pitch Bend et Program Change ne sont jamais touchés.
 
 | Paramètre | Valeurs | Description |
 |---|---|---|
@@ -1020,17 +1025,22 @@ Résolution par défaut : 1/16 (index 10). Modifiable via GridDialog (Ctrl+Shift
 | `swing_idx` | 0..4 → 0/25/50/75/100 % | Décalage des temps impairs (swing) |
 | `window_idx` | 0..4 → 0/25/50/75/100 % | Fenêtre de capture (0% = tout, 100% = demi-division) |
 | `quant_starts` | bool | Aligner les débuts de notes |
-| `quant_durations` | bool | Aligner les durées (K/P uniquement) |
+| `quant_durations` | bool | Aligner les durées (notes qui en ont une) |
 | `direction_idx` | 0/1/2 | 0=Proche, 1=Précédente, 2=Suivante |
+| `remove_duplicates` | bool (dialogue : cochée par défaut) | « Enlever les doublons » : parmi les notes de même type, même hauteur (pad pour la grille), même canal et même temps, la dernière jouée reste |
+| `velocity` | None ou 1..127 | « Quantiser la vélocité » : toutes les notes prennent cette vélocité (liste 127…10, 100 par défaut ; case décochée par défaut) |
 
 - La grille intègre le swing : les temps impairs sont décalés de `swing_pct × step_size/2`
 - La fenêtre de capture définit la zone où une note est attirée (au-delà = ignorée)
 - La direction détermine si la note est snapée sur le point de grille le plus proche, le précédent ou le suivant
+- Hors de la fenêtre, une note reste où elle est, posée sur le pas le plus proche
+- Réglages retenus (`DrumPlayer.quant_kwargs()`) pour le dialogue, Ctrl+Q, Shift+Q, l'éditeur MIDI, et gardés par l'Undo
 
 Raccourcis :
 - `Ctrl+Q` : quantiser le pattern depuis les paramètres de la grille courante (sans dialog)
 - `Shift+Q` : quantiser avec les derniers paramètres mémorisés (sans dialog)
 - `Ctrl+Shift+Q` : ouvrir QuantizeDialog
+- `Alt+Shift+Q` : quantisation **à l'enregistrement** (voir Enregistrement)
 
 ---
 
@@ -1091,6 +1101,25 @@ volume général ne sont pas concernés.
 ### Mode Overdub (R)
 - Ajoute les nouvelles notes sans effacer les existantes
 - Démarre aussi la lecture si elle n'est pas active
+- Même traitement pour toutes les notes, d'où qu'elles viennent (grille,
+  pads, Note Repeat, kit, contrôleur, synthé) — Phase 8 étape 13
+- Sans « Enlever les doublons » à l'enregistrement, toutes les frappes
+  sont gardées, même au même temps (comme Sonar) ; la case de grille
+  montre la vélocité de la dernière ; la quantisation enlève ensuite les
+  doublons
+
+### Quantisation à l'enregistrement (Alt+Shift+Q)
+- Dialogue « Quantisation à l'enregistrement » (fenêtre principale,
+  éditeur MIDI) : case « Quantiser à l'enregistrement » (cochée par
+  défaut), résolution (Quant courante — la liste de la fenêtre —, Grille
+  courante, ou une valeur), force, swing, fenêtre, direction, « Enlever
+  les doublons » (cochée par défaut), « Quantiser la vélocité » et sa
+  liste ; Ok mémorise sans toucher aux notes (Undo)
+- Chaque frappe : position quantisée par ces réglages
+  (`QuantizeManager.snap_position`), vélocité quantisée si cochée ;
+  doublons cochés → la frappe **remplace** la note de même hauteur, même
+  canal, même temps, avec sa vélocité ; case de tête décochée → position
+  jouée, frappes toutes gardées
 
 ### Mode Remplacement (Shift+R)
 - Efface les notes au fil du playback, remplacées par les nouvelles frappes
@@ -1102,6 +1131,9 @@ volume général ne sont pas concernés.
 
 ### Mode Erase (E)
 - NumPad 1–8 : efface l'événement le plus proche du temps d'appui sur ce pad
+- Pendant un enregistrement : E le quitte (métronome lancé par lui
+  coupé) ; ressortir d'Erase reprend l'enregistrement **et relance le
+  métronome** qui tournait (Phase 8 étape 13b2)
 - Fonctionne en temps réel pendant la lecture
 - Prend en charge la plage de notes MIDI tenues (effacement par plage)
 
