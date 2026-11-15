@@ -13732,3 +13732,101 @@ au bon format. Découpage : **14e3** implémentation, **14e4** tests.
 - Un changement du **volume** ou du **pan** de la piste doit **s'entendre
   tout de suite** sur un clip qui joue, comme sur une piste synthé ou
   Wave ; aujourd'hui ils sont figés au départ de la voix.
+
+## Phase 8 étape 14f1 — Point préalable : enregistrement audio
+
+### État des lieux constaté en code (2026-11-15, 4403 tests verts)
+
+- Un seul flux de sortie (`SoundDeviceDriver`) ; le lecteur date tout à
+  l'horloge `time.perf_counter` ; **aucune latence prise en compte**.
+- R / Shift+R : enregistrement MIDI (Overdub / Remplacer), décompte,
+  boucle ; sans boucle, la lecture se met en pause à la fin du pattern.
+- Entrées audio cochées dans l'onglet Matériel ; « Entrée audio » de
+  chaque piste audio dans ses propriétés (14b1).
+
+### Datation des blocs d'entrée
+
+- Flux d'entrée PortAudio **séparé**, ouvert à l'armement sur l'entrée
+  de la piste courante (piste audio).
+- Chaque bloc arrive avec l'heure de capture de la carte
+  (`inputBufferAdcTime`), ramenée à l'horloge du lecteur : capture =
+  maintenant − (`currentTime` − `inputBufferAdcTime`).
+- Seul le **premier échantillon** est daté ; les suivants se comptent à
+  l'horloge de la carte (t0 + i / fréquence) : pas de gigue.
+- Le callback ne fait que **copier** les blocs dans une file ; un fil à
+  part écrit le WAV 24 bits (en C/C++ : tampon circulaire).
+
+### Compensation de latence (comme Sonar, Reaper)
+
+- Ce qu'on entend sort avec la **latence de sortie** du flux : position
+  de la prise = position(capture − latence de sortie − réglage manuel) ;
+  la latence d'entrée est déjà dans l'heure de capture.
+- Réglage manuel **« Compensation de latence (ms) »** (Préférences,
+  onglet Audio, 0 par défaut), à régler par un essai au métronome ;
+  mesure automatique plus tard, avec le monitoring.
+
+### Calage sans toucher au fichier (fenêtre de 14e3)
+
+- Enregistrement **dès l'armement**, décompte compris ; le clip est posé
+  au début de l'enregistrement, `start` saute ce qui précède. Une attaque
+  en avance n'est pas perdue : il suffira d'élargir la fenêtre.
+
+### Overdub en boucle : mixage par clips superposés (explication)
+
+Proposition : un seul fichier continu par prise ; **chaque passage de
+boucle devient un clip** (fenêtre `start` / `length` sur ce fichier) sur
+la piste ; les clips se mixent **à l'écoute** (Mixer), le limiteur évite
+la saturation. Pourquoi plutôt qu'un fichier remixé à chaque passage :
+
+- **L'audio n'est jamais modifié**, seules les données changent (quelques
+  nombres par passage).
+- **Undo** : un passage n'est qu'un `TapeEvent` de plus ; Ctrl+Z remet la
+  liste d'avant (UndoManager actuel, comme pour des notes), sans créer ni
+  supprimer de fichier, sans garder d'audio en mémoire. Avec un fichier
+  mixé, chaque passage crée un nouveau fichier de toute la longueur
+  mélangé au précédent : l'Undo doit retrouver le bon fichier, les
+  fichiers intermédiaires s'accumulent.
+- **Gestion des prises** (plus tard) : chaque passage reste séparé — en
+  couper un seul (le 2e en gardant le 1er et le 3e), le supprimer, n'en
+  garder qu'un (« comping » de Sonar / Reaper), régler son gain, le
+  déplacer ou le recaler. Avec un fichier mixé, les passages sont fondus
+  pour de bon.
+- **Temps réel plus léger** : un seul fichier écrit en continu, sans
+  relire l'ancien clip ni mixer à chaque retour de boucle.
+- **Disque** : un fichier par prise, au lieu d'un fichier complet par
+  passage.
+- **Contreparties** : le nombre de clips croît avec les passages (une voix
+  de plus par clip dans le Mixer, négligeable pour quelques dizaines) ;
+  les passages s'additionnent à l'écoute — même risque de saturation
+  qu'un mixage, tenu par le limiteur d'écoute et celui de l'export.
+- **Un seul fichier si besoin** : à la demande, par « Geler la piste » ou
+  « Fusionner les clips » (plus tard) — un choix, pas une obligation à
+  chaque passage.
+
+### Décisions de l'utilisateur (2026-11-15)
+
+- **R1 — Overdub en boucle : clips superposés** (ci-dessus). Remplace le
+  « mixé au clip de la piste » de A11 : rien n'est remixé dans un
+  fichier ; le limiteur d'écoute et celui de l'export tiennent la
+  saturation.
+- **R2 — Remplacer (Shift+R) : la plage enregistrée**, comme Sonar et
+  Reaper : seuls les clips de la piste qui chevauchent la plage
+  enregistrée sont enlevés ou raccourcis (fenêtre `start` / `length`) ;
+  les fichiers restent sur le disque (Undo). En boucle, chaque passage
+  remplace le précédent : seul le dernier reste.
+- **R3 — sans boucle, le pattern s'allonge** : tant qu'on enregistre, il
+  gagne une mesure à chaque fin atteinte et la lecture continue ; au
+  Stop, il garde les mesures nécessaires à la prise ; l'Undo les retire.
+- **R4 — entrée vide** : la première entrée cochée dans l'onglet Matériel,
+  sinon l'entrée par défaut du système ; son nom est annoncé dans la
+  barre d'état.
+
+### Découpage (validé, 2026-11-16)
+
+- **14f1 / 14g1 — prise simple** : flux d'entrée et datation, compensation
+  de latence (réglage en ms, onglet Audio), prise sans boucle,
+  allongement du pattern (R3), entrée par défaut (R4), première prise
+  d'un projet sans nom (A4), Undo.
+- **14f2 / 14g2 — boucle** : Overdub en clips superposés (R1), Remplacer
+  sur la plage enregistrée (R2), un passage par retour de boucle.
+- **14h1 — clôture**.
