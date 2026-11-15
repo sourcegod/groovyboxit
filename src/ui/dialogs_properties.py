@@ -13,7 +13,8 @@ class TrackPropertiesDialog(wx.Dialog):
                  on_change=None, on_play_toggle=None, channel=0, channel_after_slot=None,
                  slot_program=None, slot_gm_tuning=None, bank_info=None,
                  rack_slot_of=None, channel_labels=None, midi_ports=None,
-                 on_ports_change=None):
+                 on_ports_change=None, track_kind=None, audio_inputs=None, audio_in="",
+                 on_kind_change=None):
         """channel : canal MIDI 0..15 de la piste. channel_after_slot(slot_idx,
         channel) -> canal : règle appliquée quand l'utilisateur change de slot
         (kit → canal 10, Phase 7 étape 10f1) ; None = canal inchangé.
@@ -38,6 +39,13 @@ class TrackPropertiesDialog(wx.Dialog):
         inputs / outputs (noms des ports cochés dans les Préférences),
         midi_in / midi_out (ports de la piste, "" = « Toutes » / « Interne ») ;
         None = pas de listes. on_ports_change(entrée, sortie) : appelé à
+        chaque choix (effet immédiat).
+        track_kind (Phase 8 étape 14b1, docs/DESIGN.md § 14a A2, A8) :
+        « midi » ou « audio » → liste « Type de piste » en tête, et « Entrée
+        audio » (audio_inputs : entrées audio cochées dans les Préférences ;
+        audio_in : celle de la piste, "" = défaut) ; None = pas de listes.
+        Piste audio : les réglages MIDI (slot, ports, canal, programme,
+        banque, réglages GM) sont grisés. on_kind_change(type, entrée) : à
         chaque choix (effet immédiat)."""
         super().__init__(parent, title=f"Propriétés — Piste {track_idx + 1}")
 
@@ -52,6 +60,29 @@ class TrackPropertiesDialog(wx.Dialog):
         self._rack_slot_of       = rack_slot_of
         self._on_ports_change    = on_ports_change
         self._in_names = self._out_names = None
+        self._on_kind_change     = on_kind_change
+        self._kind_list = self._audio_in = None
+        self._audio_names = None
+
+        # Type de piste et entrée audio (14b1, A2) : en tête, libellé avant
+        # chaque liste (lu par Orca)
+        self._kind_rows = []
+        if track_kind is not None:
+            kind_label = wx.StaticText(self, label="Type de piste :")
+            self._kind_list = wx.ListBox(self, choices=list(self.KIND_LABELS),
+                                         style=wx.LB_SINGLE, size=(-1, self._PORT_H))
+            select_with_cursor(self._kind_list, self.KINDS.index(track_kind)
+                               if track_kind in self.KINDS else 0)
+            self._audio_names, a_labels = self._port_choices(audio_inputs or [], audio_in,
+                                                             self.DEFAULT_AUDIO_IN)
+            a_label = wx.StaticText(self, label="Entrée audio :")
+            self._audio_in = wx.ListBox(self, choices=a_labels, style=wx.LB_SINGLE,
+                                        size=(-1, self._PORT_H))
+            select_with_cursor(self._audio_in, self._audio_names.index(audio_in)
+                               if audio_in in self._audio_names else 0)
+            self._kind_rows = [(kind_label, self._kind_list), (a_label, self._audio_in)]
+            self._kind_list.Bind(wx.EVT_LISTBOX, self._on_kind)
+            self._audio_in.Bind(wx.EVT_LISTBOX, self._on_kind)
 
         # Ordre Tab : Mute → Solo → Slots → Entrée MIDI → Sortie MIDI (12d1)
         # → Canal → Programme → Banque MSB
@@ -141,6 +172,9 @@ class TrackPropertiesDialog(wx.Dialog):
         grid.Add(self._pan,  0, wx.EXPAND)
 
         vbox = wx.BoxSizer(wx.VERTICAL)
+        for label, lst in self._kind_rows:              # type de piste, entrée audio (14b1)
+            vbox.Add(label, 0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
+            vbox.Add(lst,   0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         vbox.Add(slot_label,  0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
         vbox.Add(self._slots, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         for label, lst in self._port_rows:              # entrée / sortie MIDI (12d1)
@@ -167,6 +201,7 @@ class TrackPropertiesDialog(wx.Dialog):
         vbox.Add(btn_sizer,   0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
+        self._sync_kind()                   # piste audio : réglages MIDI grisés (14b1)
 
         # Aperçu en temps réel
         self._mute.Bind(wx.EVT_CHECKBOX, self._on_widget_change)
@@ -182,7 +217,9 @@ class TrackPropertiesDialog(wx.Dialog):
         self._pan.Bind(wx.EVT_SPINCTRL,  self._on_widget_change)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
 
-        self._mute.SetFocus()
+        # Focus à l'ouverture : « Type de piste » s'il est là (essai de 14b1),
+        # sinon Mute comme avant
+        (self._kind_list if self._kind_list is not None else self._mute).SetFocus()
 
     def _played_slot(self):
         """Slot entendu : le slot choisi, ou en mode Rack celui que joue le
@@ -307,6 +344,50 @@ class TrackPropertiesDialog(wx.Dialog):
                 self._on_play_toggle()
         else:
             event.Skip()
+
+    # Type de piste (Phase 8 étape 14b1, A2) : Synthé, Effet, Automation plus tard
+    KINDS       = ("midi", "audio")
+    KIND_LABELS = ("MIDI", "Audio")
+    DEFAULT_AUDIO_IN = "Entrée par défaut"
+
+    def _on_kind(self, event):
+        self._sync_kind()
+        if self._on_kind_change:
+            self._on_kind_change(self.get_track_kind(), self.get_audio_in())
+
+    def _midi_widgets(self):
+        widgets = [self._slots, self._channels, self._programs, self._msb, self._lsb,
+                   self._transpose, self._gain]
+        if self._in_names is not None:
+            widgets += [self._midi_in, self._midi_out]
+        return widgets
+
+    def _sync_kind(self):
+        """Piste audio : réglages MIDI grisés, entrée audio active ; piste
+        MIDI : l'inverse (14b1)."""
+        if self._kind_list is None:
+            return
+        audio = self.get_track_kind() == "audio"
+        for w in self._midi_widgets():
+            w.Enable(not audio)
+        self._audio_in.Enable(audio)
+        if not audio:                    # grisés propres au slot remis (banque, GM)
+            self._load_programs(self._played_slot())
+            self._load_gm_tuning(self._played_slot())
+
+    def get_track_kind(self):
+        """« midi » ou « audio » ; None sans liste."""
+        if self._kind_list is None:
+            return None
+        i = self._kind_list.GetSelection()
+        return self.KINDS[i] if 0 <= i < len(self.KINDS) else "midi"
+
+    def get_audio_in(self):
+        """Entrée audio choisie ("" = défaut) ; None sans liste."""
+        if self._audio_names is None:
+            return None
+        i = self._audio_in.GetSelection()
+        return self._audio_names[i] if 0 <= i < len(self._audio_names) else ""
 
     # Entrée / sortie MIDI de la piste (Phase 8 étape 12d1, T7)
     ALL_INPUTS = "Toutes les entrées"

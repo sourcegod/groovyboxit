@@ -79,6 +79,8 @@ class PatternMixin:
         pat._track_channels = self._router._track_channels[:]
         pat._track_midi_outs = self._router._track_midi_outs[:]   # 12b1
         pat._track_midi_ins  = self._router._track_midi_ins[:]
+        pat._track_kinds     = self._router._track_kinds[:]       # 14b1
+        pat._track_audio_ins = self._router._track_audio_ins[:]
 
     def _apply_pattern_from_store(self, new):
         """Charge un Pattern du store dans le player et le router."""
@@ -96,6 +98,8 @@ class PatternMixin:
         self._router._track_channels[:] = new._track_channels
         self._router._track_midi_outs[:] = new._track_midi_outs   # 12b1, T8
         self._router._track_midi_ins[:]  = new._track_midi_ins
+        self._router._track_kinds[:]     = new._track_kinds          # 14b1
+        self._router._track_audio_ins[:] = new._track_audio_ins
         self._router.rack_mode = new._rack_mode        # Phase 8 étape 5b1, M13
         self._router.set_playback_kb(new._kb_scale, new._kb_root_midi)
         self._set_kb_play_root(new._kb_root_midi)       # Phase 8 étape 9b2

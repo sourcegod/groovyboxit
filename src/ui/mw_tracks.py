@@ -272,6 +272,17 @@ class TrackMixin:
                 self._warn_track_midi_outs()         # port absent : son interne (T10)
             r._track_midi_ins[tidx] = midi_in
 
+        # Type de piste et entrée audio (Phase 8 étape 14b1, § 14a A2, A8)
+        r0 = self._router
+        orig_kind = (r0._track_kinds[tidx], r0._track_audio_ins[tidx])
+
+        def apply_kind(kind, audio_in):
+            r = self._router
+            if kind != r._track_kinds[tidx]:
+                r.cut_track_notes(tidx)              # notes en cours de la piste
+                r._track_kinds[tidx] = kind
+            r._track_audio_ins[tidx] = audio_in
+
         dlg    = TrackPropertiesDialog(
             self, tidx, self._rack,
             orig['slot'], orig['volume'], orig['pan'], orig['mute'], orig['solo'],
@@ -286,15 +297,23 @@ class TrackMixin:
             channel_labels=[f"Canal {c + 1} — {self._rack_channel_desc(c)}" for c in range(16)]
                            if rack_mode else None,
             midi_ports=midi_ports, on_ports_change=apply_ports,
+            track_kind=orig_kind[0],
+            audio_inputs=cfg.audio_inputs if cfg is not None else [],
+            audio_in=orig_kind[1], on_kind_change=apply_kind,
         )
         result = dlg.ShowModal()
         values = (dlg.get_slot_idx(), dlg.get_volume(), dlg.get_pan(),
                   dlg.get_mute(), dlg.get_solo(), dlg.get_channel(), dlg.get_program(),
                   dlg.get_transpose(), dlg.get_gain_db(), dlg.get_msb(), dlg.get_lsb())
         ports = orig_ports if midi_ports is None else (dlg.get_midi_in(), dlg.get_midi_out())
-        if result == wx.ID_OK and (values != tuple(orig.values()) or ports != orig_ports):
+        kind = (dlg.get_track_kind(), dlg.get_audio_in())
+        if kind[0] is None:                          # dialogue sans les listes (tests)
+            kind = orig_kind
+        if result == wx.ID_OK and (values != tuple(orig.values()) or ports != orig_ports
+                                   or kind != orig_kind):
             apply(*values)
             apply_ports(*ports)
+            apply_kind(*kind)
             others = bank_state["others"]
             self._show_status(f"Piste {tidx + 1}: propriétés mises à jour" + (
                 "; entête mis à jour aussi sur les pistes "
@@ -302,6 +321,7 @@ class TrackMixin:
         else:
             apply(*orig.values())
             apply_ports(*orig_ports)
+            apply_kind(*orig_kind)
             for slot, config in saved_configs.items():
                 self._rack.get_slot(slot).config = config
             self._pop_last_undo()

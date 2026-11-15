@@ -53,6 +53,8 @@ def frozen_pattern(pat):
     out._track_channels = list(pat._track_channels)
     out._track_midi_ins  = list(pat._track_midi_ins)       # 12b1
     out._track_midi_outs = list(pat._track_midi_outs)
+    out._track_kinds     = list(pat._track_kinds)          # 14b1
+    out._track_audio_ins = list(pat._track_audio_ins)
     out._voices         = copy.deepcopy(pat._voices)
     out._kb_scale       = pat._kb_scale
     out._kb_root_midi   = pat._kb_root_midi

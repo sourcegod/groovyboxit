@@ -4,7 +4,10 @@
 Ctrl+N           Nouveau projet (noname_NNN.gvp, demande si modifié)
 Ctrl+O           Ouvrir un projet (.gvp, .json ou tout fichier)
 Ctrl+S           Enregistrer le projet
-Ctrl+Shift+S     Enregistrer le projet sous...
+Ctrl+Shift+S     Enregistrer le projet sous... ; case « Créer un nouveau dossier pour
+                 ce projet » (cochée par défaut : MonProjet/MonProjet.gvp) ; champ
+                 « Chemin des fichiers audios » (défaut : Audios dans le dossier du
+                 projet) et « Parcourir… » ; les prises audio y suivent, au nom du projet
 Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
 Shift+Z          Refaire
 Ctrl+Shift+Z     Afficher l'historique des annulations
@@ -272,7 +275,9 @@ Ctrl+T / Entrée  Assigner le slot sélectionné dans la liste des slots à la p
                  coupées avant
 Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
-                 Mute, Solo, Slot, Entrée MIDI (« Toutes les entrées » ou une entrée
+                 Type de piste (MIDI ou Audio ; une piste audio enregistre une entrée
+                 audio, ses réglages MIDI sont grisés), Entrée audio (entrées cochées
+                 dans les Préférences), Mute, Solo, Slot, Entrée MIDI (« Toutes les entrées » ou une entrée
                  cochée dans les Préférences : la piste ne reçoit que ce port),
                  Sortie MIDI (« Interne (son du slot) » ou une sortie externe cochée :
                  la piste y envoie ses notes, son son interne se tait ; port absent :

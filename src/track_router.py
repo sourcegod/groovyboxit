@@ -182,6 +182,9 @@ class TrackRouter(TrackMidiOutMixin):
         self.rack_mode      = False
         # Sortie MIDI externe des pistes (Phase 8 étape 12b1, § 12a T1, T8)
         self._init_midi_out()
+        # Type de piste et entrée audio (Phase 8 étape 14b1, § 14a A2, A8)
+        self._track_kinds     = ["midi"] * self.NUM_TRACKS
+        self._track_audio_ins = [""] * self.NUM_TRACKS
 
     @staticmethod
     def _timer_schedule(delay_ms, fn, *args):

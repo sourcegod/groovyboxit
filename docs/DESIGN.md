@@ -13420,3 +13420,63 @@ l'écoute.
   de latence, Overdub / Remplacer, boucle, première prise d'un projet sans
   nom, Undo.
 - **14h1 — clôture**.
+
+### Avancement 14b1 (implémentation — données)
+
+- **`Pattern`** : `ETYPE_AUDIO` (clip : `time` = pas de départ,
+  `payload` = `file` relatif au dossier du `.gvp`, `gain`), `TRACK_MIDI`
+  / `TRACK_AUDIO` ; `_track_kinds` (« midi » par défaut) et
+  `_track_audio_ins` ("" = entrée par défaut), clés `track_kinds` /
+  `track_audio_ins` du `.gvp` (absentes ou invalides → « midi » / ""),
+  complétées au redimensionnement, copiées par `frozen_pattern` et vers /
+  depuis le routeur (`mw_patterns`, `mw_songs`, `audio_export`) ;
+  `is_audio_track`, `audio_clips`. Un clip passe par la sérialisation
+  `tape_v2` sans changement ; la lecture l'ignore jusqu'à 14d1.
+- **`src/audio/audio_takes.py`** (nouveau) : dossier `Audios` à côté du
+  `.gvp`, noms `projet_pattern01_piste03_take_001.wav` (`take_name`,
+  `next_take` : première prise libre), `resolve`, `write_take` (WAV 24
+  bits, dossier créé), `renamed` / `copy_takes` (Enregistrer sous : les
+  prises copiées dans le nouveau dossier, renommées au nouveau nom ; rien
+  d'effacé), `project_folder_path` (`MonProjet.gvp` →
+  `MonProjet/MonProjet.gvp`, inchangé s'il y est déjà).
+- **Enregistrer sous (Ctrl+Shift+S)** : case **« Créer un nouveau dossier
+  pour ce projet »**, cochée par défaut (`wx.FileDialog.SetCustomizeHook`,
+  `_ProjectFolderHook`) ; `_move_takes` : clips des patterns du store et du
+  pattern joué repointés sur les copies, prises introuvables annoncées.
+- **Propriétés de piste** : listes **« Type de piste »** (MIDI, Audio) et
+  **« Entrée audio »** (« Entrée par défaut », puis les entrées cochées ;
+  absente gardée « — absent ») **en tête**, avant Mute (libellé avant
+  chaque liste) ; piste audio → réglages MIDI grisés (slot, ports, canal,
+  programme, banque, réglages GM), retour en MIDI → grisés propres au slot
+  remis ; effet immédiat (`apply_kind`), Ok garde (un changement de type
+  seul compte), Annuler remet.
+- **Aide F1** : Ctrl+Shift+S (case, prises), Alt+Entrée (Type de piste,
+  Entrée audio).
+- Vérifié : dialogue (ordre, grisés, retour en MIDI) ; prises (noms,
+  numéros libres, 24 bits stéréo, dossier du projet, copie renommée,
+  prise introuvable) ; case attachée au dialogue d'enregistrement.
+- Suite : 4234 verts, **47 rouges jusqu'à 14c1** (dialogues de
+  propriétés factices sans `get_track_kind`, routeurs factices sans
+  `_track_kinds`).
+
+**Essai 14b1** : Ctrl+Shift+S : la case « Créer un nouveau dossier pour
+ce projet » est lue par Orca, cochée ; Ok → `PROJECTS/Nom/Nom.gvp` ;
+Alt+Entrée sur une piste : « Type de piste » et « Entrée audio » en tête ;
+Audio → réglages MIDI grisés ; Ok, rouvrir : le type est gardé ;
+Ctrl+S, rouvrir le projet : gardé aussi.
+
+**Essai 14b1** (utilisateur, 2026-11-15) : concluant ; deux ajouts
+demandés, faits avant le commit :
+- **« Chemin des fichiers audios »** dans Enregistrer sous : champ (défaut :
+  `Audios` dans le dossier du projet proposé) et bouton **« Parcourir… »**
+  (`wx.DirDialog`). Laissé tel quel → `Audios` à côté du `.gvp` finalement
+  choisi ; changé → gardé dans le `.gvp` (clé **`audio_dir`**, relative au
+  dossier du `.gvp` si elle y est, sinon absolue ; Ctrl+N la remet à "").
+  `audio_takes.audios_dir(projet, audio_dir)`, `next_take(…, audio_dir)`,
+  `copy_takes(…, new_audio_dir)`, `relative_to_project` : les clips gardent
+  un chemin relatif au dossier du `.gvp` (`../../Prises/…` si besoin).
+- **Focus sur « Type de piste »** à l'ouverture des propriétés de piste
+  (second essai : un ancien `self._mute.SetFocus()` en fin de
+  constructeur reprenait le focus ; remplacé : Type de piste s'il est là,
+  sinon Mute).
+- Essai final (2026-11-15) : concluant.

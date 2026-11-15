@@ -14,6 +14,16 @@ ETYPE_PATCH = "PATCH"
 ETYPE_CC    = "CC"
 ETYPE_PGM   = "PGM"
 ETYPE_BEND  = "BEND"
+# Clip audio d'une piste audio (Phase 8 étape 14b1, docs/DESIGN.md § 14a A9) :
+# time = pas de départ, payload = {"file": chemin relatif au dossier du .gvp,
+# "gain": 1.0} ; rejoué à vitesse réelle (14d1)
+ETYPE_AUDIO = "AUDIO"
+
+# Types de piste (Phase 8 étape 14b1, § 14a A2) : liste « Type de piste » des
+# propriétés ; Synthé, Effet, Automation viendront plus tard
+TRACK_MIDI  = "midi"
+TRACK_AUDIO = "audio"
+TRACK_KINDS = (TRACK_MIDI, TRACK_AUDIO)
 
 
 class TapeEvent:
@@ -210,6 +220,10 @@ class Pattern:
         # « Interne » (son du slot)
         self._track_midi_ins  = [""] * self._num_tracks
         self._track_midi_outs = [""] * self._num_tracks
+        # Type de chaque piste et entrée audio d'une piste audio (Phase 8
+        # étape 14b1, § 14a A2, A8) : « midi » par défaut ; "" = défaut
+        self._track_kinds     = [TRACK_MIDI] * self._num_tracks
+        self._track_audio_ins = [""] * self._num_tracks
         # Pistes sur un kit : canal 10, posé par apply_kit_channels (le
         # Pattern ne connaît pas le Rack), Phase 8 étape 3b1
         # Mode Rack 16 canaux : le canal N joue le slot N (Phase 8 étape
@@ -689,6 +703,8 @@ class Pattern:
             "track_channels": self._track_channels,
             "track_midi_ins":  self._track_midi_ins,           # 12b1, T8
             "track_midi_outs": self._track_midi_outs,
+            "track_kinds":     self._track_kinds,              # 14b1, A2
+            "track_audio_ins": self._track_audio_ins,
             "rack_mode":     self._rack_mode,                  # 5b1, M13
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
@@ -793,6 +809,11 @@ class Pattern:
         # Clés absentes (projets d'avant 12b1) : « Toutes » / « Interne »
         self._track_midi_ins  = self._port_names(d.get("track_midi_ins"))
         self._track_midi_outs = self._port_names(d.get("track_midi_outs"))
+        # Clés absentes (projets d'avant 14b1) : pistes MIDI, entrée par défaut
+        kinds = [k if k in TRACK_KINDS else TRACK_MIDI
+                 for k in self._port_names(d.get("track_kinds"))]
+        self._track_kinds     = [k or TRACK_MIDI for k in kinds]
+        self._track_audio_ins = self._port_names(d.get("track_audio_ins"))
         if "voices"        in d: self._voices        = d["voices"]
         # Clé absente (projets d'avant 5b1) : mode normal (M13)
         self._rack_mode    = d.get("rack_mode") is True
@@ -842,6 +863,18 @@ class Pattern:
             Pattern.default_channel(t) for t in range(len(self._track_channels), nt)]
         self._track_midi_ins  = pad(self._track_midi_ins,  "")       # 12b1
         self._track_midi_outs = pad(self._track_midi_outs, "")
+        self._track_kinds     = pad(self._track_kinds, TRACK_MIDI)   # 14b1
+        self._track_audio_ins = pad(self._track_audio_ins, "")
+
+    def is_audio_track(self, track):
+        """Vrai si la piste est une piste audio (Phase 8 étape 14b1)."""
+        return 0 <= track < len(self._track_kinds) and self._track_kinds[track] == TRACK_AUDIO
+
+    def audio_clips(self, track=None):
+        """Clips audio (ETYPE_AUDIO) d'une piste, ou de toutes [(piste, ev)]."""
+        tracks = range(len(self._tape)) if track is None else (track,)
+        return [(t, ev) for t in tracks if t < len(self._tape)
+                for ev in self._tape[t] if ev.etype == ETYPE_AUDIO]
 
     def _port_names(self, value):
         """Noms de ports d'une clé du .gvp : une chaîne par piste ("" sinon),

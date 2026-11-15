@@ -15,6 +15,7 @@ from track_router import TrackRouter
 from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 from audio import audio_export
+from audio import audio_takes
 from devices import audio_device as audio_devices
 from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog, \
     ImportModeDialog
@@ -111,6 +112,7 @@ class ProjectMixin:
         if self._song_window:
             self._song_window.set_cur_song(0)
         self._project_path     = self._find_free_project_path()
+        self._audio_dir        = ""                # prises : Audios à côté (14b1)
         self._take             = None
         self._project_modified = False
         self._update_title()
@@ -1066,6 +1068,34 @@ class ProjectMixin:
                 setattr(p, k, v)
         p._grid_idx          = qp.get("grid_idx",        Pattern.GRID_DEFAULT_IDX)
 
+    def _all_patterns(self):
+        """Patterns du store et pattern joué (qui peut en différer)."""
+        pats = list(getattr(self, "_pattern_list", []))
+        live = getattr(getattr(self, "_player", None), "_pattern", None)
+        return pats + ([live] if live is not None else [])
+
+    def _move_takes(self, old_project, new_project, new_audio_dir=""):
+        """Enregistrer sous (Phase 8 étape 14b1, § 14a A3) : les prises des
+        clips audio sont copiées dans le dossier Audios du nouveau projet,
+        au nom du nouveau projet, et les clips pointent sur les copies.
+        Rien n'est effacé à l'ancien emplacement. Retourne les prises
+        introuvables."""
+        pats = self._all_patterns()
+        rels = [ev.payload.get("file", "") for p in pats for _, ev in p.audio_clips()]
+        rels = [r for r in rels if r]
+        if not rels:
+            return []
+        mapping, missing = audio_takes.copy_takes(old_project, new_project, rels,
+                                                  new_audio_dir)
+        for p in pats:
+            for _, ev in p.audio_clips():
+                rel = ev.payload.get("file", "")
+                if rel in mapping and mapping[rel] != rel:
+                    ev.payload = dict(ev.payload, file=mapping[rel])
+        if missing:
+            self._show_status("Prises audio introuvables : " + ", ".join(missing))
+        return missing
+
     def _relocate_rack_files(self):
         """Soundfonts et sources SFZ absolues introuvables du projet chargé :
         cherchées dans les nouveaux dossiers (Phase 8 étape 10b1, docs/DESIGN.md
@@ -1114,6 +1144,7 @@ class ProjectMixin:
                 "songs":    [s.to_dict() for s in self._song_list],
                 "cur_song": self._cur_song_idx,
                 "master":   self._master_dict(),        # 15d1 D2
+                "audio_dir": getattr(self, "_audio_dir", ""),   # 14b1 : chemin des prises
             }
             ProjectManager.save(self._project_path, data)
             self._remember_project()                   # dernier projet (10f1, P5)
@@ -1134,6 +1165,15 @@ class ProjectMixin:
             wildcard=ProjectManager.WILDCARD,
             style=wx.FD_SAVE,
         )
+        # Case « Créer un nouveau dossier pour ce projet » (Phase 8 étape
+        # 14b1, § 14a A3), cochée par défaut, et « Chemin des fichiers
+        # audios » avec Parcourir… (essai de 14b1) ; gardé vivant par la fenêtre
+        default_gvp = os.path.join(projects_dir, os.path.splitext(
+            os.path.basename(self._project_path))[0] + ".gvp")
+        hook = self._folder_hook = _ProjectFolderHook(
+            audio_path=audio_takes.audios_dir(audio_takes.project_folder_path(default_gvp)))
+        if hasattr(dlg, "SetCustomizeHook"):
+            dlg.SetCustomizeHook(hook)
         result = dlg.ShowModal()
         path   = dlg.GetPath() if result == wx.ID_OK else ""
         dlg.Destroy()
@@ -1141,6 +1181,15 @@ class ProjectMixin:
             return
         if not os.path.splitext(path)[1]:
             path += ".gvp"
+        if hook.create_folder:
+            path = audio_takes.project_folder_path(path)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        # chemin laissé tel quel → le défaut du projet choisi (Audios à côté
+        # du .gvp) ; changé → gardé dans le projet (« audio_dir »)
+        new_audio_dir = "" if not hook.audio_path_changed() else \
+            audio_takes.relative_to_project(path, hook.audio_path) \
+            if os.path.abspath(hook.audio_path).startswith(
+                os.path.dirname(os.path.abspath(path)) + os.sep) else os.path.abspath(hook.audio_path)
         if os.path.exists(path):
             msg = wx.MessageDialog(
                 self,
@@ -1152,7 +1201,9 @@ class ProjectMixin:
             msg.Destroy()
             if replace != wx.ID_YES:
                 return
-        self._project_path = path
+        old_path, self._project_path = self._project_path, path
+        self._move_takes(old_path, path, new_audio_dir)   # prises audio suivent (14b1, A3)
+        self._audio_dir = new_audio_dir
         self._save_project()
 
     def _rewind_playback(self):
@@ -1246,6 +1297,8 @@ class ProjectMixin:
         self._undo.clear()                     # l'historique appartient au projet (16d1, D3)
         self._exclusive = self._exclusive_saved = None   # Mute / Solo exclusif quitté (6d1)
         self._rewind_playback()                # lecture arrêtée, au début (Phase 8 étape 7d2)
+        dir_value = data.get("audio_dir", "")            # 14b1 : chemin des prises
+        self._audio_dir = dir_value if isinstance(dir_value, str) else ""
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._relocate_rack_files()
@@ -1693,3 +1746,54 @@ class ProjectMixin:
             for _ in range(steps):
                 self._undo_action()
         dlg.Destroy()
+
+
+class _ProjectFolderHook(wx.FileDialogCustomizeHook if hasattr(wx, "FileDialogCustomizeHook")
+                         else object):
+    """Case « Créer un nouveau dossier pour ce projet » du dialogue
+    Enregistrer sous (Phase 8 étape 14b1, § 14a A3), cochée par défaut."""
+
+    LABEL       = "Créer un nouveau dossier pour ce projet"
+    PATH_LABEL  = "Chemin des fichiers audios"
+    BROWSE      = "Parcourir…"
+
+    def __init__(self, default=True, audio_path=""):
+        super().__init__()
+        self.create_folder = default
+        self.audio_path    = audio_path
+        self._initial_path = audio_path
+        self._checkbox = self._path_ctrl = None
+        self.dir_dialog = None             # fabrique de wx.DirDialog (tests)
+
+    def AddCustomControls(self, customizer):
+        self._checkbox = customizer.AddCheckBox(self.LABEL)
+        self._checkbox.SetValue(self.create_folder)
+        self._path_ctrl = customizer.AddTextCtrl(self.PATH_LABEL)
+        self._path_ctrl.SetValue(self.audio_path)
+        button = customizer.AddButton(self.BROWSE)
+        button.Bind(wx.EVT_BUTTON, lambda e: self.browse())
+
+    def browse(self):
+        """Parcourir… : dossier des fichiers audios."""
+        start = self._path_ctrl.GetValue() if self._path_ctrl is not None else self.audio_path
+        make = self.dir_dialog or (lambda msg, path: wx.DirDialog(
+            None, msg, defaultPath=path, style=wx.DD_DEFAULT_STYLE))
+        dlg = make(self.PATH_LABEL, start)
+        try:
+            if dlg.ShowModal() == wx.ID_OK:
+                self.audio_path = dlg.GetPath()
+                if self._path_ctrl is not None:
+                    self._path_ctrl.SetValue(self.audio_path)
+        finally:
+            dlg.Destroy()
+
+    def TransferDataFromCustomControls(self):
+        if self._checkbox is not None:
+            self.create_folder = self._checkbox.GetValue()
+        if self._path_ctrl is not None:
+            self.audio_path = self._path_ctrl.GetValue().strip()
+
+    def audio_path_changed(self):
+        """Vrai si l'utilisateur a changé le chemin proposé (sinon : le défaut
+        du projet finalement choisi, Audios à côté du .gvp)."""
+        return bool(self.audio_path) and self.audio_path != self._initial_path

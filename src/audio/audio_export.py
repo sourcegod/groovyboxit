@@ -218,6 +218,8 @@ class _PatternState:
         router._track_channels[:] = p._track_channels
         router._track_midi_outs[:] = p._track_midi_outs    # 12b1 (rendu : son interne)
         router._track_midi_ins[:]  = p._track_midi_ins
+        router._track_kinds[:]     = p._track_kinds         # 14b1
+        router._track_audio_ins[:] = p._track_audio_ins
         router.rack_mode          = p._rack_mode     # Phase 8 étape 5b1, M13
         router.set_playback_kb(p._kb_scale, p._kb_root_midi)
         if load:
