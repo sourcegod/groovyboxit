@@ -418,7 +418,8 @@ def test_copy_to_router_and_back(tmp_path):
     router = SimpleNamespace(_track_slots=[0] * 16, _track_mutes=[False] * 16,
                              _track_solos=[False] * 16, _track_volumes=[100] * 16,
                              _track_pans=[0] * 16, _track_channels=[0] * 16,
-                             _track_midi_outs=[""] * 16, _track_midi_ins=[""] * 16)
+                             _track_midi_outs=[""] * 16, _track_midi_ins=[""] * 16,
+                             _track_kinds=["midi"] * 16, _track_audio_ins=[""] * 16)
     win = SimpleNamespace(_router=router,
                           _player=SimpleNamespace(_pattern=Pattern(), bpm=120))
     router._track_midi_outs[:] = p._track_midi_outs

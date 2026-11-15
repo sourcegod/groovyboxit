@@ -235,7 +235,8 @@ class FakeWindow(SongMixin):
             _track_slots=[0] * n, _track_mutes=[False] * n, _track_solos=[False] * n,
             _track_volumes=[100] * n, _track_pans=[0] * n,
             _track_channels=[Pattern.default_channel(t) for t in range(n)],
-            _track_midi_ins=[""] * n, _track_midi_outs=[""] * n)    # 12b1
+            _track_midi_ins=[""] * n, _track_midi_outs=[""] * n,    # 12b1
+            _track_kinds=["midi"] * n, _track_audio_ins=[""] * n)  # 14b1
 
 
 class TestStoreCurrentPattern:

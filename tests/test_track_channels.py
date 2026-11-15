@@ -275,6 +275,8 @@ def _fake_dialog(result, values=None, seen=None):
         # Banque MSB / LSB (17h1) : None hors slot Banque
         def get_msb(self):      return self._v[9] if len(self._v) > 9 else None
         def get_lsb(self):      return self._v[10] if len(self._v) > 10 else None
+        def get_track_kind(self): return None   # type de piste inchangé (Phase 8 étape 14b1)
+        def get_audio_in(self):   return None
         def Destroy(self):      pass
     return FakeDlg
 

@@ -20,6 +20,12 @@ def test_instantiate_main_window():
     import wx
     from ui.main_window import MainWindow
     win = MainWindow()
+    # flux audio et MIDI fermés avant Destroy (Phase 8 étape 14c1) : sinon le
+    # flux tourne encore quand Python libère le moteur FluidSynth, et la
+    # carte appelle un moteur détruit (plantage d'un test suivant)
+    win._router.wait_loaded()
+    win._close_midi_devices()
+    win._audio_driver.close()
     win.Destroy()
     print("  instanciation MainWindow : OK")
 

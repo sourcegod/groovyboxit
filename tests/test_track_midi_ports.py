@@ -191,6 +191,8 @@ def _ports_dlg(result, midi_in=None, midi_out=None, live=True):
         def get_gain_db(self):   return self.v[8]
         def get_msb(self):       return self.v[9]
         def get_lsb(self):       return self.v[10]
+        def get_track_kind(self): return None   # type de piste inchangé (Phase 8 étape 14b1)
+        def get_audio_in(self):   return None
         def get_midi_in(self):   return self.ports[0]
         def get_midi_out(self):  return self.ports[1]
         def Destroy(self):       pass

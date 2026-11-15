@@ -13480,3 +13480,36 @@ demandés, faits avant le commit :
   constructeur reprenait le focus ; remplacé : Type de piste s'il est là,
   sinon Mute).
 - Essai final (2026-11-15) : concluant.
+
+### Avancement 14c1 (tests — données des pistes audio)
+
+- **`tests/test_audio_tracks_data.py`** (nouveau, 54 tests) : type de
+  piste et entrée audio (défauts, `.gvp`, anciens projets, valeurs
+  invalides, redimensionnement, `frozen_pattern`, retour au store),
+  clips (`audio_clips`, sérialisation, ignorés par la lecture avant
+  14d1) ; `audio_takes` (dossier par défaut et choisi, noms, numéros
+  libres, WAV 24 bits mono / stéréo, chemins relatifs, renommage, copie
+  vers le nouveau projet ou un dossier choisi, même place : rien à faire,
+  prise introuvable, dossier du projet) ; `_ProjectFolderHook` (contrôles
+  et défauts, changements, Parcourir…) ; Enregistrer sous (dans son
+  dossier ou non, prises copiées et clips du store et du pattern joué
+  repointés, `audio_dir` absolu hors du dossier, relatif dedans, prises
+  introuvables) ; propriétés de piste (listes en tête, focus sur le type
+  — et sur Mute sans les listes —, réglages MIDI grisés, retour en MIDI,
+  entrée absente, effet immédiat, Ok, Annuler, notes coupées) ; vraie
+  fenêtre principale (enregistrer puis rouvrir : `audio_dir`, type,
+  entrée, clip).
+- **47 tests rouges de 14b1 corrigés** (`get_track_kind` /
+  `get_audio_in` dans les dialogues factices, listes dans les routeurs
+  factices).
+- **Plantage découvert et corrigé** (`test_app_launch.py`) : la fenêtre
+  principale créée avec FluidSynth était détruite sans fermer le flux
+  audio ; quand Python libérait le moteur FluidSynth, la carte l'appelait
+  encore (« Segmentation fault » dans un test suivant, selon le moment du
+  ménage — révélé par l'ajout du fichier). Flux et MIDI fermés avant
+  `Destroy`, comme les autres tests à vraie fenêtre.
+- Mutations vérifiées (prises en 16 bits ; Annuler ne remet pas le type) :
+  chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`audio_takes.py`) et table. Suite :
+  4335 verts (six passages sur sept ; un échec isolé non reproduit, sans
+  doute le test de gain de sfizz déjà noté).
