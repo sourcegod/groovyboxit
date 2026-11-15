@@ -13372,7 +13372,14 @@ et d'un futur **Live Looper**.
   - « Geler les pistes » (convertir les pistes du pattern en pistes audio
     insérées dans le pattern courant) ;
   - envoi d'une piste vers une autre sortie audio (bien plus tard) ;
-  - types de piste Synthé, Effet, Automation.
+  - types de piste Synthé, Effet, Automation ;
+  - **avenant export audio** (utilisateur, 2026-11-15) : l'export audio
+    passe aujourd'hui par trois dialogues ; en rassembler deux en un
+    seul, celui du pattern courant, auquel on ajoute les cases
+    « Exporter les pistes sélectionnées », « Tenir compte des Mutes »,
+    « Tenir compte des Solos », suivies des champs actuels (Fin :
+    « Boucle repliée », format, normaliser…) ; après Ok, le dialogue du
+    nom du fichier `.wav` à exporter.
 
 ### Choix de conception proposés
 
@@ -13601,3 +13608,11 @@ pattern 1 du projet d'essai à 96 BPM (boucle de 10 s).
 - **`docs/SPECS.md`** : arborescence (`track_audio_clips.py`) et table.
   Suite : 4378 verts (aussi avec les exceptions de fil traitées en
   erreurs).
+- **Essais complémentaires (2026-11-15, concluants)** — projet
+  `essai_audio_14d1`, pattern 1 porté à 8 mesures à 96 BPM (20 s, à la
+  main : pas encore d'allongement automatique du pattern quand un clip
+  dépasse sa fin) : trois clips enchaînés sur la piste 5 (3, 3, 4 s) ;
+  deux pistes audio (5 et 6) en Solo ; trois pistes audio (5, 6, 7) avec
+  la boucle, la piste 7 seule dans la seconde moitié et retour propre au
+  début ; Mute, Solo, F5, PageUp / PageDown en cours de lecture ; export
+  WAV.
