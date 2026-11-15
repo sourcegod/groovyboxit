@@ -13575,3 +13575,29 @@ pattern 1 du projet d'essai à 96 BPM (boucle de 10 s).
   (= `router.stop_audio_clips`) ; les clips sont repris à la nouvelle
   position par les événements « en cours » de la reconstruction.
 - Troisième essai (2026-11-15) : PageUp / PageDown, Début / Fin : la voix se cale ; concluant.
+
+### Avancement 14e1 (tests — lecture des clips)
+
+- **`tests/test_audio_clips_playback.py`** (nouveau, 43 tests ; comportement
+  observable — positions à l'échantillon, contenu des tampons — pour
+  servir de référence à la version C/C++) : événements (données, fenêtre,
+  clips déjà commencés, rappels toutes les 0,25 s jusqu'à la fin du clip
+  ou de la fenêtre, durée inconnue, `play_event`) ; `TrackAudioMixin` sur
+  un vrai `TrackRouter` et un `Mixer` (piste audio seulement, volume ×
+  gain et pan, Mute, Solo, sans pilote, départ au milieu, au-delà de la
+  fin, pas de relance d'un clip qui sonne, nouveau départ, reprise après
+  coupure, voix finie, deux clips ; coupures Stop / Mute / Panic / piste,
+  sans init ; fichier introuvable ou illisible signalé une fois, cache et
+  rechargement, stéréo rééchantillonnée, chemin brut, `render_copy`) ;
+  `DrumPlayer` (clips en cours et rappels dans la mesure, rien au
+  décompte, sans durée, répartition, saut de position seulement en
+  lecture) ; rendu WAV (clip à son pas, gain, Mute, stems avec ou sans la
+  piste, piste MIDI muette) ; vraie fenêtre principale (branchements,
+  chemin relatif au `.gvp`).
+- **`test_audio_tracks_data.py`** : « la lecture ignore les clips » devient
+  « la lecture envoie les clips ».
+- Mutations vérifiées (clip relancé alors qu'il sonne ; pas de rappels) :
+  chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`track_audio_clips.py`) et table.
+  Suite : 4378 verts (aussi avec les exceptions de fil traitées en
+  erreurs).
