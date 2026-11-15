@@ -13616,3 +13616,98 @@ pattern 1 du projet d'essai à 96 BPM (boucle de 10 s).
   la boucle, la piste 7 seule dans la seconde moitié et retour propre au
   début ; Mute, Solo, F5, PageUp / PageDown en cours de lecture ; export
   WAV.
+
+## Phase 8 étape 14e3 — Avenant : fenêtre `start` / `length` des clips audio
+
+### Origine (utilisateur, 2026-11-15)
+
+Après les essais de lecture, l'utilisateur demande pourquoi le
+`TapeEvent` d'un clip n'a pas de longueur : « plus tard, on pourrait
+vouloir Copier / Couper juste une partie du clip, ou même plusieurs
+portions différentes du même clip ». Avenant placé avant
+l'enregistrement (14f1), pour que les prises créent d'emblée des clips
+au bon format. Découpage : **14e3** implémentation, **14e4** tests.
+
+### Pourquoi un clip n'avait pas de longueur
+
+- `TapeEvent.dur` existe, mais **en pas**. Un clip audio est joué à
+  **vitesse réelle** : sa durée en pas change dès que le BPM change. La
+  durée était donc lue dans le fichier (`clip_duration_secs`).
+- Conséquence : un clip était forcément **le fichier entier**, du début
+  à la fin. Impossible d'en garder une partie sans recopier ou couper le
+  fichier lui-même.
+
+### Le clip devient une fenêtre sur le fichier (comme Reaper, Sonar)
+
+- `payload = {"file", "gain", "start", "length"}` :
+  - **`start`** : début du clip **dans le fichier**, en échantillons du
+    fichier (absent = 0) ;
+  - **`length`** : longueur jouée, en échantillons du fichier (absente =
+    jusqu'à la fin du fichier ; les `.gvp` existants restent valides,
+    sans migration).
+- **En échantillons, pas en secondes** : valeur entière exacte, sans
+  arrondi qui s'accumule d'un découpage à l'autre ; portable telle
+  quelle en C/C++ (moteur audio : prototype Python, cible C/C++). La conversion
+  vers la fréquence du pilote se fait au moment de jouer.
+- **`dur` (en pas) reste dérivé**, jamais la référence : il sera
+  recalculé depuis `length` et le tempo quand la sélection, l'affichage
+  ou les limiteurs en auront besoin (chantiers d'édition, plus tard).
+- Le fichier n'est **jamais modifié** par l'édition d'un clip : seules
+  les données changent.
+
+### Intérêt de `length` (et de `start`)
+
+- **Copier / Couper une partie d'un clip** : la partie gardée et la
+  partie copiée sont deux fenêtres sur le même fichier ; l'**Undo** ne
+  garde que des données (quelques nombres), jamais d'audio.
+- **Découper un clip en deux** (au curseur, aux limiteurs) : deux
+  événements, même fichier, `start` différents, `length` complémentaires.
+- **Plusieurs portions du même fichier** à des positions différentes, ou
+  **la même portion répétée** (refrain, boucle de voix) : aucun fichier
+  recopié, aucune place disque en plus.
+- **Raccourcir / rallonger un clip** par ses bords (« trim ») : changer
+  `start` ou `length`, la prise reste intacte et récupérable.
+- **Allonger le pattern** quand un clip dépasse sa fin (remarque des
+  essais de 14e2, prévu avec l'enregistrement) : la fin du clip se
+  calcule depuis `length` sans relire le fichier.
+- **Rappels « clip en cours »** (14d1) et export : la fin du clip est
+  celle de la fenêtre, pas celle du fichier.
+- **Enregistrement (14f1)** : une prise crée un clip `start = 0`,
+  `length` = longueur de la prise ; une prise en boucle pourra plus tard
+  être découpée en passages sans nouveau fichier.
+
+### Implémentation (14e3)
+
+- `pattern.py` : `clip_payload(file, gain, start, length)` et
+  `clip_window(payload)` → (`start`, `length` ou None), valeurs bornées
+  (entiers ≥ 0, `length` ≥ 1).
+- `tape_events.audio_clip_data` : (piste, fichier, gain, id, décalage,
+  `start`, `length`) ; `audio_clip_resyncs` : `duration_of(fichier,
+  start, length)`.
+- `TrackAudioMixin` : le cache garde la fréquence du fichier ;
+  `clip_sound(rel, start, length)` rend une **vue** (sans copie) sur la
+  fenêtre, convertie à la fréquence du pilote ; `on_audio_clip(…,
+  start=0, length=None)` ; `clip_duration_secs(rel, start, length)` =
+  durée de la fenêtre (bornée par la fin du fichier).
+- Copier / Couper / Découper / trim : **plus tard** (chantier d'édition
+  des clips) ; seul le format et la lecture changent ici.
+
+### Avancement 14e3 (implémentation — fenêtre des clips)
+
+- Fait comme prévu ci-dessus. Le routeur garde dans son cache la fréquence
+  du fichier ; une fenêtre qui dépasse la fin du fichier est bornée (5 s
+  demandées à 8 s d'un fichier de 10 s → 2 s).
+- Essai concluant (2026-11-15), projet `essai_audio_14d1` : piste 5 =
+  **un seul fichier** de 1 à 10 (`take_004`) lu par trois clips —
+  0-3 s à 0 s, 6-10 s à 3 s, 0-3 s répétée à 7 s ; en Solo on entend 1, 2,
+  3, 7, 8, 9, 10, 1, 2, 3, jamais 4, 5, 6 ; PageUp / PageDown au milieu
+  d'un clip, Mute puis retour, export WAV.
+- Suite : 4371 verts, **7 rouges jusqu'à 14e4** (tests de 14e1 qui
+  attendent l'ancien tuple de l'événement, ou `duration_of` à un seul
+  argument).
+
+### Noté aussi pour plus tard (utilisateur, 2026-11-15)
+
+- Un changement du **volume** ou du **pan** de la piste doit **s'entendre
+  tout de suite** sur un clip qui joue, comme sur une piste synthé ou
+  Wave ; aujourd'hui ils sont figés au départ de la voix.

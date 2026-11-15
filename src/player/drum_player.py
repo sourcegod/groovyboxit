@@ -82,8 +82,8 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée
         self._on_kit_tape_cb      = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture kit_tape
         self._on_patch_tape_cb    = None  # callback(track_idx, midi_note, velocity, duration_ms) lecture patch_tape
-        self._on_audio_clip_cb    = None  # callback(track, fichier, gain, id, décalage) clip audio (14d1)
-        self._clip_duration_cb    = None  # callback(fichier) → secondes : rappels « en cours » (14d1)
+        self._on_audio_clip_cb    = None  # callback(track, fichier, gain, id, décalage, start, length) clip audio (14d1, 14e3)
+        self._clip_duration_cb    = None  # callback(fichier, start, length) → secondes : rappels « en cours » (14d1, 14e3)
         self._on_seek_cb          = None  # callback() : position sautée en lecture (14d1)
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
         self._on_cc_tape_cb              = None  # callback(track_idx, cc_num, value) lecture CC générique

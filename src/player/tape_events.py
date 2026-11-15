@@ -9,7 +9,7 @@
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
-from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND, ETYPE_AUDIO
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND, ETYPE_AUDIO, clip_window
 
 # Marqueurs internes des événements (repris par PlaybackLoopMixin)
 GRID_EVENT       = -6   # événements grille (etype ETYPE_GRID de _tape)
@@ -69,10 +69,13 @@ def tape_events(tape, lp_start, lp_end, to_sec, min_sec=None):
 
 def audio_clip_data(t_idx, ev, offset=0.0):
     """Données d'un clip audio (Phase 8 étape 14d1) : (piste, fichier
-    relatif, gain, id du clip, décalage en secondes dans le fichier — non
-    nul quand la lecture part du milieu du clip)."""
+    relatif, gain, id du clip, décalage en secondes dans le clip — non
+    nul quand la lecture part du milieu du clip —, start, length : fenêtre
+    sur le fichier en échantillons du fichier, length None = jusqu'à la
+    fin, Phase 8 étape 14e3)."""
+    start, length = clip_window(ev.payload)
     return (t_idx, ev.payload.get("file", ""), float(ev.payload.get("gain", 1.0)),
-            ev.id, offset)
+            ev.id, offset, start, length)
 
 
 AUDIO_RESYNC_SECS = 0.25   # pas des rappels « clip en cours » (14d1, essai)
@@ -85,7 +88,8 @@ def audio_clip_resyncs(tape, lp_start, lp_end, to_sec, elapsed, end_sec, duratio
     sonner (jusqu'à sa fin ou celle de la fenêtre), avec son décalage. Le
     routeur ignore un clip qui sonne déjà ; un clip coupé (Mute, Solo, F5)
     reprend ainsi au bon endroit, au plus step secondes plus tard.
-    duration_of(fichier) → durée en secondes (0 : inconnue, pas de rappel).
+    duration_of(fichier, start, length) → durée de la fenêtre du clip en
+    secondes (0 : inconnue, pas de rappel ; 14e3).
     Boucles simples sur des nombres : portable tel quel en C/C++."""
     events = []
     for t_idx, note_list in enumerate(tape):
@@ -93,7 +97,8 @@ def audio_clip_resyncs(tape, lp_start, lp_end, to_sec, elapsed, end_sec, duratio
             if ev.etype != ETYPE_AUDIO or not (lp_start <= ev.time <= lp_end):
                 continue
             t0  = to_sec(ev.time - lp_start)
-            end = min(t0 + duration_of(ev.payload.get("file", "")), end_sec)
+            start, length = clip_window(ev.payload)
+            end = min(t0 + duration_of(ev.payload.get("file", ""), start, length), end_sec)
             k = 1
             while t0 + k * step < end:
                 t = t0 + k * step

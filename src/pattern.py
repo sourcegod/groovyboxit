@@ -16,8 +16,39 @@ ETYPE_PGM   = "PGM"
 ETYPE_BEND  = "BEND"
 # Clip audio d'une piste audio (Phase 8 étape 14b1, docs/DESIGN.md § 14a A9) :
 # time = pas de départ, payload = {"file": chemin relatif au dossier du .gvp,
-# "gain": 1.0} ; rejoué à vitesse réelle (14d1)
+# "gain": 1.0, "start": début dans le fichier, "length": longueur jouée} ;
+# start / length en échantillons du fichier (Phase 8 étape 14e3 : le clip est
+# une fenêtre sur le fichier ; absents = fichier entier) ; rejoué à vitesse
+# réelle (14d1)
 ETYPE_AUDIO = "AUDIO"
+
+
+def clip_payload(file, gain=1.0, start=0, length=None):
+    """Payload d'un clip audio (Phase 8 étape 14e3) ; length None = jusqu'à
+    la fin du fichier (clé absente, comme les .gvp d'avant 14e3)."""
+    payload = {"file": file, "gain": float(gain)}
+    start, length = clip_window({"start": start, "length": length})
+    if start:
+        payload["start"] = start
+    if length is not None:
+        payload["length"] = length
+    return payload
+
+
+def clip_window(payload):
+    """(start, length) d'un clip en échantillons du fichier (Phase 8 étape
+    14e3) : start entier ≥ 0 (0 si absent ou invalide), length entier ≥ 1
+    ou None (jusqu'à la fin du fichier)."""
+    try:
+        start = max(0, int(payload.get("start") or 0))
+    except (TypeError, ValueError):
+        start = 0
+    length = payload.get("length")
+    try:
+        length = None if length is None else max(1, int(length))
+    except (TypeError, ValueError):
+        length = None
+    return start, length
 
 # Types de piste (Phase 8 étape 14b1, § 14a A2) : liste « Type de piste » des
 # propriétés ; Synthé, Effet, Automation viendront plus tard

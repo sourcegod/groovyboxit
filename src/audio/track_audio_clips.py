@@ -10,6 +10,8 @@
     - audio_resolver(chemin relatif) → chemin absolu, fourni par la fenêtre
       (dossier du .gvp) ; None : chemins pris tels quels ;
     - fichiers lus une fois (cache par chemin et date de modification) ;
+    - un clip est une fenêtre (start, length, en échantillons du fichier)
+      sur son fichier (Phase 8 étape 14e3) : vue sans copie sur le tampon ;
     - un clip qui sonne n'est pas relancé par un événement « en cours »
       (décalage > 0) ; un départ normal (décalage 0, nouveau passage de
       boucle) coupe l'ancienne voix du même clip ;
@@ -31,7 +33,7 @@ class TrackAudioMixin:
 
     def _init_audio_clips(self):
         self.audio_resolver = None
-        self._clip_cache    = {}      # chemin absolu → (date, SdSound)
+        self._clip_cache    = {}      # chemin absolu → (date, SdSound, fréquence du fichier)
         self._clip_voices   = {}      # id du clip → (piste, voix)
         self.audio_status   = []      # fichiers introuvables déjà signalés
 
@@ -43,10 +45,27 @@ class TrackAudioMixin:
         resolver = getattr(self, "audio_resolver", None)
         return resolver(rel) if resolver is not None else rel
 
-    def clip_sound(self, rel):
-        """SdSound du fichier du clip (stéréo float32, à la fréquence du
-        pilote), lu une fois ; None si le fichier manque ou est illisible
-        (signalé une fois)."""
+    def clip_sound(self, rel, start=0, length=None):
+        """SdSound du clip (stéréo float32, à la fréquence du pilote) : la
+        fenêtre [start, start + length[ du fichier, en échantillons du
+        fichier (Phase 8 étape 14e3 ; length None = jusqu'à la fin) — vue
+        sans copie ; fichier lu une fois ; None si le fichier manque ou est
+        illisible (signalé une fois)."""
+        loaded = self._clip_file(rel)
+        if loaded is None:
+            return None
+        sound, file_sr = loaded
+        if not start and length is None:
+            return sound
+        ratio = sound.samplerate / file_sr
+        a = min(len(sound.data), int(round(max(0, start) * ratio)))
+        b = len(sound.data) if length is None else \
+            min(len(sound.data), a + max(0, int(round(length * ratio))))
+        return SdSound(sound.data[a:b], sound.samplerate)
+
+    def _clip_file(self, rel):
+        """(SdSound du fichier entier à la fréquence du pilote, fréquence du
+        fichier) ; lu une fois, relu si sa date change."""
         path = self._clip_path(rel)
         try:
             mtime = os.path.getmtime(path)
@@ -55,7 +74,7 @@ class TrackAudioMixin:
             return None
         cached = self._clip_cache.get(path)
         if cached is not None and cached[0] == mtime:
-            return cached[1]
+            return cached[1], cached[2]
         try:
             data, sr = sf.read(path, dtype="float32", always_2d=True)
         except (RuntimeError, OSError, sf.LibsndfileError):
@@ -71,8 +90,8 @@ class TrackAudioMixin:
             data = np.column_stack([np.interp(x, np.arange(len(data)), data[:, c])
                                     for c in range(2)]).astype(np.float32)
         sound = SdSound(data, target)
-        self._clip_cache[path] = (mtime, sound)
-        return sound
+        self._clip_cache[path] = (mtime, sound, sr)
+        return sound, sr
 
     def _clip_samplerate(self):
         driver = getattr(self, "_driver", None)
@@ -88,10 +107,12 @@ class TrackAudioMixin:
     # Lecture
     # ------------------------------------------------------------------
 
-    def on_audio_clip(self, track_idx, rel, gain=1.0, clip_id=None, offset=0.0):
+    def on_audio_clip(self, track_idx, rel, gain=1.0, clip_id=None, offset=0.0,
+                      start=0, length=None):
         """Joue le clip (Phase 8 étape 14d1) ; offset : secondes déjà passées
-        du clip (lecture partie du milieu). Rien sur une piste qui n'est pas
-        audio, muette ou hors solo, ni sans pilote."""
+        du clip (lecture partie du milieu) ; start / length : fenêtre sur le
+        fichier, en échantillons du fichier (14e3). Rien sur une piste qui
+        n'est pas audio, muette ou hors solo, ni sans pilote."""
         driver = getattr(self, "_driver", None)
         if driver is None or not self._track_is_audible(track_idx):
             return None
@@ -101,11 +122,11 @@ class TrackAudioMixin:
         playing = self._clip_voices.get(clip_id)
         if offset > 0 and playing is not None and self._voice_alive(playing[1]):
             return None                       # déjà en train de sonner
-        sound = self.clip_sound(rel)
+        sound = self.clip_sound(rel, start, length)
         if sound is None:
             return None
-        start = int(round(offset * sound.samplerate))
-        if start >= len(sound.data):
+        first = int(round(offset * sound.samplerate))
+        if first >= len(sound.data):
             return None                       # clip déjà fini à cette position
         if playing is not None:               # nouveau départ : l'ancienne voix s'arrête
             driver.stop_voice(playing[1])
@@ -113,7 +134,7 @@ class TrackAudioMixin:
         voice = driver.play(sound, vol, self._track_pans[track_idx])
         if voice is None:
             return None
-        voice.pos = float(start)
+        voice.pos = float(first)
         self._clip_voices[clip_id] = (track_idx, voice)
         return voice
 
@@ -134,7 +155,8 @@ class TrackAudioMixin:
                     driver.stop_voice(voice)
                 del voices[clip_id]
 
-    def clip_duration_secs(self, rel):
-        """Durée du fichier d'un clip en secondes (0 si introuvable)."""
-        sound = self.clip_sound(rel)
+    def clip_duration_secs(self, rel, start=0, length=None):
+        """Durée du clip en secondes : sa fenêtre sur le fichier, bornée par
+        la fin du fichier (14e3) ; 0 si introuvable."""
+        sound = self.clip_sound(rel, start, length)
         return len(sound.data) / sound.samplerate if sound is not None else 0.0
