@@ -13295,3 +13295,128 @@ SpeechAccess ; sortie / entrée audio par piste ; plusieurs pistes en
 direct ; écho du jeu en direct vers le port externe ; essai
 multi-cartes ; Ctrl+Z des Préférences ; audition dans l'Explorateur ;
 source SFZ à un seul programme.
+
+---
+
+## Phase 8 étape 14a — Pistes audio : enregistrer la voix dans les patterns
+
+### Numérotation des commits de ce chantier
+
+`14a` = ce plan (doc seule). Le code commence à `14b1` ; paires
+implémentation → tests ; `14b2`… pour un commit imprévu. Décisions notées
+**A1, A2…**.
+
+### Origine du besoin (utilisateur, 2026-11-14 / 15)
+
+Enregistrer la voix (une entrée audio) dans les patterns. **Ce chantier
+pose les bases d'une future fenêtre « Arranger »** où l'on enregistrera
+et éditera des pistes audio comme dans un DAW classique (Sonar, Reaper),
+et d'un futur **Live Looper**.
+
+### État des lieux constaté en code (2026-11-15, 4281 tests verts)
+
+- **Pistes** : 16 par pattern ; réglages par pattern (`Pattern._track_*` :
+  slot, canal, mute, solo, volume, pan, entrée / sortie MIDI) ; les notes
+  dans `_tape` (`TapeEvent` : GRID, KIT, PATCH, CC, PGM, BEND). `Track`
+  (pattern.py) garde un type DRUM / SYNTH / MIDI inutilisé.
+- **Lecture** : `DrumPlayer._run_thread` (fil, horloge `perf_counter`)
+  construit les événements de la fenêtre (`tape_events`) et les envoie au
+  routeur au bon instant ; le son part par le `Mixer` (voix one-shot
+  `_Voice` avec une position de lecture `pos`, sources de rendu) vers la
+  sortie principale. Mêmes événements pour le rendu WAV
+  (`audio_export.render_pattern`).
+- **Entrée audio** : pas de flux continu ; `devices.audio_device.
+  record_input` (bloquant) sert au test de l'onglet Matériel. Entrées
+  cochées : `audio_inputs` des Préférences.
+- **Enregistrement** : R (Overdub), Shift+R (Remplacer), Ctrl+R
+  (décompte) ; position par `_compute_record_offset` (Alt+Shift+Q, 13d2) ;
+  une prise ouvre un point d'Undo (Phase 7 étape 10d2).
+- **Projet** : Ctrl+N crée `noname_NNN.gvp` dans `PROJECTS` sans
+  dialogue ; Ctrl+Shift+S ouvre un `wx.FileDialog` (wxPython 4.2.3 : une
+  case peut y être ajoutée par `SetCustomizeHook`, accessibilité à
+  vérifier avec Orca).
+
+### Décisions de l'utilisateur (2026-11-15)
+
+- **A1 — une piste audio** (édition et traitement des données, comme
+  Sonar) ; un « slot audio » reste à débattre plus tard.
+- **A2 — type de piste** : nouvelle liste **« Type de piste »** dans les
+  propriétés de piste, par pattern comme les autres réglages, prévue pour
+  **Audio / MIDI / Synthé / Effet / Automation** ; ce chantier en met en
+  œuvre **MIDI** (le comportement actuel, défaut) et **Audio**.
+- **A3 — rangement des prises** : dossier **`Audios`** **à côté du
+  `.gvp`** ; nom **`projet_pattern_piste_take_001.wav`**. **Toutes les
+  prises** sont enregistrées sous cette forme. Projet dans son propre
+  dossier (`PROJECTS/MonProjet/MonProjet.gvp`, `…/MonProjet/Audios/`) :
+  case **« Créer un nouveau dossier pour ce projet »** dans le dialogue de
+  sauvegarde (Ctrl+Shift+S).
+- **A4 — Ctrl+N** garde `noname_NNN` ; le nom (et le dossier) se demande
+  à **Ctrl+Shift+S** ou **à la première prise** audio d'un projet encore
+  sans nom choisi.
+- **A5 — calage et latence** : se référer à Sonar et Reaper (bases de
+  l'Arranger).
+- **A6 — modes d'enregistrement existants** : **Overdub** (R) = la
+  nouvelle prise est **mixée, sans saturer**, avec celle déjà sur la
+  piste ; **Remplacer** (Shift+R) = la nouvelle prise remplace la
+  dernière ; l'Undo revient en arrière.
+- **A7 — WAV 24 bits**, mono ou stéréo selon l'entrée.
+- **Plus tard** (chantiers à part, notés) :
+  - dialogue **« Mode d'enregistrement »** par **Ctrl+Shift+R**, depuis
+    toutes les fenêtres : Overdub / Remplacer / **Remplacer puis Overdub**
+    (comme le MPC d'Akai : en boucle, Remplacer au premier passage,
+    Overdub aux suivants), pour l'audio et le MIDI ;
+  - **monitoring** de l'entrée pendant l'enregistrement — peut-être dans
+    un des chantiers suivants, pour **évaluer correctement la latence
+    d'entrée** (à évaluer) ;
+  - gestion des prises (garder, revenir à, supprimer une prise) ;
+  - « Geler les pistes » (convertir les pistes du pattern en pistes audio
+    insérées dans le pattern courant) ;
+  - envoi d'une piste vers une autre sortie audio (bien plus tard) ;
+  - types de piste Synthé, Effet, Automation.
+
+### Choix de conception proposés
+
+**A8 — piste audio** : `Pattern._track_kinds` (« midi » par défaut,
+« audio ») ; une piste audio n'a ni slot ni canal ni notes ; elle a une
+**entrée audio** (liste des entrées cochées dans l'onglet Matériel, dans
+ses propriétés) et joue sur la sortie principale, avec son volume, son
+pan, Mute et Solo.
+
+**A9 — prise = un clip** : nouvel événement **`ETYPE_AUDIO`** dans `_tape`
+(la structure commune des données, Phase 7 étape 1) : `time` = pas de
+départ, `payload` = `file` (relatif au dossier du `.gvp`), `gain` ; durée
+lue dans le fichier. Rejoué à **vitesse réelle** depuis son pas de départ
+(pas d'étirement au tempo, comme un clip audio ordinaire de Sonar) ;
+commencé à la bonne position quand la lecture part du milieu d'un clip.
+
+**A10 — calage (comme Reaper, Sonar)** : flux d'entrée PortAudio ouvert à
+l'armement ; blocs datés par l'horloge de la carte ; position dans le
+pattern calculée comme pour les notes ; **compensation de latence** =
+latences rapportées par le pilote (entrée + sortie) **plus un décalage
+manuel** en millisecondes (Préférences, onglet Audio, « Compensation de
+latence », comme le « Timing Offset » de Sonar ou le « Recording offset »
+de Reaper), à régler par un essai au métronome.
+
+**A11 — boucle** : la prise couvre la fenêtre de boucle ; à chaque retour
+de boucle, le passage est traité selon le mode (A6) : Overdub → **mixé**
+au clip de la piste, **sans saturer** (crête au-dessus de 0 dBFS →
+limiteur, comme l'export) ; Remplacer → **remplace** le clip. Un nouveau
+fichier par prise ; l'ancien reste sur le disque (Undo).
+
+**A12 — Undo** : la prise est un point d'Undo (comme les notes) ; Ctrl+Z
+revient au clip d'avant (l'ancien fichier).
+
+**A13 — export WAV et stems** : les clips audio y sont rendus comme à
+l'écoute.
+
+### Découpage (validé, 2026-11-15)
+
+- **14b1 / 14c1 — données** : type de piste (liste dans les propriétés),
+  entrée audio de la piste, clip `ETYPE_AUDIO`, dossier `Audios` et noms
+  des prises, case « Créer un nouveau dossier pour ce projet ».
+- **14d1 / 14e1 — lecture** : clips à l'écoute (volume, pan, Mute,
+  Solo), lecture partie du milieu, rendu WAV et stems.
+- **14f1 / 14g1 — enregistrement** : flux d'entrée, calage, compensation
+  de latence, Overdub / Remplacer, boucle, première prise d'un projet sans
+  nom, Undo.
+- **14h1 — clôture**.
