@@ -120,7 +120,7 @@ def test_frozen_pattern_copies_kinds():
 def test_playback_emits_clips_since_14d1():
     clip = _clip(time=0)
     ev, = te.tape_events([[clip]], 0, 15, lambda s: s * 0.1)
-    assert ev == (0.0, te.AUDIO_TAPE_EVENT, (0, "Audios/a.wav", 1.0, clip.id, 0.0), 0)
+    assert ev == (0.0, te.AUDIO_TAPE_EVENT, (0, "Audios/a.wav", 1.0, clip.id, 0.0, 0, None), 0)
 
 
 def test_router_keeps_the_kinds_of_the_live_pattern():

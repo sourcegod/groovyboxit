@@ -13706,6 +13706,27 @@ au bon format. Découpage : **14e3** implémentation, **14e4** tests.
   attendent l'ancien tuple de l'événement, ou `duration_of` à un seul
   argument).
 
+### Avancement 14e4 (tests — fenêtre des clips)
+
+- **`tests/test_audio_clips_playback.py`** (43 → 68 tests) : les 7 tests
+  rouges de 14e3 passent au nouveau format (tuple de l'événement avec
+  `start`, `length` ; `duration_of(fichier, start, length)`) ;
+  `test_audio_tracks_data.py` idem (1 test).
+- Nouveaux tests de la fenêtre : `clip_payload` (ancien format gardé sans
+  fenêtre), `clip_window` et ses bornes (absent, chaînes, négatif, 0,
+  invalide, flottant) ; données de l'événement ; rappels qui demandent la
+  durée de la fenêtre et s'arrêtent à sa fin (vrai routeur) ; bons
+  échantillons joués (fichier en rampe : la valeur dit d'où vient
+  l'échantillon) ; **vue sans copie** (`np.shares_memory`, un seul
+  fichier en cache) ; fenêtre en échantillons **du fichier** (fichier à
+  22 050 Hz, pilote à 44 100 Hz) ; fenêtre bornée par la fin du fichier,
+  ou au-delà (rien) ; départ au milieu d'une fenêtre, décalage au-delà ;
+  deux fenêtres du même fichier ensemble ; rendu WAV d'une portion seule
+  et d'une portion répétée ; `.gvp` avec et sans fenêtre.
+- Mutations vérifiées (`start` ignoré ; fréquence du fichier ignorée ;
+  rappels sur le fichier entier) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : table. Suite : 4403 verts.
+
 ### Noté aussi pour plus tard (utilisateur, 2026-11-15)
 
 - Un changement du **volume** ou du **pan** de la piste doit **s'entendre
