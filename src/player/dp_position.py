@@ -24,6 +24,8 @@ class PositionMixin:
         active = self.playing or self.clicking or self._note_repeat_active
         if active:
             self.stop_thread()
+        if self.playing and getattr(self, "_on_seek_cb", None):
+            self._on_seek_cb()              # clips audio coupés, repris à la position (14d1)
         self._resume_offset = offset
         if self.playing:
             self._chase(offset or 0.0)      # instruments de banque (17f1, § 17e3 O4)

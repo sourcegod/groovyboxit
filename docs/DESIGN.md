@@ -13513,3 +13513,65 @@ demandés, faits avant le commit :
 - **`docs/SPECS.md`** : arborescence (`audio_takes.py`) et table. Suite :
   4335 verts (six passages sur sept ; un échec isolé non reproduit, sans
   doute le test de gain de sfizz déjà noté).
+
+### Avancement 14d1 (implémentation — lecture des clips)
+
+- **`tape_events`** : marqueur **`AUDIO_TAPE_EVENT`** (-10 ; -9 est le
+  tempo) ; données `audio_clip_data` = (piste, fichier, gain, id du clip,
+  décalage) ; **`audio_clips_under_way`** : clips de la fenêtre déjà
+  commencés, envoyés à la position courante avec leur décalage (lecture
+  partie du milieu, retour d'un Mute) ; `play_event` (rendu) les envoie à
+  `router.on_audio_clip`.
+- **`DrumPlayer`** : `_build_measure_events` ajoute les clips en cours
+  (hors décompte), `_dispatch_event` → `_on_audio_clip_cb` (branché sur
+  le routeur par la fenêtre).
+- **`src/audio/track_audio_clips.py`** (nouveau, `TrackAudioMixin` de
+  `TrackRouter`) : `on_audio_clip` — piste audio seulement, audible (Mute,
+  Solo), volume de la piste × gain, pan de la piste, voix one-shot du
+  pilote (écoute) ou du Mixer (rendu), position de départ = décalage ; un
+  clip qui sonne n'est pas relancé par un événement « en cours » ; un
+  départ normal (nouveau passage de boucle) coupe l'ancienne voix du même
+  clip ; `clip_sound` (fichier lu une fois, cache par chemin et date,
+  stéréo, rééchantillonné à la fréquence du pilote ; introuvable signalé
+  une fois) ; `stop_audio_clips` (Stop, avant un Mute / Solo, changement
+  de son ou de type de la piste, Panic) ; `clip_duration_secs`.
+- **`render_copy`** recopie types de piste, entrées audio, `audio_resolver`
+  et le cache : **export WAV et stems** rendent les clips. La fenêtre
+  fournit `audio_resolver` (chemin relatif au dossier du `.gvp`).
+- Vérifié de bout en bout par le vrai rendu WAV : silence avant le pas de
+  départ, le clip (RMS attendu), silence après ; piste repassée en MIDI →
+  muette ; départ à 0,25 s → position 11 025, pas relancé en cours,
+  arrêt.
+- **Projet d'essai** : `/home/com/groovybox/PROJECTS/essai_audio_14d1/`
+  (copie de `project_01.gvp`, piste 5 audio, prise de voix de synthèse
+  « un, deux, trois, quatre » de 2,9 s au début du pattern 1).
+- Suite : 4334 verts, **1 rouge jusqu'à 14e1** (« la lecture ignore les
+  clips », vrai jusqu'à 14d1).
+
+**Essai 14d1** : ouvrir `essai_audio_14d1.gvp`, lire le pattern 1 : la
+voix au début de chaque boucle ; Mute / Solo de la piste 5, volume, pan ;
+lecture partie du milieu (pendant la voix) ; Ctrl+F12 ; export WAV
+(Alt+Shift+W) et stems : la voix y est.
+
+**Essai 14d1** (utilisateur, 2026-11-15) : lecture au début, au milieu, à
+la fin : bien. **Corrigé** : après la fin d'un Solo (normal ou exclusif),
+d'un Mute, ou F5, la voix ne reprenait pas pendant la lecture (rien ne
+relançait un clip coupé). **`te.audio_clip_resyncs`** : tant qu'un clip
+doit sonner, un rappel « clip en cours » toutes les 0,25 s
+(`AUDIO_RESYNC_SECS`), avec son décalage ; le routeur l'ignore si le clip
+sonne, sinon le reprend au bon endroit — quel que soit le chemin qui a
+changé Mute / Solo (X, S, F3, F4, F5, propriétés, éditeur MIDI) ; durée du
+clip par `DrumPlayer._clip_duration_cb` (= `clip_duration_secs`). Boucles
+sur des nombres, portables en C/C++ (rappel de l'utilisateur : la lecture
+et l'enregistrement audio sont un **prototype Python, cible C/C++**).
+Prise d'essai refaite : **10 s, de un à dix, un nombre par seconde** ;
+pattern 1 du projet d'essai à 96 BPM (boucle de 10 s).
+- Second essai : Mute, Solo, Solo exclusif, F5 → la voix reprend ;
+  export WAV en mix et en stems : la voix y est. **Corrigé** :
+  PageUp / PageDown pendant la lecture laissaient la voix continuer, sans
+  la caler sur la nouvelle position. Tout déplacement passe par
+  `_go_to_offset` (PageUp / PageDown, Début / Fin, Aller à, secondes,
+  temps, pas) : en lecture, il appelle **`DrumPlayer._on_seek_cb`**
+  (= `router.stop_audio_clips`) ; les clips sont repris à la nouvelle
+  position par les événements « en cours » de la reconstruction.
+- Troisième essai (2026-11-15) : PageUp / PageDown, Début / Fin : la voix se cale ; concluant.

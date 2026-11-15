@@ -9,7 +9,7 @@
     Date: Sat, 31/10/2026
     Author: Coolbrother
 """
-from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
+from pattern import ETYPE_GRID, ETYPE_KIT, ETYPE_PATCH, ETYPE_CC, ETYPE_PGM, ETYPE_BEND, ETYPE_AUDIO
 
 # Marqueurs internes des événements (repris par PlaybackLoopMixin)
 GRID_EVENT       = -6   # événements grille (etype ETYPE_GRID de _tape)
@@ -18,6 +18,8 @@ PATCH_TAPE_EVENT = -3   # événements patch_tape (MIDI brut)
 BEND_TAPE_EVENT  = -4   # événements Pitch Bend (etype ETYPE_BEND de _tape)
 CC_TAPE_EVENT    = -7   # événements CC générique (etype ETYPE_CC de _tape)
 PGM_TAPE_EVENT   = -8   # événements Program Change (etype ETYPE_PGM de _tape)
+# -9 : changement de tempo (DrumPlayer.TEMPO_EVENT)
+AUDIO_TAPE_EVENT = -10  # clip audio d'une piste audio (ETYPE_AUDIO, Phase 8 étape 14d1)
 
 DEFAULT_NOTE_MS  = 500  # durée d'une note sans durée propre (TrackRouter)
 
@@ -60,6 +62,60 @@ def tape_events(tape, lp_start, lp_end, to_sec, min_sec=None):
             elif ev.etype == ETYPE_BEND:
                 events.append((t_sec, BEND_TAPE_EVENT,
                                (t_idx, ev.payload.get("value")), 0))
+            elif ev.etype == ETYPE_AUDIO:
+                events.append((t_sec, AUDIO_TAPE_EVENT, audio_clip_data(t_idx, ev), 0))
+    return events
+
+
+def audio_clip_data(t_idx, ev, offset=0.0):
+    """Données d'un clip audio (Phase 8 étape 14d1) : (piste, fichier
+    relatif, gain, id du clip, décalage en secondes dans le fichier — non
+    nul quand la lecture part du milieu du clip)."""
+    return (t_idx, ev.payload.get("file", ""), float(ev.payload.get("gain", 1.0)),
+            ev.id, offset)
+
+
+AUDIO_RESYNC_SECS = 0.25   # pas des rappels « clip en cours » (14d1, essai)
+
+
+def audio_clip_resyncs(tape, lp_start, lp_end, to_sec, elapsed, end_sec, duration_of,
+                       step=AUDIO_RESYNC_SECS):
+    """Rappels « clip en cours » (essai de 14d1) : pour chaque clip de la
+    fenêtre, un événement tous les step secondes tant que le clip doit
+    sonner (jusqu'à sa fin ou celle de la fenêtre), avec son décalage. Le
+    routeur ignore un clip qui sonne déjà ; un clip coupé (Mute, Solo, F5)
+    reprend ainsi au bon endroit, au plus step secondes plus tard.
+    duration_of(fichier) → durée en secondes (0 : inconnue, pas de rappel).
+    Boucles simples sur des nombres : portable tel quel en C/C++."""
+    events = []
+    for t_idx, note_list in enumerate(tape):
+        for ev in note_list:
+            if ev.etype != ETYPE_AUDIO or not (lp_start <= ev.time <= lp_end):
+                continue
+            t0  = to_sec(ev.time - lp_start)
+            end = min(t0 + duration_of(ev.payload.get("file", "")), end_sec)
+            k = 1
+            while t0 + k * step < end:
+                t = t0 + k * step
+                if t > elapsed - 0.002:
+                    events.append((t, AUDIO_TAPE_EVENT, audio_clip_data(t_idx, ev, t - t0), 0))
+                k += 1
+    return events
+
+
+def audio_clips_under_way(tape, lp_start, lp_end, to_sec, elapsed):
+    """Clips audio de la fenêtre déjà commencés à elapsed (lecture partie du
+    milieu, retour de Mute…) : événements à elapsed, avec le décalage dans le
+    fichier ; le routeur ne relance pas un clip qui sonne déjà (14d1)."""
+    events = []
+    for t_idx, note_list in enumerate(tape):
+        for ev in note_list:
+            if ev.etype != ETYPE_AUDIO or not (lp_start <= ev.time <= lp_end):
+                continue
+            t_sec = to_sec(ev.time - lp_start)
+            if t_sec <= elapsed - 0.002:
+                events.append((elapsed, AUDIO_TAPE_EVENT,
+                               audio_clip_data(t_idx, ev, elapsed - t_sec), 0))
     return events
 
 
@@ -106,3 +162,5 @@ def play_event(router, voice_manager, master_pan, marker, data, velocity):
         router.on_cc_tape(*data)
     elif marker == PGM_TAPE_EVENT:
         router.on_program_change_tape(*data)
+    elif marker == AUDIO_TAPE_EVENT:
+        router.on_audio_clip(*data)

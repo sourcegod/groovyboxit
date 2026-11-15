@@ -5,6 +5,7 @@ import numpy as np
 from audio.sound_manager import SoundManager
 from audio.sound_device_driver import SoundDeviceDriver, SdSound
 from devices import audio_device as audio_devices
+from audio import audio_takes
 from player.drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
@@ -163,6 +164,9 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._player._on_track_play_cb = self._router.on_play
         self._player._on_kit_tape_cb    = self._router.on_kit_tape
         self._player._on_patch_tape_cb  = self._router.on_patch_tape
+        self._player._on_audio_clip_cb  = self._router.on_audio_clip      # 14d1
+        self._player._clip_duration_cb  = self._router.clip_duration_secs
+        self._player._on_seek_cb        = self._router.stop_audio_clips    # PageUp/Down… (14d1)
         self._player._on_bend_tape_cb   = self._router.on_bend_tape
         self._player._on_cc_tape_cb              = self._router.on_cc_tape
         self._player._on_program_change_tape_cb  = self._router.on_program_change_tape
@@ -196,6 +200,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._device_notes.extend(notes)
         # sortie MIDI externe des pistes : ports ouverts ci-dessus (12b1, T1)
         self._router.midi_out_lookup = lambda name: self._midi_outs.get(name)
+        # clips audio : fichiers relatifs au dossier du .gvp (Phase 8 étape 14d1)
+        self._router.audio_resolver = lambda rel: audio_takes.resolve(self._project_path, rel)
         # entrée MIDI de la piste courante : filtre du jeu en direct (12d1, T9)
         self._midi.port_filter = self._midi_port_accepted
         self._track_editor = TrackEditor()

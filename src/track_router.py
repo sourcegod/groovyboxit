@@ -14,6 +14,7 @@ from pattern import Pattern, ETYPE_CC, ETYPE_PGM, ETYPE_BEND
 from bend_log import bend_log
 from midi.midi_export import volume_to_cc7, pan_to_cc10
 from midi.track_midi_out import TrackMidiOutMixin
+from audio.track_audio_clips import TrackAudioMixin
 
 
 class BankPreview:
@@ -91,7 +92,7 @@ class BankPreview:
         self.sustain    = False
 
 
-class TrackRouter(TrackMidiOutMixin):
+class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
     """
     Gère l'association piste → slot → SynthEngine et le dispatch sonore.
 
@@ -185,6 +186,7 @@ class TrackRouter(TrackMidiOutMixin):
         # Type de piste et entrée audio (Phase 8 étape 14b1, § 14a A2, A8)
         self._track_kinds     = ["midi"] * self.NUM_TRACKS
         self._track_audio_ins = [""] * self.NUM_TRACKS
+        self._init_audio_clips()          # lecture des clips audio (14d1)
 
     @staticmethod
     def _timer_schedule(delay_ms, fn, *args):
@@ -223,6 +225,10 @@ class TrackRouter(TrackMidiOutMixin):
         r._kb_root_midi       = self._kb_root_midi
         r.master_pan          = self.master_pan
         r.rack_mode           = self.rack_mode
+        r._track_kinds        = list(self._track_kinds)       # clips audio (14d1)
+        r._track_audio_ins    = list(self._track_audio_ins)
+        r.audio_resolver      = self.audio_resolver
+        r._clip_cache         = self._clip_cache              # fichiers déjà lus
         copies = {}                     # un même moteur partagé par deux slots : une copie
         for slot_idx, engine in self._slot_synths.items():
             if engine is None:
@@ -871,6 +877,7 @@ class TrackRouter(TrackMidiOutMixin):
                     engine.cc(ch, cc, 0)
                 engine.pitch_bend(ch, 0)
         self.ext_notes_off()                         # ports externes (12b1)
+        self.stop_audio_clips()                      # clips audio (14d1)
 
     def set_master_pan(self, pan):
         """Pan global, ajouté au CC10 des canaux de banque (D13)."""
@@ -1072,6 +1079,7 @@ class TrackRouter(TrackMidiOutMixin):
         """Coupe voix synthé + sons one-shot drums (All Sounds Off, CC#120)."""
         self.stop_all_synth_voices()
         self._snd.stop_all()
+        self.stop_audio_clips()                      # clips audio (14d1)
         for engine in self._chan_engines():
             engine.all_sounds_off()
 
@@ -1151,6 +1159,7 @@ class TrackRouter(TrackMidiOutMixin):
             for ch in range(16):
                 engine.cc(ch, 64, 0)
         self.ext_notes_off()                         # ports externes (12b1)
+        self.stop_audio_clips()                      # clips audio (14d1)
 
     def cut_track_notes(self, track_idx):
         """Avant un changement de slot, de canal ou de programme de la piste
@@ -1159,6 +1168,7 @@ class TrackRouter(TrackMidiOutMixin):
         dont l'arrêt partirait sinon ailleurs). Un kit n'a que des
         one-shots : rien à couper. Port externe : All Notes Off (12b1)."""
         self.ext_notes_off(track_idx)
+        self.stop_audio_clips(track_idx)             # clips audio (14d1)
         slot_idx, slot = self._eff_slot(track_idx)
         channels, engines = [], []
         if slot.type in self.CHAN_TYPES:

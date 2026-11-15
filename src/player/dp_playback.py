@@ -12,6 +12,7 @@ class PlaybackLoopMixin:
     # Marqueurs des événements de _tape : player/tape_events.py, partagé avec
     # le rendu de l'export WAV (Phase 8 étape 1d1)
     GRID_EVENT       = te.GRID_EVENT
+    AUDIO_TAPE_EVENT = te.AUDIO_TAPE_EVENT   # clip audio (Phase 8 étape 14d1)
     KIT_TAPE_EVENT   = te.KIT_TAPE_EVENT
     PATCH_TAPE_EVENT = te.PATCH_TAPE_EVENT
     BEND_TAPE_EVENT  = te.BEND_TAPE_EVENT
@@ -104,6 +105,13 @@ class PlaybackLoopMixin:
                 tape_snap = [list(track_list) for track_list in self._pattern._tape]
             events.extend(te.tape_events(tape_snap, lp_start, lp_end, to_sec,
                                          min_sec=elapsed - 0.002))
+            if self._count_in == 0:          # clips déjà commencés (14d1)
+                events.extend(te.audio_clips_under_way(tape_snap, lp_start, lp_end,
+                                                       to_sec, elapsed))
+                if self._clip_duration_cb is not None:   # reprise après Mute / Solo / F5
+                    events.extend(te.audio_clip_resyncs(
+                        tape_snap, lp_start, lp_end, to_sec, elapsed,
+                        to_sec(total_steps), self._clip_duration_cb))
             # Tempos franchis, pour l'affichage du champ BPM en lecture (§ 19d2
             # R2) : début de la fenêtre (retour de boucle) et chaque changement
             tm = self.tempo_map()
@@ -197,6 +205,9 @@ class PlaybackLoopMixin:
             t_idx, program, channel = evt_data
             if self._on_program_change_tape_cb:
                 self._on_program_change_tape_cb(t_idx, program, channel)
+        elif track_or_type == self.AUDIO_TAPE_EVENT:
+            if self._on_audio_clip_cb:
+                self._on_audio_clip_cb(*evt_data)
         elif track_or_type == self.NR_EVENT:
             pad = self._nr_get_pad() if self._nr_get_pad else self.last_played_pad
             if pad is not None and self.voice_manager.is_audible(pad):
