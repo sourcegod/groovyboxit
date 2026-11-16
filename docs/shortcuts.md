@@ -148,6 +148,10 @@ Note: sur une piste audio (Type de piste « Audio »), R, Shift+R et Ctrl+R
       position entendue (latence de sortie + « Compensation de latence en ms »
       de l'onglet Audio). Sans boucle, le pattern gagne une mesure à chaque fin
       atteinte. Ctrl+Z retire la prise (le fichier reste sur le disque).
+      En boucle : R (Overdub) pose chaque passage comme un clip, joué dès le
+      passage suivant et superposé aux précédents ; Shift+R (Remplacer) fait
+      taire la piste dans la plage enregistrée et ne garde que le dernier
+      passage (au Stop, la fin non enregistrée revient).
 
 --- Effacement en temps réel (mode E) ---
 E                Activer / désactiver le mode Erase (désactive Rec si actif)

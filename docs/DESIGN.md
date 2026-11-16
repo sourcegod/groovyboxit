@@ -13950,3 +13950,94 @@ la saturation. Pourquoi plutôt qu'un fichier remixé à chaque passage :
 - **`docs/SPECS.md`** : arborescence (`audio_recorder.py`,
   `mw_audio_rec.py`, `test_audio_recording.py`) et table. Suite : 4508
   verts.
+
+## Phase 8 étape 14g2 — Boucle : Overdub en clips superposés, Remplacer sur la plage
+
+### Numérotation (utilisateur, 2026-11-16)
+
+Prévue « 14f2 / 14g2 » au découpage de 14e5 ; renumérotée dans l'ordre
+chronologique des commits : **14g2** implémentation, **14g3** tests,
+**14h1** clôture.
+
+### Décision de l'utilisateur (2026-11-16)
+
+- **R5 — Remplacer : silence pendant l'enregistrement** : dès le départ,
+  la piste se tait dans la plage enregistrée (en boucle : toute la boucle
+  aux passages suivants), comme le Remplacement MIDI qui efface au fil de
+  la lecture ; au Stop, la fin non enregistrée revient et seul le dernier
+  passage reste.
+- Question de l'utilisateur : un segment de 5 s de zéros préparé au
+  lancement accélérerait-il le remplacement par du silence ? Non : ici le
+  silence n'est pas de l'audio — retirer ou raccourcir des clips ne change
+  que des nombres (`start`, `length`), là où il n'y a pas de clip le Mixer
+  n'a aucune voix à jouer ; un clip de zéros coûterait une voix et de la
+  mémoire, et l'ancien clip sonnerait encore dessous. **Ce qui compte au
+  portage C/C++** : aucune allocation dans le callback de la carte —
+  tampon circulaire d'entrée et tampons de passage alloués à l'armement
+  (le prototype copie chaque bloc, acceptable en Python).
+
+### Implémentation (14g2)
+
+- **`audio_recorder`** : `pass_window(k, …)` (partie du fichier entendue
+  pendant le passage k : le premier commence au début effectif),
+  `loop_passes` (tous les passages, le dernier borné à ce qui a été
+  capté), `carve` (parties d'un clip hors d'une plage [a, b[ en pas,
+  morceaux de moins de `MIN_PART` = 64 échantillons jetés) ;
+  `AudioRecorder` garde aussi la prise **en mémoire** (verrou partagé
+  avec le callback) : `live_range(premier, longueur)` rend un tableau
+  stéréo déjà rempli de ce qui est capté, la suite y est copiée à
+  l'arrivée des blocs (le passage est joué avant d'être entièrement
+  capté) ; propriétés `t0`, `samplerate`.
+- **Routeur** (`TrackAudioMixin`) : `pin_clip(fichier, start, length,
+  données)` — passage joué depuis la mémoire tant que le fichier est
+  ouvert —, `unpin_clips(fichier)` au Stop (relu dans le fichier, les
+  voix qui sonnent gardent leur tableau), `clip_file_info` (échantillons
+  et fréquence d'un fichier, pour la découpe).
+- **Lecteur** : `_on_audio_anchor_cb()` quand l'ancre est posée ;
+  `_on_audio_wrap_cb(heure du retour)` **0,3 s avant chaque retour de
+  boucle** (`AUDIO_WRAP_LEAD`) pendant une prise en boucle : le clip posé
+  avant le retour fait partie des événements du passage suivant dès son
+  début (pas de réveil du fil : sinon le passage qui s'enregistre serait
+  rejoué en cours de route).
+- **`AudioRecMixin`** : prise ouverte = `{"track", "rel", "recorder",
+  "replace", "base", "clips", "base_before"}` ; Shift+R → `replace=True`.
+  - **Overdub** : à chaque retour, le passage qui finit devient un clip
+    (au début de la boucle, sauf le premier), ajouté à la piste.
+  - **Remplacer** : à l'ancre, la piste se tait de la position de départ
+    à la fin de la boucle (sans boucle : jusqu'à la fin) ; à chaque
+    retour, le passage découpe sa plage dans `base` (clips plus anciens)
+    et s'y ajoute, la piste se tait dans toute la boucle pour le passage
+    suivant ; au Stop, le dernier passage découpe sa plage et la piste
+    reprend `base` — la fin non enregistrée revient. Stop juste après la
+    pose d'un passage (avant le retour) : découpe refaite depuis l'état
+    d'avant ce passage (`base_before`).
+  - **Fin de prise** : un passage sans boucle (14f1), un par passage en
+    boucle ; les passages déjà posés gardent leur événement (une voix qui
+    sonne n'est pas relancée), leur fenêtre est mise à jour ; annonce
+    « N passages (le dernier remplace) ».
+- Vérifié par script sur la vraie fenêtre principale (flux factice,
+  boucle de 1 s) : Overdub — trois passages posés pendant la prise, le
+  quatrième (incomplet) au Stop, pattern inchangé ; Remplacer — silence
+  dès le départ, Stop au milieu du 2e passage : sa partie enregistrée et
+  la fin du 1er passage ; sans boucle : la nouvelle prise et la suite des
+  anciens clips ; Ctrl+Z : la piste d'avant.
+- Suite : 4496 verts, **12 rouges jusqu'à 14g3** (fenêtres factices de
+  14g1 : routeur sans `unpin_clips`, enregistreur sans `samplerate`,
+  prise ouverte devenue un dictionnaire, `_audio_rec_prepare(replace)`).
+- **Essai de l'utilisateur (2026-11-16)** : Overdub en boucle, Remplacer,
+  Ctrl+Z, Remplacer sans boucle : concluants. Retour corrigé : sur un
+  nouveau projet, le dialogue « Enregistrer sous » revenait à chaque R /
+  Shift+R (nom proposé `noname_001` confirmé tel quel : toujours « sans
+  nom »), avec « Remplacer ? » la deuxième fois. Le nom n'est plus demandé
+  que si le projet `noname_NNN` n'a **jamais été enregistré** (fichier
+  absent) : un nom confirmé, même `noname_001`, ne l'est plus, ni après
+  Ctrl+Z (le fichier reste).
+- **Second retour (2026-11-16)** : Shift+R sur une piste déjà enregistrée
+  ne faisait pas taire la piste au **premier passage** de la boucle :
+  l'ancre est posée au début du passage, quand le lecteur prépare ses
+  événements — la découpe (côté interface, juste après) arrivait trop
+  tard, les anciens clips étaient déjà lancés. À l'ancre, après la
+  découpe : voix de la piste coupées (`stop_audio_clips(piste)`) et
+  lecteur réveillé (`_wakeup`) pour refaire les événements du passage sans
+  les clips découpés. Reproduit par script (une voix restait), corrigé
+  (aucune).

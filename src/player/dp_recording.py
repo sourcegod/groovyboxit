@@ -63,8 +63,9 @@ class RecordingMixin:
     def _set_audio_anchor(self, measure_start, lp_start, t_start):
         """Ancre de la prise : measure_start = heure du pas lp_start de la
         fenêtre en cours, t_start = début effectif de l'enregistrement ;
-        window_end = fin de la fenêtre de boucle (la prise s'y arrête en
-        14f1 ; les passages suivants viendront en 14f2), None sans boucle."""
+        window_end = fin de la fenêtre de boucle du premier passage (ses
+        passages suivants : window_end − measure_start plus loin chacun,
+        Phase 8 étape 14g2), None sans boucle."""
         take = self._audio_take
         if take is None or take["anchor"] is not None:
             return
@@ -78,6 +79,8 @@ class RecordingMixin:
             tm = self.tempo_map()
             window_end = measure_start + tm.secs_between(lp_start, lp_start + n_steps)
         take["anchor"] = (measure_start, lp_start, t_start, window_end)
+        if self._on_audio_anchor_cb is not None:
+            self._on_audio_anchor_cb()
 
     def _end_audio_take(self):
         """Fin de la prise audio armée (Stop, R, Shift+R, pause) : rendue à

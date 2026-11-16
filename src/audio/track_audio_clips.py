@@ -36,6 +36,7 @@ class TrackAudioMixin:
         self._clip_cache    = {}      # chemin absolu → (date, SdSound, fréquence du fichier)
         self._clip_voices   = {}      # id du clip → (piste, voix)
         self.audio_status   = []      # fichiers introuvables déjà signalés
+        self._clip_pins     = {}      # (fichier, start, length) → SdSound en mémoire (14g2)
 
     # ------------------------------------------------------------------
     # Fichiers
@@ -51,6 +52,9 @@ class TrackAudioMixin:
         fichier (Phase 8 étape 14e3 ; length None = jusqu'à la fin) — vue
         sans copie ; fichier lu une fois ; None si le fichier manque ou est
         illisible (signalé une fois)."""
+        pinned = getattr(self, "_clip_pins", {}).get((rel, start, length))
+        if pinned is not None:                 # passage d'une prise en cours (14g2)
+            return pinned
         loaded = self._clip_file(rel)
         if loaded is None:
             return None
@@ -62,6 +66,27 @@ class TrackAudioMixin:
         b = len(sound.data) if length is None else \
             min(len(sound.data), a + max(0, int(round(length * ratio))))
         return SdSound(sound.data[a:b], sound.samplerate)
+
+    def pin_clip(self, rel, start, length, data):
+        """Passage d'une prise en boucle encore en cours d'écriture (Phase 8
+        étape 14g2) : joué depuis data (stéréo float32, à la fréquence du
+        pilote — celle de la prise), au lieu du fichier pas encore fermé."""
+        self._clip_pins[(rel, start, length)] = SdSound(data, self._clip_samplerate())
+
+    def unpin_clips(self, rel):
+        """Fichier fermé : ses passages sont relus dans le fichier (les voix
+        qui sonnent gardent leur tableau)."""
+        for key in [k for k in self._clip_pins if k[0] == rel]:
+            del self._clip_pins[key]
+
+    def clip_file_info(self, rel):
+        """(échantillons du fichier, fréquence du fichier) d'une prise, ou None
+        (découpe de Remplacer, 14g2)."""
+        loaded = self._clip_file(rel)
+        if loaded is None:
+            return None
+        sound, file_sr = loaded
+        return int(round(len(sound.data) * file_sr / float(sound.samplerate))), file_sr
 
     def _clip_file(self, rel):
         """(SdSound du fichier entier à la fréquence du pilote, fréquence du

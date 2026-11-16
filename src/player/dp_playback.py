@@ -21,6 +21,7 @@ class PlaybackLoopMixin:
     CC_TAPE_EVENT    = te.CC_TAPE_EVENT
     PGM_TAPE_EVENT   = te.PGM_TAPE_EVENT
     TEMPO_EVENT      = -9   # changement de tempo franchi (carte de tempo, Phase 7 étape 19d3)
+    AUDIO_WRAP_LEAD  = 0.3  # passage d'une prise en boucle posé avant le retour (14g2)
 
     def _run_thread(self):
         # Position de reprise, appliquée dès que la fenêtre est connue (19d1)
@@ -251,9 +252,19 @@ class PlaybackLoopMixin:
             if self._on_count_in_done_cb:
                 self._on_count_in_done_cb()
 
+        # Prise audio en boucle (Phase 8 étape 14g2) : le passage qui finit est
+        # annoncé AUDIO_WRAP_LEAD s avant le retour, pour être joué dès le suivant
+        take = self._audio_take
+        wrap_cb = self._on_audio_wrap_cb if (
+            take is not None and take["anchor"] is not None and take["anchor"][3] is not None
+            and self.recording and self._count_in == 0 and self._pattern._looping) else None
+
         # Tous les événements joués → attendre la fin de mesure
         while not self.stop_event.is_set() and not self._wakeup.is_set():
             remaining = next_measure_start - time.perf_counter()
+            if wrap_cb is not None and remaining <= self.AUDIO_WRAP_LEAD:
+                wrap_cb(next_measure_start)
+                wrap_cb = None
             if remaining <= 0:
                 break
             time.sleep(min(remaining, 0.010))

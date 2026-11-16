@@ -93,6 +93,12 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._audio_take          = None
         self._on_audio_take_end_cb = None
         self._on_bars_changed_cb  = None
+        # Boucle (Phase 8 étape 14g2) : _on_audio_anchor_cb() quand l'ancre est
+        # posée ; _on_audio_wrap_cb(heure du retour) AUDIO_WRAP_LEAD s avant
+        # chaque retour de boucle (le passage qui finit devient un clip, joué
+        # dès le passage suivant)
+        self._on_audio_anchor_cb  = None
+        self._on_audio_wrap_cb    = None
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
         self._on_cc_tape_cb              = None  # callback(track_idx, cc_num, value) lecture CC générique
         self._on_program_change_tape_cb  = None  # callback(track_idx, program) lecture Program Change

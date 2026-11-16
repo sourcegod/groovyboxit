@@ -269,7 +269,7 @@ class CharHandler:
                 win._show_status("Replace Rec: Off")
             else:
                 audio = win._cur_track_is_audio()            # prise audio (14f1)
-                if audio and not win._audio_rec_prepare():
+                if audio and not win._audio_rec_prepare(replace=True):   # Remplacer (14g2)
                     return True
                 win._take_begin(f"Remplacement piste {win._player._cur_track + 1}")
                 win._player.start_replace_recording()
