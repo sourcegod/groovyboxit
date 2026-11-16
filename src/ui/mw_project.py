@@ -428,8 +428,11 @@ class ProjectMixin:
     _audio_use_solos      = True
 
     def _audio_source_labels(self, song_idx):
-        """Libellés des sources : « Pattern courant (Pat_01 Intro) »…"""
-        pattern, _ = self._export_target_labels()
+        """Libellés des sources : « Pattern courant (Pat_01 Intro) »… ; song
+        = song_idx (celui de la fenêtre Songs, ou le song courant)."""
+        idx = self._cur_pattern_idx
+        pat = self._pattern_list[idx]
+        pattern = f"Pat_{idx + 1:02d}" + (f" {pat._name}" if pat._name else "")
         song = self._song_list[song_idx]
         n = len(song._sequence)
         count = "vide" if n == 0 else f"{n} pattern{'s' if n > 1 else ''}"
@@ -447,7 +450,7 @@ class ProjectMixin:
         status = status or self._show_status
         if not self._audio_export_ready(status):
             return
-        song_idx = self._cur_song_idx if song_idx is None else song_idx
+        song_idx = getattr(self, "_cur_song_idx", 0) if song_idx is None else song_idx
         player, te = self._player, self._track_editor
         pat = player._pattern
         init = self._audio_export_opts
@@ -473,12 +476,6 @@ class ProjectMixin:
         if not ok:
             status("Export audio annulé")
             return
-        # choix gardés pour la session ; la fin d'un song n'est pas gardée (E2)
-        self._audio_src = source
-        self._audio_sel_only, self._audio_use_mutes, self._audio_use_solos = only, mutes, solos
-        self._audio_export_output = output
-        self._audio_export_opts = opts if source != AudioExportDialog.SOURCE_SONG else \
-            (self._audio_export_opts[0],) + tuple(opts[1:])
         job, title, filename = self._audio_export_job(source, only, window, editor,
                                                       song_idx, status)
         if job is None:
@@ -488,6 +485,18 @@ class ProjectMixin:
         if not path:
             status("Export audio annulé")
             return
+        # choix gardés pour la session, une fois le fichier choisi (Annuler à
+        # l'un ou l'autre dialogue : rien ne change) ; la fin d'un song n'est
+        # pas gardée (E2)
+        self._audio_src = source
+        self._audio_sel_only, self._audio_use_mutes, self._audio_use_solos = only, mutes, solos
+        self._audio_export_output = output
+        self._audio_export_opts = opts if source != AudioExportDialog.SOURCE_SONG else \
+            (self._audio_export_opts[0],) + tuple(opts[1:])
+        if "song_idx" in job:                                # song : segments maintenant
+            job["segments"] = self._song_segments(job.pop("song_idx"))
+            n = len(job["segments"])
+            job["detail"] = f"{n} pattern{'s' if n > 1 else ''}"
         self._start_audio_export(path, opts, status, job, output)
 
     def _audio_export_job(self, source, only, window, editor, song_idx, status):
@@ -501,11 +510,10 @@ class ProjectMixin:
             if not song._sequence:
                 status("Song vide — ajoutez des patterns dans la fenêtre Songs")
                 return None, "", ""
-            segments = self._song_segments(song_idx)
-            n = len(segments)
-            job = dict(segments=segments, label=f"Song {song_idx + 1:02d}", verb="exporté",
-                       unit="song", detail=f"{n} pattern{'s' if n > 1 else ''}",
-                       tracks=tracks)
+            # segments pris après le dialogue du fichier (_song_segments range
+            # le pattern courant : rien ne doit changer si l'on annule)
+            job = dict(segments=None, song_idx=song_idx, label=f"Song {song_idx + 1:02d}",
+                       verb="exporté", unit="song", tracks=tracks)
             return job, "Exporter le song en WAV…", self._song_export_filename(song_idx, ".wav")
         if source == AudioExportDialog.SOURCE_SELECTION:
             job = self._selection_job(window, all_tracks=not only)

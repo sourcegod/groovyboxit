@@ -2,9 +2,10 @@
 """
     File: tests/test_audio_export_ui.py
     Tests de l'interface des exports audio, Phase 8 étape 1i1 (docs/DESIGN.md
-    § Phase 8 étape 1a W8, § 1h2, § 1h6, § 1h11 W21) : Alt+Shift+W
-    (_export_audio) et Alt+Shift+S (_export_audio_selection) — ordre des
-    dialogues (fichier puis paramètres), annulations, extension, nom
+    § Phase 8 étape 1a W8, § 1h2, § 1h6, § 1h11 W21), réécrits en Phase 8
+    étape 15c1 pour le dialogue unique (§ 15a X1-X7 : source dans le
+    dialogue, paramètres PUIS nom du fichier, Alt+Shift+S retiré) :
+    Alt+Shift+W (_export_audio_choose, _export_audio) — annulations, extension, nom
     proposé, dossier et options gardés pour la session, pause de la
     lecture, export déjà en cours, fil de rendu et statut, erreur, source
     sélection (limiteurs, pistes) ou presse-papier de la fenêtre,
@@ -38,7 +39,8 @@ from audio import audio_export
 import ui.mw_project as mwp
 import ui.midi_editor_window as mew
 from ui.mw_project import ProjectMixin
-from ui.dialogs import SelectionExportDialog
+from ui.dialogs import AudioExportDialog
+from song import Song
 from pattern import Pattern, TapeEvent, ETYPE_GRID
 from rack import Rack, InstrumentType
 from track_editor import TrackEditor
@@ -88,6 +90,8 @@ class _Window(ProjectMixin):
         self._pattern_list = [Pattern() for _ in range(3)]
         self._pattern_list[1]._name = "Intro A"
         self._cur_pattern_idx = 1
+        self._song_list = [Song() for _ in range(2)]        # sources du dialogue (15b1)
+        self._cur_song_idx = 0
         self._exports_dir = exports_dir
         self.statuses = []
     def _show_status(self, msg):
@@ -95,13 +99,16 @@ class _Window(ProjectMixin):
 
 
 class Dialogs:
-    """Faux dialogues : fichier, paramètres, source. Chaque ouverture est
-    notée dans self.order, avec ses arguments."""
+    """Faux dialogues : « Exporter en audio » (paramètres) puis fichier.
+    Chaque ouverture est notée dans self.order, avec ses arguments. source
+    None : la source proposée par l'appli (source_idx)."""
+
+    SEL, CLIP = AudioExportDialog.SOURCE_SELECTION, AudioExportDialog.SOURCE_CLIPBOARD
 
     def __init__(self, file_ok=True, path="/tmp/x/out", opts_ok=True,
-                 opts=(1, 2, True, 1, -10), sel_ok=True, source=0, window=(16, 31),
-                 output=0, tracks=0):
-        self.order, self.file_kw, self.opts_args, self.sel_args = [], {}, None, None
+                 opts=(1, 2, True, 1, -10), source=None, window=(16, 31),
+                 output=0, only=False, mutes=True, solos=True):
+        self.order, self.file_kw, self.opts_args = [], {}, None
         d = self
 
         class FileDlg:
@@ -113,10 +120,17 @@ class Dialogs:
             def Destroy(self):   pass
 
         class OptsDlg:
+            SOURCE_PATTERN, SOURCE_SONG, SOURCE_SELECTION, SOURCE_CLIPBOARD = range(4)
             def __init__(self, parent, *args, **kw):
                 d.order.append("paramètres")
                 d.opts_args = (parent, args, kw)
+                self._source = kw["source_idx"] if source is None else source
             def ShowModal(self): return wx.ID_OK if opts_ok else wx.ID_CANCEL
+            def get_source_idx(self):      return self._source
+            def get_selected_tracks(self): return only
+            def get_use_mutes(self):       return mutes
+            def get_use_solos(self):       return solos
+            def get_window(self):          return window
             def get_end_idx(self):     return opts[0]
             def get_format_idx(self):  return opts[1]
             def get_normalize(self):   return opts[2]
@@ -125,19 +139,7 @@ class Dialogs:
             def get_output_idx(self):  return output          # Sortie (2l1)
             def Destroy(self): pass
 
-        class SelDlg:
-            SOURCE_SELECTION = SelectionExportDialog.SOURCE_SELECTION
-            TRACKS_ALL       = SelectionExportDialog.TRACKS_ALL
-            def __init__(self, parent, *args):
-                d.order.append("source")
-                d.sel_args = (parent, args)
-            def ShowModal(self): return wx.ID_OK if sel_ok else wx.ID_CANCEL
-            def get_source_idx(self): return source
-            def get_window(self):     return window
-            def get_tracks_idx(self): return tracks          # Pistes (2n1)
-            def Destroy(self): pass
-
-        self.FileDlg, self.OptsDlg, self.SelDlg = FileDlg, OptsDlg, SelDlg
+        self.FileDlg, self.OptsDlg = FileDlg, OptsDlg
 
 
 @pytest.fixture
@@ -149,7 +151,6 @@ def env(monkeypatch):
     def install(dialogs):
         monkeypatch.setattr(mwp.wx, "FileDialog", dialogs.FileDlg)
         monkeypatch.setattr(mwp, "AudioExportDialog", dialogs.OptsDlg)
-        monkeypatch.setattr(mwp, "SelectionExportDialog", dialogs.SelDlg)
         return dialogs
 
     def fake_render(**kw):
@@ -178,29 +179,29 @@ def _wait(win):
 # Alt+Shift+W : parcours
 # ---------------------------------------------------------------------------
 
-def test_file_dialog_before_options(tmp_path, env):
+def test_options_dialog_before_file(tmp_path, env):
     d = env.install(Dialogs(path=str(tmp_path / "a.wav")))
     win = _Window(str(tmp_path / "EXPORTS"))
     win._export_audio()
     _wait(win)
-    assert d.order == ["fichier", "paramètres"]
+    assert d.order == ["paramètres", "fichier"]               # 15b1 : paramètres d'abord
     assert len(env.rendered) == 1
 
 
-def test_cancel_file_dialog_stops_before_options(tmp_path, env):
+def test_cancel_file_dialog_renders_nothing(tmp_path, env):
     d = env.install(Dialogs(file_ok=False))
     win = _Window(str(tmp_path))
     win._export_audio()
-    assert d.order == ["fichier"]
+    assert d.order == ["paramètres", "fichier"]
     assert win.statuses == ["Export audio annulé"]
     assert win._audio_export_thread is None and env.rendered == []
 
 
-def test_cancel_options_renders_nothing(tmp_path, env):
+def test_cancel_options_stops_before_file(tmp_path, env):
     d = env.install(Dialogs(path=str(tmp_path / "a.wav"), opts_ok=False))
     win = _Window(str(tmp_path))
     win._export_audio()
-    assert d.order == ["fichier", "paramètres"]
+    assert d.order == ["paramètres"]
     assert win.statuses == ["Export audio annulé"]
     assert env.rendered == [] and win._audio_export_opts == ProjectMixin._audio_export_opts
 
@@ -278,7 +279,7 @@ def test_export_already_running(tmp_path, env):
     win = _Window(str(tmp_path))
     win._audio_export_thread = SimpleNamespace(is_alive=lambda: True)
     win._export_audio()
-    win._export_audio_selection()
+    win._export_audio_choose()
     assert d.order == []
     assert win.statuses == ["Export audio déjà en cours"] * 2
 
@@ -332,22 +333,25 @@ def test_closed_window_status_ignored(tmp_path, env):
 
 
 # ---------------------------------------------------------------------------
-# Alt+Shift+S : sélection ou presse-papier
+# Sources Sélection et Presse-papier (Alt+Shift+S avant 15b1)
 # ---------------------------------------------------------------------------
 
-def test_selection_dialog_then_file_then_options(tmp_path, env):
-    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), window=(16, 31)))
+def test_selection_source_then_file(tmp_path, env):
+    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), source=Dialogs.SEL, window=(16, 31),
+                            only=True))
     win = _Window(str(tmp_path))
     te = win._track_editor
     te.set_lim_left(16)
     te.set_lim_right(31)
     te._sel_tracks = {5, 2}
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
-    assert d.order == ["source", "fichier", "paramètres"]
-    parent, args = d.sel_args
+    assert d.order == ["paramètres", "fichier"]
+    kw = d.opts_args[2]
     pat = win._player._pattern
-    assert args == (pat._num_bars, pat._num_beats, pat._num_steps, 16, 31, 0, 0)
+    assert (kw["num_bars"], kw["num_beats"], kw["num_steps"]) == \
+        (pat._num_bars, pat._num_beats, pat._num_steps)
+    assert (kw["lim_left"], kw["lim_right"]) == (16, 31)
     assert d.file_kw["defaultFile"] == "Pat_02_Intro_A_selection.wav"
     assert d.file_kw["title"] == "Exporter la sélection en WAV…"
     kw = env.rendered[0]
@@ -358,36 +362,37 @@ def test_selection_dialog_then_file_then_options(tmp_path, env):
 
 
 def test_selection_without_selected_tracks_uses_current_track(tmp_path, env):
-    env.install(Dialogs(path=str(tmp_path / "s.wav"), window=(0, 3)))
+    env.install(Dialogs(path=str(tmp_path / "s.wav"), source=Dialogs.SEL, window=(0, 3),
+                        only=True))
     win = _Window(str(tmp_path))
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
     assert env.rendered[0]["tracks"] == {4}
     assert "Sélection (piste 5 ; 1:1:1 à 1:1:4)" in win.statuses[-1]
 
 
 def test_selection_cancel(tmp_path, env):
-    d = env.install(Dialogs(sel_ok=False))
+    d = env.install(Dialogs(opts_ok=False, source=Dialogs.SEL))
     win = _Window(str(tmp_path))
-    win._export_audio_selection()
-    assert d.order == ["source"] and win.statuses == ["Export audio annulé"]
-    assert win._audio_sel_source == 0
+    win._export_audio_choose()
+    assert d.order == ["paramètres"] and win.statuses == ["Export audio annulé"]
+    assert win._audio_src == 0                                 # annulé : source inchangée
 
 
 def test_selection_limiters_not_moved(tmp_path, env):
-    env.install(Dialogs(path=str(tmp_path / "s.wav"), window=(4, 7)))
+    env.install(Dialogs(path=str(tmp_path / "s.wav"), source=Dialogs.SEL, window=(4, 7)))
     win = _Window(str(tmp_path))
     te = win._track_editor
     te.set_lim_left(16)
     te.set_lim_right(31)
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
     assert env.rendered[0]["window"] == (4, 8)
     assert (te._lim_left, te._lim_right) == (16, 31)
 
 
 def test_track_clipboard_main_window(tmp_path, env):
-    d = env.install(Dialogs(path=str(tmp_path / "c.wav"), source=1))
+    d = env.install(Dialogs(path=str(tmp_path / "c.wav"), source=Dialogs.CLIP))
     win = _Window(str(tmp_path))
     pat = win._player._pattern
     pat._tape[6].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 90}, time=18))
@@ -396,27 +401,27 @@ def test_track_clipboard_main_window(tmp_path, env):
     te.set_lim_left(16)
     te.set_lim_right(31)
     te.copy(pat, 0)
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
-    assert win._audio_sel_source == 1
+    assert win._audio_src == Dialogs.CLIP
     assert d.file_kw["defaultFile"] == "Pat_02_Intro_A_presse-papier.wav"
     kw = env.rendered[0]
     assert [e.time for e in kw["pattern"]._tape[6]] == [2.0]
     assert kw["window"] is None and kw["tracks"] is None
     assert win.statuses[-1].startswith("Presse-papier (1 piste, 1 mesure) exporté en WAV : c.wav")
-    win._export_audio_selection()                           # source gardée pour la session
-    assert d.sel_args[1][-2] == 1                         # source (puis Pistes, 2n1)
+    win._export_audio_choose()                              # source gardée pour la session
+    assert d.opts_args[2]["source_idx"] == Dialogs.CLIP
 
 
 def test_note_clipboard_in_midi_editor(tmp_path, env):
-    env.install(Dialogs(path=str(tmp_path / "n.wav"), source=1))
+    env.install(Dialogs(path=str(tmp_path / "n.wav"), source=Dialogs.CLIP))
     win = _Window(str(tmp_path))
     te = win._track_editor
     te.copy_events([{"type": "note", "etype": ETYPE_GRID, "track": 3, "pad": 1, "vel": 90,
                      "offset": 21, "dur": 500, "dur_override": 0, "channel": 0},
                     {"type": "note", "etype": ETYPE_GRID, "track": 7, "pad": 2, "vel": 90,
                      "offset": 40, "dur": 500, "dur_override": 0, "channel": 0}])
-    win._export_audio_selection(editor=True)
+    win._export_audio_choose(editor=True)
     _wait(win)
     kw = env.rendered[0]
     assert kw["pattern"]._num_bars == 2
@@ -426,57 +431,131 @@ def test_note_clipboard_in_midi_editor(tmp_path, env):
 
 @pytest.mark.parametrize("editor", (False, True))
 def test_empty_clipboard(tmp_path, env, editor):
-    d = env.install(Dialogs(source=1))
+    d = env.install(Dialogs(source=Dialogs.CLIP))
     win = _Window(str(tmp_path))
     if editor:                                               # presse-papier des pistes plein
         win._track_editor.copy(win._player._pattern, 0)
-    win._export_audio_selection(editor=editor)
-    assert d.order == ["source"]
+    win._export_audio_choose(editor=editor)
+    assert d.order == ["paramètres"]                         # pas de dialogue du fichier
     assert win.statuses == ["Presse-papier vide"] and env.rendered == []
 
 
 # ---------------------------------------------------------------------------
-# Dialogue de la source
+# Dialogue « Exporter en audio » (Phase 8 étape 15b1, § 15a X4)
 # ---------------------------------------------------------------------------
 
-def test_selection_dialog_fields():
-    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47, 0)
+SOURCES = ["Pattern courant (Pat_02 Intro A)", "Song courant (Song_01, vide)",
+           "Sélection", "Presse-papier"]
+
+
+def _dialog(**kw):
+    kw.setdefault("source_labels", SOURCES)
+    return AudioExportDialog(None, **kw)
+
+
+def test_dialog_source_first_with_focus():
+    dlg = _dialog(source_idx=1)
+    try:
+        assert dlg.GetTitle() == "Exporter en audio"
+        assert dlg._source_lb.GetStrings() == [f"Source : {n}" for n in SOURCES]
+        assert dlg.get_source_idx() == 1
+        assert wx.Window.FindFocus() in (dlg._source_lb, None)
+    finally:
+        dlg.Destroy()
+
+
+def test_dialog_tab_order():
+    """Ordre de création : Source, les trois cases, début, fin de la sélection,
+    Fin, Format, Sortie, Normaliser, Mesure, Niveau, boutons ; libellés
+    créés avant leur champ."""
+    dlg = _dialog()
+    try:
+        focusable = [c for c in dlg.GetChildren() if not isinstance(c, wx.StaticText)]
+        assert focusable[:12] == [dlg._source_lb, dlg._tracks_cb, dlg._mutes_cb, dlg._solos_cb,
+                                  dlg._left, dlg._right, dlg._end_lb, dlg._format_lb,
+                                  dlg._output_lb, dlg._normalize_cb, dlg._measure_lb, dlg._level]
+        children = list(dlg.GetChildren())
+        for field, label in ((dlg._left, "Début de la sélection"),
+                             (dlg._right, "Fin de la sélection"), (dlg._level, "Niveau visé")):
+            before = children[children.index(field) - 1]
+            assert isinstance(before, wx.StaticText) and before.GetLabel().startswith(label)
+    finally:
+        dlg.Destroy()
+
+
+def test_dialog_checkboxes():
+    dlg = _dialog(selected_tracks=True, use_mutes=False, use_solos=True)
+    try:
+        assert dlg._tracks_cb.GetLabel() == "Exporter les pistes sélectionnées"
+        assert dlg._mutes_cb.GetLabel() == "Tenir compte des Mutes"
+        assert dlg._solos_cb.GetLabel() == "Tenir compte des Solos"
+        assert (dlg.get_selected_tracks(), dlg.get_use_mutes(), dlg.get_use_solos()) == \
+            (True, False, True)
+    finally:
+        dlg.Destroy()
+    dlg = _dialog()
+    try:                                                   # défauts : on exporte ce qu'on entend
+        assert (dlg.get_selected_tracks(), dlg.get_use_mutes(), dlg.get_use_solos()) == \
+            (False, True, True)
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.parametrize("source, tracks, selection, unit", [
+    (0, True, False, "Pattern"), (1, True, False, "Song"),
+    (2, True, True, "Sélection"), (3, False, False, "Presse-papier")])
+def test_dialog_fields_follow_the_source(source, tracks, selection, unit):
+    dlg = _dialog(source_idx=0)
+    try:
+        dlg._source_lb.SetSelection(source)
+        dlg._source_lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX.typeId,
+                                                    dlg._source_lb.GetId()))
+        assert dlg._tracks_cb.IsEnabled() is tracks
+        assert dlg._left.IsEnabled() is selection and dlg._right.IsEnabled() is selection
+        assert dlg._end_lb.GetString(1) == f"Fin : {unit} + résonance"
+        assert dlg._end_lb.GetString(0) == "Fin : Boucle exacte (résonance repliée)"
+    finally:
+        dlg.Destroy()
+
+
+def test_dialog_selection_fields():
+    dlg = _dialog(source_idx=2, num_bars=4, num_beats=4, num_steps=16,
+                  lim_left=16, lim_right=47)
     try:
         assert (dlg._left.GetValue(), dlg._right.GetValue()) == ("2:1:1", "3:4:4")
-        assert dlg._left.GetName() == "Limiteur gauche"
-        assert dlg._right.GetName() == "Limiteur droit"
+        assert dlg._left.GetName() == "Début de la sélection"
+        assert dlg._right.GetName() == "Fin de la sélection"
         assert dlg.get_window() == (16, 47) and dlg._validate() is None
         dlg._left.SetValue("4:1:1")
-        assert dlg._validate() == "Le limiteur droit est avant le limiteur gauche"
+        assert dlg._validate() == "La fin de la sélection est avant son début"
         assert dlg.get_window() is None
         dlg._left.SetValue("x")
         assert dlg._validate().startswith("Position invalide")
-        dlg._source_lb.SetSelection(1)
+        dlg._source_lb.SetSelection(0)
         dlg._update_enabled()
-        assert not dlg._left.IsEnabled() and dlg._validate() is None
+        assert not dlg._left.IsEnabled() and dlg._validate() is None   # sans objet
     finally:
         dlg.Destroy()
 
 
-def test_selection_dialog_whole_pattern_without_limiters():
-    dlg = SelectionExportDialog(None, 2, 3, 12, source_idx=1)
+def test_dialog_whole_pattern_without_limiters():
+    dlg = _dialog(source_idx=2, num_bars=2, num_beats=3, num_steps=12)
     try:
         assert (dlg._left.GetValue(), dlg._right.GetValue()) == ("1:1:1", "2:3:4")
-        assert dlg.get_source_idx() == 1 and not dlg._right.IsEnabled()
     finally:
         dlg.Destroy()
 
 
-def test_selection_dialog_invalid_keeps_dialog_open(monkeypatch):
+def test_dialog_invalid_selection_keeps_dialog_open(monkeypatch):
     shown = []
     monkeypatch.setattr(wx, "MessageBox", lambda msg, *a, **k: shown.append(msg))
-    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47)
+    dlg = _dialog(source_idx=2, num_bars=4, lim_left=16, lim_right=47)
     ended = []
     dlg.EndModal = ended.append
     try:
         dlg._right.SetValue("1:1:1")
         dlg._on_ok(None)
-        assert shown == ["Le limiteur droit est avant le limiteur gauche"] and ended == []
+        assert shown == ["La fin de la sélection est avant son début"] and ended == []
         dlg._right.SetValue("4:1:1")
         dlg._on_ok(None)
         assert ended == [wx.ID_OK]
@@ -484,24 +563,59 @@ def test_selection_dialog_invalid_keeps_dialog_open(monkeypatch):
         dlg.Destroy()
 
 
+@pytest.mark.parametrize("name", ["_source_lb", "_end_lb", "_format_lb", "_output_lb",
+                                  "_measure_lb"])
+def test_dialog_enter_on_a_list_validates(name):
+    dlg = _dialog()
+    ended = []
+    dlg.EndModal = ended.append
+    try:
+        lb = getattr(dlg, name)
+        lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX_DCLICK.typeId, lb.GetId()))
+        assert ended == [wx.ID_OK]
+    finally:
+        dlg.Destroy()
+
+
+def test_dialog_normalize_enables_measure_and_level():
+    dlg = _dialog(normalize=False)
+    try:
+        assert not dlg._measure_lb.IsEnabled() and not dlg._level.IsEnabled()
+        dlg._normalize_cb.SetValue(True)
+        dlg._update_enabled()
+        assert dlg._measure_lb.IsEnabled() and dlg._level.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+def test_dialog_values_bounded():
+    dlg = _dialog(source_idx=9, end_idx=5, format_idx=7, output_idx=4, level_db=10,
+                  level_min=-24, level_max=0)
+    try:
+        assert dlg.get_source_idx() == 3
+        assert (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_output_idx()) == (1, 2, 2)
+        assert dlg.get_level_db() == 0
+    finally:
+        dlg.Destroy()
+
+
 # ---------------------------------------------------------------------------
-# Raccourcis
+# Raccourcis (Alt+Shift+S retiré en 15b1 : redondant)
 # ---------------------------------------------------------------------------
 
-def test_alt_shift_w_and_s_main_window():
+def test_alt_shift_w_main_window_and_no_alt_shift_s():
     # KeyManager construit sur la wx.App de la session (conftest) : make_km()
     # en crée une autre que teardown() détruit, ce qui casse les fichiers de
     # tests suivants (PyNoAppError)
     win = FakeWindow()
     km = KeyManager(win)
     calls = []
-    win._export_audio_choose = lambda: calls.append("W")     # choix pattern / song (4b1)
+    win._export_audio_choose = lambda: calls.append("W")
     win._export_audio_selection = lambda: calls.append("S")
     km.handle(FakeEvent(key=ord('W'), alt=True, shift=True))
-    km.handle(FakeEvent(key=ord('S'), alt=True, shift=True))
+    km.handle(FakeEvent(key=ord('S'), alt=True, shift=True))   # plus d'export
     km.handle(FakeEvent(key=ord('W'), alt=True))                # Alt seul : rien
-    km.handle(FakeEvent(key=ord('S'), alt=True))
-    assert calls == ["W", "S"]
+    assert calls == ["W"]
 
 
 class _FakeKey:
@@ -521,22 +635,93 @@ class _FakeEditor:
     def __init__(self):
         self.calls = calls = []
         class Parent:
-            def _export_audio_choose(self, parent=None, status=None):   # 4b1
-                calls.append(("W", parent, status))
-            def _export_audio_selection(self, parent=None, status=None, editor=False):
-                calls.append(("S", parent, status, editor))
+            def _export_audio_choose(self, parent=None, status=None, editor=False):
+                calls.append(("W", parent, status, editor))
+            def _export_audio_selection(self, *a, **k):
+                calls.append(("S",))
             _key_manager = SimpleNamespace(handle_transport=lambda evt: False)
         self._parent = Parent()
     def _set_status(self, msg): pass
 
 
-def test_alt_shift_w_and_s_midi_editor():
+def test_alt_shift_w_midi_editor_with_its_clipboard():
     ed = _FakeEditor()
-    for key in ('W', 'S'):
-        evt = _FakeKey(ord(key), shift=True, alt=True)
-        ed._on_key(evt)
-        assert evt.skipped is False
-    assert ed.calls == [("W", ed, ed._set_status), ("S", ed, ed._set_status, True)]
+    evt = _FakeKey(ord('W'), shift=True, alt=True)
+    ed._on_key(evt)
+    assert evt.skipped is False
+    ed._on_key(_FakeKey(ord('S'), shift=True, alt=True))
+    assert ed.calls == [("W", ed, ed._set_status, True)]       # presse-papier des notes
+
+
+def test_alt_shift_w_opens_on_the_last_source(tmp_path, env):
+    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), source=Dialogs.SEL))
+    win = _Window(str(tmp_path))
+    assert win._audio_src == AudioExportDialog.SOURCE_PATTERN
+    win._export_audio_choose()
+    _wait(win)
+    assert d.opts_args[2]["source_idx"] == AudioExportDialog.SOURCE_PATTERN
+    d2 = env.install(Dialogs(file_ok=False))
+    win._export_audio_choose()
+    assert d2.opts_args[2]["source_idx"] == Dialogs.SEL      # la dernière utilisée
+
+
+def test_cancel_at_the_file_dialog_keeps_nothing(tmp_path, env):
+    """Annuler au dialogue du fichier : aucun choix du dialogue gardé (15c1)."""
+    env.install(Dialogs(file_ok=False, source=Dialogs.SEL, opts=(1, 2, True, 1, -10),
+                        output=2, only=True, mutes=False, solos=False))
+    win = _Window(str(tmp_path))
+    win._export_audio_choose()
+    assert (win._audio_src, win._audio_sel_only, win._audio_use_mutes,
+            win._audio_use_solos) == (0, False, True, True)
+    assert win._audio_export_opts == ProjectMixin._audio_export_opts
+    assert win._audio_export_output == ProjectMixin.OUTPUT_MIX
+
+
+def test_dialog_receives_the_sources_and_the_session_choices(tmp_path, env):
+    d = env.install(Dialogs(path=str(tmp_path / "a.wav"), only=True, mutes=False, solos=False))
+    win = _Window(str(tmp_path))
+    win._song_list[0]._name = "Fin"
+    win._export_audio()
+    _wait(win)
+    kw = d.opts_args[2]
+    assert kw["source_labels"] == ["Pattern courant (Pat_02 Intro A)",
+                                   "Song courant (Song_01 Fin, vide)", "Sélection",
+                                   "Presse-papier"]
+    assert (kw["selected_tracks"], kw["use_mutes"], kw["use_solos"]) == (False, True, True)
+    d2 = env.install(Dialogs(file_ok=False))
+    win._export_audio()
+    kw = d2.opts_args[2]
+    assert (kw["selected_tracks"], kw["use_mutes"], kw["use_solos"]) == (True, False, False)
+
+
+def test_mutes_solos_and_tracks_passed_to_the_render(tmp_path, env):
+    env.install(Dialogs(path=str(tmp_path / "a.wav"), only=True, mutes=False, solos=False))
+    win = _Window(str(tmp_path))
+    win._track_editor._sel_tracks = {1, 3}
+    win._export_audio()
+    _wait(win)
+    kw = env.rendered[0]
+    assert (kw["use_mutes"], kw["use_solos"]) == (False, False)
+    assert kw["tracks"] == {1, 3} and kw["window"] is None
+    assert win.statuses[-1].startswith("Pattern 02 (pistes 2, 4) exporté en WAV")
+
+
+def test_pattern_with_the_current_track_only(tmp_path, env):
+    env.install(Dialogs(path=str(tmp_path / "a.wav"), only=True))
+    win = _Window(str(tmp_path))
+    win._export_audio()
+    _wait(win)
+    assert env.rendered[0]["tracks"] == {4}
+    assert win.statuses[-1].startswith("Pattern 02 (piste 5) exporté en WAV")
+
+
+def test_default_render_hears_mutes_and_solos(tmp_path, env):
+    env.install(Dialogs(path=str(tmp_path / "a.wav")))
+    win = _Window(str(tmp_path))
+    win._export_audio()
+    _wait(win)
+    kw = env.rendered[0]
+    assert (kw["use_mutes"], kw["use_solos"], kw["tracks"]) == (True, True, None)
 
 
 # ---------------------------------------------------------------------------
@@ -588,7 +773,6 @@ def stems_env(monkeypatch):
     def install(dialogs):
         monkeypatch.setattr(mwp.wx, "FileDialog", dialogs.FileDlg)
         monkeypatch.setattr(mwp, "AudioExportDialog", dialogs.OptsDlg)
-        monkeypatch.setattr(mwp, "SelectionExportDialog", dialogs.SelDlg)
         return dialogs
 
     def fake_render(**kw):
@@ -721,10 +905,11 @@ def test_stems_progress_over_all_renders(tmp_path, stems_env):
 
 
 def test_selection_stems_limited_to_selection(tmp_path, stems_env):
-    stems_env.install(Dialogs(path=str(tmp_path / "s.wav"), output=1, window=(16, 31)))
+    stems_env.install(Dialogs(path=str(tmp_path / "s.wav"), output=1, window=(16, 31),
+                              source=Dialogs.SEL, only=True))
     win = _stems_window(tmp_path)
     win._track_editor._sel_tracks = {2, 5, 7}
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
     mix, *stems = stems_env.rendered
     assert mix["tracks"] == {2, 5, 7}
@@ -734,14 +919,14 @@ def test_selection_stems_limited_to_selection(tmp_path, stems_env):
 
 
 def test_clipboard_stems(tmp_path, stems_env):
-    stems_env.install(Dialogs(path=str(tmp_path / "c.wav"), output=1, source=1))
+    stems_env.install(Dialogs(path=str(tmp_path / "c.wav"), output=1, source=Dialogs.CLIP))
     win = _stems_window(tmp_path)
     te = win._track_editor
     te._sel_tracks = {0, 5}
     te.set_lim_left(0)
     te.set_lim_right(15)
     te.copy(win._player._pattern, 0)
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
     assert [kw["tracks"] for kw in stems_env.rendered[1:]] == [{0}, {5}]
     print("  presse-papier : stems des pistes d'origine : OK")
@@ -784,139 +969,60 @@ def test_real_render_stems_sum_to_mix(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Choix Pistes d'Alt+Shift+S (Phase 8 étape 2o1, docs/DESIGN.md § 2a E16)
+# Sélection : pistes sélectionnées ou toutes (avant 15b1 : liste Pistes
+# d'Alt+Shift+S, Phase 8 étape 2o1 ; maintenant la case du dialogue)
 # ---------------------------------------------------------------------------
 
-def test_selection_dialog_tracks_field():
-    D = SelectionExportDialog
-    dlg = D(None, 4, 4, 16, 16, 47, 0)
-    try:
-        assert [dlg._tracks_lb.GetString(i) for i in range(2)] == \
-            ["Pistes : Sélectionnées", "Pistes : Toutes"]
-        assert dlg.get_tracks_idx() == D.TRACKS_SELECTED and dlg._tracks_lb.IsEnabled()
-        dlg._tracks_lb.SetSelection(1)
-        assert dlg.get_tracks_idx() == D.TRACKS_ALL
-    finally:
-        dlg.Destroy()
-    dlg = D(None, 4, 4, 16, 16, 47, 0, D.TRACKS_ALL)
-    try:
-        assert dlg.get_tracks_idx() == D.TRACKS_ALL
-    finally:
-        dlg.Destroy()
-    dlg = D(None, 4, 4, 16, 16, 47, 0, 7)
-    try:
-        assert dlg.get_tracks_idx() == D.TRACKS_ALL               # borné
-    finally:
-        dlg.Destroy()
-    print("  dialogue : liste Pistes, valeur initiale, bornée : OK")
-
-
-def test_selection_dialog_tracks_enabled_for_selection_only():
-    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47, 1)
-    try:
-        assert not dlg._tracks_lb.IsEnabled()                     # presse-papier
-        dlg._source_lb.SetSelection(0)
-        dlg._source_lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX.typeId,
-                                                    dlg._source_lb.GetId()))
-        assert dlg._tracks_lb.IsEnabled()
-    finally:
-        dlg.Destroy()
-    print("  dialogue : Pistes actif pour la source Sélection seulement : OK")
-
-
-def test_selection_dialog_enter_on_tracks_validates(monkeypatch):
-    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47)
-    ended = []
-    dlg.EndModal = ended.append
-    try:
-        dlg._tracks_lb.ProcessEvent(wx.CommandEvent(wx.EVT_LISTBOX_DCLICK.typeId,
-                                                    dlg._tracks_lb.GetId()))
-        assert ended == [wx.ID_OK]
-    finally:
-        dlg.Destroy()
-    print("  dialogue : Entrée sur la liste Pistes valide : OK")
-
-
-def test_selection_dialog_tab_order():
-    """Ordre de tabulation (ordre de création) : Source, Pistes, limiteur
-    gauche, limiteur droit, puis les boutons."""
-    dlg = SelectionExportDialog(None, 4, 4, 16, 16, 47)
-    try:
-        focusable = [c for c in dlg.GetChildren() if not isinstance(c, wx.StaticText)]
-        assert focusable[:4] == [dlg._source_lb, dlg._tracks_lb, dlg._left, dlg._right]
-        assert all(isinstance(c, wx.Button) for c in focusable[4:])
-    finally:
-        dlg.Destroy()
-    print("  dialogue : ordre de tabulation Source, Pistes, gauche, droit : OK")
-
-
 def test_selection_all_tracks_job(tmp_path, env):
-    env.install(Dialogs(path=str(tmp_path / "s.wav"), window=(16, 31),
-                        tracks=SelectionExportDialog.TRACKS_ALL))
+    env.install(Dialogs(path=str(tmp_path / "s.wav"), window=(16, 31), source=Dialogs.SEL,
+                        only=False))
     win = _Window(str(tmp_path))
     win._track_editor._sel_tracks = {2}
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
     kw = env.rendered[0]
     assert kw["tracks"] is None and kw["window"] == (16, 32)
-    assert win._audio_sel_tracks == SelectionExportDialog.TRACKS_ALL
+    assert win._audio_sel_only is False
     assert win.statuses[-1].startswith(
         "Sélection (toutes les pistes ; 2:1:1 à 2:4:4) exportée en WAV : s.wav")
-    print("  toutes les pistes : aucune restriction, fenêtre des limiteurs, compte rendu : OK")
 
 
-def test_selection_tracks_choice_kept_for_session(tmp_path, env):
-    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), tracks=1))
+def test_tracks_choice_kept_for_session_not_on_cancel(tmp_path, env):
+    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), source=Dialogs.SEL, only=True))
     win = _Window(str(tmp_path))
-    assert win._audio_sel_tracks == 0
-    win._export_audio_selection()
+    assert win._audio_sel_only is False
+    win._export_audio_choose()
     _wait(win)
-    assert d.sel_args[1][-1] == 0                                  # défaut au premier appel
-    d2 = env.install(Dialogs(path=str(tmp_path / "s.wav"), tracks=0, sel_ok=False))
-    win._export_audio_selection()
-    assert d2.sel_args[1][-1] == 1                                 # gardé
-    assert win._audio_sel_tracks == 1                              # annulé : inchangé
-    print("  choix Pistes gardé pour la session, pas sur annulation : OK")
-
-
-def test_clipboard_source_leaves_tracks_choice(tmp_path, env):
-    env.install(Dialogs(path=str(tmp_path / "c.wav"), source=1, tracks=1))
-    win = _Window(str(tmp_path))
-    pat = win._player._pattern
-    pat._tape[6].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 90}, time=18))
-    win._track_editor._sel_tracks = {6}
-    win._track_editor.copy(pat, 0)
-    win._export_audio_selection()
-    _wait(win)
-    assert win._audio_sel_tracks == 0
-    print("  source presse-papier : choix Pistes non modifié : OK")
+    assert d.opts_args[2]["selected_tracks"] is False              # défaut au premier appel
+    d2 = env.install(Dialogs(source=Dialogs.SEL, only=False, opts_ok=False))
+    win._export_audio_choose()
+    assert d2.opts_args[2]["selected_tracks"] is True              # gardé
+    assert win._audio_sel_only is True                              # annulé : inchangé
 
 
 def test_selection_all_tracks_stems(tmp_path, stems_env):
     stems_env.install(Dialogs(path=str(tmp_path / "s.wav"), output=1, window=(0, 15),
-                              tracks=SelectionExportDialog.TRACKS_ALL))
+                              source=Dialogs.SEL))
     win = _stems_window(tmp_path, tracks=(0, 2, 5, 9))
     win._track_editor._sel_tracks = {5}
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
     mix, *stems = stems_env.rendered
     assert mix["tracks"] is None
     assert [kw["tracks"] for kw in stems] == [{0}, {2}, {5}, {9}]
     assert all(kw["window"] == (0, 16) for kw in stems_env.rendered)
     assert "4 pistes séparées dans s/" in win.statuses[-1]
-    print("  toutes les pistes en stems : un stem par piste non vide, même fenêtre : OK")
 
 
 def test_selection_all_tracks_in_midi_editor(tmp_path, env):
-    env.install(Dialogs(path=str(tmp_path / "s.wav"), tracks=SelectionExportDialog.TRACKS_ALL))
+    env.install(Dialogs(path=str(tmp_path / "s.wav"), source=Dialogs.SEL))
     win = _Window(str(tmp_path))
     win._track_editor._sel_tracks = {3}
     said = []
-    win._export_audio_selection(parent="éditeur", status=said.append, editor=True)
+    win._export_audio_choose(parent="éditeur", status=said.append, editor=True)
     _wait(win)
     assert env.rendered[0]["tracks"] is None
     assert said[-1].startswith("Sélection (toutes les pistes ;")
-    print("  éditeur MIDI : toutes les pistes, statut de l'éditeur : OK")
 
 
 def test_real_render_all_tracks_between_limiters(tmp_path, monkeypatch):
@@ -965,11 +1071,11 @@ def _tail_render(monkeypatch):
 
 def test_selection_report_and_end_label_say_selection(tmp_path, env, monkeypatch):
     _tail_render(monkeypatch)
-    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), opts=(1, 0, False, 2, -14)))
+    d = env.install(Dialogs(path=str(tmp_path / "s.wav"), opts=(1, 0, False, 2, -14),
+                            source=Dialogs.SEL))
     win = _Window(str(tmp_path))
-    win._export_audio_selection()
+    win._export_audio_choose()
     _wait(win)
-    assert d.opts_args[2]["unit"] == "Sélection"
     assert "sélection + résonance (0,50 s)" in win.statuses[-1]
     assert "pattern + résonance" not in win.statuses[-1]
     print("  sélection : « Sélection + résonance » au dialogue et au compte rendu : OK")
@@ -978,7 +1084,8 @@ def test_selection_report_and_end_label_say_selection(tmp_path, env, monkeypatch
 @pytest.mark.parametrize("editor", (False, True))
 def test_clipboard_report_and_end_label_say_clipboard(tmp_path, env, monkeypatch, editor):
     _tail_render(monkeypatch)
-    d = env.install(Dialogs(path=str(tmp_path / "c.wav"), source=1, opts=(1, 0, False, 2, -14)))
+    d = env.install(Dialogs(path=str(tmp_path / "c.wav"), source=Dialogs.CLIP,
+                            opts=(1, 0, False, 2, -14)))
     win = _Window(str(tmp_path))
     te = win._track_editor
     if editor:
@@ -989,9 +1096,8 @@ def test_clipboard_report_and_end_label_say_clipboard(tmp_path, env, monkeypatch
         pat._tape[6].append(TapeEvent(ETYPE_GRID, payload={"pad": 1, "vel": 90}, time=18))
         te._sel_tracks = {6}
         te.copy(pat, 0)
-    win._export_audio_selection(editor=editor)
+    win._export_audio_choose(editor=editor)
     _wait(win)
-    assert d.opts_args[2]["unit"] == "Presse-papier"
     assert "presse-papier + résonance (0,50 s)" in win.statuses[-1]
     print("  presse-papier : « Presse-papier + résonance » au dialogue et au compte rendu : OK")
 
@@ -1002,17 +1108,86 @@ def test_pattern_report_and_end_label_unchanged(tmp_path, env, monkeypatch):
     win = _Window(str(tmp_path))
     win._export_audio()
     _wait(win)
-    assert "unit" not in d.opts_args[2]
+    assert d.opts_args[2]["source_idx"] == AudioExportDialog.SOURCE_PATTERN
     assert "pattern + résonance (0,50 s)" in win.statuses[-1]
     print("  pattern : libellé et compte rendu inchangés : OK")
 
 
-def test_end_label_for_selection_and_clipboard():
-    from ui.dialogs import AudioExportDialog
-    for unit in ("Sélection", "Presse-papier"):
-        dlg = AudioExportDialog(None, unit=unit)
-        try:
-            assert dlg._end_lb.GetString(1) == f"Fin : {unit} + résonance"
-        finally:
-            dlg.Destroy()
-    print("  dialogue : « Fin : Sélection / Presse-papier + résonance » : OK")
+# ---------------------------------------------------------------------------
+# Rendu réel : Mutes et Solos ignorés sur demande (Phase 8 étape 15c1, § 15a
+# X3, X7) — pattern, et song (état de chaque pattern à sa frontière)
+# ---------------------------------------------------------------------------
+
+def _impulse_router(tmp_path):
+    wav = str(tmp_path / "imp.wav")
+    x = np.zeros(2000, np.float32)
+    x[0] = 0.5
+    sf.write(wav, x, SR)
+    drv = Mixer()
+    snd = SoundManager([wav] * 16, wav, wav, driver=drv)
+    snd.load_sounds()
+    rack = Rack()
+    rack.set_slot(0, InstrumentType.KIT, "Kit", {})
+    return TrackRouter(rack, str(tmp_path), snd, lambda m: None, driver=drv)
+
+
+def _two_track_pattern():
+    """Piste 1 au pas 0, piste 2 au pas 8 (1 s à 120 BPM), une mesure de 2 s."""
+    pat = Pattern()
+    pat._bpm, pat._num_bars = 120, 1
+    pat._track_slots = [0] * len(pat._track_slots)
+    pat._tape[0].append(TapeEvent(ETYPE_GRID, payload={"pad": 0, "vel": 100}, time=0))
+    pat._tape[1].append(TapeEvent(ETYPE_GRID, payload={"pad": 0, "vel": 100}, time=8))
+    return pat
+
+
+def _onsets(res):
+    return [round(i / SR, 3) for i in np.flatnonzero(np.abs(res.data[:, 0]) > 1e-3)
+            if i == 0 or abs(res.data[i - 1, 0]) <= 1e-3]
+
+
+@pytest.mark.parametrize("mute, solo, use_mutes, use_solos, heard", [
+    (True, False, True, True, [0.0]),            # piste 2 muette : on ne l'entend pas
+    (True, False, False, True, [0.0, 1.0]),      # Mutes ignorés
+    (False, True, True, True, [0.0]),            # piste 1 en solo
+    (False, True, True, False, [0.0, 1.0]),      # Solos ignorés
+    (True, True, False, False, [0.0, 1.0]),      # les deux ignorés
+])
+def test_real_render_pattern_mutes_and_solos(tmp_path, mute, solo, use_mutes, use_solos, heard):
+    router = _impulse_router(tmp_path)
+    router._track_mutes[1] = mute
+    router._track_solos[0] = solo
+    pat = _two_track_pattern()
+    res = audio_export.render_pattern(pat, pat.tempo_map(), router, VoiceManager(),
+                                      end=audio_export.END_TAIL, master_volume=100,
+                                      use_mutes=use_mutes, use_solos=use_solos)
+    assert _onsets(res)[:2] == heard
+    assert router._track_mutes[1] is mute and router._track_solos[0] is solo   # écoute intacte
+
+
+@pytest.mark.parametrize("use_mutes, heard", [(True, [0.0, 2.0]), (False, [0.0, 1.0, 2.0, 3.0])])
+def test_real_render_song_mutes_at_each_pattern(tmp_path, use_mutes, heard):
+    """Song de deux patterns dont la piste 2 est muette dans chacun : l'état
+    du pattern, réappliqué à sa frontière, garde le Mute ignoré."""
+    from song import song_segments
+    router = _impulse_router(tmp_path)
+    pats = [_two_track_pattern(), _two_track_pattern()]
+    for p in pats:
+        p._track_mutes[1] = True
+    song = Song(0)
+    song._sequence = [0, 1]
+    res = audio_export.render_song(song_segments(song, pats), router, VoiceManager(),
+                                   end=audio_export.END_TAIL, master_volume=100,
+                                   use_mutes=use_mutes)
+    assert _onsets(res)[:len(heard)] == heard
+
+
+def test_real_render_song_selected_tracks(tmp_path):
+    from song import song_segments
+    router = _impulse_router(tmp_path)
+    pats = [_two_track_pattern(), _two_track_pattern()]
+    song = Song(0)
+    song._sequence = [0, 1]
+    res = audio_export.render_song(song_segments(song, pats), router, VoiceManager(),
+                                   end=audio_export.END_TAIL, master_volume=100, tracks={1})
+    assert _onsets(res)[:2] == [1.0, 3.0]                    # piste 2 seule, dans chaque pattern

@@ -55,6 +55,7 @@ from rack import Rack
 from test_key_manager import FakeEvent
 from test_midi_export_ui import _ExportWindow, _fake_file_dialog, KIT, PIANO, ORGAN
 from test_audio_export_ui import Dialogs, _wait
+from track_editor import TrackEditor
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +348,7 @@ class _AudioSongWindow(_SongWindow):
             p.playing = False
         p.pause_pattern = pause
         self._audio_export_opts = (1, 0, False, 2, -14)
+        self._track_editor = TrackEditor()          # pistes sélectionnées, limiteurs (15b1)
 
 
 @pytest.fixture
@@ -381,20 +383,20 @@ def audio(monkeypatch):
     return SimpleNamespace(install=install, rendered=rendered, written=written)
 
 
-def test_song_audio_file_then_options(tmp_path, audio):
+def test_song_audio_options_then_file(tmp_path, audio):
     d = audio.install(Dialogs(path=str(tmp_path / "s.wav")))
     win = _AudioSongWindow(str(tmp_path / "EXPORTS"), name="Mon song")
     win._export_song_audio(0)
     _wait(win)
-    assert d.order == ["fichier", "paramètres"]
+    assert d.order == ["paramètres", "fichier"]              # 15b1
     assert d.file_kw["title"] == "Exporter le song en WAV…"
     assert d.file_kw["defaultFile"] == "Song_01_Mon_song.wav"
     assert d.file_kw["defaultDir"] == str(tmp_path / "EXPORTS")
     assert d.file_kw["wildcard"] == "Fichiers WAV (*.wav)|*.wav"
     assert d.file_kw["parent"] is win
     assert (tmp_path / "EXPORTS").is_dir()
-    assert d.opts_args[2]["unit"] == "Song"
-    print("  export audio du song : fichier puis paramètres, nom, libellé Song : OK")
+    assert d.opts_args[2]["source_idx"] == AudioExportDialog.SOURCE_SONG
+    assert d.opts_args[2]["source_labels"][1] == "Song courant (Song_01 Mon song, 2 patterns)"
 
 @pytest.mark.parametrize("looping, proposed", [(True, 0), (False, 1)])
 def test_song_audio_end_proposed_from_song_loop(tmp_path, audio, looping, proposed):
@@ -478,13 +480,13 @@ def test_song_audio_cancelled(tmp_path, audio, file_ok, opts_ok):
     print("  annulé (fichier ou paramètres) : rien rendu, rien rangé : OK")
 
 def test_song_audio_empty_song_refused(tmp_path, audio):
+    """Source choisie dans le dialogue (15b1) : un song vide est refusé
+    après lui, sans dialogue du fichier."""
     d = audio.install(Dialogs(path=str(tmp_path / "s.wav")))
-    win = _AudioSongWindow(str(tmp_path), playing=True, sequence=())
+    win = _AudioSongWindow(str(tmp_path), sequence=())
     win._export_song_audio(0)
-    assert d.order == [] and audio.rendered == []
+    assert d.order == ["paramètres"] and audio.rendered == []
     assert win.statuses == ["Song vide — ajoutez des patterns dans la fenêtre Songs"]
-    assert win._player.paused == 0
-    print("  song vide : refusé sans dialogue ni pause : OK")
 
 def test_song_audio_pauses_playback(tmp_path, audio):
     audio.install(Dialogs(path=str(tmp_path / "s.wav")))
@@ -548,7 +550,8 @@ _APP = None
 
 
 def test_audio_dialog_end_label_for_song(wx_app_alive):
-    for kw, label in (({}, "Fin : Pattern + résonance"), ({"unit": "Song"}, "Fin : Song + résonance")):
+    for kw, label in (({}, "Fin : Pattern + résonance"),
+                      ({"source_idx": AudioExportDialog.SOURCE_SONG}, "Fin : Song + résonance")):
         dlg = AudioExportDialog(None, 1, **kw)
         try:
             assert dlg._end_lb.GetString(0) == "Fin : Boucle exacte (résonance repliée)"
@@ -606,6 +609,40 @@ def test_song_audio_real_render_to_file(tmp_path, monkeypatch):
     assert win.statuses[-1].startswith("Song 01 exporté en WAV : song.wav (2 patterns) — 6,00 s")
     print("  rendu réel jusqu'au fichier : longueur et positions : OK")
 
+
+
+def test_song_selected_tracks_mutes_and_solos(tmp_path, audio):
+    """Source Song (15b1, X6, X7) : pistes sélectionnées appliquées à chaque
+    pattern, Mutes / Solos transmis au rendu."""
+    audio.install(Dialogs(path=str(tmp_path / "s.wav"), only=True, mutes=False, solos=False))
+    win = _AudioSongWindow(str(tmp_path))
+    win._player._cur_track = 0
+    win._track_editor._sel_tracks = {0, 6}
+    win._export_song_audio(0)
+    _wait(win)
+    kw, = audio.rendered
+    assert kw["tracks"] == {0, 6}
+    assert (kw["use_mutes"], kw["use_solos"]) == (False, False)
+
+
+def test_song_all_tracks_by_default(tmp_path, audio):
+    audio.install(Dialogs(path=str(tmp_path / "s.wav")))
+    win = _AudioSongWindow(str(tmp_path))
+    win._export_song_audio(0)
+    _wait(win)
+    kw, = audio.rendered
+    assert kw["tracks"] is None and (kw["use_mutes"], kw["use_solos"]) == (True, True)
+
+
+def test_song_window_song_used_not_the_current_one(tmp_path, audio):
+    d = audio.install(Dialogs(path=str(tmp_path / "s.wav")))
+    win = _AudioSongWindow(str(tmp_path))
+    win._cur_song_idx = 0
+    win._export_song_audio(2)                                 # song de la fenêtre Songs
+    _wait(win)
+    assert d.file_kw["defaultFile"] == "Song_03.wav"
+    assert d.opts_args[2]["source_labels"][1] == "Song courant (Song_03, 1 pattern)"
+    assert [seg.pattern_idx for seg in audio.rendered[0]["segments"]] == [1]
 
 
 def test_song_stems_per_track_named_from_first_pattern(tmp_path, audio, monkeypatch):
@@ -757,25 +794,29 @@ def test_midi_choose_dispatches(tmp_path, monkeypatch, target, expected):
     print("  Alt+Shift+E : pattern ou song courant, parent et statut transmis : OK")
 
 
-@pytest.mark.parametrize("target, expected", [(0, "wav"), (1, "song wav")])
-def test_audio_choose_dispatches(tmp_path, monkeypatch, target, expected):
-    _TargetDlg(target).install(monkeypatch)
+def test_audio_choose_no_longer_asks_pattern_or_song(tmp_path, monkeypatch):
+    """15b1 (X1) : Alt+Shift+W ouvre directement le dialogue d'export audio
+    (source dedans) ; le choix ne sert plus qu'à Alt+Shift+E."""
+    _TargetDlg(1).install(monkeypatch)
     win = _target_window(tmp_path)
-    win._export_audio_choose()
-    assert _TargetDlg.opened[0]["title"] == "Exporter en WAV"
-    assert win.exports[0][0] == expected
-    print("  Alt+Shift+W : pattern ou song courant : OK")
+    opened = []
+    win._export_audio_dialog = lambda source, parent=None, status=None, editor=False: \
+        opened.append((source, parent, status, editor))
+    said, parent = [], object()
+    win._export_audio_choose(parent=parent, status=said.append)
+    assert _TargetDlg.opened == []
+    assert opened == [(win._audio_src, parent, said.append, False)]
 
 
-def test_choice_kept_and_shared_between_midi_and_wav(tmp_path, monkeypatch):
-    fake = _TargetDlg(1).install(monkeypatch)
+def test_midi_choice_kept_and_not_touched_by_wav(tmp_path, monkeypatch):
+    _TargetDlg(1).install(monkeypatch)
     win = _target_window(tmp_path)
+    win._export_audio_dialog = lambda *a, **k: None
     win._export_midi_choose()
-    fake.target = 1
     win._export_audio_choose()
-    assert [o["target_idx"] for o in _TargetDlg.opened] == [0, 1]   # gardé, partagé
+    win._export_midi_choose()
+    assert [o["target_idx"] for o in _TargetDlg.opened] == [0, 1]   # gardé pour le MIDI
     assert win._export_target == 1
-    print("  dernier choix gardé pour la session, commun au MIDI et au WAV : OK")
 
 
 def test_choose_cancelled(tmp_path, monkeypatch):
@@ -783,11 +824,9 @@ def test_choose_cancelled(tmp_path, monkeypatch):
     win = _target_window(tmp_path)
     win._export_target = 0
     win._export_midi_choose()
-    win._export_audio_choose()
     assert win.exports == []
-    assert win.statuses == ["Export MIDI annulé", "Export audio annulé"]
+    assert win.statuses == ["Export MIDI annulé"]
     assert win._export_target == 0                        # inchangé
-    print("  annulé : rien exporté, message, choix gardé inchangé : OK")
 
 
 def test_audio_choose_refused_while_export_running(tmp_path, monkeypatch):
@@ -802,8 +841,11 @@ def test_audio_choose_refused_while_export_running(tmp_path, monkeypatch):
 
 def test_choose_empty_song_refused(tmp_path, monkeypatch):
     """X8 : le song courant vide reste proposé ; le choisir donne le refus
-    habituel, sans dialogue de fichier."""
+    habituel, sans dialogue de fichier (MIDI : dialogue de choix ; audio :
+    source Song du dialogue d'export, 15b1)."""
     _TargetDlg(1).install(monkeypatch)
+    d = Dialogs(source=AudioExportDialog.SOURCE_SONG)
+    monkeypatch.setattr(mwp, "AudioExportDialog", d.OptsDlg)
     win = _AudioSongWindow(str(tmp_path))
     win._cur_song_idx = 1
     opened = []
@@ -811,6 +853,7 @@ def test_choose_empty_song_refused(tmp_path, monkeypatch):
     win._export_midi_choose()
     win._export_audio_choose()
     assert _TargetDlg.opened[0]["song"] == "Song_02, vide"
+    assert d.opts_args[2]["source_labels"][1] == "Song courant (Song_02, vide)"
     assert opened == []
     assert win.statuses == ["Song vide — ajoutez des patterns dans la fenêtre Songs"] * 2
     print("  song courant vide : proposé, puis refusé : OK")

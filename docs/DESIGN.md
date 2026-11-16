@@ -14305,3 +14305,34 @@ d'Undo (l'export ne modifie pas le projet).
   principale et éditeur MIDI) ; Alt+Shift+W ouvre sur la **dernière source
   utilisée** parmi les quatre (`_audio_src`) ; dans l'éditeur MIDI,
   Alt+Shift+W passe `editor=True` (presse-papier des notes).
+
+### Avancement 15c1 (tests — dialogue unique)
+
+- **`tests/test_audio_export_ui.py`** réécrit (52 → 74 tests) : faux
+  dialogue unique (source, cases, sélection, paramètres) ; ordre
+  paramètres → fichier, annulations ; sources Sélection / Presse-papier
+  par Alt+Shift+W ; nouveau dialogue (Source en tête, ordre de
+  tabulation et libellés avant leur champ, cases et défauts, champs selon
+  la source, fin qui suit la source, sélection préremplie et validée,
+  Entrée sur chaque liste, Normaliser, bornes) ; Alt+Shift+W sur la
+  dernière source, Alt+Shift+S sans effet, éditeur MIDI avec son
+  presse-papier ; choix de session (gardés seulement une fois le fichier
+  choisi), Mutes / Solos / pistes passés au rendu ; **rendu réel** : Mutes
+  et Solos ignorés (pattern ; song, à chaque frontière), pistes
+  sélectionnées d'un song, écoute intacte.
+- **`tests/test_song_export_ui.py`** : source Song (paramètres puis
+  fichier, song de la fenêtre Songs, song vide refusé après le dialogue,
+  pistes sélectionnées / Mutes / Solos) ; le choix pattern / song ne sert
+  plus qu'à l'export MIDI.
+- **Correctifs trouvés par les tests** (dans `mw_project`) : libellé du
+  pattern calculé sans le song courant (fenêtre Songs) ; segments du song
+  pris **après** le dialogue du fichier (annuler ne range plus le pattern
+  courant) ; choix du dialogue gardés **après** le choix du fichier
+  (annuler à l'un ou l'autre : rien ne change).
+- Mutations vérifiées (Mutes non ignorés aux frontières du song ; case des
+  pistes active pour le presse-papier ; éditeur sans son presse-papier ;
+  song rangé avant le fichier ; source gardée avant le fichier) : chacune
+  fait échouer un test (la dernière après l'ajout d'un test). Incident :
+  une restauration par `git checkout -- src/` a effacé un instant les
+  correctifs non committés — refaits, mutations reprises avec des copies.
+- **`docs/SPECS.md`** : table. Suite : 4578 verts.
