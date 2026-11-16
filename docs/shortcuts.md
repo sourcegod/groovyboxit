@@ -152,6 +152,11 @@ Note: sur une piste audio (Type de piste « Audio »), R, Shift+R et Ctrl+R
       passage suivant et superposé aux précédents ; Shift+R (Remplacer) fait
       taire la piste dans la plage enregistrée et ne garde que le dernier
       passage (au Stop, la fin non enregistrée revient).
+Note: une prise qui n'enregistre que du bruit (par exemple avec un casque
+      branché sur une prise jack combinée) : cocher l'entrée « pipewire » ou
+      « default » dans l'onglet Matériel des Préférences (Alt+Shift+P) ; ces
+      entrées suivent l'entrée choisie par le système, une entrée matérielle
+      ALSA (hw:) ne la suit pas.
 
 --- Effacement en temps réel (mode E) ---
 E                Activer / désactiver le mode Erase (désactive Rec si actif)

@@ -420,6 +420,10 @@ Le projet garde le nouveau chemin à son prochain enregistrement.
   passage découpe sa plage dans les clips plus anciens, au Stop seul le
   dernier passage reste et la fin non enregistrée revient. Espace arrête
   l'enregistrement. Une prise = un Undo (le fichier reste sur le disque).
+- **Prise qui n'enregistre que du bruit** (casque branché sur une prise
+  jack combinée, essai de l'utilisateur) : cocher l'entrée « pipewire »
+  ou « default » dans l'onglet Matériel — elles suivent l'entrée choisie
+  par le système ; une entrée matérielle ALSA (`hw:`) ne la suit pas.
 
 ### Clés de `data/config.json`
 

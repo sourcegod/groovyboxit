@@ -14142,3 +14142,13 @@ audio, boucle.
   rien dans le callback ;
 - sortie audio par piste ; types de piste Synthé, Effet, Automation ;
   SpeechAccess ; notes en temps flottant ; essai multi-cartes.
+
+### Avenant 14h2 (doc — bruit à l'enregistrement)
+
+- Question restée ouverte à la clôture : avec un casque branché, la prise
+  n'enregistrait que du bruit blanc. **Résolu par l'utilisateur** en
+  cochant « pipewire » ou « default » dans les entrées audio de l'onglet
+  Matériel : ces entrées passent par le serveur son et suivent l'entrée
+  choisie par le système (bascule du jack combiné) ; une entrée matérielle
+  ALSA (`hw:`) ne la suit pas. Conseil ajouté à l'aide F1
+  (`docs/shortcuts.md`) et à `docs/SPECS.md` (« Pistes audio »).
