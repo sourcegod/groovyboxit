@@ -13912,3 +13912,41 @@ la saturation. Pourquoi plutôt qu'un fichier remixé à chaque passage :
 - Suite : 4387 verts, **16 rouges jusqu'à 14g1** (tests de touches et
   fenêtres factices sans `_cur_track_is_audio` / `_track_name`, nouveau
   champ de l'onglet Audio, renommage F2 qui changeait le nom du pad).
+
+### Avancement 14g1 (tests — prise simple)
+
+- **`tests/test_audio_recording.py`** (nouveau, 92 tests ; comportement
+  observable, référence pour la version C/C++) : datation
+  (`capture_time`, heures de la carte et repli) et placement
+  (`place_take` : début sauté, ancre d'une fenêtre, fin de boucle, rien
+  ne reste, carte de tempo ; `bars_for`) ; `AudioRecorder` sur un flux
+  factice (WAV 24 bits, datation du premier bloc seul, sans heures de
+  carte, rien de capté, anomalies, échec au départ sans rien laisser
+  ouvert, flux perdu, écriture dans un autre fil) ; latence de sortie du
+  pilote, `audio_latency_ms` et ses bornes, projet sans nom, canaux de
+  l'entrée ; `Pattern.set_bar_count` (événements et ids gardés), noms de
+  piste (`.gvp`, anciens projets, copie pour l'Undo) ; lecteur
+  (armement, ancre unique, boucle sans points et avec points, décompte,
+  fin de prise à chaque arrêt et une seule fois, allongement et ses
+  refus, fin de pattern allongée ou en pause, vrai fil de lecture) ;
+  `AudioRecMixin` (piste audio, prise ouverte et armée, entrée de la
+  piste / première cochée / défaut / absente, projet sans nom nommé ou
+  annulé, entrée refusée, clip posé, latence, début sauté, mesures
+  gardées ou ramenées, prise vide, anomalies, fil de la carte →
+  CallAfter) ; libellé « Track_08 - Audio 1 » et noms de piste ; vraie
+  fenêtre principale (R … R : prise posée et pattern allongé ; Ctrl+Z ;
+  R puis Espace ; F2, Undo, Redo).
+- **16 tests rouges de 14f1 corrigés** : `test_key_manager.py` (fenêtre
+  factice : `_cur_track_is_audio`, `_audio_rec_prepare` ; + 11 tests :
+  prise préparée avant l'Undo pour R / Shift+R / Ctrl+R, refus, piste
+  MIDI, Espace pendant l'enregistrement et le décompte) ;
+  `test_preferences_dialog.py` (champ de compensation, + 1 test) ;
+  `test_rename.py` (F2 règle le nom de piste, plus celui du pad ; + 2
+  tests : nom proposé, état de l'Undo intact) ; `test_sfz_slot.py`,
+  `test_undo_clean_point.py` (fenêtres factices).
+- Mutations vérifiées (latence ignorée ; fin de prise retirée d'un arrêt ;
+  pas d'allongement ; boucle sans points non bornée ; Espace sans arrêt
+  du Rec) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence (`audio_recorder.py`,
+  `mw_audio_rec.py`, `test_audio_recording.py`) et table. Suite : 4508
+  verts.

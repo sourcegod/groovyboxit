@@ -761,6 +761,7 @@ def _label_window(router):
         _player=types.SimpleNamespace(voice_manager=VoiceManager(), _cur_track=1,
                                       recording=False))
     win._rack_channel_desc = lambda ch: f"Slot_{ch + 1:02d}"
+    win._track_name = lambda idx: ""                # nom de piste F2 (Phase 8 étape 14f1)
     return win, TrackMixin._track_label
 
 

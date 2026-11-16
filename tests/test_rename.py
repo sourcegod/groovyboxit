@@ -70,12 +70,18 @@ class FakeTrackWindow(TrackMixin):
 # Tests — _rename_track
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Phase 8 étape 14f1 (essai) : le nom de piste est Pattern._track_names (par
+# pattern), à part du nom des pads (voice_manager), qui ne change plus.
+
 def test_rename_track_ok():
     win = FakeTrackWindow()
+    win._player.voice_manager.set_name(0, "Kick")
     with patch("wx.TextEntryDialog", _fake_dialog(wx.ID_OK, "Melody")):
         win._rename_track()
-    assert win._player.voice_manager.get_name(0) == "Melody"
-    assert win._pattern_list[0]._voices[0]["name"] == "Melody"
+    assert win._pattern_list[0]._track_names[0] == "Melody"
+    assert win._track_name(0) == "Melody"
+    assert win._player.voice_manager.get_name(0) == "Kick"          # pad inchangé
+    assert win._pattern_list[1]._track_names[0] == ""               # autre pattern
     assert any(t[0] == '_add_undo' for t in win.calls if isinstance(t, tuple))
     assert '_pop_last_undo' not in win.calls
     assert '_refresh_track_list' in win.calls
@@ -83,30 +89,30 @@ def test_rename_track_ok():
 
 def test_rename_track_cancel_no_change():
     win = FakeTrackWindow()
-    win._player.voice_manager.set_name(0, "Keep")
+    win._pattern_list[0]._track_names[0] = "Keep"
     with patch("wx.TextEntryDialog", _fake_dialog(wx.ID_CANCEL, "IgnoredName")):
         win._rename_track()
-    assert win._player.voice_manager.get_name(0) == "Keep"
+    assert win._track_name(0) == "Keep"
     assert any(t[0] == '_add_undo' for t in win.calls if isinstance(t, tuple))
     assert '_pop_last_undo' in win.calls
 
 
 def test_rename_track_same_name_pops_undo():
     win = FakeTrackWindow()
-    win._player.voice_manager.set_name(0, "Same")
+    win._pattern_list[0]._track_names[0] = "Same"
     with patch("wx.TextEntryDialog", _fake_dialog(wx.ID_OK, "Same")):
         win._rename_track()
-    assert win._player.voice_manager.get_name(0) == "Same"
+    assert win._track_name(0) == "Same"
     assert any(t[0] == '_add_undo' for t in win.calls if isinstance(t, tuple))
     assert '_pop_last_undo' in win.calls
 
 
 def test_rename_track_empty_name():
     win = FakeTrackWindow()
-    win._player.voice_manager.set_name(0, "OldName")
+    win._pattern_list[0]._track_names[0] = "OldName"
     with patch("wx.TextEntryDialog", _fake_dialog(wx.ID_OK, "")):
         win._rename_track()
-    assert win._player.voice_manager.get_name(0) == ""
+    assert win._track_name(0) == ""
     assert '_pop_last_undo' not in win.calls
 
 
@@ -118,6 +124,32 @@ def test_rename_track_undo_title():
     undo_calls = [t for t in win.calls if isinstance(t, tuple) and t[0] == '_add_undo']
     assert len(undo_calls) == 1
     assert "3" in undo_calls[0][1]
+
+
+def test_rename_track_dialog_proposes_the_track_name_not_the_pad_name():
+    seen = []
+    class Dlg:
+        def __init__(self, parent, msg, caption, value): seen.append(value)
+        def ShowModal(self): return wx.ID_CANCEL
+        def GetValue(self):  return ""
+        def Destroy(self):   pass
+    win = FakeTrackWindow()
+    win._player.voice_manager.set_name(0, "HH Closed")
+    with patch("wx.TextEntryDialog", Dlg):
+        win._rename_track()
+    win._pattern_list[0]._track_names[0] = "Voix"
+    with patch("wx.TextEntryDialog", Dlg):
+        win._rename_track()
+    assert seen == ["", "Voix"]
+
+
+def test_rename_track_keeps_the_undo_state_intact():
+    """F2 remplace la liste : un état d'Undo déjà pris (to_dict) ne change pas."""
+    win = FakeTrackWindow()
+    before = win._pattern_list[0].to_dict()
+    with patch("wx.TextEntryDialog", _fake_dialog(wx.ID_OK, "Voix")):
+        win._rename_track()
+    assert before["track_names"][0] == ""
 
 
 def test_rename_track_status_message():

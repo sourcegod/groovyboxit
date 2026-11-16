@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import threading
 import wx
+import pytest
 from unittest.mock import patch
 from ui.key_manager import KeyManager
 from track_editor import TrackEditor
@@ -321,6 +322,14 @@ class FakeWindow:
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
         self.calls.append(('_take_begin', title,
                            self._player.recording or self._player.erasing))
+    # Prise audio (Phase 8 étape 14f1) : piste MIDI par défaut
+    audio_track      = False
+    audio_prepare_ok = True
+    _audio_rec_note  = "Prise audio piste 1 — micro"
+    def _cur_track_is_audio(self):        return self.audio_track
+    def _audio_rec_prepare(self):
+        self.calls.append(('_audio_rec_prepare', self._player.recording))
+        return self.audio_prepare_ok
     def _undo_action(self):               self.calls.append('_undo_action')
     def _redo_action(self):               self.calls.append('_redo_action')
     def _undo_history_dialog(self):       self.calls.append('_undo_history_dialog')
@@ -993,6 +1002,77 @@ def test_midi_port_list_removed():
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Prise audio sur une piste audio, Espace pendant l'enregistrement (Phase 8
+# étape 14f1)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("key, shift, ctrl, call, title", [
+    (ord('R'), False, False, 'record_pattern', 'Enregistrement piste 1'),
+    (ord('R'), True, False, 'start_replace_recording', 'Remplacement piste 1'),
+    (ord('R'), False, True, 'record_pattern_with_count_in', 'Enregistrement piste 1'),
+])
+def test_rec_on_an_audio_track_prepares_the_take_first(key, shift, ctrl, call, title):
+    app, win, km = make_km()
+    win.audio_track = True
+    km.handle(FakeEvent(key=key, shift=shift, ctrl=ctrl))
+    assert call in win._player.calls
+    i_prep = win.calls.index(('_audio_rec_prepare', False))
+    i_take = win.calls.index(('_take_begin', title, False))
+    assert i_prep < i_take                          # prise ouverte avant l'Undo
+    if not ctrl:
+        assert ('_show_status', ("Replace Rec: " if shift else "Rec: ") + win._audio_rec_note) in win.calls
+    teardown(app)
+
+
+@pytest.mark.parametrize("key, shift, ctrl", [
+    (ord('R'), False, False), (ord('R'), True, False), (ord('R'), False, True)])
+def test_rec_refused_when_the_take_cannot_open(key, shift, ctrl):
+    app, win, km = make_km()
+    win.audio_track = True
+    win.audio_prepare_ok = False                    # Annuler au nom du projet, entrée refusée
+    km.handle(FakeEvent(key=key, shift=shift, ctrl=ctrl))
+    assert not {'record_pattern', 'start_replace_recording',
+                'record_pattern_with_count_in'} & set(win._player.calls)
+    assert not any(isinstance(c, tuple) and c[0] == '_take_begin' for c in win.calls)
+    teardown(app)
+
+
+def test_rec_on_a_midi_track_does_not_prepare_an_audio_take():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=ord('R')))
+    assert 'record_pattern' in win._player.calls
+    assert not any(isinstance(c, tuple) and c[0] == '_audio_rec_prepare' for c in win.calls)
+    teardown(app)
+
+
+def test_space_while_recording_stops_the_recording_then_pauses():
+    app, win, km = make_km()
+    win._player.playing = win._player.recording = True
+    km.handle(FakeEvent(key=wx.WXK_SPACE))
+    calls = win._player.calls
+    assert calls.index('stop_record') < calls.index('pause_pattern')
+    assert not win._player.recording and not win._player.playing
+    teardown(app)
+
+
+def test_space_during_the_count_in_cancels_everything():
+    app, win, km = make_km()
+    win._player._count_in = 1                      # décompte : la lecture ne tourne pas encore
+    km.handle(FakeEvent(key=wx.WXK_SPACE))
+    assert 'stop_record' in win._player.calls and 'stop_all' in win._player.calls
+    assert 'play_pattern' not in win._player.calls
+    assert ('_show_status', "Rec: Off (décompte annulé)") in win.calls
+    teardown(app)
+
+
+def test_space_without_recording_still_toggles_play():
+    app, win, km = make_km()
+    km.handle(FakeEvent(key=wx.WXK_SPACE))
+    assert win._player.calls == ['play_pattern']
+    teardown(app)
 
 if __name__ == "__main__":
     print("=== test_key_manager ===")

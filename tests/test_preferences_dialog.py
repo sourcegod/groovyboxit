@@ -68,6 +68,7 @@ FULL_PREFS = {
     "live_limiter": False, "fluidsynth": False, "sfizz": False,
     "fluidsynth_gain": 0.8, "sfizz_gain": 2.5,
     "master_volume": 150, "master_pan": -30, "midi_bank_select": "mma",
+    "audio_latency_ms": 35,                                   # Phase 8 étape 14f1
     "app_projects_dir": "/opt/demos", "projects_dir": "/u/PROJECTS",
     "app_banks_dir": "/opt/banks", "user_banks_dir": "/u",
 }
@@ -401,7 +402,21 @@ def test_audio_labels(make):
               if isinstance(c, wx.SpinCtrl)]
     assert labels == ["Gain FluidSynth (en dixièmes) :", "Gain sfizz (en dixièmes) :",
                       "Volume global d'un nouveau projet :",
-                      "Pan global d'un nouveau projet :"]
+                      "Pan global d'un nouveau projet :",
+                      "Compensation de latence en ms (enregistrement audio) :"]
+
+
+def test_audio_latency_field(make):
+    """Compensation de latence de l'enregistrement audio (Phase 8 étape 14f1) :
+    −1000..1000 ms, défaut 0, valeur des préférences, Valeurs par défaut."""
+    dlg = make({"audio_latency_ms": -20})
+    assert (dlg._audio_latency.GetMin(), dlg._audio_latency.GetMax()) == (-1000, 1000)
+    assert dlg._audio_latency.GetValue() == -20
+    assert "audio_latency_ms" in dlg.TAB_KEYS["Audio"]
+    dlg.restore_defaults("Audio")
+    assert dlg._audio_latency.GetValue() == 0
+    dlg._audio_latency.SetValue(40)
+    assert dlg.changes()["audio_latency_ms"] == 40
 
 
 def test_checkboxes_carry_their_label(make):

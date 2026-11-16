@@ -31,6 +31,7 @@ from test_mix_undo import _FakePadDialog
 
 class _CleanWin(_Win):
     _rename_track         = TrackMixin._rename_track
+    _track_name           = TrackMixin._track_name       # Phase 8 étape 14f1
     _pad_properties_dialog = PadMixin._pad_properties_dialog
 
     def __init__(self, tmp_path):
