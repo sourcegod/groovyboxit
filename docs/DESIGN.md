@@ -14377,3 +14377,51 @@ d'Undo (l'export ne modifie pas le projet).
   gamme du jeu en direct ; banque sans le canal 10) : chacune fait échouer
   des tests (fichiers restaurés depuis une copie).
 - **`docs/SPECS.md`** : table. Suite : 4588 verts.
+
+### Clôture de l'étape 15 (15d1)
+
+**Bilan** (Phase 8 étapes 15a à 15c3, 2026-11-16 / 17, 4588 tests verts) :
+l'export audio passe de trois dialogues à **deux** — « Exporter en
+audio » (source Pattern / Song / Sélection / Presse-papier, « Exporter les
+pistes sélectionnées », « Tenir compte des Mutes / des Solos », début et
+fin de la sélection, puis fin, format, sortie, normalisation), puis le nom
+du fichier ; **Alt+Shift+S retiré** (redondant) ; Mutes / Solos ignorés
+sur demande au rendu seul (aussi à chaque pattern d'un song), pistes
+sélectionnées aussi pour un song. Correctif inséré : notes de grille de
+l'éditeur MIDI une octave trop bas (écoute et noms).
+
+**Commits** : 15a (plan), 15b1 (implémentation, Alt+Shift+S retiré à
+l'essai), 15c1 (tests, correctifs trouvés par les tests), 15c2 / 15c3
+(correctif de l'octave de l'éditeur MIDI et ses tests), 15d1 (clôture).
+
+**Décisions de l'utilisateur** : X1 (source dans le dialogue), X2
+(Alt+Shift+W et Alt+Shift+S même dialogue — puis Alt+Shift+S retiré à
+l'essai), X3 (Mutes / Solos cochés par défaut, gardés pour la session) ;
+plan validé (X4-X8).
+
+**Écarts et imprévus** :
+- Alt+Shift+S retiré (essai de 15b1) ; Alt+Shift+W ouvre sur la dernière
+  source utilisée parmi les quatre ;
+- « Exporter les pistes sélectionnées » décochée par défaut pour toutes
+  les sources (l'ancien dialogue de la sélection proposait
+  « Sélectionnées ») ; Mutes / Solos = ceux des pistes, pas des pads ;
+- les tests ont trouvé trois défauts de 15b1 (libellé du pattern lié au
+  song courant ; pattern rangé et choix gardés même si le fichier était
+  annulé) ;
+- correctif 15c2 / 15c3 signalé par l'utilisateur pendant le chantier
+  (sans rapport avec l'export) ;
+- incident de méthode : une restauration par `git checkout -- src/`
+  pendant les mutations a effacé des correctifs non committés (refaits ;
+  règle notée : restaurer depuis une copie).
+
+**Essais de l'utilisateur** : 15b1 (deux essais), 15c2 : concluants.
+
+**`docs/SPECS.md`** : section « Export audio (Alt+Shift+W) » réécrite
+(parcours, dialogue, sources), choix pattern / song réservé à l'export
+MIDI, table des dialogues, ligne Phase 8. **`docs/shortcuts.md`** (aide
+F1) : Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs).
+
+**Suites notées** : pistes sélectionnées en stems d'un song entier déjà
+possibles ; plus tard : volume et pan entendus tout de suite sur un clip
+audio, mode d'enregistrement Ctrl+Shift+R, monitoring, gestion des prises
+(étape 14) ; SpeechAccess ; notes en temps flottant.
