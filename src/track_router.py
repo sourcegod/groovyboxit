@@ -673,6 +673,24 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             return self._kb_notes_play[pad_idx]
         return None
 
+    def grid_play_note(self, track_idx, pad_idx):
+        """Note que le lecteur joue pour un pad de grille sur une piste à
+        notes (synthé, banque) : 36 + pad au canal 10, sinon la gamme de
+        lecture du pattern ; None hors gamme. Sert à l'écoute de l'éditeur
+        MIDI (Phase 8 étape 15c2 : il prenait la gamme d'entrée — pavé et
+        contrôleur, base 36 depuis la Phase 8 étape 9 — et sonnait une octave
+        plus bas que le lecteur). Même choix que on_play : banque / Synth SFZ
+        (CHAN_TYPES) → _bank_grid_note ; synthé → gamme de lecture."""
+        _, slot = self._eff_slot(track_idx)
+        if slot.type in self.CHAN_TYPES:
+            return self._bank_grid_note(track_idx, pad_idx)
+        return self._kb_notes_play[pad_idx] if pad_idx < len(self._kb_notes_play) else None
+
+    def playback_kb_notes(self):
+        """Notes de la gamme de lecture du pattern (pad → note), comme le
+        lecteur les joue (15c2)."""
+        return list(self._kb_notes_play)
+
     def input_note(self, pad_idx):
         """Note jouée par un pad en direct : batterie sur une banque au canal
         10 → 36 + pad, sinon la gamme d'entrée (kb_notes_input)."""

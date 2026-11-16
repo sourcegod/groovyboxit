@@ -90,10 +90,11 @@ class PlaybackMixin:
                 router.load_slot_preview(self._parent._cur_slot)
                 return
             if etype == ETYPE_GRID:
-                pad = ev["pad"]
-                if pad >= len(router.kb_notes_input):
+                # la note que joue le lecteur, pas celle du jeu en direct
+                # (15c2 : une octave plus bas depuis la base 36 du pavé)
+                midi = router.grid_play_note(ev["track"], ev["pad"])
+                if midi is None:
                     return
-                midi = router.input_note(pad)
             elif etype == ETYPE_PATCH:
                 midi = ev["pad"]
             else:

@@ -14336,3 +14336,27 @@ d'Undo (l'export ne modifie pas le projet).
   une restauration par `git checkout -- src/` a effacé un instant les
   correctifs non committés — refaits, mutations reprises avec des copies.
 - **`docs/SPECS.md`** : table. Suite : 4578 verts.
+
+### Correctif 15c2 (éditeur MIDI : notes une octave trop bas)
+
+- **Signalé par l'utilisateur (2026-11-17)** : dans l'éditeur MIDI,
+  Gauche / Droite (note par note) fait entendre les notes une octave
+  en dessous de ce que joue le lecteur ; piste de l'utilisateur :
+  l'étape où pavé, contrôleur et grille ont reçu la même tessiture.
+- **Cause** : l'écoute d'une note de grille (`_play_event`, mew_playback)
+  passait par `router.input_note(pad)`, la gamme du **jeu en direct**
+  (`kb_notes_input`, racine `KB_INPUT_BASE` = 36 depuis la Phase 8
+  étape 9b1), alors que le lecteur joue la gamme de **lecture** du
+  pattern (`_kb_notes_play`, racine du pattern, 48 par défaut) : do 2 au
+  lieu de do 3. Les noms de notes affichés par l'éditeur pour une case de
+  grille (liste, dialogue d'édition, numéro de note de Ctrl+2) prenaient
+  la même gamme d'entrée.
+- **Correctif** : `TrackRouter.grid_play_note(piste, pad)` — même choix
+  que `on_play` (banque / Synth SFZ : `_bank_grid_note`, 36 + pad au canal
+  10 ; synthé : gamme de lecture) — et `playback_kb_notes()` ; l'écoute et
+  les trois affichages de noms s'en servent. Le jeu en direct (pavé,
+  contrôleur) garde sa base 36.
+- Vérifié sur la vraie fenêtre principale : pad 0 → lecteur C3, ancienne
+  écoute C2, écoute de l'éditeur C3.
+- Suite : 4575 verts, **3 rouges jusqu'à 15c3** (routeur factice
+  `_FakeLabelRouter` de test_midi_editor_window sans `playback_kb_notes`).

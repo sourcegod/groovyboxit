@@ -36,7 +36,7 @@ class DisplayMixin:
         slot_idx  = self._parent._router.slot_for_track(track_idx)
         slot      = self._parent._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.SYNTH:
-            kb = self._parent._router.kb_notes_input
+            kb = self._parent._router.playback_kb_notes()   # notes jouées (15c2)
             if pad_val < len(kb):
                 return midi_to_note_name(kb[pad_val])
             return f"Note_{pad_val+1:02d}"
@@ -47,7 +47,7 @@ class DisplayMixin:
         slot_idx = self._parent._router.slot_for_track(track_idx)
         slot     = self._parent._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.SYNTH:
-            kb = self._parent._router.kb_notes_input
+            kb = self._parent._router.playback_kb_notes()   # notes jouées (15c2)
             return [midi_to_note_name(kb[i]) if i < len(kb) else f"Note_{i+1:02d}"
                     for i in range(num_pads)]
         return [self._pad_name(i) for i in range(num_pads)]
@@ -152,7 +152,7 @@ class DisplayMixin:
         slot_idx  = self._parent._router.slot_for_track(track_idx)
         slot      = self._parent._rack.get_slot(slot_idx)
         if slot.type == InstrumentType.SYNTH:
-            kb = self._parent._router.kb_notes_input
+            kb = self._parent._router.playback_kb_notes()   # notes jouées (15c2)
             if pad_val < len(kb):
                 return kb[pad_val]
         return pad_val + 1
