@@ -14425,3 +14425,106 @@ F1) : Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs).
 possibles ; plus tard : volume et pan entendus tout de suite sur un clip
 audio, mode d'enregistrement Ctrl+Shift+R, monitoring, gestion des prises
 (étape 14) ; SpeechAccess ; notes en temps flottant.
+
+---
+
+## Phase 8 étape 16a — Options de l'enregistrement (Ctrl+Shift+R) et Mode MPC
+
+### Numérotation des commits de ce chantier
+
+16a (plan), puis paires implémentation → tests ; un commit imprévu prend
+le suffixe suivant (16b2…), toujours après les commits déjà faits.
+
+### Origine du besoin (utilisateur, 2026-11-15 / 17)
+
+Noté au plan de l'étape 14 (« dialogue « Mode d'enregistrement » par
+Ctrl+Shift+R, depuis toutes les fenêtres : Overdub / Remplacer /
+Remplacer puis Overdub, comme le MPC d'Akai, pour l'audio et le MIDI »),
+demandé le 2026-11-17 : « on attaque le dialog Options de
+l'enregistrement, Ctrl+Shift+R, avec Mode MPC ». À noter (utilisateur) :
+« ce dialogue sera amené à recevoir d'autres modes plus tard, comme :
+Punch In/Out, Automation, Live Looper… ».
+
+### État des lieux constaté en code (2026-11-17, 4588 tests verts)
+
+- R = Overdub, Shift+R = Remplacer, Ctrl+R = décompte puis Overdub ;
+  sur une piste audio, les mêmes touches font une prise (14f1, 14g2).
+- `DrumPlayer.count_in_bars` = 1, **sans réglage** dans l'appli ;
+  `Metronome.click_in_recording` = vrai, **sans réglage** (le métronome
+  démarre avec Rec et s'arrête au Stop s'il ne tournait pas avant) ; C
+  bascule le métronome à la main.
+- Quantisation à l'enregistrement : dialogue à part (Alt+Shift+Q, 13d2).
+- Ctrl+Shift+R : **libre**.
+
+### Décisions de l'utilisateur (2026-11-17)
+
+- **O1 — R suit le mode** choisi au dialogue (Ctrl+R aussi, après le
+  décompte) ; **Shift+R** reste un raccourci direct vers Remplacer.
+- **O2 — contenu du dialogue** : le **mode**, le **décompte**, le
+  **clic pendant la lecture** puis le **clic pendant l'enregistrement**
+  (champ « Clic pendant la lecture » ajouté par l'utilisateur, avant
+  celui de l'enregistrement).
+- **O3 — Mode MPC pour le MIDI et l'audio.**
+- **O4 — options gardées dans le projet** (`.gvp`) : « on y reviendra
+  souvent ».
+- **O5 — modes à venir** : le dialogue recevra d'autres modes (Punch
+  In/Out, Automation, Live Looper…).
+
+### Choix de conception proposés
+
+**O6 — modes extensibles** : un mode = un **identifiant texte** gardé
+dans le projet (`"overdub"`, `"replace"`, `"mpc"`, plus tard `"punch"`,
+`"automation"`, `"looper"`…), décrit dans une **table** (identifiant,
+libellé, comportement MIDI, comportement audio) d'où la liste du dialogue
+est construite. Ajouter un mode = une ligne de table et son
+comportement ; un identifiant inconnu (projet d'une version plus
+récente) → Overdub. Les réglages propres à un mode (bornes du Punch,
+pistes d'automation…) viendront dans le même dialogue, actifs selon le
+mode choisi (comme les champs de la sélection dans « Exporter en
+audio »).
+
+**O7 — dialogue « Options de l'enregistrement »** (Ctrl+Shift+R depuis la
+fenêtre principale, l'éditeur MIDI et la fenêtre Songs), focus sur le
+mode, libellés créés avant leur champ :
+1. **Mode** : « Overdub » / « Remplacer » / « Remplacer puis Overdub
+   (MPC) » (liste, Entrée valide) ;
+2. **Clic pendant la lecture** (case, décochée par défaut) ;
+3. **Clic pendant l'enregistrement** (case, cochée par défaut — le
+   comportement actuel) ;
+4. **Décompte** : 0, 1, 2, 4 ou 8 mesures (liste, 1 par défaut — le
+   comportement actuel ; 0 : Ctrl+R enregistre tout de suite).
+
+**O8 — Mode MPC « Remplacer puis Overdub »** : en boucle, le **premier
+passage remplace**, les **suivants s'ajoutent** ; sans boucle, comme
+Remplacer.
+- Piste MIDI : `replace_recording` pendant le premier passage (les notes
+  de la piste sont effacées au fil de la lecture), puis Overdub au retour
+  de boucle.
+- Piste audio : premier passage comme Remplacer (silence dans la plage,
+  découpe des clips plus anciens, R5), passages suivants comme Overdub
+  (clips superposés, joués dès le passage suivant, R1).
+
+**O9 — clics** : « Clic pendant la lecture » → Play (Espace, Ctrl+Espace,
+lecture d'un song) démarre le métronome s'il ne tourne pas ; Stop / Pause
+l'arrête s'il l'a démarré. « Clic pendant l'enregistrement » →
+`click_in_recording` (décochée : Rec ne démarre plus le métronome). C
+bascule toujours le métronome à la main.
+
+**O10 — projet** : clé `record_options` du `.gvp` (`mode`, `click_play`,
+`click_record`, `count_in`) ; absente (anciens projets) ou Ctrl+N → les
+défauts (le comportement actuel). Changer les options est un **point
+d'Undo** (« Options de l'enregistrement »), comme les autres réglages du
+projet ; projet marqué modifié.
+
+**O11 — annonces** : R annonce le mode (« Rec (MPC) : Piste 3 — … »,
+« Rec : … » en Overdub, « Replace Rec : … ») ; le dialogue annonce à Ok
+les options retenues.
+
+### Découpage (validé, 2026-11-17)
+
+- **16b1 / 16c1 — dialogue et options** : table des modes, dialogue, clé
+  du `.gvp`, Undo, R qui suit le mode (Overdub / Remplacer), clics,
+  décompte ; aide F1.
+- **16d1 / 16e1 — Mode MPC** : MIDI et audio, premier passage remplace,
+  suivants ajoutent.
+- **16f1 — clôture** (`git gc`).
