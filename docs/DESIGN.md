@@ -14152,3 +14152,107 @@ audio, boucle.
   choisie par le système (bascule du jack combiné) ; une entrée matérielle
   ALSA (`hw:`) ne la suit pas. Conseil ajouté à l'aide F1
   (`docs/shortcuts.md`) et à `docs/SPECS.md` (« Pistes audio »).
+
+---
+
+## Phase 8 étape 15a — Avenant export audio : un seul dialogue, puis le nom du fichier
+
+### Numérotation des commits de ce chantier
+
+15a (plan), puis paires implémentation → tests (15b1 / 15c1), 15d1
+(clôture) ; un commit imprévu prend le suffixe suivant (15b2…).
+
+### Origine du besoin (utilisateur, 2026-11-15, noté en 14e2)
+
+« Pour l'export Audio, nous avons 3 boîtes de dialogue. Il doit être
+possible de rassembler deux dialogues ensemble, ex : le dialogue du
+pattern courant, ajouter des cases comme : « Exporter les Pistes
+Sélectionnées », « Tenir compte des Mutes », « Tenir compte des Solos ».
+Suivi des champs du dialogue : Fin : « Boucle repliée », format,
+normaliser… Après Ok, faire appel au second dialogue du choix du nom de
+fichier .wav à exporter. »
+
+### État des lieux constaté en code (2026-11-16, 4554 tests verts)
+
+- **Alt+Shift+W** (fenêtre principale, éditeur MIDI) :
+  `ExportTargetDialog` (« Pattern courant » / « Song courant », dernier
+  choix gardé, partagé avec Alt+Shift+E) → `wx.FileDialog` (nom
+  `Pat_NN[_nom].wav` ou `Song_NN[_nom].wav`, dossier EXPORTS ou le
+  dernier choisi) → `AudioExportDialog` (Fin, Format, Sortie : mix /
+  pistes séparées / mix + pistes, Normaliser, Mesure, Niveau) ; fenêtre
+  Songs : sans choix (song de la fenêtre).
+- **Alt+Shift+S** : `SelectionExportDialog` (Source : Sélection /
+  Presse-papier ; Pistes : sélectionnées / toutes ; limiteurs gauche et
+  droit en mesure:temps:pas) → `wx.FileDialog` (suffixe `_selection` /
+  `_presse-papier`) → `AudioExportDialog` (« Sélection + résonance »…).
+- Mute et Solo : le rendu joue comme à l'écoute (pistes muettes ou hors
+  solo silencieuses) ; pas de choix.
+- Parcours commun : `_audio_export_flow` (mw_project), rendu dans un fil
+  (`_start_audio_export`).
+
+### Décisions de l'utilisateur (2026-11-16)
+
+- **X1 — la source dans le dialogue** : le choix « Pattern courant /
+  Song courant » devient une liste « Source » en tête du dialogue des
+  paramètres ; il ne reste que **deux dialogues** : paramètres, puis nom
+  du fichier.
+- **X2 — Alt+Shift+S aussi** : sources « Sélection » et « Presse-papier »
+  ajoutées à la même liste, avec les champs des limiteurs (grisés pour
+  les autres sources) : **un seul dialogue d'export audio** pour
+  Alt+Shift+W et Alt+Shift+S.
+- **X3 — Mutes / Solos** : « Tenir compte des Mutes » et « Tenir compte
+  des Solos » **cochées par défaut** (on exporte ce qu'on entend) ;
+  décochées, les pistes muettes ou hors solo sont exportées quand même ;
+  dernier choix gardé pour la session.
+
+### Choix de conception proposés
+
+**X4 — dialogue « Exporter en audio »**, dans l'ordre (focus sur
+Source) :
+1. **Source** : Pattern courant / Song courant / Sélection /
+   Presse-papier ;
+2. **Exporter les pistes sélectionnées** (case ; décochée = toutes les
+   pistes) — remplace la liste « Pistes » de l'ancien dialogue de la
+   sélection ; pistes sélectionnées = celles de la liste des pistes
+   (Shift+↑/↓, Shift+Espace), sinon la piste courante ; grisée pour le
+   presse-papier (ses pistes sont celles copiées) ;
+3. **Tenir compte des Mutes**, **Tenir compte des Solos** (cases) ;
+4. **Début**, **Fin de la sélection** (mesure:temps:pas, préremplis par
+   les limiteurs) : actifs pour la source Sélection seulement ;
+5. puis les champs actuels : **Fin** (boucle repliée / + résonance),
+   **Format**, **Sortie** (mix / pistes séparées / mix + pistes),
+   **Normaliser**, **Mesure**, **Niveau**.
+
+Ok → **dialogue du nom du fichier** (nom proposé selon la source :
+`Pat_NN[_nom].wav`, `Song_NN[_nom].wav`, `…_selection.wav`,
+`…_presse-papier.wav`) → rendu. Annuler à l'un ou l'autre : rien.
+
+**X5 — raccourcis** : Alt+Shift+W ouvre le dialogue sur la dernière
+source parmi Pattern / Song ; Alt+Shift+S sur la dernière parmi Sélection
+/ Presse-papier ; toutes les sources restent dans la liste. Fenêtre
+Songs : source « Song courant » (le song de la fenêtre) ; éditeur MIDI :
+presse-papier = celui des notes de l'éditeur.
+
+**X6 — pistes sélectionnées avec la source Song** : les numéros de pistes
+choisis s'appliquent à chaque pattern du song (exporter la voix d'un
+song entier, par exemple).
+
+**X7 — rendu** : Mutes / Solos décochés → le rendu (copie du routeur,
+`render_copy`) ignore les Mutes et / ou les Solos ; les pistes
+sélectionnées passent par le filtre de pistes déjà utilisé pour la
+sélection et les stems. L'écoute n'est pas touchée.
+
+**X8 — hors champ** : l'export MIDI (Alt+Shift+E) garde son dialogue de
+choix ; le rendu, les formats et la normalisation ne changent pas ; pas
+d'Undo (l'export ne modifie pas le projet).
+
+### Découpage (validé, 2026-11-16)
+
+- **15b1 — implémentation** : dialogue `AudioExportDialog` étendu
+  (Source, cases, limiteurs), parcours paramètres → nom du fichier pour
+  Alt+Shift+W / Alt+Shift+S (fenêtre principale, éditeur MIDI, fenêtre
+  Songs), Mutes / Solos / pistes sélectionnées au rendu ; aide F1 ;
+  `ExportTargetDialog` gardé pour l'export MIDI, `SelectionExportDialog`
+  retiré s'il ne sert plus.
+- **15c1 — tests**.
+- **15d1 — clôture** (`git gc`).
