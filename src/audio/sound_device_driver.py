@@ -611,6 +611,17 @@ class SoundDeviceDriver(Mixer):
         """Le LiveLimiter du pilote, ou None (écrêtage seul)."""
         return self._limiter
 
+    @property
+    def output_latency(self):
+        """Latence de sortie du flux en secondes (0 sans flux) : ce qu'on
+        entend sort d'autant après le mix (compensation de l'enregistrement
+        audio, Phase 8 étape 14f1)."""
+        stream = self._stream
+        try:
+            return float(stream.latency) if stream is not None else 0.0
+        except (AttributeError, TypeError, ValueError):
+            return 0.0
+
     def close(self):
         """Ferme le flux PortAudio."""
         self.stop_stream()

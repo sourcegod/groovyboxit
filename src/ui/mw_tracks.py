@@ -1,7 +1,7 @@
 import wx
 from rack import InstrumentType
 from audio.sfz_sources import display_name
-from pattern import Pattern, bank_header, with_bank_header
+from pattern import Pattern, bank_header, with_bank_header, TRACK_AUDIO
 from .dialogs import TrackPropertiesDialog
 from .gtk_listbox import select_with_cursor
 
@@ -382,10 +382,18 @@ class TrackMixin:
         wx.CallLater(self.PREVIEW_POLL_MS, self._preview_note_when_ready,
                      engine, channel, note, state, key, waited + self.PREVIEW_POLL_MS)
 
+    def _track_name(self, idx):
+        """Nom de piste donné par F2 (Phase 8 étape 14f1, essai), "" sinon."""
+        names = getattr(self._pattern_list[self._cur_pattern_idx], "_track_names", [])
+        return names[idx] if 0 <= idx < len(names) else ""
+
     def _rename_track(self):
-        """F2 : renomme la piste courante via un TextEntryDialog."""
+        """F2 : renomme la piste courante via un TextEntryDialog. Le nom est
+        celui de la piste (par pattern, .gvp), à part du nom des pads (Phase 8
+        étape 14f1, essai : F2 proposait et changeait le nom du pad de même
+        numéro)."""
         idx = self._player._cur_track
-        old = self._player.voice_manager.get_name(idx)
+        old = self._track_name(idx)
         self._add_undo(f"Renommer piste {idx + 1}")
         dlg = wx.TextEntryDialog(self, f"Nom de la piste {idx + 1}:", "Renommer", old)
         if dlg.ShowModal() == wx.ID_OK:
@@ -393,9 +401,11 @@ class TrackMixin:
             if name == old:
                 self._pop_last_undo()
             else:
-                self._player.voice_manager.set_name(idx, name)
                 cur = self._pattern_list[self._cur_pattern_idx]
-                cur._voices[idx]["name"] = name
+                names = list(cur._track_names)      # nouvelle liste : état de l'Undo intact
+                names += [""] * (idx + 1 - len(names))
+                names[idx] = name
+                cur._track_names = names
                 self._refresh_track_list()
                 self._show_status(f"Piste {idx + 1}: {name or '(sans nom)'}")
         else:
@@ -412,9 +422,17 @@ class TrackMixin:
             preset = display_name(preset)
         slot_name = preset or self._router.slot_name(idx)
         prefix    = "* " if self._track_editor.is_selected(idx) else "  "
-        track_name = self._player.voice_manager.get_name(idx)
+        kinds = self._router._track_kinds
+        audio = kinds[idx] == TRACK_AUDIO
+        # nom de la piste (F2, 14f1) ; sinon, pour une piste MIDI, le nom du
+        # pad de même numéro comme avant ; rien pour une piste audio
+        track_name = self._track_name(idx) or \
+            ("" if audio else self._player.voice_manager.get_name(idx))
         head = f"{prefix}Track_{idx + 1:02d}" + (f" ({track_name})" if track_name else "")
-        if self._router.rack_mode:                  # M14 : canal → ce qu'il joue
+        if audio:                                   # piste audio (14f1, essai) : « Audio N »
+            rank = sum(1 for k in kinds[:idx + 1] if k == TRACK_AUDIO)
+            label = f"{head} - Audio {rank}"
+        elif self._router.rack_mode:                # M14 : canal → ce qu'il joue
             ch = self._router.track_channel_now(idx)
             label = f"{head} - Canal {ch + 1} → {self._rack_channel_desc(ch)}" + (
                 f" - {preset}" if preset else "")

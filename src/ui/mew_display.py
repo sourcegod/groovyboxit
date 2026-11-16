@@ -98,7 +98,9 @@ class DisplayMixin:
         tidx = self._parent._player._cur_track
         n    = len(self._events)
         if self._view_mode == self.MODE_NOTES:
-            tname = self._parent._player.voice_manager.get_name(tidx)
+            track_name = getattr(self._parent, "_track_name", None)    # F2 (14f1)
+            tname = (track_name(tidx) if track_name else "") or \
+                self._parent._player.voice_manager.get_name(tidx)
             tstr  = f"Piste {tidx+1}" + (f" ({tname})" if tname else "")
             self._mode_label.SetLabel(
                 f"Mode: Notes (Ctrl+1)  {tstr}  "

@@ -85,6 +85,14 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._on_audio_clip_cb    = None  # callback(track, fichier, gain, id, décalage, start, length) clip audio (14d1, 14e3)
         self._clip_duration_cb    = None  # callback(fichier, start, length) → secondes : rappels « en cours » (14d1, 14e3)
         self._on_seek_cb          = None  # callback() : position sautée en lecture (14d1)
+        # Prise audio (Phase 8 étape 14f1) : armée par arm_audio_take ;
+        # {"t_arm", "anchor": (measure_start, lp_start, t_start, window_end)
+        # ou None, "bars": mesures d'origine} ; _on_audio_take_end_cb(prise)
+        # appelé à la fin de l'enregistrement (fil de l'interface) ;
+        # _on_bars_changed_cb() quand le pattern s'allonge pendant la prise
+        self._audio_take          = None
+        self._on_audio_take_end_cb = None
+        self._on_bars_changed_cb  = None
         self._on_bend_tape_cb     = None  # callback(track_idx, bend_value) lecture automation bend
         self._on_cc_tape_cb              = None  # callback(track_idx, cc_num, value) lecture CC générique
         self._on_program_change_tape_cb  = None  # callback(track_idx, program) lecture Program Change

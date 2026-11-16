@@ -1178,7 +1178,7 @@ class ProjectMixin:
         path   = dlg.GetPath() if result == wx.ID_OK else ""
         dlg.Destroy()
         if result != wx.ID_OK or not path:
-            return
+            return False
         if not os.path.splitext(path)[1]:
             path += ".gvp"
         if hook.create_folder:
@@ -1200,11 +1200,12 @@ class ProjectMixin:
             replace = msg.ShowModal()
             msg.Destroy()
             if replace != wx.ID_YES:
-                return
+                return False
         old_path, self._project_path = self._project_path, path
         self._move_takes(old_path, path, new_audio_dir)   # prises audio suivent (14b1, A3)
         self._audio_dir = new_audio_dir
         self._save_project()
+        return True        # projet nommé (première prise audio, Phase 8 étape 14f1)
 
     def _rewind_playback(self):
         """Lecture arrêtée et remise au début, pour le pattern comme pour le
@@ -1538,6 +1539,11 @@ class ProjectMixin:
         if "master" in state:
             self._apply_master(*self._master_from_dict(state["master"]))
         new = self._pattern_list[self._cur_pattern_idx]
+        # clips audio coupés : un clip retiré par l'Undo ne doit plus sonner ;
+        # ceux qui restent reprennent au rappel suivant (Phase 8 étape 14f1, essai)
+        stop_clips = getattr(self._router, "stop_audio_clips", None)
+        if stop_clips is not None:
+            stop_clips()
         self._apply_pattern_from_store(new)
         live = self._player._pattern
         live._loop_start = new._loop_start

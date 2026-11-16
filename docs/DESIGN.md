@@ -13830,3 +13830,85 @@ la saturation. Pourquoi plutôt qu'un fichier remixé à chaque passage :
 - **14f2 / 14g2 — boucle** : Overdub en clips superposés (R1), Remplacer
   sur la plage enregistrée (R2), un passage par retour de boucle.
 - **14h1 — clôture**.
+
+### Avancement 14f1 (implémentation — prise simple)
+
+- **`src/audio/audio_recorder.py`** (nouveau, portable C/C++) :
+  `capture_time` (heure de capture de la carte ramenée à l'horloge du
+  lecteur ; pilote sans heures : durée du bloc + latence d'entrée),
+  `place_take` (pas de départ, `start`, `length`, pas de fin ; ce qui
+  précède le début effectif sauté par `start` ; fin de la fenêtre de
+  boucle), `bars_for` ; `AudioRecorder` : flux d'entrée (fabrique
+  remplaçable), callback qui date le premier bloc et copie dans une file,
+  fil d'écriture WAV 24 bits, `stop()` → `TakeResult`.
+- **Lecteur** : `arm_audio_take` (ancre tout de suite si la lecture
+  tourne, sinon au premier tour enregistré, après le décompte — Ctrl+R
+  remet l'ancre à zéro) ; `_end_audio_take` à `stop_record`,
+  `stop_pattern`, `pause_pattern`, `stop_all` ; fin de pattern sans boucle
+  pendant une prise → `_extend_for_audio_take` : une mesure de plus
+  (`Pattern.set_bar_count`, sans recréer les événements : les clips qui
+  sonnent gardent leur id), la fenêtre garde son début, la lecture
+  continue (R3).
+- **`src/ui/mw_audio_rec.py`** (nouveau, `AudioRecMixin`) : R / Shift+R /
+  Ctrl+R sur une piste audio → projet nommé d'abord s'il s'appelle encore
+  `noname_NNN` (`audio_takes.is_unnamed`, `_save_project_as` rend
+  maintenant vrai / faux ; Annuler = pas de prise, A4) ; entrée de la piste
+  ou première cochée ou défaut, annoncée (R4) ; mono ou stéréo selon
+  l'entrée (`devices.audio_device.input_channels`, A7) ; prise suivante
+  (`next_take`) ; flux ouvert **avant** la lecture. À la fin : clip posé
+  à `heure de capture − latence de sortie (SoundDeviceDriver.output_latency)
+  − compensation manuelle`, pattern gardé aux mesures nécessaires
+  (`bars_for`), prise vide → fichier supprimé et mesures d'origine ;
+  annonce (fichier, durée, mesure, mesures du pattern, anomalies du flux).
+  Undo : la prise de `_take_begin` (A12), le fichier reste sur le disque.
+- **Préférences, onglet Audio** : « Compensation de latence en ms
+  (enregistrement audio) », clé `audio_latency_ms` (−1000..1000, défaut 0).
+- Shift+R sur une piste audio fait pour l'instant une prise comme R :
+  Remplacer sur la plage enregistrée vient en 14f2 (R2) ; en boucle, la
+  prise s'arrête à la fin de la fenêtre (passages : 14f2).
+- Vérifié par script : enregistreur sur un flux factice (WAV 24 bits,
+  datation), placement ; vraie fenêtre principale avec un flux factice —
+  pattern de 8 mesures à 96 BPM, prise de 21 s → 9 mesures, clip au pas 0
+  avec `start` = latence de sortie, fichier dans `Audios/`, Ctrl+Z → plus
+  de clip, 8 mesures.
+- `docs/shortcuts.md` (aide F1) : note sur R / Shift+R / Ctrl+R d'une
+  piste audio.
+- Suite : 4398 verts, **5 rouges jusqu'à 14g1** (fenêtre factice des
+  tests de touches sans `_cur_track_is_audio` ; nouveau champ de l'onglet
+  Audio).
+- **Essai de l'utilisateur (2026-11-16)** : prise simple, calage (« top »
+  sur le clic), allongement, Ctrl+R : concluants. Retours corrigés :
+  - **Espace** pendant un enregistrement mettait la lecture en pause sans
+    arrêter l'enregistrement ni le métronome lancé par Rec : Espace arrête
+    maintenant l'enregistrement d'abord (MIDI comme audio) ; pendant le
+    décompte, il annule tout (prise vide supprimée) ;
+  - **Ctrl+Z** d'une prise pendant la lecture : la voix du clip retiré
+    continuait (« pas clair la première fois ») — les clips sont coupés à
+    la restauration de l'Undo / Redo, ceux qui restent reprennent au rappel
+    suivant ;
+  - **nom de la piste audio** : « Track_08 - Audio 1 » (rang parmi les
+    pistes audio du pattern), sans le nom du pad de même numéro ni le slot
+    (le nom des pistes et celui des pads sont le même champ de
+    `voice_manager` — à séparer plus tard).
+  - **boucle sur tout le pattern** (sans points de boucle) : la prise
+    n'était pas arrêtée à la fin de la boucle (`_cur_loop_steps` vaut 0
+    dans ce cas) et sa longueur ajoutait des mesures au Stop ; la fin de
+    fenêtre prend maintenant tout le pattern. Les passages suivants
+    (Overdub : un nouveau clip par passage, à partir du début de la boucle,
+    superposé à l'ancien — attendu de l'utilisateur, conforme à R1) : 14f2.
+  - **noms de piste à part** (choix de l'utilisateur) : F2 proposait et
+    changeait le nom du pad de même numéro (`voice_manager`, champ partagé),
+    que la piste audio n'affiche plus. `Pattern._track_names` (par pattern,
+    clé `track_names` du `.gvp`, "" = libellé habituel), réglé par F2 pour
+    toutes les pistes, avec Undo ; affiché « Track_08 (Voix) - Audio 1 » ;
+    une piste MIDI sans nom garde le nom du pad comme avant ; aussi dans
+    l'éditeur MIDI. `to_dict` copie la liste : F2 la modifiant sur place
+    changeait aussi l'état gardé par l'Undo (Ctrl+Z sans effet).
+- **Second essai (2026-11-16), concluant** : Espace, Ctrl+Z en lecture,
+  nom de piste audio, boucle active (la prise s'arrête à la fin, le
+  pattern ne change pas), F2 sur piste audio et MIDI (nom du pad
+  inchangé) avec Ctrl+Z / Shift+Z, première prise d'un projet sans nom
+  (Ctrl+N).
+- Suite : 4387 verts, **16 rouges jusqu'à 14g1** (tests de touches et
+  fenêtres factices sans `_cur_track_is_audio` / `_track_name`, nouveau
+  champ de l'onglet Audio, renommage F2 qui changeait le nom du pad).

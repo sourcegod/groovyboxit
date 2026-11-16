@@ -38,7 +38,7 @@ class PreferencesDialog(wx.Dialog):
     TAB_KEYS = {
         "Général": ("startup", "autoplay", "explorer_autoplay"),
         "Audio":   ("live_limiter", "fluidsynth", "sfizz", "fluidsynth_gain",
-                    "sfizz_gain", "master_volume", "master_pan"),
+                    "sfizz_gain", "master_volume", "master_pan", "audio_latency_ms"),
         "Midi":    ("midi_bank_select",),
         "Projet":  ("app_projects_dir", "projects_dir", "app_banks_dir", "user_banks_dir"),
     }
@@ -200,6 +200,11 @@ class PreferencesDialog(wx.Dialog):
                                                  cfg.master_volume))
         self._master_pan = self._labeled(panel, grid, "Pan global d'un nouveau projet :",
                                          spin(-100, 100, cfg.master_pan))
+        # compensation de l'enregistrement audio (Phase 8 étape 14f1)
+        lat = AppConfig.AUDIO_LATENCY_MS_MAX
+        self._audio_latency = self._labeled(panel, grid,
+                                            "Compensation de latence en ms (enregistrement audio) :",
+                                            spin(-lat, lat, cfg.audio_latency_ms))
         box.Add(grid, 0, wx.EXPAND | wx.TOP, 4)
         self._finish(panel, box)
 
@@ -256,6 +261,7 @@ class PreferencesDialog(wx.Dialog):
             "sfizz_gain": self._sfizz_gain.GetValue() / 10,
             "master_volume": self._master_volume.GetValue(),
             "master_pan": self._master_pan.GetValue(),
+            "audio_latency_ms": self._audio_latency.GetValue(),
             "midi_bank_select": self.BANK_SELECT_VALUES[self._bank_select.GetSelection()],
         }
         for key, text in self._paths.items():
@@ -278,6 +284,7 @@ class PreferencesDialog(wx.Dialog):
             "sfizz_gain": round(cfg.sfizz_gain * 10) / 10,
             "master_volume": cfg.master_volume,
             "master_pan": cfg.master_pan,
+            "audio_latency_ms": cfg.audio_latency_ms,
             "midi_bank_select": cfg.midi_bank_select,
         }
         for key, _ in self.PATH_FIELDS:
@@ -300,6 +307,7 @@ class PreferencesDialog(wx.Dialog):
             "sfizz_gain": lambda v: self._sfizz_gain.SetValue(round(v * 10)),
             "master_volume": self._master_volume.SetValue,
             "master_pan": self._master_pan.SetValue,
+            "audio_latency_ms": self._audio_latency.SetValue,
             "midi_bank_select": lambda v: self._bank_select.SetSelection(
                 self.BANK_SELECT_VALUES.index(v)),
         }

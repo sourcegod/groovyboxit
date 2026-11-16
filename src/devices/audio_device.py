@@ -116,6 +116,18 @@ def find_device(name, hostapi, kind):
     return None
 
 
+def input_channels(index):
+    """Canaux d'une prise sur l'entrée d'indice index (None = défaut) : 2
+    si l'entrée en a au moins deux, sinon 1 (WAV mono ou stéréo selon
+    l'entrée, groovyboxit Phase 8 étape 14f1)."""
+    try:
+        info = sd.query_devices(index, "input") if index is not None else \
+            sd.query_devices(kind="input")
+        return 2 if int(info["max_input_channels"]) >= 2 else 1
+    except (sd.PortAudioError, ValueError, IndexError, TypeError, KeyError):
+        return 1
+
+
 def device_name(index):
     """Nom du périphérique d'indice PortAudio index (None → "")."""
     if index is None:

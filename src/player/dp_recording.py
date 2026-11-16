@@ -23,6 +23,8 @@ class RecordingMixin:
             self.record_pattern()
             return
         self._metro.save_rec_state()
+        if self._audio_take is not None:          # ancre prise après le décompte (14f1)
+            self._audio_take["anchor"] = None
         self._count_in_resume_offset = self._current_offset()
         self._resume_offset = None   # count-in repart toujours du beat 0
         self.recording = False
@@ -38,8 +40,67 @@ class RecordingMixin:
         self.recording         = False
         self.replace_recording = False
         self._count_in         = 0
+        self._end_audio_take()
         if self._metro.should_stop_after_rec():
             self.stop_click()
+
+    # ------------------------------------------------------------------
+    # Prise audio (Phase 8 étape 14f1, docs/DESIGN.md § 14f1)
+    # ------------------------------------------------------------------
+
+    def arm_audio_take(self):
+        """Arme une prise audio, avant record_pattern / start_replace_recording
+        / record_pattern_with_count_in : l'ancre (heure du début de la
+        fenêtre, pas de départ) est prise tout de suite si la lecture tourne
+        déjà, sinon au premier tour de lecture enregistrée (après le
+        décompte)."""
+        now = time.perf_counter()
+        self._audio_take = {"t_arm": now, "anchor": None,
+                            "bars": self._pattern._num_bars}
+        if self.playing and self._count_in == 0 and self._measure_start is not None:
+            self._set_audio_anchor(self._measure_start, self._cur_lp_start, now)
+
+    def _set_audio_anchor(self, measure_start, lp_start, t_start):
+        """Ancre de la prise : measure_start = heure du pas lp_start de la
+        fenêtre en cours, t_start = début effectif de l'enregistrement ;
+        window_end = fin de la fenêtre de boucle (la prise s'y arrête en
+        14f1 ; les passages suivants viendront en 14f2), None sans boucle."""
+        take = self._audio_take
+        if take is None or take["anchor"] is not None:
+            return
+        window_end = None
+        if self._pattern._looping:
+            # boucle sans points de boucle = tout le pattern (_cur_loop_steps
+            # vaut alors 0 ; essai de 14f1 : la prise dépassait la boucle et
+            # ajoutait des mesures au Stop)
+            pat = self._pattern
+            n_steps = self._cur_loop_steps or pat._num_bars * pat._num_steps
+            tm = self.tempo_map()
+            window_end = measure_start + tm.secs_between(lp_start, lp_start + n_steps)
+        take["anchor"] = (measure_start, lp_start, t_start, window_end)
+
+    def _end_audio_take(self):
+        """Fin de la prise audio armée (Stop, R, Shift+R, pause) : rendue à
+        l'interface, qui ferme le fichier et pose le clip."""
+        take, self._audio_take = self._audio_take, None
+        if take is not None and self._on_audio_take_end_cb is not None:
+            self._on_audio_take_end_cb(take)
+
+    def _extend_for_audio_take(self):
+        """Fin du pattern atteinte pendant une prise audio sans boucle (R3) :
+        une mesure de plus, la lecture continue. False si la prise n'est pas
+        concernée ou si le pattern est au maximum."""
+        if self._audio_take is None or not self.recording or self._pattern._looping:
+            return False
+        pat = self._pattern
+        if pat._num_bars >= pat.MAX_BARS:
+            return False
+        with pat._lock:
+            pat.set_bar_count(pat._num_bars + 1)
+        self._compute_offsets()
+        if self._on_bars_changed_cb is not None:
+            self._on_bars_changed_cb()
+        return True
 
     #--------------------------------------------------------------------------
 

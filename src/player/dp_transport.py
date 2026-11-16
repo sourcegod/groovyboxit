@@ -59,6 +59,7 @@ class TransportMixin:
         self._count_in         = 0
         self.recording         = False
         self.replace_recording = False
+        self._end_audio_take()                         # prise audio (14f1)
         self._resume_offset    = None
         self._song_mode        = False
         if not self._note_repeat_active:
@@ -91,6 +92,7 @@ class TransportMixin:
         self._resume_offset = self._position_at(time.perf_counter())   # 19d1
         self.playing   = False
         self._count_in = 0
+        self._end_audio_take()                         # prise audio (14f1)
         if not self._note_repeat_active and not self.clicking:
             self.stop_thread()
         else:
@@ -124,6 +126,7 @@ class TransportMixin:
         self._note_repeat_active = False
         self.recording           = False
         self.replace_recording   = False
+        self._end_audio_take()                         # prise audio (14f1)
         self.erasing             = False
         self._erase_active_pads.clear()
         self._erase_active_midi_notes.clear()

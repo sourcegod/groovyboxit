@@ -25,6 +25,13 @@ def project_stem(project_path):
     return os.path.splitext(os.path.basename(project_path))[0]
 
 
+def is_unnamed(project_path):
+    """Vrai pour un projet encore sans nom choisi (noname_NNN.gvp, Ctrl+N) :
+    la première prise audio demande d'abord un nom (Phase 8 étape 14f1,
+    § 14a A4)."""
+    return re.fullmatch(r"noname_\d{3}", project_stem(project_path)) is not None
+
+
 def audios_dir(project_path, audio_dir=""):
     """Dossier des prises : audio_dir (« Chemin des fichiers audios » du
     projet, absolu ou relatif au dossier du .gvp, essai de 14b1) ; par

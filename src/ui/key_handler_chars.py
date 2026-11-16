@@ -226,6 +226,20 @@ class CharHandler:
 
         # Space / P : play/pause  (Ctrl+Space réservé à handle_transport)
         if not ctrl and (ukey in (ord(' '), ord('p')) or key in (wx.WXK_SPACE, ord('P'))):
+            p = win._player
+            # Espace pendant un enregistrement ou un décompte : l'enregistrement
+            # s'arrête aussi (Phase 8 étape 14f1, essai : la prise audio et le
+            # métronome lancé par Rec continuaient)
+            if p.recording or p._count_in > 0:
+                counting = p._count_in > 0 and not p.playing
+                p.stop_record()
+                if counting:                            # décompte annulé
+                    p.stop_all()
+                    win._refresh_track_list()
+                    win._show_status("Rec: Off (décompte annulé)")
+                    return True
+                win._refresh_grid()
+                win._refresh_track_list()
             if win._player.playing:
                 win._player.pause_pattern()
                 win._router.stop_all_synth_voices()
@@ -254,11 +268,15 @@ class CharHandler:
                 win._refresh_track_list()
                 win._show_status("Replace Rec: Off")
             else:
+                audio = win._cur_track_is_audio()            # prise audio (14f1)
+                if audio and not win._audio_rec_prepare():
+                    return True
                 win._take_begin(f"Remplacement piste {win._player._cur_track + 1}")
                 win._player.start_replace_recording()
                 win._refresh_track_list()
                 track_idx = win._player._cur_track
                 win._show_status(
+                    f"Replace Rec: {win._audio_rec_note}" if audio else
                     f"Replace Rec: Piste {track_idx + 1} — {win._router.slot_name(track_idx)}"
                 )
             return True
@@ -271,11 +289,15 @@ class CharHandler:
                 win._refresh_track_list()
                 win._show_status("Rec: Off")
             else:
+                audio = win._cur_track_is_audio()            # prise audio (14f1)
+                if audio and not win._audio_rec_prepare():
+                    return True
                 win._take_begin(f"Enregistrement piste {win._player._cur_track + 1}")
                 win._player.record_pattern()
                 win._refresh_track_list()
                 track_idx = win._player._cur_track
                 win._show_status(
+                    f"Rec: {win._audio_rec_note}" if audio else
                     f"Rec: Piste {track_idx + 1} — {win._router.slot_name(track_idx)}"
                 )
             return True

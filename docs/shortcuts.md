@@ -140,6 +140,14 @@ Note: en mode Note Repeat actif, les répétitions sont aussi enregistrées
 Note: R, Shift+R, Ctrl+R et E ouvrent une prise : Ctrl+Z l'annule d'un bloc ;
       une prise où rien n'a changé ne laisse pas d'annulation. Effacer sans
       rien jouer (Remplacement, Erase) compte comme une modification.
+Note: sur une piste audio (Type de piste « Audio »), R, Shift+R et Ctrl+R
+      enregistrent une prise audio sur l'entrée de la piste (vide : première
+      entrée cochée dans l'onglet Matériel des Préférences, sinon l'entrée par
+      défaut). Projet encore sans nom : son nom est demandé d'abord. La prise
+      est un fichier WAV 24 bits dans le dossier des prises, posée à la
+      position entendue (latence de sortie + « Compensation de latence en ms »
+      de l'onglet Audio). Sans boucle, le pattern gagne une mesure à chaque fin
+      atteinte. Ctrl+Z retire la prise (le fichier reste sur le disque).
 
 --- Effacement en temps réel (mode E) ---
 E                Activer / désactiver le mode Erase (désactive Rec si actif)

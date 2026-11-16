@@ -42,6 +42,7 @@ from ui.mw_pads        import PadMixin
 from ui.mw_midi_editor import MidiEditorMixin
 from ui.mw_tempo       import TempoMixin
 from ui.mw_devices     import DevicesMixin
+from ui.mw_audio_rec   import AudioRecMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -72,7 +73,7 @@ class _LoadingDialog(wx.Dialog):
 
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
-                 MidiEditorMixin, TempoMixin, DevicesMixin, wx.Frame):
+                 MidiEditorMixin, TempoMixin, DevicesMixin, AudioRecMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
@@ -293,6 +294,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             self._on_note_replaced, pad, bar, step
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
+        self._init_audio_rec()                        # prise audio (Phase 8 étape 14f1)
 
     def _open_audio_driver(self, cfg):
         """Pilote audio sur la sortie principale (11b1) : le périphérique

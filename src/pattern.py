@@ -255,6 +255,9 @@ class Pattern:
         # étape 14b1, § 14a A2, A8) : « midi » par défaut ; "" = défaut
         self._track_kinds     = [TRACK_MIDI] * self._num_tracks
         self._track_audio_ins = [""] * self._num_tracks
+        # Nom de chaque piste, réglé par F2 (Phase 8 étape 14f1, essai) : à
+        # part du nom des pads (voice_manager) ; "" = libellé habituel
+        self._track_names     = [""] * self._num_tracks
         # Pistes sur un kit : canal 10, posé par apply_kit_channels (le
         # Pattern ne connaît pas le Rack), Phase 8 étape 3b1
         # Mode Rack 16 canaux : le canal N joue le slot N (Phase 8 étape
@@ -665,6 +668,14 @@ class Pattern:
 
     #--------------------------------------------------------------------------
 
+    def set_bar_count(self, num_bars):
+        """Nombre de mesures changé sans toucher aux événements (pattern
+        allongé par une prise audio, Phase 8 étape 14f1, R3) : contrairement
+        à resize, les TapeEvent gardent leur id — un clip qui sonne n'est pas
+        relancé. Borné à 1..MAX_BARS ; retourne le nombre obtenu."""
+        self._num_bars = max(1, min(self.MAX_BARS, int(num_bars)))
+        return self._num_bars
+
     def resize(self, num_bars, num_steps):
         """Étend ou tronque le pattern sans effacer les données existantes."""
         old_steps = self._num_steps
@@ -736,6 +747,7 @@ class Pattern:
             "track_midi_outs": self._track_midi_outs,
             "track_kinds":     self._track_kinds,              # 14b1, A2
             "track_audio_ins": self._track_audio_ins,
+            "track_names":     list(self._track_names),        # 14f1 (copie : état de l'Undo)
             "rack_mode":     self._rack_mode,                  # 5b1, M13
             "voices":        self._voices,
             "kb_scale":      self._kb_scale,
@@ -845,6 +857,7 @@ class Pattern:
                  for k in self._port_names(d.get("track_kinds"))]
         self._track_kinds     = [k or TRACK_MIDI for k in kinds]
         self._track_audio_ins = self._port_names(d.get("track_audio_ins"))
+        self._track_names     = self._port_names(d.get("track_names"))   # 14f1
         if "voices"        in d: self._voices        = d["voices"]
         # Clé absente (projets d'avant 5b1) : mode normal (M13)
         self._rack_mode    = d.get("rack_mode") is True
@@ -896,6 +909,7 @@ class Pattern:
         self._track_midi_outs = pad(self._track_midi_outs, "")
         self._track_kinds     = pad(self._track_kinds, TRACK_MIDI)   # 14b1
         self._track_audio_ins = pad(self._track_audio_ins, "")
+        self._track_names     = pad(self._track_names, "")           # 14f1
 
     def is_audio_track(self, track):
         """Vrai si la piste est une piste audio (Phase 8 étape 14b1)."""

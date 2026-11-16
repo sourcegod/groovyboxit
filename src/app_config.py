@@ -327,6 +327,18 @@ class AppConfig:
         slots Banque muets (Z7)."""
         return self._get_bool("fluidsynth", True)
 
+    AUDIO_LATENCY_MS_MAX = 1000
+
+    @property
+    def audio_latency_ms(self):
+        """Clé "audio_latency_ms" (défaut 0) : compensation manuelle de la
+        latence de l'enregistrement audio, en millisecondes, ajoutée à la
+        latence de sortie du flux ; positive = prise avancée (Phase 8 étape
+        14f1, comme le « Timing Offset » de Sonar ou le « Recording offset »
+        de Reaper)."""
+        return self._get_int("audio_latency_ms", 0, -self.AUDIO_LATENCY_MS_MAX,
+                             self.AUDIO_LATENCY_MS_MAX)
+
     @property
     def live_limiter_enabled(self):
         """Clé "live_limiter" (défaut true) : false = pas de limiteur du mix à

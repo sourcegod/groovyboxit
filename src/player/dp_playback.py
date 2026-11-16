@@ -66,6 +66,9 @@ class PlaybackLoopMixin:
                 measure_start += measure_secs
             self._measure_start = measure_start
             elapsed = now - measure_start
+            if (self._audio_take is not None and self._audio_take["anchor"] is None
+                    and self.playing and self.recording and self._count_in == 0):
+                self._set_audio_anchor(measure_start, lp_start, now)   # prise audio (14f1)
 
             events = self._build_measure_events(lp_start, lp_end, total_steps,
                                                 loop_bars, elapsed)
@@ -307,6 +310,10 @@ class PlaybackLoopMixin:
                         measure_start = next_measure_start
                         if self._on_song_advance_cb:
                             self._on_song_advance_cb(first_idx)
+                    elif self._extend_for_audio_take():
+                        # Prise audio sans boucle (14f1, R3) : une mesure de
+                        # plus, la fenêtre garde son début → la lecture continue
+                        pass
                     else:
                         # Pause à la fin (dernier tick) plutôt qu'arrêt complet :
                         # _resume_offset conserve la position → navigate_bar fonctionne.
