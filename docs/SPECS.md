@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) ; pistes audio (type de piste Audio par pattern, prises WAV 24 bits dans `Audios/`, clips = fenêtres sur leur fichier, lecture calée sur le tempo à vitesse réelle, enregistrement par R / Shift+R / Ctrl+R avec compensation de latence, Overdub en clips superposés et Remplacer sur la plage en boucle, noms de piste par F2) | en cours |
 
 ---
 
@@ -294,7 +294,7 @@ réglables : les champs de l'onglet seul reviennent aux valeurs de
 | Général | Autoplay de la grille et des pads | `autoplay` | immédiat |
 | Général | Autoplay de l'Explorateur | `explorer_autoplay` | gardé ; l'audition est à construire |
 | Matériel | Pilote audio (ALSA, OSS…) | `audio_hostapi` (vide = pilote de la sortie par défaut) | immédiat |
-| Matériel | Entrées audio (cases) | `audio_inputs` | gardées ; pour les pistes audio (étape 12 et au-delà) |
+| Matériel | Entrées audio (cases) | `audio_inputs` | entrées proposées aux pistes audio ; la première sert si la piste n'en a pas (étape 14) |
 | Matériel | Sorties audio (cases), Sortie principale | `audio_outputs`, `audio_main_output` | immédiat : le mix passe par la sortie principale (flux rouvert) |
 | Matériel | Entrées MIDI (cases) | `midi_inputs` | immédiat ; ouvertes ensemble au démarrage |
 | Matériel | Sorties MIDI (cases) | `midi_outputs` (défaut : « Synthé FluidSynth ») | immédiat ; envoi des pistes à l'étape 12 |
@@ -302,6 +302,7 @@ réglables : les champs de l'onglet seul reviennent aux valeurs de
 | Audio | Moteur FluidSynth, Moteur sfizz | `fluidsynth`, `sfizz` | au prochain lancement (annoncé) |
 | Audio | Gains FluidSynth et sfizz (en dixièmes) | `fluidsynth_gain`, `sfizz_gain` | immédiat |
 | Audio | Volume et pan globaux d'un nouveau projet | `master_volume`, `master_pan` | prochain nouveau projet |
+| Audio | Compensation de latence en ms (enregistrement audio) | `audio_latency_ms` (−1000..1000, défaut 0) | prochaine prise : ajoutée à la latence de sortie du flux |
 | Midi | Sélection de banque (GS / MMA) | `midi_bank_select` | au prochain lancement (annoncé) |
 | Projet | Projets de l'appli (démos) | `app_projects_dir` (défaut `<racine>/projects`) | immédiat |
 | Projet | Projets de l'utilisateur | `projects_dir` | immédiat |
@@ -383,6 +384,42 @@ Le projet garde le nouveau chemin à son prochain enregistrement.
   changée tolérée) ; les Note Off passent toujours.
 - **Export** : le fichier MIDI ne garde pas de port ; le rendu WAV joue
   les pistes externes avec leur son interne.
+
+### Pistes audio (Phase 8 étape 14)
+
+- **Type de piste** (propriétés de piste, Alt+Entrée, en tête avec le
+  focus) : MIDI (défaut) ou Audio, **par pattern** (clés `track_kinds`,
+  `track_audio_ins` du `.gvp`) ; « **Entrée audio** » : entrées cochées
+  dans l'onglet Matériel (vide : la première cochée, sinon l'entrée par
+  défaut) ; réglages MIDI grisés pour une piste audio. Libellé
+  « Track_08 - Audio 1 » (rang parmi les pistes audio).
+- **Noms de piste** (F2) : par pattern (clé `track_names`), à part du nom
+  des pads ; Undo.
+- **Prises** : WAV 24 bits, mono ou stéréo selon l'entrée, dans `Audios/`
+  à côté du `.gvp` (ou « Chemin des fichiers audios », clé `audio_dir`),
+  nommées `projet_pattern01_piste03_take_001.wav` ; Enregistrer sous :
+  « Créer un nouveau dossier pour ce projet » (cochée), prises recopiées.
+  Un projet `noname_NNN` jamais enregistré demande son nom à la première
+  prise (Annuler = pas de prise).
+- **Clip** (`ETYPE_AUDIO`) : `time` (pas de départ), `payload` =
+  `file` (relatif au `.gvp`), `gain`, `start` et `length` (fenêtre sur le
+  fichier, en échantillons du fichier ; absents = fichier entier). Joué à
+  **vitesse réelle**, volume / pan / Mute / Solo de la piste, commencé au
+  bon endroit quand la lecture part du milieu, repris après Mute / Solo /
+  F5 (rappels toutes les 0,25 s), coupé à un saut de position, au Stop, à
+  l'Undo ; rendu par l'export WAV et les stems.
+- **Enregistrement** (R / Shift+R / Ctrl+R sur une piste audio) : flux
+  d'entrée ouvert avant la lecture ; position = heure de capture de la
+  carte − latence de sortie − compensation manuelle ; ce qui précède le
+  début effectif est sauté par `start`. Sans boucle, le pattern gagne une
+  mesure à chaque fin atteinte (gardées au Stop si la prise les occupe).
+  **En boucle** : chaque passage devient un clip 0,3 s avant le retour,
+  joué dès le passage suivant (depuis la mémoire tant que le fichier est
+  ouvert) — **Overdub** (R) : passages superposés ; **Remplacer**
+  (Shift+R) : silence dans la plage enregistrée dès le départ, chaque
+  passage découpe sa plage dans les clips plus anciens, au Stop seul le
+  dernier passage reste et la fin non enregistrée revient. Espace arrête
+  l'enregistrement. Une prise = un Undo (le fichier reste sur le disque).
 
 ### Clés de `data/config.json`
 

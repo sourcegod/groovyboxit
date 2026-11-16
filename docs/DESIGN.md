@@ -14072,3 +14072,73 @@ chronologique des commits : **14g2** implémentation, **14g3** tests,
   passage pas rempli après coup ; pas de rappel de retour ; nom toujours
   redemandé ; passage pas lu en mémoire) : chacune fait échouer des tests.
 - **`docs/SPECS.md`** : arborescence et table. Suite : 4554 verts.
+
+### Clôture de l'étape 14 (14h1)
+
+**Bilan** (Phase 8 étapes 14a à 14g3, 2026-11-15 / 16, 4554 tests verts) :
+**pistes audio** pour enregistrer la voix dans les patterns, bases de
+l'Arranger et du Live Looper — type de piste Audio par pattern, entrée
+audio par piste ; prises WAV 24 bits dans `Audios/` à côté du `.gvp` ;
+**clip = fenêtre `start` / `length` sur son fichier**, joué à vitesse
+réelle, calé sur le tempo, avec volume / pan / Mute / Solo, départ au
+milieu, export WAV et stems ; **enregistrement** daté par l'heure de
+capture de la carte, compensé (latence de sortie + réglage en ms), pattern
+allongé sans boucle ; **boucle** : Overdub en clips superposés joués dès
+le passage suivant, Remplacer sur la plage enregistrée avec silence
+pendant la prise ; noms de piste à part (F2).
+
+**Commits** : 14a (plan), 14b1 / 14c1 (données), 14d1 / 14e1 (lecture),
+14e2 (essais complémentaires, avenant export noté), 14e3 / 14e4 (avenant :
+fenêtre `start` / `length`), 14e5 (point préalable de l'enregistrement),
+14f1 / 14g1 (prise simple), 14g2 / 14g3 (boucle ; prévus 14f2 / 14g2,
+renumérotés dans l'ordre chronologique), 14h1 (clôture).
+
+**Décisions de l'utilisateur** : A1-A7 (piste audio, type de piste par
+pattern, `Audios/` et noms des prises, nom demandé à la première prise,
+calage comme Sonar / Reaper, Overdub / Remplacer / Undo, WAV 24 bits) ;
+`length` des clips pour copier / couper des portions plus tard ; R1
+(Overdub en clips superposés — remplace le « mixé dans un fichier » de
+A11), R2 (Remplacer sur la plage enregistrée), R3 (pattern allongé sans
+boucle), R4 (entrée vide → première cochée, sinon défaut), R5 (silence
+pendant Remplacer) ; noms de piste à part du nom des pads ; prototype
+Python, cible C/C++ (interfaces étroites, fonctions pures sur des
+nombres, tests du comportement observable).
+
+**Écarts et imprévus** :
+- 14e3 / 14e4 (fenêtre des clips) et les noms de piste (dans 14f1)
+  demandés aux essais ;
+- rappels « clip en cours » (reprise après Mute / Solo / F5) et coupure à
+  un saut de position, venus des essais de 14d1 ;
+- Espace arrête l'enregistrement (aussi en MIDI) ; clips coupés à l'Undo ;
+  boucle sans points = tout le pattern ; liste des noms copiée par
+  `to_dict` (état de l'Undo) ;
+- nom demandé seulement à un projet jamais enregistré ; piste muette dès
+  le premier passage de Remplacer (événements du passage refaits) ;
+- plantage « Segmentation fault » d'un test (flux audio de la vraie
+  fenêtre fermé avant `Destroy`, 14c1) ;
+- un `DrumPlayer` / `Pattern` neuf a la boucle active par défaut (piège
+  des tests).
+
+**Essais de l'utilisateur** : 14b1, 14d1, 14e2 (trois clips, deux puis
+trois pistes, boucle), 14e3, 14f1 (deux essais), 14g2 (deux retours) :
+concluants ; calage « top » sur le clic juste.
+
+**`docs/SPECS.md`** : ligne Phase 8, section « Pistes audio », onglet
+Audio (`audio_latency_ms`), entrées audio de l'onglet Matériel.
+**`docs/shortcuts.md`** (aide F1) : R / Shift+R / Ctrl+R sur une piste
+audio, boucle.
+
+**Suites notées** :
+- dialogue « Mode d'enregistrement » (Ctrl+Shift+R : Overdub / Remplacer
+  / Remplacer puis Overdub, comme le MPC) ;
+- monitoring de l'entrée (et mesure de la latence) ;
+- gestion des prises (garder, revenir à, supprimer ; « comping ») ;
+  copier / couper / découper / raccourcir des clips (fenêtres) ;
+  « Geler les pistes », « Fusionner les clips » ;
+- volume et pan entendus tout de suite sur un clip qui joue ;
+- avenant export audio (dialogues fusionnés, cases pistes sélectionnées /
+  Mutes / Solos) ;
+- portage C/C++ : tampons d'entrée et de passage alloués à l'armement,
+  rien dans le callback ;
+- sortie audio par piste ; types de piste Synthé, Effet, Automation ;
+  SpeechAccess ; notes en temps flottant ; essai multi-cartes.
