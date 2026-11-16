@@ -1,6 +1,7 @@
 import os
 import wx
 from pattern import Pattern
+from ui.dialogs_temporal import BBTHelper
 
 
 def _load_keyboard_help():
@@ -354,14 +355,21 @@ class ImportModeDialog(wx.Dialog):
 
 
 class AudioExportDialog(wx.Dialog):
-    """Options de l'export audio WAV (Alt+Shift+W, Phase 8 étape 1h1,
-    docs/DESIGN.md § Phase 8 étape 1a, W1, W4, W8, et § 1h6, W11) : fin du
-    fichier, format, normalisation à un niveau visé (mesure, niveau).
+    """Export audio WAV — un seul dialogue (Phase 8 étape 15b1, docs/DESIGN.md
+    § Phase 8 étape 15a, X1-X5 ; avant : 1h1, 1h15, 2l1, 4b1), suivi du nom
+    du fichier :
+    Source (Pattern courant, Song courant, Sélection, Presse-papier) ;
+    « Exporter les pistes sélectionnées » (grisée pour le presse-papier) ;
+    « Tenir compte des Mutes », « Tenir compte des Solos » ; Début et Fin de
+    la sélection en mesure:temps:pas (source Sélection seulement) ; puis
+    Fin, Format, Sortie, Normaliser, Mesure, Niveau.
     Listes navigables au lecteur d'écran, chaque choix préfixé de son champ
-    (comme QuantizeDialog) ; Entrée sur une liste valide (GTK :
-    EVT_LISTBOX_DCLICK). Mesure et niveau ne sont actifs que si
-    « Normaliser » est cochée."""
+    ; Entrée sur une liste valide (GTK : EVT_LISTBOX_DCLICK) ; libellés
+    créés avant leur champ (lus par Orca). Ok valide la sélection : champs
+    invalides ou fin avant début → message, le dialogue reste ouvert."""
 
+    SOURCE_PATTERN, SOURCE_SONG, SOURCE_SELECTION, SOURCE_CLIPBOARD = range(4)
+    SOURCE_UNITS = ["Pattern", "Song", "Sélection", "Presse-papier"]
     END_LABELS     = ["Fin : Boucle exacte (résonance repliée)",
                       "Fin : Pattern + résonance"]
     FORMAT_LABELS  = ["Format : 16 bits", "Format : 24 bits", "Format : 32 bits flottant"]
@@ -371,12 +379,32 @@ class AudioExportDialog(wx.Dialog):
 
     def __init__(self, parent, end_idx=0, format_idx=0, normalize=False,
                  measure_idx=2, level_db=-14, level_min=-24, level_max=0,
-                 unit="Pattern", output_idx=0):
-        # unit : ce que suit la résonance (« Song + résonance » pour un
-        # song, Phase 8 étape 2j1, docs/DESIGN.md § 2a E2)
-        super().__init__(parent, title="Export audio")
-        end_labels = [self.END_LABELS[0], f"Fin : {unit} + résonance"]
-        self._end_lb = wx.ListBox(self, choices=end_labels, style=wx.LB_SINGLE)
+                 output_idx=0, source_idx=0, source_labels=None,
+                 selected_tracks=False, use_mutes=True, use_solos=True,
+                 num_bars=1, num_beats=4, num_steps=16, lim_left=None, lim_right=None):
+        super().__init__(parent, title="Exporter en audio")
+        names = source_labels or self.SOURCE_UNITS
+        total = num_bars * num_steps
+        self._bbt = BBTHelper(num_steps, max(1, num_steps // max(1, num_beats)), total)
+        left  = 0 if lim_left is None else lim_left
+        right = total - 1 if lim_right is None else lim_right
+
+        self._source_lb = wx.ListBox(self, choices=[f"Source : {n}" for n in names],
+                                     style=wx.LB_SINGLE)
+        self._source_lb.SetSelection(max(0, min(source_idx, len(names) - 1)))
+        self._tracks_cb = wx.CheckBox(self, label="Exporter les pistes sélectionnées")
+        self._tracks_cb.SetValue(bool(selected_tracks))
+        self._mutes_cb = wx.CheckBox(self, label="Tenir compte des Mutes")
+        self._mutes_cb.SetValue(bool(use_mutes))
+        self._solos_cb = wx.CheckBox(self, label="Tenir compte des Solos")
+        self._solos_cb.SetValue(bool(use_solos))
+        left_label  = wx.StaticText(self, label="Début de la sélection (mesure:temps:pas) :")
+        self._left  = wx.TextCtrl(self, value=self._bbt.fmt(left), size=(140, -1))
+        self._left.SetName("Début de la sélection")
+        right_label = wx.StaticText(self, label="Fin de la sélection (mesure:temps:pas) :")
+        self._right = wx.TextCtrl(self, value=self._bbt.fmt(right), size=(140, -1))
+        self._right.SetName("Fin de la sélection")
+        self._end_lb = wx.ListBox(self, choices=list(self.END_LABELS), style=wx.LB_SINGLE)
         self._end_lb.SetSelection(max(0, min(end_idx, len(self.END_LABELS) - 1)))
         self._format_lb = wx.ListBox(self, choices=self.FORMAT_LABELS, style=wx.LB_SINGLE)
         self._format_lb.SetSelection(max(0, min(format_idx, len(self.FORMAT_LABELS) - 1)))
@@ -390,22 +418,34 @@ class AudioExportDialog(wx.Dialog):
         self._level = wx.SpinCtrl(self, min=level_min, max=level_max,
                                   initial=max(level_min, min(level_max, int(level_db))))
         self._level.SetName("Niveau visé (dB)")
-        for lb in (self._end_lb, self._format_lb, self._output_lb, self._measure_lb):
-            lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+        for lb in (self._source_lb, self._end_lb, self._format_lb, self._output_lb,
+                   self._measure_lb):
+            lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._on_ok(None))
+        self._source_lb.Bind(wx.EVT_LISTBOX, lambda e: self._update_enabled())
         self._normalize_cb.Bind(wx.EVT_CHECKBOX, lambda e: self._update_enabled())
 
         ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
         cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
         ok_btn.SetDefault()
+        ok_btn.Bind(wx.EVT_BUTTON, self._on_ok)
         btn_sizer = wx.StdDialogButtonSizer()
         btn_sizer.AddButton(ok_btn)
         btn_sizer.AddButton(cancel_btn)
         btn_sizer.Realize()
 
+        grid = wx.FlexGridSizer(2, 2, 6, 6)
+        grid.Add(left_label,  0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._left,  0)
+        grid.Add(right_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self._right, 0)
         level_row = wx.BoxSizer(wx.HORIZONTAL)
         level_row.Add(level_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         level_row.Add(self._level, 0)
         vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._source_lb,    0, wx.EXPAND | wx.ALL, 6)
+        for cb in (self._tracks_cb, self._mutes_cb, self._solos_cb):
+            vbox.Add(cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(grid,               0, wx.ALL, 6)
         vbox.Add(self._end_lb,       0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._format_lb,    0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._output_lb,    0, wx.EXPAND | wx.ALL, 6)
@@ -416,12 +456,60 @@ class AudioExportDialog(wx.Dialog):
         self.SetSizer(vbox)
         self.Fit()
         self._update_enabled()
-        self._end_lb.SetFocus()
+        self._source_lb.SetFocus()
 
     def _update_enabled(self):
+        """Champs actifs selon la source et « Normaliser » ; la fin suit la
+        source (« Fin : Song + résonance »…)."""
+        source = self.get_source_idx()
+        self._tracks_cb.Enable(source != self.SOURCE_CLIPBOARD)
+        selection = source == self.SOURCE_SELECTION
+        self._left.Enable(selection)
+        self._right.Enable(selection)
+        self._end_lb.SetString(1, f"Fin : {self.SOURCE_UNITS[source]} + résonance")
         on = self._normalize_cb.GetValue()
         self._measure_lb.Enable(on)
         self._level.Enable(on)
+
+    def _validate(self):
+        """Message d'erreur, ou None si les champs sont valides (ou sans objet)."""
+        if self.get_source_idx() != self.SOURCE_SELECTION:
+            return None
+        left  = self._bbt.parse(self._left.GetValue())
+        right = self._bbt.parse(self._right.GetValue())
+        if left is None or right is None:
+            return "Position invalide : mesure:temps:pas attendu (par exemple 2:1:1)"
+        if right < left:
+            return "La fin de la sélection est avant son début"
+        return None
+
+    def _on_ok(self, event):
+        error = self._validate()
+        if error is not None:
+            wx.MessageBox(error, "Exporter en audio", wx.OK | wx.ICON_WARNING, self)
+            return
+        self.EndModal(wx.ID_OK)
+
+    def get_source_idx(self):
+        sel = self._source_lb.GetSelection()
+        return sel if sel != wx.NOT_FOUND else 0
+
+    def get_selected_tracks(self):
+        return self._tracks_cb.GetValue()
+
+    def get_use_mutes(self):
+        return self._mutes_cb.GetValue()
+
+    def get_use_solos(self):
+        return self._solos_cb.GetValue()
+
+    def get_window(self):
+        """(début, fin) de la sélection en pas, fin comprise ; None si invalide."""
+        left  = self._bbt.parse(self._left.GetValue())
+        right = self._bbt.parse(self._right.GetValue())
+        if left is None or right is None or right < left:
+            return None
+        return left, right
 
     def get_end_idx(self):
         sel = self._end_lb.GetSelection()

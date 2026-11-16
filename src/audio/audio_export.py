@@ -100,7 +100,7 @@ class _Session:
     moteur de banque neuf et une file d'appels datés à l'échantillon."""
 
     def __init__(self, router, samplerate, master_volume, engines_from=None,
-                 status_cb=None):
+                 status_cb=None, ignore=(False, False)):
         self.sr     = samplerate
         self.now    = 0
         self.queue  = []
@@ -115,6 +115,12 @@ class _Session:
         self.sfz    = live_sfz.render_copy() if live_sfz is not None else None
         self.router = router.render_copy(self.mixer, self.bank, self.schedule,
                                          status_cb=status_cb, sfz_engine=self.sfz)
+        # « Tenir compte des Mutes / des Solos » décochées (Phase 8 étape
+        # 15b1, X3, X7) : la copie du rendu les ignore, aussi aux frontières
+        # des patterns d'un song (_PatternState.apply) ; l'écoute n'est pas
+        # touchée
+        self.router._render_ignore = tuple(ignore)
+        _clear_ignored(self.router)
         if engines_from is not None:
             self._adopt_engines(engines_from)
         if self.bank is not None:
@@ -213,6 +219,7 @@ class _PatternState:
         router._track_slots[:]    = p._track_slots
         router._track_mutes[:]    = p._track_mutes
         router._track_solos[:]    = p._track_solos
+        _clear_ignored(router)                       # Mutes / Solos ignorés (15b1)
         router._track_volumes[:]  = p._track_volumes
         router._track_pans[:]     = p._track_pans
         router._track_channels[:] = p._track_channels
@@ -399,15 +406,26 @@ def _run(session, start, timeline, master_pan, length, passes,
     return out[:pos], pos - total, False
 
 
+def _clear_ignored(router):
+    """Mutes et / ou Solos de la copie du rendu remis à zéro si l'export
+    doit les ignorer (router._render_ignore = (mutes, solos), 15b1)."""
+    mutes, solos = getattr(router, "_render_ignore", (False, False))
+    if mutes:
+        router._track_mutes[:] = [False] * len(router._track_mutes)
+    if solos:
+        router._track_solos[:] = [False] * len(router._track_solos)
+
+
 def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
                    master_pan=0, master_volume=1.0, samplerate=Mixer.SAMPLERATE,
                    progress=None, cancelled=None, status_cb=None,
-                   window=None, tracks=None):
+                   window=None, tracks=None, use_mutes=True, use_solos=True):
     """Rend le pattern entier (W5) avec les moteurs de router (TrackRouter
     de l'écoute, non modifié). window = (début, fin) en pas : seulement
     cette fenêtre, état des banques poursuivi à début, notes commencées
     avant ignorées (W15, W17) ; tracks : pistes rendues (les autres sont
-    vidées), None = toutes. tempo_map : carte de tempo jouée (celle du
+    vidées), None = toutes ; use_mutes / use_solos faux : Mutes / Solos des
+    pistes ignorés (Phase 8 étape 15b1). tempo_map : carte de tempo jouée (celle du
     player) ; voice_manager : volume, pan, durée, mute et solo des pads ;
     master_pan, master_volume (entier 0..200 en %, ou réel en rapport) : pan
     et volume globaux.
@@ -431,12 +449,13 @@ def render_pattern(pattern, tempo_map, router, voice_manager, *, end=END_LOOP,
     return _render(router, lambda r: r.chase(tape, chase_pos), timeline, length,
                    end=end, master_pan=master_pan, master_volume=master_volume,
                    samplerate=samplerate, progress=progress, cancelled=cancelled,
-                   status_cb=status_cb)
+                   status_cb=status_cb, ignore=(not use_mutes, not use_solos))
 
 
 def render_song(segments, router, voice_manager, *, end=END_TAIL,
                 master_pan=0, master_volume=1.0, samplerate=Mixer.SAMPLERATE,
-                progress=None, cancelled=None, status_cb=None, tracks=None):
+                progress=None, cancelled=None, status_cb=None, tracks=None,
+                use_mutes=True, use_solos=True):
     """Rend un song (Phase 8 étape 2h1, docs/DESIGN.md § 2a E1, E2, E11) :
     segments = song.song_segments(…), chacun joué une fois en entier, à
     sa place, par la carte de tempo de son pattern. À chaque frontière, à
@@ -473,20 +492,20 @@ def render_song(segments, router, voice_manager, *, end=END_TAIL,
     return _render(router, lambda r: None, timeline, length,
                    end=end, master_pan=master_pan, master_volume=master_volume,
                    samplerate=samplerate, progress=progress, cancelled=cancelled,
-                   status_cb=status_cb)
+                   status_cb=status_cb, ignore=(not use_mutes, not use_solos))
 
 
 def _render(router, start, timeline, length, *, end, master_pan, master_volume,
-            samplerate, progress, cancelled, status_cb):
+            samplerate, progress, cancelled, status_cb, ignore=(False, False)):
     """Passage à blanc, puis passage simple + résonance (END_TAIL, et
     mesure de T), puis au besoin les passages du régime établi (END_LOOP,
     W2). start(routeur) prépare chaque copie du routeur ; timeline :
     [(échantillon, élément)], voir _Session.push."""
-    dry = _Session(router, samplerate, master_volume, status_cb=status_cb)
+    dry = _Session(router, samplerate, master_volume, status_cb=status_cb, ignore=ignore)
     try:
         _dry_pass(dry, lambda: start(dry.router), timeline, master_pan)
         # Passage simple + résonance : fichier END_TAIL, mesure de T (W2)
-        single = _Session(router, samplerate, master_volume, engines_from=dry)
+        single = _Session(router, samplerate, master_volume, engines_from=dry, ignore=ignore)
         try:
             span = 1.0 if end == END_TAIL else 1.0 / 3.0
             data, tail, cut = _run(single, lambda: start(single.router), timeline,
@@ -498,7 +517,7 @@ def _render(router, start, timeline, length, *, end, master_pan, master_volume,
             result = RenderResult(data, samplerate, length, tail, cut, 1)
         else:
             passes = 1 + max(1, math.ceil(tail / length))
-            loop = _Session(router, samplerate, master_volume, engines_from=dry)
+            loop = _Session(router, samplerate, master_volume, engines_from=dry, ignore=ignore)
             try:
                 data, _, _ = _run(loop, lambda: start(loop.router), timeline,
                                   master_pan, length, passes, False, progress, cancelled,

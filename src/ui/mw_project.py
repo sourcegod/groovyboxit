@@ -17,7 +17,7 @@ from midi.midi_import import import_pattern
 from audio import audio_export
 from audio import audio_takes
 from devices import audio_device as audio_devices
-from .dialogs import AudioExportDialog, SelectionExportDialog, ExportTargetDialog, \
+from .dialogs import AudioExportDialog, ExportTargetDialog, \
     ImportModeDialog
 from tempo_map import format_bpm
 
@@ -331,22 +331,12 @@ class ProjectMixin:
         else:
             self._export_midi(parent=parent, status=status)
 
-    def _export_audio_choose(self, parent=None, status=None):
-        """Alt+Shift+W (fenêtre principale, éditeur MIDI) : choix, puis
-        export audio du pattern courant ou du song courant (X5). Un export
-        en cours est refusé avant la question (X7)."""
-        status = status or self._show_status
-        thread = self._audio_export_thread
-        if thread is not None and thread.is_alive():
-            status("Export audio déjà en cours")
-            return
-        target = self._choose_export_target(parent, "Exporter en WAV")
-        if target is None:
-            status("Export audio annulé")
-        elif target == ExportTargetDialog.TARGET_SONG:
-            self._export_song_audio(self._cur_song_idx, parent=parent, status=status)
-        else:
-            self._export_audio(parent=parent, status=status)
+    def _export_audio_choose(self, parent=None, status=None, editor=False):
+        """Alt+Shift+W (fenêtre principale, éditeur MIDI) : dialogue d'export
+        audio sur la dernière source utilisée (Phase 8 étape 15b1, X1, X5 ;
+        Alt+Shift+S retiré à l'essai, redondant) ; editor : presse-papier des
+        notes de l'éditeur MIDI."""
+        self._export_audio_dialog(self._audio_src, parent, status, editor=editor)
 
     def _song_export_filename(self, song_idx, ext=".mid"):
         """Nom de fichier proposé : Song_NN[_nom].mid (ou ext), nom nettoyé."""
@@ -415,12 +405,8 @@ class ProjectMixin:
     _AUDIO_MEASURE_UNITS = ("dBFS crête", "dBFS RMS", "LUFS-I")   # ordre de audio_export.MEASURES
 
     def _export_audio(self, parent=None, status=None):
-        """Alt+Shift+W : exporte le pattern courant en .wav. parent : fenêtre
-        des dialogs (éditeur MIDI) ; status : où annoncer avancement et
-        résultat (appelé dans le fil de l'UI)."""
-        status = status or self._show_status
-        if self._audio_export_ready(status):
-            self._audio_export_flow(parent, status, "Exporter le pattern en WAV…", "")
+        """Export audio du pattern courant : dialogue sur la source Pattern."""
+        self._export_audio_dialog(AudioExportDialog.SOURCE_PATTERN, parent, status)
 
     def _audio_export_ready(self, status):
         """Faux si un export tourne déjà ; sinon met la lecture en pause
@@ -434,124 +420,142 @@ class ProjectMixin:
             self._router.stop_all_synth_voices()
         return True
 
-    def _audio_export_flow(self, parent, status, title, suffix, job=None,
-                           song_idx=None):
-        """Parcours commun des exports audio : dialogue du fichier (nom
-        Pat_NN[_nom]suffix.wav), puis paramètres (ordre standard, 1h2),
-        puis rendu de job (None : le pattern courant, voir
-        _start_audio_export). song_idx : export du song (Phase 8 étape
-        2j1, § 2a E2, E15) : nom Song_NN[_nom].wav, fin proposée d'après la
-        boucle du song (la fin choisie n'est pas gardée pour les patterns),
-        segments pris après les dialogues."""
-        # Dossier : le dernier choisi dans la session, sinon EXPORTS
+    # Réglages du dialogue gardés pour la session (Phase 8 étape 15b1, X3,
+    # X5) : dernière source utilisée, pistes sélectionnées, Mutes, Solos
+    _audio_src            = 0
+    _audio_sel_only       = False
+    _audio_use_mutes      = True
+    _audio_use_solos      = True
+
+    def _audio_source_labels(self, song_idx):
+        """Libellés des sources : « Pattern courant (Pat_01 Intro) »…"""
+        pattern, _ = self._export_target_labels()
+        song = self._song_list[song_idx]
+        n = len(song._sequence)
+        count = "vide" if n == 0 else f"{n} pattern{'s' if n > 1 else ''}"
+        name = f"Song_{song_idx + 1:02d}" + (f" {song._name}" if song._name else "")
+        return [f"Pattern courant ({pattern})", f"Song courant ({name}, {count})",
+                "Sélection", "Presse-papier"]
+
+    def _export_audio_dialog(self, source, parent=None, status=None, editor=False,
+                             song_idx=None):
+        """Export audio WAV (Phase 8 étape 15b1, docs/DESIGN.md § 15a X1-X7) :
+        un dialogue (source, pistes sélectionnées, Mutes, Solos, sélection,
+        paramètres), puis le nom du fichier, puis le rendu. editor :
+        presse-papier des notes de l'éditeur MIDI ; song_idx : song de la
+        fenêtre Songs (défaut : le song courant)."""
+        status = status or self._show_status
+        if not self._audio_export_ready(status):
+            return
+        song_idx = self._cur_song_idx if song_idx is None else song_idx
+        player, te = self._player, self._track_editor
+        pat = player._pattern
+        init = self._audio_export_opts
+        if source == AudioExportDialog.SOURCE_SONG:          # fin d'après la boucle (E2)
+            init = (0 if self._song_list[song_idx]._looping else 1,) + tuple(init[1:])
+        dlg = AudioExportDialog(
+            parent or self, *init, level_min=audio_export.LEVEL_MIN_DB,
+            level_max=audio_export.LEVEL_MAX_DB, output_idx=self._audio_export_output,
+            source_idx=source, source_labels=self._audio_source_labels(song_idx),
+            selected_tracks=self._audio_sel_only, use_mutes=self._audio_use_mutes,
+            use_solos=self._audio_use_solos, num_bars=pat._num_bars,
+            num_beats=pat._num_beats, num_steps=pat._num_steps,
+            lim_left=te._lim_left, lim_right=te._lim_right)
+        ok = dlg.ShowModal() == wx.ID_OK
+        source  = dlg.get_source_idx()
+        opts    = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize(),
+                   dlg.get_measure_idx(), dlg.get_level_db())
+        output  = dlg.get_output_idx()
+        only    = dlg.get_selected_tracks()
+        mutes, solos = dlg.get_use_mutes(), dlg.get_use_solos()
+        window  = dlg.get_window()
+        dlg.Destroy()
+        if not ok:
+            status("Export audio annulé")
+            return
+        # choix gardés pour la session ; la fin d'un song n'est pas gardée (E2)
+        self._audio_src = source
+        self._audio_sel_only, self._audio_use_mutes, self._audio_use_solos = only, mutes, solos
+        self._audio_export_output = output
+        self._audio_export_opts = opts if source != AudioExportDialog.SOURCE_SONG else \
+            (self._audio_export_opts[0],) + tuple(opts[1:])
+        job, title, filename = self._audio_export_job(source, only, window, editor,
+                                                      song_idx, status)
+        if job is None:
+            return
+        job["use_mutes"], job["use_solos"] = mutes, solos
+        path = self._ask_audio_export_path(parent, title, filename)
+        if not path:
+            status("Export audio annulé")
+            return
+        self._start_audio_export(path, opts, status, job, output)
+
+    def _audio_export_job(self, source, only, window, editor, song_idx, status):
+        """(job, titre du dialogue du fichier, nom proposé) de la source, ou
+        (None, …) si elle est vide (annoncé)."""
+        player = self._player
+        tracks = set(self._track_editor.get_effective_tracks(player._cur_track)) \
+            if only else None
+        if source == AudioExportDialog.SOURCE_SONG:
+            song = self._song_list[song_idx]
+            if not song._sequence:
+                status("Song vide — ajoutez des patterns dans la fenêtre Songs")
+                return None, "", ""
+            segments = self._song_segments(song_idx)
+            n = len(segments)
+            job = dict(segments=segments, label=f"Song {song_idx + 1:02d}", verb="exporté",
+                       unit="song", detail=f"{n} pattern{'s' if n > 1 else ''}",
+                       tracks=tracks)
+            return job, "Exporter le song en WAV…", self._song_export_filename(song_idx, ".wav")
+        if source == AudioExportDialog.SOURCE_SELECTION:
+            job = self._selection_job(window, all_tracks=not only)
+            return job, "Exporter la sélection en WAV…", \
+                self._midi_export_filename("_selection.wav")
+        if source == AudioExportDialog.SOURCE_CLIPBOARD:
+            job = self._clipboard_job(editor)
+            if job is None:
+                status("Presse-papier vide")
+                return None, "", ""
+            return job, "Exporter le presse-papier en WAV…", \
+                self._midi_export_filename("_presse-papier.wav")
+        pattern = Pattern()
+        pattern.copy_from(player._pattern)
+        label = f"Pattern {self._cur_pattern_idx + 1:02d}"
+        if tracks is not None:
+            names = ", ".join(str(t + 1) for t in sorted(tracks))
+            label += f" ({'piste' if len(tracks) == 1 else 'pistes'} {names})"
+        job = dict(pattern=pattern, tempo_map=player.tempo_map(), window=None,
+                   tracks=tracks, label=label, verb="exporté")
+        return job, "Exporter le pattern en WAV…", self._midi_export_filename(".wav")
+
+    def _ask_audio_export_path(self, parent, title, filename):
+        """Dialogue du nom du fichier .wav (après les paramètres, 15b1) :
+        dossier = le dernier choisi dans la session, sinon EXPORTS. "" si
+        Annuler."""
         start = self._audio_export_dir or self._exports_dir
         if start == self._exports_dir:
             try:
                 os.makedirs(self._exports_dir, exist_ok=True)
             except OSError:
                 pass   # le dialog s'ouvrira ailleurs ; l'écriture dira l'erreur
-        fdlg = wx.FileDialog(
-            parent or self, title,
-            defaultDir=start,
-            defaultFile=(self._midi_export_filename(f"{suffix}.wav") if song_idx is None
-                         else self._song_export_filename(song_idx, ".wav")),
-            wildcard="Fichiers WAV (*.wav)|*.wav",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
-        )
+        fdlg = wx.FileDialog(parent or self, title, defaultDir=start, defaultFile=filename,
+                             wildcard="Fichiers WAV (*.wav)|*.wav",
+                             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
         result = fdlg.ShowModal()
         path   = fdlg.GetPath() if result == wx.ID_OK else ""
         fdlg.Destroy()
         if not path:
-            status("Export audio annulé")
-            return
+            return ""
         if not path.lower().endswith(".wav"):
             path += ".wav"
         self._audio_export_dir = os.path.dirname(path)
-        init = self._audio_export_opts
-        extra = {}
-        if job is not None and job.get("unit"):
-            # « Sélection + résonance », « Presse-papier + résonance » (2o2)
-            extra = dict(unit=job["unit"].capitalize())
-        if song_idx is not None:
-            looping = self._song_list[song_idx]._looping
-            init = (0 if looping else 1,) + tuple(init[1:])          # E2
-            extra = dict(unit="Song")
-        dlg = AudioExportDialog(parent or self, *init,
-                                level_min=audio_export.LEVEL_MIN_DB,
-                                level_max=audio_export.LEVEL_MAX_DB,
-                                output_idx=self._audio_export_output, **extra)
-        ok = dlg.ShowModal() == wx.ID_OK
-        opts = (dlg.get_end_idx(), dlg.get_format_idx(), dlg.get_normalize(),
-                dlg.get_measure_idx(), dlg.get_level_db())
-        output = dlg.get_output_idx()
-        dlg.Destroy()
-        if not ok:
-            status("Export audio annulé")
-            return
-        self._audio_export_output = output
-        if song_idx is None:
-            self._audio_export_opts = opts
-        else:
-            # Fin du song non gardée : les patterns gardent la leur
-            self._audio_export_opts = (self._audio_export_opts[0],) + tuple(opts[1:])
-            segments = self._song_segments(song_idx)
-            n = len(segments)
-            job = dict(segments=segments, label=f"Song {song_idx + 1:02d}", verb="exporté",
-                       unit="song",
-                       detail=f"{n} pattern{'s' if n > 1 else ''}")
-        self._start_audio_export(path, opts, status, job, output)
+        return path
 
     def _export_song_audio(self, song_idx, parent=None, status=None):
-        """Alt+Shift+W dans la fenêtre Songs : exporte le song song_idx en
-        .wav (Phase 8 étape 2j1, docs/DESIGN.md § 2a E2, E11, E15). parent :
-        fenêtre des dialogs ; status : où annoncer avancement et résultat."""
-        status = status or self._show_status
-        if not self._song_list[song_idx]._sequence:
-            status("Song vide — ajoutez des patterns dans la fenêtre Songs")
-            return
-        if self._audio_export_ready(status):
-            self._audio_export_flow(parent, status, "Exporter le song en WAV…", "",
-                                    song_idx=song_idx)
-
-    # Source du dialogue de la sélection gardée pour la session (W21), et
-    # son choix Pistes : sélectionnées ou toutes (Phase 8 étape 2n1, E16)
-    _audio_sel_source = 0
-    _audio_sel_tracks = 0
-
-    def _export_audio_selection(self, parent=None, status=None, editor=False):
-        """Alt+Shift+S : exporte en .wav la sélection (pistes sélectionnées,
-        ou la piste courante, entre les limiteurs) ou le presse-papier de la
-        fenêtre (editor : celui des notes de l'éditeur MIDI, sinon celui des
-        pistes). Phase 8 étape 1h15, docs/DESIGN.md § 1h11, W13-W21."""
-        status = status or self._show_status
-        if not self._audio_export_ready(status):
-            return
-        player, te = self._player, self._track_editor
-        pat = player._pattern
-        dlg = SelectionExportDialog(parent or self, pat._num_bars, pat._num_beats,
-                                    pat._num_steps, te._lim_left, te._lim_right,
-                                    self._audio_sel_source, self._audio_sel_tracks)
-        ok     = dlg.ShowModal() == wx.ID_OK
-        source = dlg.get_source_idx()
-        window = dlg.get_window()
-        which  = dlg.get_tracks_idx()
-        dlg.Destroy()
-        if not ok:
-            status("Export audio annulé")
-            return
-        self._audio_sel_source = source
-        if source == SelectionExportDialog.SOURCE_SELECTION:
-            self._audio_sel_tracks = which
-            job = self._selection_job(
-                window, all_tracks=(which == SelectionExportDialog.TRACKS_ALL))
-            title, suffix = "Exporter la sélection en WAV…", "_selection"
-        else:
-            job = self._clipboard_job(editor)
-            if job is None:
-                status("Presse-papier vide")
-                return
-            title, suffix = "Exporter le presse-papier en WAV…", "_presse-papier"
-        self._audio_export_flow(parent, status, title, suffix, job)
+        """Alt+Shift+W dans la fenêtre Songs : dialogue d'export audio sur la
+        source Song (le song de la fenêtre, X5)."""
+        self._export_audio_dialog(AudioExportDialog.SOURCE_SONG, parent, status,
+                                  song_idx=song_idx)
 
     def _selection_job(self, window, all_tracks=False):
         """Rendu de la sélection : copie du pattern courant, pistes de la
@@ -621,10 +625,12 @@ class ProjectMixin:
             router=self._router,
             voice_manager=player.voice_manager, end=self._AUDIO_ENDS[end_idx],
             master_pan=player.pan, master_volume=player.volume,
+            use_mutes=job.get("use_mutes", True), use_solos=job.get("use_solos", True),
         )
         if "segments" in job:                       # song (2j1)
             render = audio_export.render_song
             params["segments"] = job["segments"]
+            params["tracks"] = job.get("tracks")    # pistes sélectionnées (15b1, X6)
             sources = [seg.pattern for seg in job["segments"]]
         else:
             render = audio_export.render_pattern

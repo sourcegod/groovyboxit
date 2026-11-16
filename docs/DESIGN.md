@@ -14256,3 +14256,52 @@ d'Undo (l'export ne modifie pas le projet).
   retiré s'il ne sert plus.
 - **15c1 — tests**.
 - **15d1 — clôture** (`git gc`).
+
+### Avancement 15b1 (implémentation — un seul dialogue)
+
+- **`AudioExportDialog`** (dialogs_simple, titre « Exporter en audio »),
+  focus sur **Source** (Pattern courant (Pat_NN nom) / Song courant
+  (Song_NN nom, N patterns) / Sélection / Presse-papier) ; cases
+  « Exporter les pistes sélectionnées » (grisée pour le presse-papier),
+  « Tenir compte des Mutes », « Tenir compte des Solos » ; « Début / Fin
+  de la sélection » (mesure:temps:pas, préremplis par les limiteurs,
+  actifs pour la Sélection, validés à Ok) ; puis Fin (« Fin : Song +
+  résonance »… suit la source), Format, Sortie, Normaliser, Mesure,
+  Niveau ; libellés créés avant leur champ.
+- **Parcours** (`_export_audio_dialog`, mw_project) : dialogue → job de
+  la source (`_audio_export_job`) → nom du fichier
+  (`_ask_audio_export_path`, nom proposé selon la source) → rendu.
+  Alt+Shift+W : dernière source Pattern / Song ; Alt+Shift+S : dernière
+  Sélection / Presse-papier ; fenêtre Songs : Song (celui de la fenêtre) ;
+  éditeur MIDI : presse-papier des notes. Gardés pour la session : les
+  deux dernières sources, pistes sélectionnées, Mutes, Solos, sortie,
+  options (la fin d'un song n'est pas gardée, E2). Song vide, presse-papier
+  vide : annoncés, pas de dialogue du fichier.
+- **Rendu** : `render_pattern` / `render_song(use_mutes, use_solos)` ;
+  la copie du routeur du rendu (`_Session`) remet Mutes et / ou Solos à
+  zéro, aussi à chaque frontière de pattern d'un song
+  (`_PatternState.apply` → `_clear_ignored`) ; l'écoute n'est pas
+  touchée. Pistes sélectionnées : filtre `tracks`, aussi pour le song
+  (X6) et ses stems.
+- **Retiré** : `SelectionExportDialog` (remplacé par la source Sélection et
+  la case des pistes) ; le dialogue de choix d'Alt+Shift+W n'est plus
+  appelé (`ExportTargetDialog` reste pour Alt+Shift+E).
+- Choix faits en route : « Exporter les pistes sélectionnées » décochée par
+  défaut pour toutes les sources (avant, la sélection proposait
+  « Sélectionnées ») ; les Mutes / Solos sont ceux des pistes (pas des
+  pads).
+- Vérifié par script sur la vraie fenêtre principale (dialogue et fichier
+  simulés) : Mutes pris en compte / ignorés, Solos pris en compte /
+  ignorés, pistes sélectionnées (piste courante), dialogue avant le
+  fichier, écoute inchangée ; vrai dialogue : focus, champs actifs selon
+  la source, fin qui suit la source, validation de la sélection.
+- `docs/shortcuts.md` (aide F1) : Alt+Shift+W / Alt+Shift+S (fenêtre
+  principale, éditeur MIDI, fenêtre Songs).
+- Suite : 4450 verts ; **2 fichiers de tests en erreur jusqu'à 15c1**
+  (`test_audio_export_ui.py`, `test_song_export_ui.py` importent
+  `SelectionExportDialog` et suivent l'ancien parcours).
+- **Essai de l'utilisateur (2026-11-16), concluant** ; retour : Alt+Shift+S
+  devient redondant (la source est dans le dialogue) → **retiré** (fenêtre
+  principale et éditeur MIDI) ; Alt+Shift+W ouvre sur la **dernière source
+  utilisée** parmi les quatre (`_audio_src`) ; dans l'éditeur MIDI,
+  Alt+Shift+W passe `editor=True` (presse-papier des notes).

@@ -2336,8 +2336,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `PreferencesDialog` | dialogs_preferences | Alt+Shift+P (fenêtre principale, éditeur MIDI, fenêtre Songs) | Préférences à onglets : Général, Matériel, Audio, Midi, Projet, Raccourcis, Divers ; Gauche / Droite sur l'onglet, Ctrl+Tab / Ctrl+Shift+Tab ; Ok, Annuler, Appliquer, Valeurs par défaut de l'onglet (Phase 8 étape 10) |
 | `ExportTargetDialog` | dialogs_simple | Alt+Shift+E, Alt+Shift+W (fenêtre principale, éditeur MIDI) | Ce qu'on exporte : pattern courant ou song courant ; dernier choix gardé (Phase 8 étape 4) |
 | `ImportModeDialog` | dialogs_simple | Alt+Shift+I, après le fichier | Import en Banque GM ou en Rack 16 canaux ; dernier choix gardé (Phase 8 étape 5f1) |
-| `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), Alt+Shift+S (après le fichier) | Paramètres de l'export audio : fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1 et 2) |
-| `SelectionExportDialog` | dialogs_temporal | Alt+Shift+S | Source de l'export audio : sélection (pistes sélectionnées ou toutes, limiteurs mesure:temps:pas) ou presse-papier |
+| `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), avant le nom du fichier | « Exporter en audio » : source (pattern, song, sélection, presse-papier), pistes sélectionnées, Mutes, Solos, début et fin de la sélection, fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1, 2 et 15) |
 
 ### ExplorerDialog (Alt+X)
 

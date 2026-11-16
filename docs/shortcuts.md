@@ -26,18 +26,22 @@ Ctrl+W           Enregistrer le pattern courant
 Ctrl+Shift+W     Dupliquer le pattern courant vers un autre slot
 Alt+Shift+E      Exporter en fichier MIDI (.mid), dossier EXPORTS : choix d'abord,
                  « Pattern courant » ou « Song courant » (dernier choix gardé)
-Alt+Shift+W      Exporter en audio (.wav) : choix « Pattern courant » ou « Song
-                 courant » comme Alt+Shift+E, puis fichier, puis paramètres
-                 (fin : boucle exacte ou pattern + résonance ; format 16, 24 ou 32 bits
-                 flottant ; sortie : mix, pistes séparées ou mix + pistes, les pistes
-                 dans un sous-dossier du nom du fichier ; Normaliser : mesure Crête,
-                 RMS ou LUFS-I, niveau visé de -24 à 0 dB ; limiteur à -0,3 dBFS
-                 toujours actif)
-Alt+Shift+S      Exporter en audio la sélection ou le presse-papier : source, puis
-                 fichier, puis paramètres comme Alt+Shift+W. Sélection = pistes
-                 sélectionnées (ou piste courante), ou toutes les pistes (liste
-                 Pistes), entre les limiteurs gauche et droit
-                 (champs mesure:temps:pas, préremplis) ; presse-papier des pistes
+Alt+Shift+W      Exporter en audio (.wav) : un dialogue, puis le nom du fichier.
+                 Dialogue : Source (Pattern courant, Song courant, Sélection,
+                 Presse-papier ; ouvert sur la dernière utilisée) ;
+                 « Exporter les pistes sélectionnées » (sinon toutes les pistes ;
+                 pistes sélectionnées ou piste courante, appliquées à chaque pattern
+                 d'un song ; grisée pour le presse-papier) ; « Tenir compte des
+                 Mutes », « Tenir compte des Solos » (cochées : on exporte ce qu'on
+                 entend ; décochées : pistes muettes ou hors solo exportées quand
+                 même) ; Début et Fin de la sélection (mesure:temps:pas,
+                 préremplis par les limiteurs, source Sélection seulement) ; fin
+                 (boucle exacte ou + résonance) ; format 16, 24 ou 32 bits
+                 flottant ; sortie : mix, pistes séparées ou mix + pistes, les
+                 pistes dans un sous-dossier du nom du fichier ; Normaliser :
+                 mesure Crête, RMS ou LUFS-I, niveau visé de -24 à 0 dB ; limiteur
+                 à -0,3 dBFS toujours actif. Choix gardés pour la session.
+                 Presse-papier = celui des pistes (éditeur MIDI : celui des notes)
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le remplace) ;
                  après le fichier, choix « Banque GM » ou « Rack 16 canaux » (dernier
                  choix gardé)
@@ -381,8 +385,8 @@ Contrôleur       Une note tenue s'arrête au relâchement là où elle a été 
 Alt+4            Ouvrir l'éditeur MIDI (rouvre dans le dernier mode utilisé)
 Échap            Fermer la fenêtre
 Alt+Shift+E      Exporter en MIDI (.mid) le pattern ou le song courant, comme la fenêtre principale
-Alt+Shift+W      Exporter en audio (.wav) le pattern ou le song courant, comme la fenêtre principale
-Alt+Shift+S      Exporter en audio la sélection ou le presse-papier des notes de l'éditeur
+Alt+Shift+W      Exporter en audio (.wav), même dialogue que la fenêtre principale
+                 (source Presse-papier = celui des notes de l'éditeur)
 Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant, comme la fenêtre principale
 Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
 
@@ -492,9 +496,9 @@ Shift+G          Aller à la fin du song (Goto End)
 Ctrl+W           Enregistrer le projet (avec le song courant)
 Ctrl+Shift+W     Enregistrer le projet sous... (avec le song courant)
 Alt+Shift+E      Exporter le song courant en fichier MIDI (.mid), dossier EXPORTS (sans choix)
-Alt+Shift+W      Exporter le song courant en audio (.wav) : fichier, puis paramètres
-                 comme dans la fenêtre principale (fin proposée : boucle exacte si
-                 le song boucle, sinon song + résonance ; sortie mix ou pistes)
+Alt+Shift+W      Exporter en audio (.wav) : le dialogue de la fenêtre principale,
+                 ouvert sur la source Song courant, puis le nom du fichier (fin
+                 proposée : boucle exacte si le song boucle, sinon song + résonance)
 Échap            Fermer la fenêtre Songs
 Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
       fonctionnent aussi depuis la fenêtre Songs

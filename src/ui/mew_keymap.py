@@ -363,17 +363,12 @@ class KeymapMixin:
             self._parent._export_midi_choose(parent=self, status=self._set_status)
             return
 
-        # Alt+Shift+W : export audio WAV du pattern ou du song (même raccourci
-        # que la fenêtre principale, Phase 8 étape 4b1) ; dialogs et statut ici
+        # Alt+Shift+W : export audio WAV (même dialogue que la fenêtre
+        # principale, Phase 8 étape 15b1) ; dialogs et statut ici ; source
+        # Presse-papier = celui des notes de cette fenêtre (§ 1h11 W13)
         if not ctrl and shift and alt and (ukey in (ord('w'), ord('W')) or key == ord('W')):
-            self._parent._export_audio_choose(parent=self, status=self._set_status)
-            return
-
-        # Alt+Shift+S : export audio de la sélection ou du presse-papier des
-        # notes de cette fenêtre (Phase 8 étape 1h15, § 1h11 W13)
-        if not ctrl and shift and alt and (ukey in (ord('s'), ord('S')) or key == ord('S')):
-            self._parent._export_audio_selection(parent=self, status=self._set_status,
-                                                 editor=True)
+            self._parent._export_audio_choose(parent=self, status=self._set_status,
+                                              editor=True)
             return
 
         # Transport partagé (Space/P, V, G, Shift+G, PageUp/Down…)
