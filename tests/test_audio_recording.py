@@ -503,10 +503,18 @@ def test_thread_anchors_the_take_when_playback_starts():
 # ---------------------------------------------------------------------------
 
 class FakeRecorder:
-    """Enregistreur factice : stop() rend la prise donnée."""
+    """Enregistreur factice : stop() rend la prise donnée ; live_range rend
+    des zéros et note la demande."""
+    samplerate = SR
+
     def __init__(self, frames=2 * SR, t0=100.0, fail=None, errors=()):
         self.frames, self.t0, self.fail, self.errors = frames, t0, fail, list(errors)
         self.started = None
+        self.ranges = []
+
+    def live_range(self, first, length):
+        self.ranges.append((first, length))
+        return np.zeros((length, 2), np.float32)
 
     def start(self, path, device=None, samplerate=SR, channels=1):
         open(path, "wb").close()
@@ -519,6 +527,29 @@ class FakeRecorder:
                              self.t0, SR, self.started[3] if self.started else 1)
 
 
+class FakeClipRouter:
+    """Routeur factice : passages en mémoire, fichiers connus, coupures."""
+    def __init__(self):
+        self._track_kinds = ["midi"] * 16
+        self._track_audio_ins = [""] * 16
+        self.pins, self.unpinned, self.stopped = {}, [], []
+        self.file_info = {}                          # fichier → (échantillons, fréquence)
+
+    def pin_clip(self, rel, start, length, data):
+        self.pins[(rel, start, length)] = data
+
+    def unpin_clips(self, rel):
+        self.unpinned.append(rel)
+        for key in [k for k in self.pins if k[0] == rel]:
+            del self.pins[key]
+
+    def clip_file_info(self, rel):
+        return self.file_info.get(rel)
+
+    def stop_audio_clips(self, track_idx=None):
+        self.stopped.append(track_idx)
+
+
 class RecWin(AudioRecMixin):
     def __init__(self, tmp_path, project="Chanson.gvp", inputs=(), latency_ms=0,
                  out_latency=0.0, recorder=None):
@@ -529,7 +560,7 @@ class RecWin(AudioRecMixin):
         self._cfg = SimpleNamespace(audio_hostapi="ALSA", audio_inputs=list(inputs),
                                     audio_latency_ms=latency_ms)
         self._audio_driver = SimpleNamespace(samplerate=SR, output_latency=out_latency)
-        self._router = SimpleNamespace(_track_kinds=["midi"] * 16, _track_audio_ins=[""] * 16)
+        self._router = FakeClipRouter()
         self._router._track_kinds[2] = TRACK_AUDIO
         p = DrumPlayer(_S())
         p.start_thread = p.stop_thread = lambda: None
@@ -579,7 +610,9 @@ def test_prepare_opens_the_take_and_arms_the_player(tmp_path, devices):
     path, device, sr, channels = win.recorder.started
     assert path == str(tmp_path / "Audios" / "Chanson_pattern01_piste03_take_001.wav")
     assert (device, sr, channels) == (2, SR, 2)                # stéréo selon l'entrée (A7)
-    assert win._audio_rec[:2] == (2, "Audios/Chanson_pattern01_piste03_take_001.wav")
+    rec = win._audio_rec
+    assert (rec["track"], rec["rel"]) == (2, "Audios/Chanson_pattern01_piste03_take_001.wav")
+    assert rec["replace"] is False and rec["clips"] == {}
     assert win._player._audio_take is not None
     assert win._audio_rec_note == "Prise audio piste 3 — carte"
     assert win._audio_rec_prepare() is True                    # déjà ouverte : rien de plus

@@ -14041,3 +14041,34 @@ chronologique des commits : **14g2** implémentation, **14g3** tests,
   lecteur réveillé (`_wakeup`) pour refaire les événements du passage sans
   les clips découpés. Reproduit par script (une voix restait), corrigé
   (aucune).
+
+### Avancement 14g3 (tests — boucle)
+
+- **`tests/test_audio_loop_recording.py`** (nouveau, 46 tests) : passages
+  (`pass_window`, `loop_passes` sans trou ni chevauchement), découpe
+  (`carve` : avant, après, coupé en deux, couvert, jusqu'à la fin,
+  morceaux minuscules, échantillons du fichier) ; prise en mémoire
+  (`live_range` : capté, rempli au fil des blocs dans le même tableau,
+  entièrement futur, mono → stéréo) ; routeur (`pin_clip` partage le
+  tableau, seulement pour sa fenêtre, `unpin_clips` relit le fichier,
+  `clip_file_info`) ; lecteur (rappel d'ancre une fois, rappel de retour
+  une fois et au plus 0,3 s avant la fin ; aucun sans boucle, sans
+  enregistrement, sans ancre) ; `AudioRecMixin` (drapeau Remplacer ;
+  Overdub : passage posé avant le retour, une seule fois, joué depuis la
+  mémoire, Stop qui ajoute le dernier passage en gardant les événements
+  posés, anciens clips gardés ; Remplacer : silence dès le départ ou au
+  milieu, voix coupées et passage refait, seul le dernier passage reste
+  avec la fin du précédent, Stop juste après la pose, sans boucle, prise
+  vide, fichier introuvable ; rappels après la prise ignorés) ; nom
+  demandé seulement à un projet jamais enregistré ; vraie fenêtre
+  principale (Overdub en boucle avec passages posés pendant la prise,
+  Remplacer muet dès le 1er passage, Ctrl+Z).
+- **12 tests rouges de 14g2 corrigés** : `test_audio_recording.py`
+  (routeur factice `FakeClipRouter`, enregistreur factice avec
+  `samplerate` et `live_range`, prise ouverte en dictionnaire) ;
+  `test_key_manager.py` (`_audio_rec_prepare(replace)`, Shift+R →
+  Remplacer vérifié).
+- Mutations vérifiées (piste non coupée à l'ancre ; pas de `base_before` ;
+  passage pas rempli après coup ; pas de rappel de retour ; nom toujours
+  redemandé ; passage pas lu en mémoire) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : arborescence et table. Suite : 4554 verts.

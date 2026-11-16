@@ -327,8 +327,9 @@ class FakeWindow:
     audio_prepare_ok = True
     _audio_rec_note  = "Prise audio piste 1 — micro"
     def _cur_track_is_audio(self):        return self.audio_track
-    def _audio_rec_prepare(self):
+    def _audio_rec_prepare(self, replace=False):
         self.calls.append(('_audio_rec_prepare', self._player.recording))
+        self.audio_replace = replace                 # Shift+R : Remplacer (14g2)
         return self.audio_prepare_ok
     def _undo_action(self):               self.calls.append('_undo_action')
     def _redo_action(self):               self.calls.append('_redo_action')
@@ -1022,6 +1023,7 @@ def test_rec_on_an_audio_track_prepares_the_take_first(key, shift, ctrl, call, t
     i_prep = win.calls.index(('_audio_rec_prepare', False))
     i_take = win.calls.index(('_take_begin', title, False))
     assert i_prep < i_take                          # prise ouverte avant l'Undo
+    assert win.audio_replace is shift               # Shift+R : Remplacer (14g2)
     if not ctrl:
         assert ('_show_status', ("Replace Rec: " if shift else "Rec: ") + win._audio_rec_note) in win.calls
     teardown(app)
