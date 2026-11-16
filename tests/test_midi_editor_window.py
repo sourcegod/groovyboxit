@@ -194,8 +194,16 @@ class _FakeSlot:
 
 
 class _FakeLabelRouter:
-    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
-        self.kb_notes_input = kb_notes_input or []
+    """kb_notes_play : gamme de lecture du pattern ; la gamme du jeu en direct
+    (kb_notes_input) est une octave plus bas, comme dans l'appli (base 36
+    contre racine 48 par défaut) : l'éditeur doit nommer les notes jouées
+    (Phase 8 étape 15c2)."""
+    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_play=None):
+        self._kb_notes_play = list(kb_notes_play or [])
+        self.kb_notes_input = [n - 12 for n in self._kb_notes_play]
+
+    def playback_kb_notes(self):
+        return list(self._kb_notes_play)
 
     def slot_for_track(self, track_idx):
         return 0
@@ -210,9 +218,9 @@ class _FakeLabelRack:
 
 
 class _FakeLabelParent:
-    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
+    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_play=None):
         self._player = _FakeLabelPlayer()
-        self._router = _FakeLabelRouter(slot_type, kb_notes_input)
+        self._router = _FakeLabelRouter(slot_type, kb_notes_play)
         self._rack   = _FakeLabelRack(slot_type)
 
 
@@ -228,8 +236,8 @@ class _FakeEventLabelWindow:
     _bbt_str             = mew.MidiEditorWindow._bbt_str
     _pad_name            = lambda self, pad: f"Pad{pad+1:02d}"
 
-    def __init__(self, view_mode=None, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
-        self._parent    = _FakeLabelParent(slot_type, kb_notes_input)
+    def __init__(self, view_mode=None, slot_type=InstrumentType.SYNTH, kb_notes_play=None):
+        self._parent    = _FakeLabelParent(slot_type, kb_notes_play)
         self._view_mode = self.MODE_ALL if view_mode is None else view_mode
 
 
@@ -389,9 +397,9 @@ def test_event_pitch_number_kit_is_pad_index_1based():
 
 
 def test_event_pitch_number_grid_synth_resolves_real_midi_note():
-    win = _FakeEventLabelWindow(slot_type=InstrumentType.SYNTH, kb_notes_input=[36, 38, 40])
+    win = _FakeEventLabelWindow(slot_type=InstrumentType.SYNTH, kb_notes_play=[48, 50, 52])
     ev  = {"etype": ETYPE_GRID, "pad": 1, "track": 0}
-    assert win._event_pitch_number(ev) == 38
+    assert win._event_pitch_number(ev) == 50                  # jouée, pas 38 (jeu en direct)
 
 
 def test_event_pitch_number_grid_kit_is_pad_index_1based():
@@ -567,8 +575,8 @@ class _FakeDialogChoicesWindow:
     _pad_names_list      = mew.MidiEditorWindow._pad_names_list
     _pad_name            = lambda self, pad: f"Pad{pad+1:02d}"
 
-    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_input=None):
-        self._parent = _FakeLabelParent(slot_type, kb_notes_input)
+    def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_play=None):
+        self._parent = _FakeLabelParent(slot_type, kb_notes_play)
 
 
 def test_dialog_note_choices_patch_is_raw_midi_note():
@@ -590,12 +598,13 @@ def test_dialog_note_choices_kit_is_pad_index():
 
 
 def test_dialog_note_choices_grid_synth_resolves_real_note():
-    win = _FakeDialogChoicesWindow(slot_type=InstrumentType.SYNTH, kb_notes_input=[36, 38, 40])
+    win = _FakeDialogChoicesWindow(slot_type=InstrumentType.SYNTH, kb_notes_play=[48, 50, 52])
     ev  = {"etype": ETYPE_GRID, "pad": 1, "track": 0}
     choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern(num_pads=3))
     assert sel == 1
     assert len(choices) == 3
-    assert midi_to_note_name(38) in choices[1]
+    assert midi_to_note_name(50) in choices[1]                # jouée (15c2)
+    assert midi_to_note_name(38) not in choices[1]
 
 
 def test_dialog_note_choices_grid_kit_uses_pad_name():
@@ -1264,3 +1273,129 @@ def test_toggle_solo_multi_selection_cuts_once():
     win._toggle_track_solo()
     assert len(seen) == 1                                 # une coupure pour deux pistes
     assert win._parent._router._solos[0] and win._parent._router._solos[2]
+
+
+# ---------------------------------------------------------------------------
+# Notes de grille jouées comme le lecteur (Phase 8 étape 15c3 ; correctif
+# 15c2 : l'éditeur prenait la gamme du jeu en direct, base 36, et sonnait
+# une octave plus bas)
+# ---------------------------------------------------------------------------
+
+from rack import Rack
+from track_router import TrackRouter
+from audio.sound_device_driver import Mixer
+from audio.synth_engine import scale_midi_notes
+
+
+class _OctSnd:
+    pad_notes, gm_note_map = [], {}
+
+    def __getattr__(self, name):
+        return lambda *a, **k: None
+
+
+def _oct_router(slot_type=InstrumentType.SYNTH, channel=0):
+    rack = Rack()
+    rack.set_slot(0, slot_type, "Instrument", {})
+    r = TrackRouter(rack, "/fake", _OctSnd(), lambda m: None, driver=Mixer(44100),
+                    schedule=lambda *a: None)
+    r._track_slots[0] = 0
+    r._track_channels[0] = r._track_cur_channels[0] = channel
+    r.set_playback_kb("major", 48)                 # lecture : racine du pattern (do 3)
+    r.update_kb_notes("major", 36)                 # jeu en direct : base 36 (do 2)
+    return r
+
+
+def test_grid_play_note_synth_uses_the_playback_scale():
+    r = _oct_router()
+    play = scale_midi_notes("major", 48, r.KB_NUMPAD_NOTES)
+    assert r.grid_play_note(0, 0) == play[0] == 48
+    assert r.grid_play_note(0, 2) == play[2]
+    assert r.input_note(0) == 36                   # le jeu en direct garde sa base 36
+    assert r.grid_play_note(0, 0) == r.input_note(0) + 12
+
+
+def test_grid_play_note_out_of_the_scale():
+    r = _oct_router()
+    assert r.grid_play_note(0, len(r.playback_kb_notes())) is None
+
+
+@pytest.mark.parametrize("slot_type", [InstrumentType.BANK, InstrumentType.SFZ])
+def test_grid_play_note_bank_like_the_player(slot_type):
+    r = _oct_router(slot_type, channel=0)
+    assert r.grid_play_note(0, 3) == r.playback_kb_notes()[3]
+    r._track_cur_channels[0] = 9                   # canal 10 : batterie, 36 + pad
+    assert r.grid_play_note(0, 3) == r.DRUM_GRID_BASE + 3 == 39
+
+
+def test_playback_kb_notes_is_a_copy():
+    r = _oct_router()
+    notes = r.playback_kb_notes()
+    notes[0] = 0
+    assert r.playback_kb_notes()[0] == 48
+
+
+class _PreviewSynth:
+    def __init__(self): self.played = []
+    def play(self, midi, vol, maxtime_ms=0): self.played.append(midi)
+    def stop(self, midi): pass
+
+
+class _PreviewWindow:
+    """Fenêtre minimale pour _play_event : vrai routeur, synthé d'écoute noté."""
+    _play_event = mew.MidiEditorWindow._play_event
+
+    def __init__(self, router):
+        synth = _PreviewSynth()
+        # le synthé d'écoute est une propriété du routeur : intermédiaire qui
+        # garde la vraie grid_play_note
+        proxy = SimpleNamespace(grid_play_note=router.grid_play_note, synth_ready=lambda: True,
+                                synth=synth, load_slot_preview=lambda slot: None)
+        self.synth = synth
+        self._preview_midis = []
+        self._parent = SimpleNamespace(_router=proxy, _rack=router._rack, _cur_slot=0,
+                                       _player=SimpleNamespace(play_sound=lambda *a, **k: None))
+
+
+from types import SimpleNamespace
+
+
+def test_editor_preview_plays_the_note_of_the_player():
+    """Gauche / Droite dans l'éditeur : la note du lecteur (do 3), plus
+    celle du jeu en direct (do 2)."""
+    r = _oct_router()
+    win = _PreviewWindow(r)
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "vel": 100, "dur": 300}
+    assert win._play_event(ev) == 300
+    assert win.synth.played == [48] and win._preview_midis == [48]
+
+
+def test_editor_preview_bank_drum_channel():
+    r = _oct_router(InstrumentType.BANK, channel=9)
+    win = _PreviewWindow(r)
+    win._play_event({"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 2, "vel": 90})
+    assert win.synth.played == [38]
+
+
+def test_editor_preview_out_of_scale_plays_nothing():
+    r = _oct_router()
+    win = _PreviewWindow(r)
+    pad = len(r.playback_kb_notes())
+    assert win._play_event({"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": pad}) is None
+    assert win.synth.played == []
+
+
+def test_editor_preview_patch_note_unchanged():
+    r = _oct_router()
+    win = _PreviewWindow(r)
+    win._play_event({"type": "note", "etype": ETYPE_PATCH, "track": 0, "pad": 61, "vel": 90})
+    assert win.synth.played == [61]
+
+
+def test_event_note_name_of_a_grid_note_is_the_played_note():
+    win = _FakeEventLabelWindow(slot_type=InstrumentType.SYNTH, kb_notes_play=[48, 50, 52])
+    ev = {"type": "note", "etype": ETYPE_GRID, "track": 0, "pad": 0, "bar": 0, "step": 0,
+          "vel": 100, "dur": 500}
+    assert win._event_note_name(ev) == midi_to_note_name(48)
+    assert midi_to_note_name(48) in win._event_label_notes(ev)
+    assert midi_to_note_name(36) not in win._event_label_notes(ev)

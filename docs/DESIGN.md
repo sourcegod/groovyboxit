@@ -14360,3 +14360,20 @@ d'Undo (l'export ne modifie pas le projet).
   écoute C2, écoute de l'éditeur C3.
 - Suite : 4575 verts, **3 rouges jusqu'à 15c3** (routeur factice
   `_FakeLabelRouter` de test_midi_editor_window sans `playback_kb_notes`).
+
+### Avancement 15c3 (tests — notes de grille de l'éditeur)
+
+- **`tests/test_midi_editor_window.py`** (78 → 88 tests) : routeur factice
+  `_FakeLabelRouter` avec une gamme de lecture et une gamme du jeu en
+  direct une octave plus bas (comme l'appli) ; les 3 tests rouges de 15c2
+  vérifient maintenant la note **jouée** (50, pas 38). Nouveaux tests sur
+  un vrai `TrackRouter` : `grid_play_note` (synthé → gamme de lecture, une
+  octave au-dessus du jeu en direct ; hors gamme → None ; banque et Synth
+  SFZ comme le lecteur, 36 + pad au canal 10), `playback_kb_notes` (copie)
+  ; écoute de l'éditeur (`_play_event` : do 3 et non do 2, batterie d'une
+  banque, hors gamme muet, note PATCH inchangée) ; nom d'une note de
+  grille dans la liste.
+- Mutations vérifiées (écoute par la gamme du jeu en direct ; nom par la
+  gamme du jeu en direct ; banque sans le canal 10) : chacune fait échouer
+  des tests (fichiers restaurés depuis une copie).
+- **`docs/SPECS.md`** : table. Suite : 4588 verts.
