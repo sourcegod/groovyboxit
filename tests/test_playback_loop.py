@@ -225,15 +225,43 @@ def test_dispatch_grid_erase_clears_offset_instead_of_playing():
     assert replaced == [(4, 0, 2)]
     print("  _dispatch_event GRID : pad tenu en Erase → effacé, pas joué : OK")
 
-def test_dispatch_grid_replace_recording_plays_then_clears():
+def test_dispatch_grid_replace_recording_clears_without_playing():
+    """Remplacer : la piste courante se tait (Phase 8 étape 16b1, essai :
+    l'ancienne note était jouée puis effacée)."""
     pl = _make_player()
     pl._pattern.set_cell(0, 4, 0, 2, 100)
     pl._compute_offsets()
     pl.replace_recording = True
     pl._dispatch_event(DrumPlayer.GRID_EVENT, (0, 4, 0), 100, 2 * pl.step_duration)
-    assert pl.sound_man.calls == [("play_sound", 4, 1.0, 0)]
+    assert pl.sound_man.calls == []
     assert pl.float_offsets[4] == []
-    print("  _dispatch_event GRID : Replace → joué puis effacé : OK")
+    assert pl._pattern.get_cell(0, 4, 0, 2) == 0
+
+
+def test_dispatch_grid_replace_recording_other_track_plays():
+    pl = _make_player()
+    pl._pattern.set_cell(1, 4, 0, 2, 100)
+    pl.replace_recording = True                     # piste courante : 0
+    pl._dispatch_event(DrumPlayer.GRID_EVENT, (1, 4, 0), 100, 2 * pl.step_duration)
+    assert pl.sound_man.calls == [("play_sound", 4, 1.0, 0)]
+    assert pl._pattern.get_cell(1, 4, 0, 2) == 100
+
+
+def test_dispatch_kit_and_patch_replace_recording_erase_without_playing():
+    """Remplacer : les notes KIT / PATCH de la piste courante sont effacées
+    sans être jouées (16b1, essai : elles restaient)."""
+    for etype, marker in ((ETYPE_KIT, DrumPlayer.KIT_TAPE_EVENT),
+                          (ETYPE_PATCH, DrumPlayer.PATCH_TAPE_EVENT)):
+        pl = _make_player()
+        _add(pl, 0, etype, 3.0, {"note": 60, "vel": 100})
+        _add(pl, 1, etype, 3.0, {"note": 60, "vel": 100})
+        got = []
+        pl._on_kit_tape_cb = pl._on_patch_tape_cb = lambda *a: got.append(a)
+        pl.replace_recording = True
+        pl._dispatch_event(marker, (0, 60, 0), 100, 3 * pl.step_duration)
+        pl._dispatch_event(marker, (1, 60, 0), 100, 3 * pl.step_duration)
+        assert pl._pattern._tape[0] == [] and len(pl._pattern._tape[1]) == 1
+        assert [a[0] for a in got] == [1]            # seule l'autre piste joue
 
 def test_dispatch_kit_cb_or_sound_manager():
     pl = _make_player()

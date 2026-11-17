@@ -14597,3 +14597,37 @@ les options retenues.
 - Suite : 4578 verts, **10 rouges jusqu'à 16c1** (fenêtre factice de
   test_key_manager sans `_record_mode` ; test de lecture qui attendait
   « jouée puis effacée » en Remplacer).
+
+### Avancement 16c1 (tests — dialogue et options)
+
+- **`tests/test_record_options.py`** (nouveau, 78 tests) : table des modes
+  (identifiants, libellés, noms courts, mode inconnu → Overdub), défauts =
+  ancien comportement, `normalize` (chaque champ invalide → son défaut,
+  nouvelle liste), `count_label`, `describe` ; dialogue (ordre des cinq
+  champs, focus, libellés, valeurs montrées et rendues, valeurs invalides
+  montrées en défauts, Entrée sur chaque liste) ; `RecordOptionsMixin`
+  (lecteur réglé, Undo et annonce, inchangé, annulé, valeurs du dialogue
+  normalisées) ; touches (R et Ctrl+R suivent le mode, prise audio dans le
+  mode, Shift+R = Remplacer, Ctrl+Shift+R dans la fenêtre principale,
+  l'éditeur MIDI et la fenêtre Songs, Espace / Ctrl+Espace avec le
+  décompte de lecture, Espace qui l'annule) ; lecteur (clic pendant la
+  lecture démarré par Play et arrêté par Pause, clic manuel gardé, arrêts,
+  fin d'un Rec pendant la lecture, clic pendant l'enregistrement décoché,
+  décompte d'enregistrement en Remplacer et sans mesure, décompte de
+  lecture et ses cas immédiats, fin des deux décomptes, clic du décompte
+  selon les options — 7 cas) ; vraie fenêtre principale (options
+  appliquées, projet modifié, Undo / Redo, sauvegarde et relecture, ancien
+  projet, Ctrl+N).
+- **10 tests rouges de 16b1 corrigés** : `test_key_manager.py` (fenêtre
+  factice : `_record_mode`, `_open_record_options`,
+  `record_pattern_with_count_in(bars, replace)`) ; `test_playback_loop.py`
+  (Remplacer : la note de grille de la piste courante est effacée **sans
+  être jouée** ; + l'autre piste joue ; + notes KIT / PATCH effacées sans
+  être jouées).
+- Mutations vérifiées (Remplacer qui joue la grille ; décompte de lecture
+  qui enregistre ; fin de décompte sans le clic de lecture ; R toujours en
+  Overdub ; options hors de l'état d'Undo ; options non relues) : chacune
+  fait échouer des tests (restauration depuis une copie).
+- **`docs/SPECS.md`** : arborescence (`record_modes.py`,
+  `mw_record_options.py`, `test_record_options.py`) et table. Suite :
+  4668 verts.

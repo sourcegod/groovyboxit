@@ -141,8 +141,9 @@ class FakePlayer:
         self.calls.append('double_pattern');  return True
     def halve_pattern(self):
         self.calls.append('halve_pattern');   return True
-    def record_pattern_with_count_in(self):
+    def record_pattern_with_count_in(self, bars=None, replace=False):
         self.calls.append('record_pattern_with_count_in')
+        self.count_in_replace = replace
     def stop_note_repeat(self):
         self.calls.append('stop_note_repeat')
     def set_bpm(self, v):
@@ -322,6 +323,14 @@ class FakeWindow:
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
         self.calls.append(('_take_begin', title,
                            self._player.recording or self._player.erasing))
+    # Options de l'enregistrement (Phase 8 étape 16b1) : mode suivi par R
+    record_mode_id = "overdub"
+    def _record_mode(self):
+        import record_modes
+        return record_modes.mode_of(self.record_mode_id)
+    def _open_record_options(self, parent=None, status=None):
+        self.calls.append('_open_record_options')
+
     # Prise audio (Phase 8 étape 14f1) : piste MIDI par défaut
     audio_track      = False
     audio_prepare_ok = True
