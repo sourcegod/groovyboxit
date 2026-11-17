@@ -14680,3 +14680,28 @@ les options retenues.
   d'Undo (`_capture_state`, Phase 7 étape 15).
 - Vérifié sur la vraie fenêtre principale : L, Ctrl+Z, Shift+Z ; L du
   transport partagé, Ctrl+Z. Essai de l'utilisateur : concluant.
+
+### Avancement 16e1 (tests — Mode MPC et Undo de la boucle)
+
+- **15 tests rouges de 16d1 corrigés** (`test_key_manager.py` : lecteur et
+  fenêtre factices avec `then_overdub` et `mpc`).
+- **`tests/test_record_mpc.py`** (nouveau, 41 tests) : lecteur (drapeau
+  posé par `start_replace_recording` / le décompte, remis à zéro par les
+  arrêts ; `_mpc_pass_done` une seule fois, rien sans boucle, en
+  Remplacer simple ou hors enregistrement ; fin de boucle → Overdub ; la
+  fin du décompte n'est pas un passage ; une note de la piste effacée
+  sans être jouée au premier passage, jouée et gardée ensuite) ; touches
+  (R, Ctrl+R et la prise audio passent le Mode MPC, Shift+R reste un
+  Remplacer simple) ; prise audio (drapeau `mpc`, `_pass_replaces`,
+  premier passage muet puis rejoué, suivants superposés, Stop : tous les
+  passages, événements posés gardés, « le premier remplace » ; départ au
+  milieu, Stop pendant ou juste après le premier passage, sans boucle) ;
+  Undo de la boucle (L dans la fenêtre principale et le transport
+  partagé, Shift+L du transport partagé avec Undo et store, fin
+  inchangée sans Undo).
+- Mutations vérifiées (pas de passage en Overdub à la fin de boucle ; MPC
+  audio = Remplacer ; piste muette après le premier passage ; L sans Undo
+  dans le transport partagé, puis dans la fenêtre principale ; R sans le
+  Mode MPC) : chacune fait échouer des tests (restauration depuis une
+  copie).
+- **`docs/SPECS.md`** : arborescence et table. Suite : 4709 verts.

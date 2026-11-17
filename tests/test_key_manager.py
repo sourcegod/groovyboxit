@@ -129,8 +129,9 @@ class FakePlayer:
         self.calls.append('record_pattern');  self.recording = True
     def stop_record(self):
         self.calls.append('stop_record');     self.recording = False
-    def start_replace_recording(self):
+    def start_replace_recording(self, then_overdub=False):
         self.calls.append('start_replace_recording'); self.replace_recording = True
+        self.then_overdub = then_overdub             # Mode MPC (Phase 8 étape 16d1)
     def play_click(self):
         self.calls.append('play_click');      self.clicking = True
     def stop_click(self):
@@ -141,9 +142,10 @@ class FakePlayer:
         self.calls.append('double_pattern');  return True
     def halve_pattern(self):
         self.calls.append('halve_pattern');   return True
-    def record_pattern_with_count_in(self, bars=None, replace=False):
+    def record_pattern_with_count_in(self, bars=None, replace=False, then_overdub=False):
         self.calls.append('record_pattern_with_count_in')
         self.count_in_replace = replace
+        self.then_overdub = then_overdub             # Mode MPC (16d1)
     def stop_note_repeat(self):
         self.calls.append('stop_note_repeat')
     def set_bpm(self, v):
@@ -336,9 +338,10 @@ class FakeWindow:
     audio_prepare_ok = True
     _audio_rec_note  = "Prise audio piste 1 — micro"
     def _cur_track_is_audio(self):        return self.audio_track
-    def _audio_rec_prepare(self, replace=False):
+    def _audio_rec_prepare(self, replace=False, mpc=False):
         self.calls.append(('_audio_rec_prepare', self._player.recording))
         self.audio_replace = replace                 # Shift+R : Remplacer (14g2)
+        self.audio_mpc = mpc                         # Mode MPC (16d1)
         return self.audio_prepare_ok
     def _undo_action(self):               self.calls.append('_undo_action')
     def _redo_action(self):               self.calls.append('_redo_action')
