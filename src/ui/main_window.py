@@ -297,6 +297,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
         self._init_audio_rec()                        # prise audio (Phase 8 étape 14f1)
+        self._player._on_mpc_overdub_cb = lambda: wx.CallAfter(self._on_mpc_overdub)   # 16d1
 
     def _open_audio_driver(self, cfg):
         """Pilote audio sur la sortie principale (11b1) : le périphérique

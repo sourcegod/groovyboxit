@@ -82,9 +82,10 @@ class AudioRecMixin:
         return audio_takes.is_unnamed(self._project_path) and \
             not os.path.exists(self._project_path)
 
-    def _audio_rec_prepare(self, replace=False):
+    def _audio_rec_prepare(self, replace=False, mpc=False):
         """Avant R / Shift+R / Ctrl+R sur une piste audio : nomme le projet si
-        besoin, ouvre la prise et arme le lecteur. replace : Shift+R (14g2).
+        besoin, ouvre la prise et arme le lecteur. replace : Shift+R (14g2) ;
+        mpc : Mode MPC, Remplacer au premier passage puis Overdub (16d1).
         False = pas d'enregistrement (Annuler, entrée refusée)."""
         if self._audio_rec is not None:
             return True
@@ -109,8 +110,8 @@ class AudioRecMixin:
                 os.remove(path)
             return False
         self._audio_rec = {"track": t, "rel": rel, "recorder": recorder,
-                           "replace": bool(replace), "base": None, "clips": {},
-                           "base_before": {}}
+                           "replace": bool(replace), "mpc": bool(replace and mpc),
+                           "base": None, "clips": {}, "base_before": {}}
         self._player.arm_audio_take()
         self._audio_rec_note = f"Prise audio piste {t + 1} — {name}" + (f" ({note})" if note else "")
         return True
@@ -225,17 +226,28 @@ class AudioRecMixin:
         pat = self._player._pattern
         end = self._range_end(take["anchor"])
         with pat._lock:
-            if rec["replace"]:
+            if self._pass_replaces(rec, k):
                 if rec["base"] is None:
                     rec["base"] = self._track_split(t)[0]
                 rec["base_before"][k] = rec["base"]          # Stop juste après : refaire
                 rec["base"] = self._carve_events(rec["base"], clip.time, end) + [clip]
                 others = self._track_split(t)[1]
-                # passage suivant : la piste se tait dans toute la boucle
-                pat._tape[t] = others + self._carve_events(rec["base"], lp_start, end)
+                if rec.get("mpc"):
+                    # Mode MPC (16d1) : la suite s'ajoute — la piste rejoue ce
+                    # qui reste, dont le passage qui vient de remplacer
+                    pat._tape[t] = others + rec["base"]
+                else:
+                    # passage suivant : la piste se tait dans toute la boucle
+                    pat._tape[t] = others + self._carve_events(rec["base"], lp_start, end)
             else:
                 pat._tape[t].append(clip)
         return clip
+
+    @staticmethod
+    def _pass_replaces(rec, k):
+        """Le passage k remplace-t-il ? Remplacer : tous ; Mode MPC (16d1) :
+        le premier seulement ; Overdub : aucun."""
+        return rec["replace"] and (not rec.get("mpc") or k == 0)
 
     # ------------------------------------------------------------------
     # Fin de la prise
@@ -303,7 +315,8 @@ class AudioRecMixin:
         secs = sum(p[2] for p in passes) / float(result.samplerate)
         msg = f"Prise audio piste {t + 1} : {os.path.basename(result.path)}, {secs:.1f} s, "
         msg += f"mesure {int(step // pat._num_steps) + 1}" if len(passes) == 1 else \
-            f"{len(passes)} passages" + (" (le dernier remplace)" if rec["replace"] else "")
+            f"{len(passes)} passages" + (" (le premier remplace)" if rec.get("mpc") else
+                                     " (le dernier remplace)" if rec["replace"] else "")
         if pat._num_bars != take.get("bars", pat._num_bars):
             msg += f" ; pattern : {pat._num_bars} mesures"
         if recorder.errors:
@@ -319,25 +332,31 @@ class AudioRecMixin:
         pat = self._player._pattern
         clips, others = self._track_split(t)
         base = rec["base"] if rec["base"] is not None else clips
+        extras = []                                   # Mode MPC : passages suivants (16d1)
         for k, start, length, step, end_step in passes:
+            replaces = self._pass_replaces(rec, k)
             clip = rec["clips"].get(k)
             if clip is not None:                      # déjà posé pendant la boucle
                 shorter = clip_window(clip.payload)[1] != length
                 clip.payload = clip_payload(rel, 1.0, start, length)
-                if rec["replace"] and shorter and k in rec["base_before"]:
+                if replaces and shorter and k in rec["base_before"]:
                     # Stop peu après la pose : seule la partie enregistrée
                     # remplace, la fin du passage précédent revient
                     base = self._carve_events(rec["base_before"][k], step, end_step) + [clip]
-                elif not rec["replace"] and clip not in clips:
+                elif not replaces and rec["replace"]:
+                    extras.append(clip)
+                elif not replaces and clip not in clips:
                     clips.append(clip)
                 continue
             clip = TapeEvent(ETYPE_AUDIO, payload=clip_payload(rel, 1.0, start, length), time=step)
             rec["clips"][k] = clip
-            if rec["replace"]:
+            if replaces:
                 base = self._carve_events(base, step, end_step) + [clip]
+            elif rec["replace"]:
+                extras.append(clip)
             else:
                 clips.append(clip)
-        pat._tape[t] = others + (base if rec["replace"] else clips)
+        pat._tape[t] = others + (base + extras if rec["replace"] else clips)
         if take.get("anchor") is not None and take["anchor"][3] is None:     # sans boucle (R3)
             end_step = max(p[4] for p in passes)
             pat.set_bar_count(max(take.get("bars", 1),

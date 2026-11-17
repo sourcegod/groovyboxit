@@ -163,11 +163,13 @@ class CtrlHandler:
             return True
         if not shift and not alt and key == ord('R'):
             mode = win._record_mode()       # le mode des Options (16b1, O1)
-            if win._cur_track_is_audio() and not win._audio_rec_prepare(replace=mode.replace):
+            if win._cur_track_is_audio() and not win._audio_rec_prepare(
+                    replace=mode.replace, mpc=mode.then_overdub):
                 return True                 # prise audio (14f1)
             title = "Remplacement" if mode.replace else "Enregistrement"
             win._take_begin(f"{title} piste {win._player._cur_track + 1}")
-            win._player.record_pattern_with_count_in(replace=mode.replace)
+            win._player.record_pattern_with_count_in(replace=mode.replace,
+                                                     then_overdub=mode.then_overdub)
             n = win._player.count_in_bars
             win._refresh_track_list()
             win._show_status(

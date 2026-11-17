@@ -139,7 +139,11 @@ Ctrl+Shift+R     Options de l'enregistrement (aussi depuis l'éditeur MIDI et la
                  (Espace, Ctrl+Espace), Clic pendant l'enregistrement, Décompte
                  pendant l'enregistrement (Ctrl+R) ; décomptes : aucun, 1, 2, 4
                  ou 8 mesures. Gardées dans le projet ; Ctrl+Z annule un
-                 changement. Espace pendant un décompte l'annule
+                 changement. Espace pendant un décompte l'annule.
+                 Mode MPC « Remplacer puis Overdub » : en boucle, le premier
+                 passage remplace (la piste se tait), les suivants s'ajoutent
+                 (annoncé « Rec (MPC) : Overdub ») ; MIDI et audio ; sans
+                 boucle, comme Remplacer
 R                Démarrer l'enregistrement dans le mode des Options (Overdub par
                  défaut ; démarre aussi la lecture)
 R (2e appui)     Arrêter l'enregistrement (lecture continue)

@@ -14631,3 +14631,35 @@ les options retenues.
 - **`docs/SPECS.md`** : arborescence (`record_modes.py`,
   `mw_record_options.py`, `test_record_options.py`) et table. Suite :
   4668 verts.
+
+### Avancement 16d1 (implémentation — Mode MPC)
+
+- **Lecteur** : `start_replace_recording(then_overdub)`,
+  `record_pattern_with_count_in(replace, then_overdub)`,
+  `_replace_then_overdub` (remis à zéro par les arrêts) ;
+  `_mpc_pass_done()` à chaque fin de fenêtre hors décompte : en boucle,
+  pendant un Remplacement MPC, `replace_recording` passe à faux (Overdub
+  pour la suite) et `_on_mpc_overdub_cb` l'annonce. Sans boucle : rien ne
+  change, comme Remplacer.
+- **Touches** : R et Ctrl+R passent `mode.then_overdub` au lecteur et à la
+  prise audio ; Shift+R reste un Remplacer simple ; annonce « Rec (MPC) :
+  Overdub » au retour de boucle (`RecordOptionsMixin._on_mpc_overdub`).
+- **Audio** (`AudioRecMixin`) : prise `"mpc"` ; `_pass_replaces(rec, k)`
+  (Remplacer : tous les passages ; MPC : le premier seulement) ; au retour
+  du premier passage, la piste rejoue ce qui reste — dont ce passage —
+  au lieu de se taire ; les passages suivants s'ajoutent (clips
+  superposés) ; au Stop : premier passage comme Remplacer (avec
+  `base_before` si le Stop suit sa pose), suivants ajoutés ; annonce « N
+  passages (le premier remplace) ».
+- `docs/shortcuts.md` (aide F1) : Mode MPC.
+- Vérifié par script sur la vraie fenêtre principale (boucle d'une
+  seconde) : MIDI — ancienne note effacée sans être jouée au premier
+  passage, Overdub ensuite, la note enregistrée au premier passage gardée
+  et rejouée, annonces ; audio — piste muette au premier passage (ancien
+  clip remplacé), premier passage entendu au deuxième, trois passages
+  superposés au Stop.
+- **Essai de l'utilisateur (2026-11-17), concluant** : MIDI, audio, sans
+  boucle (comme Remplacer), Ctrl+Z après chaque prise.
+- Suite : 4653 verts, **15 rouges jusqu'à 16e1** (fenêtres et lecteurs
+  factices sans les paramètres `mpc` / `then_overdub`).
+

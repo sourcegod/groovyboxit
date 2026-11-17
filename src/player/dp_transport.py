@@ -63,6 +63,7 @@ class TransportMixin:
         self._count_in         = 0
         self.recording         = False
         self.replace_recording = False
+        self._replace_then_overdub = False     # Mode MPC (16d1)
         self._end_audio_take()                         # prise audio (14f1)
         self._resume_offset    = None
         self._song_mode        = False
@@ -134,6 +135,7 @@ class TransportMixin:
         self._note_repeat_active = False
         self.recording           = False
         self.replace_recording   = False
+        self._replace_then_overdub = False   # Mode MPC (16d1)
         self._end_audio_take()                         # prise audio (14f1)
         self.erasing             = False
         self._erase_active_pads.clear()

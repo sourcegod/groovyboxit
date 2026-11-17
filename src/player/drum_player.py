@@ -86,6 +86,11 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         # mesures de décompte avant Play ; _count_in_record : le décompte en
         # cours mène à un Rec (Ctrl+R) ou à la lecture seule (Play)
         self.count_in_play_bars   = 0
+        # Mode MPC « Remplacer puis Overdub » (Phase 8 étape 16d1, § 16a O8) :
+        # le Remplacement s'arrête au retour de boucle ; _on_mpc_overdub_cb()
+        # l'annonce (fil de lecture)
+        self._replace_then_overdub = False
+        self._on_mpc_overdub_cb    = None
         self._count_in_record     = True
         self._count_in_clicked_before = False
         self._measure_start       = None

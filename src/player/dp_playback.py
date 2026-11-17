@@ -287,6 +287,7 @@ class PlaybackLoopMixin:
                     if self._on_count_in_done_cb:
                         self._on_count_in_done_cb()
         elif not self._wakeup.is_set() and not self.stop_event.is_set():
+            self._mpc_pass_done()              # Mode MPC : Overdub après le 1er passage (16d1)
             # Décrémenter le compteur de boucle si actif (loop_count > 0)
             if self._lm.remaining > 0 and self.playing:
                 if self._lm.on_measure_end():

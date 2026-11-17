@@ -297,12 +297,13 @@ class CharHandler:
             else:
                 mode = win._record_mode()                    # le mode des Options (16b1, O1)
                 audio = win._cur_track_is_audio()            # prise audio (14f1)
-                if audio and not win._audio_rec_prepare(replace=mode.replace):
+                if audio and not win._audio_rec_prepare(replace=mode.replace,
+                                                        mpc=mode.then_overdub):
                     return True
                 title = "Remplacement" if mode.replace else "Enregistrement"
                 win._take_begin(f"{title} piste {win._player._cur_track + 1}")
                 if mode.replace:
-                    win._player.start_replace_recording()
+                    win._player.start_replace_recording(then_overdub=mode.then_overdub)
                 else:
                     win._player.record_pattern()
                 win._refresh_track_list()

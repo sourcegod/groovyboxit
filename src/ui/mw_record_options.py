@@ -20,6 +20,12 @@ class RecordOptionsMixin:
 
     _record_options = dict(record_modes.DEFAULTS)
 
+    def _on_mpc_overdub(self):
+        """Mode MPC : premier passage fini, la suite s'ajoute (16d1) —
+        annoncé (fil de l'interface)."""
+        self._refresh_track_list()
+        self._show_status("Rec (MPC) : Overdub")
+
     def _record_mode(self):
         """RecordMode suivi par R et Ctrl+R (O1)."""
         return record_modes.mode_of(self._record_options.get("mode"))

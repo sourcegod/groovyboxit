@@ -17,14 +17,14 @@ class RecordingMixin:
 
     #--------------------------------------------------------------------------
 
-    def record_pattern_with_count_in(self, bars=None, replace=False):
+    def record_pattern_with_count_in(self, bars=None, replace=False, then_overdub=False):
         """Ctrl+R : décompte de bars mesures (count_in_bars par défaut), puis
         Rec ; replace : en Remplacer (mode des Options de l'enregistrement,
-        Phase 8 étape 16b1, O1)."""
+        Phase 8 étape 16b1, O1) ; then_overdub : Mode MPC (16d1)."""
         bars = self.count_in_bars if bars is None else bars
         if bars == 0:
             if replace:
-                self.start_replace_recording()
+                self.start_replace_recording(then_overdub)
             else:
                 self.record_pattern()
             return
@@ -36,6 +36,7 @@ class RecordingMixin:
         self._resume_offset = None   # count-in repart toujours du beat 0
         self.recording = False
         self.replace_recording = bool(replace)   # gardé jusqu'à la fin du décompte (16b1)
+        self._replace_then_overdub = bool(replace and then_overdub)   # Mode MPC (16d1)
         self.playing   = False
         self._count_in = bars
         self.clicking  = True
@@ -43,6 +44,19 @@ class RecordingMixin:
         self.start_thread()
 
     #--------------------------------------------------------------------------
+
+    def _mpc_pass_done(self):
+        """Retour de boucle pendant un enregistrement en Mode MPC (Phase 8
+        étape 16d1, O8) : le premier passage a remplacé, les suivants
+        ajoutent (Overdub). Vrai si le passage a eu lieu."""
+        if not (self.recording and self.replace_recording and self._replace_then_overdub
+                and self._pattern._looping):
+            return False
+        self.replace_recording = False
+        self._replace_then_overdub = False
+        if self._on_mpc_overdub_cb is not None:
+            self._on_mpc_overdub_cb()
+        return True
 
     def _count_in_click_done(self):
         """Fin du décompte (Phase 8 étape 16b1, O9) : le métronome du
@@ -84,6 +98,7 @@ class RecordingMixin:
     def stop_record(self):
         self.recording         = False
         self.replace_recording = False
+        self._replace_then_overdub = False
         self._count_in         = 0
         self._end_audio_take()
         if self._metro.should_stop_after_rec():
@@ -155,8 +170,11 @@ class RecordingMixin:
 
     #--------------------------------------------------------------------------
 
-    def start_replace_recording(self):
+    def start_replace_recording(self, then_overdub=False):
+        """Shift+R, ou R en mode Remplacer / MPC ; then_overdub : Mode MPC,
+        Overdub au premier retour de boucle (Phase 8 étape 16d1, O8)."""
         self._metro.save_rec_state()
+        self._replace_then_overdub = bool(then_overdub)
         self.replace_recording = True
         self.recording         = True
         if self.click_in_recording and not self.clicking:
