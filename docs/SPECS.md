@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) ; pistes audio (type de piste Audio par pattern, prises WAV 24 bits dans `Audios/`, clips = fenêtres sur leur fichier, lecture calée sur le tempo à vitesse réelle, enregistrement par R / Shift+R / Ctrl+R avec compensation de latence, Overdub en clips superposés et Remplacer sur la plage en boucle, noms de piste par F2) ; export audio en un seul dialogue (source pattern / song / sélection / presse-papier, pistes sélectionnées, Mutes et Solos pris en compte ou non) puis le nom du fichier | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) ; pistes audio (type de piste Audio par pattern, prises WAV 24 bits dans `Audios/`, clips = fenêtres sur leur fichier, lecture calée sur le tempo à vitesse réelle, enregistrement par R / Shift+R / Ctrl+R avec compensation de latence, Overdub en clips superposés et Remplacer sur la plage en boucle, noms de piste par F2) ; export audio en un seul dialogue (source pattern / song / sélection / presse-papier, pistes sélectionnées, Mutes et Solos pris en compte ou non) puis le nom du fichier ; Options de l'enregistrement (Ctrl+Shift+R : mode Overdub / Remplacer / MPC « Remplacer puis Overdub », clic et décompte pendant la lecture et l'enregistrement, gardées dans le projet), Remplacer qui fait taire la piste ; Undo de la boucle (L) | en cours |
 
 ---
 
@@ -1151,6 +1151,33 @@ volume général ne sont pas concernés.
 
 ## Enregistrement
 
+### Options de l'enregistrement (Ctrl+Shift+R, Phase 8 étape 16)
+- Dialogue « Options de l'enregistrement », depuis la fenêtre principale,
+  l'éditeur MIDI et la fenêtre Songs (focus sur le mode, Entrée valide) :
+  1. **Mode** : « Overdub » (défaut), « Remplacer », « Remplacer puis
+     Overdub (MPC) » ;
+  2. **Clic pendant la lecture** (décochée) : Play démarre le métronome,
+     Pause / Stop l'arrêtent ;
+  3. **Décompte pendant la lecture** (aucun par défaut) : Espace / P et
+     Ctrl+Espace font d'abord un décompte, puis la lecture seule ;
+  4. **Clic pendant l'enregistrement** (cochée) : Rec démarre le métronome
+     (il s'arrête au Stop s'il ne tournait pas avant) ; décochée, ni Rec ni
+     la fin du décompte de Ctrl+R ne le laissent tourner ;
+  5. **Décompte pendant l'enregistrement** (1 mesure) : celui de Ctrl+R.
+
+  Décomptes : aucun, 1, 2, 4 ou 8 mesures. Espace pendant un décompte
+  l'annule.
+- **Modes extensibles** : un mode = un identifiant (`overdub`, `replace`,
+  `mpc`) décrit par une ligne de la table `record_modes.MODES`, d'où la
+  liste du dialogue est construite ; un identifiant inconnu → Overdub.
+  D'autres modes viendront : Punch In/Out, Automation, Live Looper.
+- **R et Ctrl+R suivent le mode** (annonce « Rec : … », « Replace Rec :
+  … », « Rec (MPC) : … ») ; **Shift+R** reste un Remplacer simple.
+- **Gardées dans le projet** : clé `record_options` du `.gvp` (`mode`,
+  `click_play`, `count_in_play`, `click_record`, `count_in`) ; absente ou
+  Ctrl+N → les défauts (le comportement d'avant) ; changer les options est
+  un point d'Undo.
+
 ### Mode Overdub (R)
 - Ajoute les nouvelles notes sans effacer les existantes
 - Démarre aussi la lecture si elle n'est pas active
@@ -1174,11 +1201,24 @@ volume général ne sont pas concernés.
   canal, même temps, avec sa vélocité ; case de tête décochée → position
   jouée, frappes toutes gardées
 
-### Mode Remplacement (Shift+R)
-- Efface les notes au fil du playback, remplacées par les nouvelles frappes
+### Mode Remplacement (Shift+R, ou R en mode Remplacer)
+- Efface les notes de la piste courante (grille, KIT, PATCH) au fil du
+  playback, **sans les jouer** : la piste se tait dans la plage remplacée
+  (Phase 8 étape 16b1), remplacées par les nouvelles frappes ; en boucle,
+  chaque passage remplace le précédent. Piste audio : voir Pistes audio
+
+### Mode MPC « Remplacer puis Overdub » (Phase 8 étape 16d1)
+- En boucle, le **premier passage remplace** (la piste se tait), les
+  **suivants s'ajoutent** (annoncé « Rec (MPC) : Overdub ») ; la fin du
+  décompte n'est pas un passage ; sans boucle, comme Remplacer
+- Piste MIDI : les notes jouées au premier passage restent et sont
+  rejouées ensuite ; piste audio : le premier passage remplace la plage
+  puis est rejoué, les suivants deviennent des clips superposés (au Stop :
+  « N passages (le premier remplace) »)
 
 ### Count-In (Ctrl+R)
-- 1 mesure de métronome, puis Rec+Play démarre automatiquement
+- Le décompte des Options (1 mesure par défaut), puis Rec+Play démarre
+  automatiquement, dans le mode des Options
 - La première frappe pendant le Count-In est capturée sur le premier temps
 - Démarre depuis la position courante du playhead
 
@@ -2352,6 +2392,7 @@ comportement qui diffère volontairement du pas-à-pas natif.
 | `ExportTargetDialog` | dialogs_simple | Alt+Shift+E (fenêtre principale, éditeur MIDI) | Ce qu'on exporte en MIDI : pattern courant ou song courant ; dernier choix gardé (Phase 8 étape 4 ; plus pour l'audio depuis l'étape 15) |
 | `ImportModeDialog` | dialogs_simple | Alt+Shift+I, après le fichier | Import en Banque GM ou en Rack 16 canaux ; dernier choix gardé (Phase 8 étape 5f1) |
 | `AudioExportDialog` | dialogs_simple | Alt+Shift+W (fenêtre principale, éditeur MIDI, fenêtre Songs), avant le nom du fichier | « Exporter en audio » : source (pattern, song, sélection, presse-papier), pistes sélectionnées, Mutes, Solos, début et fin de la sélection, fin, format, sortie (mix, pistes séparées, les deux), Normaliser, mesure, niveau visé (Phase 8 étapes 1, 2 et 15) |
+| `RecordOptionsDialog` | dialogs_simple | Ctrl+Shift+R (fenêtre principale, éditeur MIDI, fenêtre Songs) | Options de l'enregistrement : mode (table extensible), clic et décompte pendant la lecture, clic et décompte pendant l'enregistrement (Phase 8 étape 16) |
 
 ### ExplorerDialog (Alt+X)
 

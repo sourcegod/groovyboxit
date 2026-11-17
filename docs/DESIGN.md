@@ -14705,3 +14705,49 @@ les options retenues.
   Mode MPC) : chacune fait échouer des tests (restauration depuis une
   copie).
 - **`docs/SPECS.md`** : arborescence et table. Suite : 4709 verts.
+
+### Clôture de l'étape 16 (16f1)
+
+**Bilan** (Phase 8 étapes 16a à 16e1, 2026-11-17, 4709 tests verts) :
+dialogue **« Options de l'enregistrement »** (Ctrl+Shift+R, fenêtre
+principale, éditeur MIDI, fenêtre Songs) — mode Overdub / Remplacer /
+**Mode MPC « Remplacer puis Overdub »**, clic et décompte pendant la
+lecture, clic et décompte pendant l'enregistrement — gardé dans le projet
+avec Undo ; **modes extensibles** (table `record_modes`, Punch In/Out,
+Automation, Live Looper à venir) ; R et Ctrl+R suivent le mode ;
+Remplacer fait taire la piste courante ; Mode MPC en MIDI et en audio ;
+Undo de la boucle.
+
+**Commits** : 16a (plan), 16b1 / 16c1 (dialogue et options), 16d1 (Mode
+MPC), 16d2 (correctif : Undo de la boucle), 16e1 (tests), 16f1 (clôture).
+
+**Décisions de l'utilisateur** : O1 (R suit le mode, Shift+R = Remplacer),
+O2 (mode, clics, décompte ; « Clic pendant la lecture » ajouté avant celui
+de l'enregistrement), O3 (MPC pour le MIDI et l'audio), O4 (options dans
+le projet), O5 (d'autres modes viendront) ; plan validé (O6-O11).
+
+**Écarts et imprévus** :
+- essai de 16b1 : **Remplacer ne coupait pas la piste** (note de grille
+  jouée puis effacée, notes KIT / PATCH ni effacées ni coupées) —
+  corrigé : effacées sans être jouées ; **« Décompte pendant la
+  lecture »** ajouté (sans raccourci propre) ; l'ancien « Décompte »
+  devient « Décompte pendant l'enregistrement » ;
+- essai de 16d1 : **pas d'Undo pour la boucle** (L) — correctif 16d2,
+  aussi Shift+L du transport partagé (Undo, fin recopiée dans le store) ;
+- 16d1 et 16d2 committés séparément (partie « boucle » d'un fichier commun
+  mise de côté puis restaurée depuis une copie, vérifiée par `diff`) ;
+- échecs en cascade des tests de touches quand un test échoue avant
+  `teardown` (wx.App laissée) : sans gravité, disparus une fois la cause
+  corrigée.
+
+**Essais de l'utilisateur** : 16b1 (deux essais), 16d1, 16d2 : concluants.
+
+**`docs/SPECS.md`** : section « Options de l'enregistrement », Remplacer
+qui fait taire la piste, Mode MPC, Count-In, table des dialogues, ligne
+Phase 8. **`docs/shortcuts.md`** (aide F1) : Ctrl+Shift+R, R, Ctrl+R,
+Shift+R, C, Mode MPC.
+
+**Suites notées** : modes Punch In/Out, Automation, Live Looper (dans ce
+dialogue, réglages propres actifs selon le mode) ; volume et pan entendus
+tout de suite sur un clip audio ; monitoring de l'entrée ; gestion des
+prises et édition des clips ; SpeechAccess ; notes en temps flottant.
