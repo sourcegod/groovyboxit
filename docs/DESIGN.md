@@ -14751,3 +14751,101 @@ Shift+R, C, Mode MPC.
 dialogue, réglages propres actifs selon le mode) ; volume et pan entendus
 tout de suite sur un clip audio ; monitoring de l'entrée ; gestion des
 prises et édition des clips ; SpeechAccess ; notes en temps flottant.
+
+---
+
+## Phase 8 étape 17a — Tests en trois niveaux (Basique, Intermédiaire, Avancé)
+
+### Numérotation des commits de ce chantier
+
+17a (plan), puis paires implémentation → vérification ; un commit
+imprévu prend le suffixe suivant, toujours après les commits déjà faits.
+
+### Origine du besoin (utilisateur, 2026-11-17)
+
+« Ils sont nombreux, et ça prend de plus en plus de temps pour lancer la
+suite complète. Ne peut-on pas les classer en plusieurs catégories comme :
+Basics, Intermédiaires, et Avancés, de façon à ne lancer qu'une partie des
+tests concernés par la modification, et ne lancer la suite complète qu'à
+la fin de l'implémentation ? Et peux-tu regarder comment font les autres
+gros projets open source ? »
+
+### État des lieux mesuré (2026-11-17)
+
+- 4709 tests, **≈ 81 s** (chargement 1,5 s), sur **un seul** des 8 cœurs ;
+  pas de `pytest.ini`, seulement `tests/conftest.py` ; pas de pytest-xdist
+  (paquet Debian `python3-pytest-xdist` 3.6.1 disponible).
+- **30 phases de test (< 1 % de la suite) = 44 s, 60 % du temps** : vraie
+  fenêtre principale (ALSA, carte son), lecture de songs en temps réel,
+  export audio de longs fichiers (LUFS, limiteur) ; les ≈ 4680 autres :
+  ≈ 30 s. Fichiers les plus lents : `test_song.py` 11,5 s,
+  `test_audio_export.py` 11,3 s, `test_audio_loop_recording.py` 6,8 s.
+
+### Ce que font les grands projets
+
+- **NumPy, SciPy** : `@pytest.mark.slow`, sautés par défaut ; `spin test
+  -m full` lance tout ; SciPy a un niveau `xslow` (variable
+  d'environnement).
+- **pandas** : marques `slow`, `network`, `db`, `single_cpu` ; suite rapide
+  sans les lents, **en parallèle** (`-n 4`, pytest-xdist), les
+  `single_cpu` à part ; `--strict-markers`.
+- **pytest-testmon** : ne relance que les tests touchés par le code
+  modifié (base de dépendances après un passage complet).
+- **pytest** : `--lf`, `--ff`, `--sw`, `--durations`.
+- En somme : un classement par **coût et besoins**, pas par difficulté ;
+  deux ou trois niveaux ; le parallèle.
+
+### Décisions de l'utilisateur (2026-11-17)
+
+- **T1 — trois niveaux** : Basique, Intermédiaire, Avancé (proposition
+  acceptée).
+- **T2 — trois marques** : `slow`, `gui`, et **`audio`** (ajoutée par
+  l'utilisateur : « certaines lenteurs viennent des tests de Song, et des
+  manip en temps réel »).
+- **T3 — pas de pytest-testmon** pour commencer.
+
+### Choix de conception proposés
+
+**T4 — marques** (déclarées dans `pytest.ini`, `--strict-markers` ; un
+test peut en porter plusieurs) :
+- `slow` : calcul long sans matériel ni attente (LUFS, limiteur sur de
+  longs fichiers…) ;
+- `audio` : **temps réel** — fil de lecture qui joue et attend vraiment
+  (songs, décomptes, boucles, prises) — ou vraie carte son ; sensibles à
+  la charge de la machine ;
+- `gui` : vraie fenêtre principale (`MainWindow`, clients ALSA / MIDI).
+
+Critère : toute phase ≥ 0,3 s mesurée par `--durations`, plus tout test
+qui ouvre une vraie fenêtre ou fait tourner le vrai fil de lecture.
+
+**T5 — niveaux** (`tools/tests.sh`) :
+
+| Niveau | Contenu | Quand |
+|---|---|---|
+| **Basique** | les fichiers de tests donnés (ceux liés à la modification) ; sans fichier : `--lf` (les derniers en échec) | à chaque petite modification |
+| **Intermédiaire** | `-m "not slow and not audio and not gui"`, en parallèle | à chaque étape d'implémentation, avant l'essai |
+| **Avancé** | toute la suite, en parallèle ; les `audio` / `gui` qui ne supportent pas le parallèle dans un second passage, en série | avant chaque commit, à chaque clôture |
+
+**T6 — parallèle** : pytest-xdist (`-n auto`, 8 cœurs), installé par
+`sudo apt install python3-pytest-xdist` (par l'utilisateur) ; à vérifier :
+la wx.App de chaque processus, les fichiers temporaires, les clients ALSA,
+les tests en temps réel (si instables en parallèle : passage en série,
+comme `single_cpu` chez pandas).
+
+**T7 — garde-fou** : le niveau Avancé signale un test **non marqué** qui
+dépasse 0,3 s (pour qu'un nouveau test lent ne ralentisse pas le niveau
+Intermédiaire sans qu'on le voie) ; `pytest.ini` donne `testpaths = tests`.
+
+**T8 — méthode de travail** : la règle « suite complète avant chaque
+commit » devient : Basique pendant le travail, Intermédiaire à chaque
+étape, **Avancé avant chaque commit et à chaque clôture** (mémoire mise à
+jour) ; `docs/SPECS.md` décrit les niveaux et les marques.
+
+### Découpage (validé, 2026-11-17)
+
+- **17b1 — marques et niveaux** : `pytest.ini`, marques posées,
+  `tools/tests.sh` (Basique, Intermédiaire, Avancé en série d'abord),
+  garde-fou des tests lents non marqués ; mesures avant / après.
+- **17c1 — parallèle** : pytest-xdist, corrections des tests qui ne le
+  supportent pas, second passage en série si besoin ; mesures.
+- **17d1 — clôture** (SPECS, mémoire, `git gc`).
