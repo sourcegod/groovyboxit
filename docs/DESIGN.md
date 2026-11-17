@@ -14663,3 +14663,20 @@ les options retenues.
 - Suite : 4653 verts, **15 rouges jusqu'à 16e1** (fenêtres et lecteurs
   factices sans les paramètres `mpc` / `then_overdub`).
 
+### Correctif 16d2 (Undo de la boucle)
+
+- **Signalé à l'essai de 16d1 (2026-11-17)** : pas d'Undo pour la boucle
+  activée / désactivée.
+- **Cause** : L basculait `_looping` sans point d'Undo, dans la fenêtre
+  principale (`key_handler_chars`) comme dans le transport partagé de
+  l'éditeur MIDI et de la fenêtre Songs (`key_transport`) ; dans ce
+  dernier, Shift+L (fin de boucle) n'avait pas non plus d'Undo ni ne
+  recopiait la fin dans le pattern du store, contrairement à la fenêtre
+  principale (Phase 7 étape 15f1).
+- **Correctif** : `_add_undo("Boucle: On" / "Boucle: Off")` avant la
+  bascule (les deux endroits) ; Shift+L du transport partagé aligné sur la
+  fenêtre principale (Undo « Fin de boucle : … » si la fin change, fin
+  recopiée dans le store). L'état de la boucle fait déjà partie de l'état
+  d'Undo (`_capture_state`, Phase 7 étape 15).
+- Vérifié sur la vraie fenêtre principale : L, Ctrl+Z, Shift+Z ; L du
+  transport partagé, Ctrl+Z. Essai de l'utilisateur : concluant.

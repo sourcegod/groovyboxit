@@ -371,6 +371,8 @@ class CharHandler:
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('l') or key == ord('L')):
             pat = win._player._pattern
+            # point d'Undo (Phase 8 étape 16d2, essai : la bascule n'en avait pas)
+            win._add_undo(f"Boucle: {'Off' if pat._looping else 'On'}")
             pat._looping = not pat._looping
             win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
             return True
