@@ -43,6 +43,7 @@ from ui.mw_midi_editor import MidiEditorMixin
 from ui.mw_tempo       import TempoMixin
 from ui.mw_devices     import DevicesMixin
 from ui.mw_audio_rec   import AudioRecMixin
+from ui.mw_record_options import RecordOptionsMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -73,7 +74,8 @@ class _LoadingDialog(wx.Dialog):
 
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
-                 MidiEditorMixin, TempoMixin, DevicesMixin, AudioRecMixin, wx.Frame):
+                 MidiEditorMixin, TempoMixin, DevicesMixin, AudioRecMixin,
+                 RecordOptionsMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
@@ -632,8 +634,12 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
 
     def _on_count_in_done(self):
         self._refresh_track_list()
+        if not self._player._count_in_record:            # décompte de lecture (16b1, essai)
+            self._show_status(f"Play: {self._player.position_str()}")
+            return
         track_idx = self._player._cur_track
-        self._show_status(f"Rec: Piste {track_idx + 1} — {self._router.slot_name(track_idx)}")
+        self._show_status(f"{self._record_mode().short}: Piste {track_idx + 1} — "
+                          f"{self._router.slot_name(track_idx)}")
 
     def _set_input_mode(self, mode, announce=True):
         """Mode Pad ou Keyboard (Ctrl+1 / Ctrl+2, liste « Mode »). announce :

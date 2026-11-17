@@ -79,7 +79,8 @@ Espace / P       Play / Pause pattern (reprend depuis la position pausée)
 Ctrl+Space       Aller au début et lancer la lecture immédiatement (Goto Start + Play)
                  Fonctionne aussi depuis l'éditeur MIDI et la fenêtre Songs
 V                Stop All (sons + pattern + Rec + Erase + réinitialise la position)
-C                Toggle métronome (click)
+C                Toggle métronome (click) ; voir aussi les clics des Options de
+                 l'enregistrement (Ctrl+Shift+R)
 Q                Activer / désactiver le mode Note Repeat
 g                Transport : Aller au début du pattern (Goto Start)
 Shift+G          Transport : Aller à la fin du pattern (Goto End)
@@ -132,12 +133,22 @@ Alt+→            Pan du Pad courant +10 (vers la droite)
 Alt+0            Recentrer le Pan du Pad courant (→ 0)
 
 --- Enregistrement (mode R) ---
-R                Démarrer l'enregistrement en Overdub (démarre aussi la lecture)
+Ctrl+Shift+R     Options de l'enregistrement (aussi depuis l'éditeur MIDI et la
+                 fenêtre Songs) : Mode (Overdub, Remplacer, Remplacer puis Overdub
+                 (MPC)), Clic pendant la lecture, Décompte pendant la lecture
+                 (Espace, Ctrl+Espace), Clic pendant l'enregistrement, Décompte
+                 pendant l'enregistrement (Ctrl+R) ; décomptes : aucun, 1, 2, 4
+                 ou 8 mesures. Gardées dans le projet ; Ctrl+Z annule un
+                 changement. Espace pendant un décompte l'annule
+R                Démarrer l'enregistrement dans le mode des Options (Overdub par
+                 défaut ; démarre aussi la lecture)
 R (2e appui)     Arrêter l'enregistrement (lecture continue)
-Shift+R          Enregistrement en Remplacement : les notes existantes sont effacées
-                 au fil du playback, remplacées par les nouvelles frappes
+Shift+R          Enregistrement en Remplacement : les notes existantes de la piste
+                 sont effacées au fil du playback, sans être jouées (la piste se
+                 tait), remplacées par les nouvelles frappes
 Shift+R (2e)     Arrêter le mode Remplacement
-Ctrl+R           Count-In : 1 mesure de métronome, puis Rec+Play démarre
+Ctrl+R           Count-In : le décompte des Options (1 mesure par défaut), puis
+                 Rec+Play démarre dans le mode des Options
 NumPad 1-8       Jouer + enregistrer le pad dans le pattern
 NumPad 9         Rejouer + enregistrer le dernier pad
 Note: en mode Note Repeat actif, les répétitions sont aussi enregistrées

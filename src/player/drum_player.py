@@ -76,7 +76,18 @@ class DrumPlayer(TransportMixin, PositionMixin, PlaybackLoopMixin, LivePlayMixin
         self._erase_was_recording = False
         self._erase_was_replace   = False
         self._erase_was_clicking  = False    # métronome relancé au retour (13b2)
-        self.count_in_bars        = 1     # 0, 1, 2, 4 ou 8 mesures
+        self.count_in_bars        = 1     # 0, 1, 2, 4 ou 8 mesures (Options de l'enregistrement, 16b1)
+        # « Clic pendant la lecture » (Phase 8 étape 16b1, § 16a O9) : Play
+        # démarre le métronome ; _click_by_play : c'est Play qui l'a démarré
+        # (Stop / Pause l'arrêtent alors)
+        self.click_in_playback    = False
+        self._click_by_play       = False
+        # « Décompte pendant la lecture » (Phase 8 étape 16b1, essai) :
+        # mesures de décompte avant Play ; _count_in_record : le décompte en
+        # cours mène à un Rec (Ctrl+R) ou à la lecture seule (Play)
+        self.count_in_play_bars   = 0
+        self._count_in_record     = True
+        self._count_in_clicked_before = False
         self._measure_start       = None
         self._on_recorded_cb      = None  # callback(pad_idx, bar_idx, step_idx) pour l'UI
         self._on_replaced_cb      = None  # callback(pad_idx, bar_idx, step_idx) note effacée

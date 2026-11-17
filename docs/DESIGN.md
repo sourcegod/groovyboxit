@@ -14528,3 +14528,72 @@ les options retenues.
 - **16d1 / 16e1 — Mode MPC** : MIDI et audio, premier passage remplace,
   suivants ajoutent.
 - **16f1 — clôture** (`git gc`).
+
+### Avancement 16b1 (implémentation — dialogue et options)
+
+- **`src/record_modes.py`** (nouveau, sans wx) : table `MODES`
+  (`RecordMode` : identifiant, libellé, nom court des annonces, `replace`,
+  `then_overdub`) — `overdub`, `replace`, `mpc` ; `COUNT_IN_CHOICES` (0, 1,
+  2, 4, 8) ; `DEFAULTS` (le comportement d'avant : Overdub, clic pendant
+  l'enregistrement, décompte 1) ; `mode_of` (inconnu → Overdub),
+  `normalize` (chaque champ invalide → son défaut), `describe`.
+- **`RecordOptionsDialog`** (dialogs_simple) : Mode (liste construite
+  depuis la table), « Clic pendant la lecture », « Clic pendant
+  l'enregistrement », Décompte ; focus sur le mode, Entrée sur une liste
+  valide.
+- **`src/ui/mw_record_options.py`** (nouveau, `RecordOptionsMixin`) :
+  `_open_record_options` (Ok avec un changement → `_add_undo("Options de
+  l'enregistrement")`, options appliquées et annoncées ; inchangées ou
+  Annuler : annoncé, rien d'autre), `_apply_record_options` (lecteur :
+  `count_in_bars`, `click_in_recording`, `click_in_playback`),
+  `_record_mode`.
+- **Projet** : clé `record_options` du `.gvp` (écrite, relue ; absente →
+  défauts), Ctrl+N → défauts, état de l'Undo (`_capture_state` /
+  `_restore_state`).
+- **Lecteur** : `click_in_playback` (Play démarre le métronome,
+  `_click_by_play` ; Pause / Stop l'arrêtent ; fin d'un Rec pendant la
+  lecture : le clic reste) ; `record_pattern_with_count_in(replace)`
+  (Remplacer après le décompte, aussi avec 0 mesure) ; fin du décompte :
+  le clic du décompte ne continue que si « Clic pendant
+  l'enregistrement » est cochée, s'il tournait avant, ou si la lecture le
+  demande (`_count_in_click_done`).
+- **Touches** : R et Ctrl+R suivent le mode (`mode.replace` → Remplacer ;
+  prise audio en Remplacer ; titre de la prise et annonce « Replace Rec :
+  … », « Rec (MPC) : … ») ; Shift+R inchangé ; Ctrl+Shift+R depuis la
+  fenêtre principale, l'éditeur MIDI et la fenêtre Songs. Le Mode MPC se
+  comporte comme Remplacer jusqu'à 16d1.
+- `docs/shortcuts.md` (aide F1) : Ctrl+Shift+R, R, Ctrl+R, C.
+- Vérifié par script sur la vraie fenêtre principale (dialogue simulé) :
+  options appliquées au lecteur et annoncées, écrites dans le `.gvp`,
+  Ctrl+Z / Shift+Z, Play → clic et Pause → plus de clic, R en Remplacer,
+  relecture du projet, ancien projet sans la clé, Ctrl+N ; vrai dialogue :
+  titre, focus, listes, cases, ordre, valeurs rendues.
+- **Essai de l'utilisateur (2026-11-17)** : Ctrl+Shift+R depuis les trois
+  fenêtres, clic pendant la lecture, clic pendant l'enregistrement
+  décoché, décompte de 2 mesures, Ctrl+Z, projet enregistré puis rouvert :
+  concluants. Retours, traités dans 16b1 :
+  - **Remplacer (mode ou Shift+R) ne coupait pas la piste au premier
+    passage** — on ne savait pas quel mode était actif : une note de
+    grille de la piste courante était **jouée puis** effacée, et les notes
+    KIT / PATCH de la piste n'étaient **ni effacées ni coupées** (elles
+    restaient après le Remplacement). Maintenant, en Remplacer, toute note
+    de la piste courante (grille, KIT, PATCH) est effacée **sans être
+    jouée** : la piste se tait dans la plage remplacée, comme l'audio (R5) ;
+  - **« Décompte pendant la lecture »** (champ demandé, après « Clic
+    pendant la lecture », sans raccourci propre) : clé `count_in_play`
+    (aucun par défaut), `DrumPlayer.play_with_count_in` (décompte puis
+    lecture seule : `_count_in_record` faux, banques réglées au départ ;
+    le clic du décompte continue seulement s'il tournait avant ou si « Clic
+    pendant la lecture » est cochée), Espace / P et Ctrl+Espace ; Espace
+    pendant un décompte de lecture l'annule (« Décompte annulé ») ; fin
+    du décompte annoncée « Play : … ». Le décompte de Ctrl+R s'appelle
+    désormais « Décompte pendant l'enregistrement » dans le dialogue.
+  - Vérifié par script sur la vraie fenêtre : en Remplacer, seule l'autre
+    piste joue, les notes de grille, KIT et PATCH de la piste courante sont
+    effacées ; décompte de lecture puis lecture sans Rec ; Espace annule.
+- **Second essai (2026-11-17), concluant** : Remplacer (mode ou Shift+R)
+  sur une piste qui a des notes, décompte pendant la lecture et son
+  annulation.
+- Suite : 4578 verts, **10 rouges jusqu'à 16c1** (fenêtre factice de
+  test_key_manager sans `_record_mode` ; test de lecture qui attendait
+  « jouée puis effacée » en Remplacer).

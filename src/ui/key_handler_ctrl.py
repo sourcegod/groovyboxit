@@ -158,15 +158,20 @@ class CtrlHandler:
         if not shift and not alt and key == ord('Q'):
             win._quantize_from_grid()
             return True
+        if shift and not alt and key == ord('R'):
+            win._open_record_options()      # Ctrl+Shift+R : Options de l'enregistrement (16b1)
+            return True
         if not shift and not alt and key == ord('R'):
-            if win._cur_track_is_audio() and not win._audio_rec_prepare():   # 14f1
-                return True
-            win._take_begin(f"Enregistrement piste {win._player._cur_track + 1}")
-            win._player.record_pattern_with_count_in()
+            mode = win._record_mode()       # le mode des Options (16b1, O1)
+            if win._cur_track_is_audio() and not win._audio_rec_prepare(replace=mode.replace):
+                return True                 # prise audio (14f1)
+            title = "Remplacement" if mode.replace else "Enregistrement"
+            win._take_begin(f"{title} piste {win._player._cur_track + 1}")
+            win._player.record_pattern_with_count_in(replace=mode.replace)
             n = win._player.count_in_bars
             win._refresh_track_list()
             win._show_status(
-                f"Count-In: {n} mesure{'s' if n > 1 else ''}..." if n else "Rec: On"
+                f"Count-In: {n} mesure{'s' if n > 1 else ''}..." if n else f"{mode.short}: On"
             )
             return True
         if not shift and not alt and key == wx.WXK_UP:
@@ -245,7 +250,9 @@ class CtrlHandler:
             return True
         if not shift and not alt and key == wx.WXK_SPACE:  # Ctrl+Space : jouer depuis le début
             win._player.goto_start()
-            win._player.play_pattern()
-            win._show_status(f"Play depuis début: {win._player.position_str()}")
+            n = getattr(win._player, "count_in_play_bars", 0)    # décompte de lecture (16b1, essai)
+            win._player.play_with_count_in() if n else win._player.play_pattern()
+            win._show_status(f"Décompte : {n} mesure{'s' if n > 1 else ''}..." if n
+                             else f"Play depuis début: {win._player.position_str()}")
             return True
         return False

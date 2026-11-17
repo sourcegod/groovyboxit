@@ -534,6 +534,72 @@ class AudioExportDialog(wx.Dialog):
         return self._level.GetValue()
 
 
+class RecordOptionsDialog(wx.Dialog):
+    """Options de l'enregistrement (Ctrl+Shift+R, Phase 8 étape 16b1,
+    docs/DESIGN.md § 16a O2, O6, O7) : Mode (liste construite depuis la table
+    record_modes.MODES — d'autres modes viendront : Punch In/Out, Automation,
+    Live Looper), « Clic pendant la lecture », « Décompte pendant la
+    lecture » (16b1, essai), « Clic pendant l'enregistrement », « Décompte pendant
+    l'enregistrement ». Focus sur le mode ; Entrée sur une liste valide
+    (GTK : EVT_LISTBOX_DCLICK)."""
+
+    def __init__(self, parent, options):
+        from record_modes import MODES, COUNT_IN_CHOICES, normalize, mode_index, count_label
+        super().__init__(parent, title="Options de l'enregistrement")
+        opts = normalize(options)
+        self._modes = MODES
+        self._counts = COUNT_IN_CHOICES
+        self._mode_lb = wx.ListBox(self, choices=[f"Mode : {m.label}" for m in MODES],
+                                   style=wx.LB_SINGLE)
+        self._mode_lb.SetSelection(mode_index(opts["mode"]))
+        self._click_play = wx.CheckBox(self, label="Clic pendant la lecture")
+        self._click_play.SetValue(opts["click_play"])
+        self._count_play_lb = wx.ListBox(
+            self, style=wx.LB_SINGLE,
+            choices=[f"Décompte pendant la lecture : {count_label(n)}" for n in COUNT_IN_CHOICES])
+        self._count_play_lb.SetSelection(COUNT_IN_CHOICES.index(opts["count_in_play"]))
+        self._click_record = wx.CheckBox(self, label="Clic pendant l'enregistrement")
+        self._click_record.SetValue(opts["click_record"])
+        self._count_lb = wx.ListBox(
+            self, style=wx.LB_SINGLE,
+            choices=[f"Décompte pendant l'enregistrement : {count_label(n)}"
+                     for n in COUNT_IN_CHOICES])
+        self._count_lb.SetSelection(COUNT_IN_CHOICES.index(opts["count_in"]))
+        for lb in (self._mode_lb, self._count_play_lb, self._count_lb):
+            lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
+
+        ok_btn     = wx.Button(self, wx.ID_OK,     "Ok")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Annuler")
+        ok_btn.SetDefault()
+        btn_sizer = wx.StdDialogButtonSizer()
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        vbox.Add(self._mode_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._click_play, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._count_play_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._click_record, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        vbox.Add(self._count_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        self.SetSizer(vbox)
+        self.Fit()
+        self._mode_lb.SetFocus()
+
+    def get_options(self):
+        """Options choisies, au format de la clé record_options."""
+        m = self._mode_lb.GetSelection()
+        c = self._count_lb.GetSelection()
+        cp = self._count_play_lb.GetSelection()
+        return {
+            "mode": self._modes[m if m != wx.NOT_FOUND else 0].id,
+            "click_play": self._click_play.GetValue(),
+            "count_in_play": self._counts[cp if cp != wx.NOT_FOUND else 0],
+            "click_record": self._click_record.GetValue(),
+            "count_in": self._counts[c if c != wx.NOT_FOUND else 1],
+        }
+
+
 class SaveSongDialog(wx.Dialog):
     def __init__(self, parent, cur_idx, cur_name=""):
         super().__init__(parent, title="Enregistrer le song")

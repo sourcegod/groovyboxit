@@ -166,7 +166,10 @@ class PlaybackLoopMixin:
         if track_or_type == self.GRID_EVENT:
             t_idx, pad_idx, dur_override = evt_data
             if t_idx == self._cur_track \
-                    and pad_idx in self._erase_active_pads:
+                    and (pad_idx in self._erase_active_pads or self.replace_recording):
+                # Erase, ou Remplacer : effacée SANS être jouée — la piste se
+                # tait dans la plage remplacée (Phase 8 étape 16b1, essai :
+                # on entendait l'ancienne note au premier passage)
                 self._clear_offset(pad_idx, self._t_to_offset(t_sec))
             elif self.voice_manager.is_audible(pad_idx):
                 # Volume, pan et durée : règles partagées avec le rendu (1d1)
@@ -176,12 +179,11 @@ class PlaybackLoopMixin:
                     self._on_track_play_cb(t_idx, pad_idx, vol, pan, dur)
                 else:
                     self.sound_man.play_sound(pad_idx, vol, pan)
-                if t_idx == self._cur_track and self.replace_recording:
-                    self._clear_offset(pad_idx, self._t_to_offset(t_sec))
         elif track_or_type == self.KIT_TAPE_EVENT:
             t_idx, midi_note, dur = evt_data
-            if self.erasing and t_idx == self._cur_track \
-                    and midi_note in self._erase_active_midi_notes:
+            if t_idx == self._cur_track and (self.replace_recording or (
+                    self.erasing and midi_note in self._erase_active_midi_notes)):
+                # Remplacer : note KIT de la piste effacée sans être jouée (16b1, essai)
                 self._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_KIT)
             elif self._on_kit_tape_cb:
                 self._on_kit_tape_cb(t_idx, midi_note, velocity, dur)
@@ -192,8 +194,9 @@ class PlaybackLoopMixin:
             # au même temps est rejoué avant (BEND_TAPE_EVENT=-4 trié
             # avant PATCH_TAPE_EVENT=-3 par events.sort()).
             t_idx, midi_note, dur = evt_data
-            if self.erasing and t_idx == self._cur_track \
-                    and midi_note in self._erase_active_midi_notes:
+            if t_idx == self._cur_track and (self.replace_recording or (
+                    self.erasing and midi_note in self._erase_active_midi_notes)):
+                # Remplacer : note PATCH de la piste effacée sans être jouée (16b1, essai)
                 self._erase_tape_event(t_idx, midi_note, t_sec, ETYPE_PATCH)
             elif self._on_patch_tape_cb:
                 self._on_patch_tape_cb(t_idx, midi_note, velocity, dur)
@@ -246,7 +249,8 @@ class PlaybackLoopMixin:
         next_measure_start = measure_start + measure_secs
         if was_last_count_in:
             self.playing   = True
-            self.recording = True
+            self.recording = self._count_in_record    # décompte de lecture : pas de Rec (16b1, essai)
+            self._count_in_click_done()                # clic pendant l'enregistrement (16b1)
             offset_secs    = self._count_in_offset_secs()
             self._measure_start = next_measure_start - offset_secs
             if self._on_count_in_done_cb:
@@ -277,7 +281,8 @@ class PlaybackLoopMixin:
                     measure_start = next_measure_start - offset_secs
                 else:
                     self.playing   = True
-                    self.recording = True
+                    self.recording = self._count_in_record   # 16b1, essai
+                    self._count_in_click_done()        # 16b1
                     measure_start  = time.perf_counter() - offset_secs
                     if self._on_count_in_done_cb:
                         self._on_count_in_done_cb()

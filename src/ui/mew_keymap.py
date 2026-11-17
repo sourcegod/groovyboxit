@@ -21,6 +21,11 @@ class KeymapMixin:
             self._parent._open_preferences(parent=self, status=self._set_status)
             return
 
+        # Ctrl+Shift+R : Options de l'enregistrement (Phase 8 étape 16b1)
+        if ctrl and shift and not alt and key == ord('R'):
+            self._parent._open_record_options(parent=self, status=self._set_status)
+            return
+
         # Ctrl+1 : mode notes de la piste courante
         if ctrl and not shift and (ukey == ord('1') or key == ord('1')):
             self._view_mode = self.MODE_NOTES

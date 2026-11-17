@@ -299,6 +299,11 @@ class SongWindow(wx.Frame):
             self._parent._open_preferences(parent=self, status=self._set_status)
             return
 
+        # Ctrl+Shift+R : Options de l'enregistrement (Phase 8 étape 16b1)
+        if ctrl and shift and not evt.AltDown() and key == ord('R'):
+            self._parent._open_record_options(parent=self, status=self._set_status)
+            return
+
         # Alt+Shift+E : export MIDI du song courant (Phase 8 étape 2f1, § 2a E15)
         if not ctrl and shift and evt.AltDown() \
                 and (ukey in (ord('e'), ord('E')) or key == ord('E')):

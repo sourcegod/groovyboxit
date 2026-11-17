@@ -48,6 +48,9 @@ class TransportMixin:
         self._lm.init_from_pattern(self._pattern)
         if clicked:
             self.play_click()
+        elif self.click_in_playback and not self.clicking:   # clic pendant la lecture (16b1)
+            self.clicking = True
+            self._click_by_play = True
         self.start_thread()
 
     #--------------------------------------------------------------------------
@@ -56,6 +59,7 @@ class TransportMixin:
         was_playing            = self.playing
         self.playing           = False
         self.clicking          = False
+        self._click_by_play    = False
         self._count_in         = 0
         self.recording         = False
         self.replace_recording = False
@@ -92,6 +96,8 @@ class TransportMixin:
         self._resume_offset = self._position_at(time.perf_counter())   # 19d1
         self.playing   = False
         self._count_in = 0
+        if self._click_by_play:                        # clic démarré par Play (16b1)
+            self.clicking = self._click_by_play = False
         self._end_audio_take()                         # prise audio (14f1)
         if not self._note_repeat_active and not self.clicking:
             self.stop_thread()
@@ -112,6 +118,7 @@ class TransportMixin:
 
     def stop_click(self):
         self.clicking = False
+        self._click_by_play = False
         if not (self.playing or self._note_repeat_active):
             self.stop_thread()
         else:
@@ -123,6 +130,7 @@ class TransportMixin:
         was_playing              = self.playing
         self.playing             = False
         self.clicking            = False
+        self._click_by_play      = False
         self._note_repeat_active = False
         self.recording           = False
         self.replace_recording   = False

@@ -17,17 +17,25 @@ class RecordingMixin:
 
     #--------------------------------------------------------------------------
 
-    def record_pattern_with_count_in(self, bars=None):
+    def record_pattern_with_count_in(self, bars=None, replace=False):
+        """Ctrl+R : décompte de bars mesures (count_in_bars par défaut), puis
+        Rec ; replace : en Remplacer (mode des Options de l'enregistrement,
+        Phase 8 étape 16b1, O1)."""
         bars = self.count_in_bars if bars is None else bars
         if bars == 0:
-            self.record_pattern()
+            if replace:
+                self.start_replace_recording()
+            else:
+                self.record_pattern()
             return
         self._metro.save_rec_state()
+        self._count_in_record = True              # le décompte mène à un Rec (16b1, essai)
         if self._audio_take is not None:          # ancre prise après le décompte (14f1)
             self._audio_take["anchor"] = None
         self._count_in_resume_offset = self._current_offset()
         self._resume_offset = None   # count-in repart toujours du beat 0
         self.recording = False
+        self.replace_recording = bool(replace)   # gardé jusqu'à la fin du décompte (16b1)
         self.playing   = False
         self._count_in = bars
         self.clicking  = True
@@ -36,13 +44,53 @@ class RecordingMixin:
 
     #--------------------------------------------------------------------------
 
+    def _count_in_click_done(self):
+        """Fin du décompte (Phase 8 étape 16b1, O9) : le métronome du
+        décompte continue seulement si « Clic pendant l'enregistrement » est
+        cochée, s'il tournait déjà avant, ou si « Clic pendant la lecture »
+        le demande."""
+        if self._count_in_record:
+            if self.click_in_recording or self._metro._before_rec:
+                return
+        elif self._count_in_clicked_before:       # décompte de lecture (16b1, essai)
+            return
+        if self.click_in_playback:
+            self._click_by_play = True
+            return
+        self.clicking = False
+
+    def play_with_count_in(self, bars=None):
+        """Play précédé du « Décompte pendant la lecture » (Phase 8 étape
+        16b1, essai) : bars mesures de métronome (count_in_play_bars
+        par défaut), puis la lecture seule, sans Rec ; 0 ou déjà en lecture :
+        Play tout de suite."""
+        bars = self.count_in_play_bars if bars is None else bars
+        if bars <= 0 or self.playing:
+            self.play_pattern()
+            return
+        self._count_in_clicked_before = self.clicking
+        self._count_in_record = False
+        self._count_in_resume_offset = self._current_offset()
+        self._chase(self._count_in_resume_offset or 0.0)   # banques réglées au départ
+        self._lm.init_from_pattern(self._pattern)
+        self._resume_offset = None
+        self.recording = self.replace_recording = False
+        self.playing   = False
+        self._count_in = bars
+        self.clicking  = True
+        self.stop_thread()
+        self.start_thread()
+
     def stop_record(self):
         self.recording         = False
         self.replace_recording = False
         self._count_in         = 0
         self._end_audio_take()
         if self._metro.should_stop_after_rec():
-            self.stop_click()
+            if self.playing and self.click_in_playback:
+                self._click_by_play = True       # la lecture continue : son clic reste (16b1)
+            else:
+                self.stop_click()
 
     # ------------------------------------------------------------------
     # Prise audio (Phase 8 étape 14f1, docs/DESIGN.md § 14f1)

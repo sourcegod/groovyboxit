@@ -16,6 +16,7 @@ from voice_manager import VoiceManager
 from midi.midi_import import import_pattern
 from audio import audio_export
 from audio import audio_takes
+import record_modes
 from devices import audio_device as audio_devices
 from .dialogs import AudioExportDialog, ExportTargetDialog, \
     ImportModeDialog
@@ -113,6 +114,8 @@ class ProjectMixin:
             self._song_window.set_cur_song(0)
         self._project_path     = self._find_free_project_path()
         self._audio_dir        = ""                # prises : Audios à côté (14b1)
+        if hasattr(self, "_apply_record_options"):  # options de l'enregistrement (16b1)
+            self._apply_record_options(None)
         self._take             = None
         self._project_modified = False
         self._update_title()
@@ -1159,6 +1162,8 @@ class ProjectMixin:
                 "cur_song": self._cur_song_idx,
                 "master":   self._master_dict(),        # 15d1 D2
                 "audio_dir": getattr(self, "_audio_dir", ""),   # 14b1 : chemin des prises
+                "record_options": dict(getattr(self, "_record_options",
+                                               record_modes.DEFAULTS)),   # 16b1, O10
             }
             ProjectManager.save(self._project_path, data)
             self._remember_project()                   # dernier projet (10f1, P5)
@@ -1314,6 +1319,8 @@ class ProjectMixin:
         self._rewind_playback()                # lecture arrêtée, au début (Phase 8 étape 7d2)
         dir_value = data.get("audio_dir", "")            # 14b1 : chemin des prises
         self._audio_dir = dir_value if isinstance(dir_value, str) else ""
+        if hasattr(self, "_apply_record_options"):       # 16b1, O10 : absente → défauts
+            self._apply_record_options(data.get("record_options"))
         if "rack" in data:
             self._rack.from_dict(data["rack"])
             self._relocate_rack_files()
@@ -1413,6 +1420,8 @@ class ProjectMixin:
             "quant_params": self._quant_params(),
             "event_filter_params": p._event_filter_state,
             "master":              self._master_dict(),      # 15d1 D2
+            "record_options":      dict(getattr(self, "_record_options",
+                                                record_modes.DEFAULTS)),   # 16b1
         }
 
     def _clipboard_to_dict(self):
@@ -1552,6 +1561,8 @@ class ProjectMixin:
         self._clipboard_from_dict(state.get("clipboard"))
         if "master" in state:
             self._apply_master(*self._master_from_dict(state["master"]))
+        if "record_options" in state and hasattr(self, "_apply_record_options"):
+            self._apply_record_options(state["record_options"])          # 16b1, O10
         new = self._pattern_list[self._cur_pattern_idx]
         # clips audio coupés : un clip retiré par l'Undo ne doit plus sonner ;
         # ceux qui restent reprennent au rappel suivant (Phase 8 étape 14f1, essai)
