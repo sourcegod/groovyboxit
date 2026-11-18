@@ -14925,3 +14925,16 @@ jour) ; `docs/SPECS.md` décrit les niveaux et les marques.
 - Vérifié : 128 rendus en parallèle (export et bascule de programme) tous
   justes ; `test_sfizz_engine.py` 5 fois sur 8 cœurs sans échec ; niveau
   Avancé 4709 verts, code 0.
+
+### Avancement 17b3 (tests du correctif 17b2)
+
+- **`tests/test_sfizz_engine.py`** (+ 14 tests) : `offline` par défaut
+  selon `realtime` et forçable ; `render_copy` hors temps réel ;
+  instances hors temps réel préchargées en entier
+  (`sfizz_get_preload_size` = `PRELOAD_ALL`), pas les autres ; moteur
+  d'écoute inchangé ; libsfizz sans les deux fonctions : le rendu se fait
+  quand même ; une note tenue une seconde sonne jusqu'au bout (8 fois).
+- Fichier lancé 3 fois sur 8 cœurs : 90 verts à chaque fois.
+- Mutations vérifiées (sans le préchargement complet ; export pas hors
+  temps réel par défaut) : chacune fait échouer des tests.
+- **`docs/SPECS.md`** : table. Niveau Avancé : 4726 verts, code 0.

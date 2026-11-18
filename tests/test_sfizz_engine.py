@@ -1004,3 +1004,113 @@ def test_source_stale_false_without_source_and_copied(eng, progs):
     copy = eng.render_copy()
     assert copy._stamps[3] == eng._stamps[3] and not copy.source_stale(3)
     copy.close()
+
+
+# ---------------------------------------------------------------------------
+# Rendu hors temps réel : échantillons préchargés en entier, freewheeling
+# (Phase 8 étape 17b3, correctif 17b2 — notes muettes dans l'export WAV quand
+# la machine était chargée)
+# ---------------------------------------------------------------------------
+
+import ctypes
+
+
+def _preload_size(synth):
+    lib = sfizz_engine.load_library()
+    lib.sfizz_get_preload_size.argtypes = [ctypes.c_void_p]
+    lib.sfizz_get_preload_size.restype = ctypes.c_uint32
+    return lib.sfizz_get_preload_size(synth)
+
+
+@needs_sfizz
+@pytest.mark.parametrize("kwargs, offline", [
+    ({}, False), ({"realtime": False}, True),
+    ({"offline": True}, True), ({"realtime": False, "offline": False}, False)])
+def test_offline_default_follows_realtime(kwargs, offline):
+    e = SfzEngine(SR, **kwargs)
+    try:
+        assert e._offline is offline
+    finally:
+        e.close()
+
+
+@needs_sfizz
+def test_render_copy_is_offline():
+    e = SfzEngine(SR)
+    copy = e.render_copy()
+    try:
+        assert e._offline is False and copy._offline is True
+    finally:
+        copy.close()
+        e.close()
+
+
+@needs_sfizz
+@pytest.mark.parametrize("offline, whole", [(True, True), (False, False)])
+def test_offline_instances_preload_whole_samples(sfz, offline, whole):
+    e = SfzEngine(SR, realtime=False, offline=offline)
+    try:
+        e.load(0, sfz["sine"])
+        e.select(0, 0, 0, 0)
+        size = _preload_size(e._inst[0][0])
+        assert (size == SfzEngine.PRELOAD_ALL) is whole
+    finally:
+        e.close()
+
+
+@needs_sfizz
+def test_listening_engine_keeps_the_streaming_preload(sfz):
+    e = SfzEngine(SR)                                    # écoute : temps réel
+    try:
+        e.load(0, sfz["sine"])
+        e.select(0, 0, 0, 0)
+        e.wait_loaded()
+        _render(e, BLOCK)
+        assert _preload_size(e._inst[0][0]) != SfzEngine.PRELOAD_ALL
+    finally:
+        e.close()
+
+
+class _LibWithout:
+    """libsfizz plus ancienne : sans les fonctions du rendu hors temps réel."""
+    def __init__(self, lib, missing):
+        self._lib, self._missing = lib, set(missing)
+
+    def __getattr__(self, name):
+        if name in self._missing:
+            raise AttributeError(name)
+        return getattr(self._lib, name)
+
+
+@needs_sfizz
+def test_offline_without_the_optional_functions_still_renders(sfz):
+    e = SfzEngine(SR, realtime=False)
+    e._lib = _LibWithout(e._lib, ("sfizz_set_preload_size", "sfizz_enable_freewheeling"))
+    try:
+        e.load(0, sfz["sine"])
+        e.select(0, 0, 0, 0)
+        e.note_on(0, 69, 100)
+        out = np.zeros((SR // 4, 2), np.float32)
+        e.render(out)
+        assert _rms(out) > 0.01
+    finally:
+        e.close()
+
+
+@needs_sfizz
+@pytest.mark.parametrize("i", range(8))
+def test_offline_render_never_silent(progs, i):
+    """Comme l'export WAV : une note tenue une seconde sonne jusqu'au bout,
+    même quand la machine est chargée (tests en parallèle) — avant 17b2, la
+    seconde moitié pouvait être muette."""
+    e = SfzEngine(SR, realtime=False)
+    try:
+        e.load(0, progs["folder"])
+        e.select(0, 0, 0, 1)
+        e.note_on(0, 76, 100)
+        out = np.zeros((SR, 2), np.float32)
+        for k in range(0, SR, 512):
+            e.render(out[k:k + 512])
+        assert _rms(out[SR // 2:, 0]) > 0.01
+    finally:
+        e.close()
