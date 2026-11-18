@@ -15027,3 +15027,41 @@ regarder les tests de plus de 1 s restants (songs en temps réel) pour les
 accélérer ; `tests/test_all.sh` (lancement fichier par fichier comme des
 scripts) n'est plus la référence — à supprimer un jour si personne ne
 s'en sert.
+
+### Correctif 17d2 (parallèle fiable, un processus par cœur physique)
+
+- **Question de l'utilisateur (2026-11-18)** : « pourquoi le temps des
+  tests avancés a seulement été divisé par deux, de 81 à 38 s, alors que
+  l'on est en parallèle sur 8 cœurs ? »
+- **Mesures** :
+  - processeur **Intel Core i5-8350U** : 4 cœurs physiques, 8 fils
+    (hyperthreading : deux fils se partagent un cœur, ≈ +20-30 %) ;
+    fréquence jusqu'à 3,6 GHz sur un cœur, moins sur les quatre ;
+    **4 processus = 8 processus** (35,7 s contre 35,5 s) ;
+  - **travail total doublé** en parallèle : temps processeur 68 s en série
+    contre 147 s ; tests rapides 11 s cumulés → 33 s (échanges entre
+    processus, cœurs partagés) ; préparations 5 s → 20 s (chaque processus
+    recrée vraies fenêtres et moteurs partagés) ; démarrage 1,7 s → 3,4 s ;
+  - **attentes réelles** : 25 tests `audio` attendent ≈ 29 s en temps réel
+    (songs, boucles, prises ; le plus long 6 s), incompressibles.
+- **Fiabilité** (trouvé en mesurant) : relancée, la suite en parallèle a
+  échoué **3 fois sur 3** — les passages verts de 17c1 tenaient de la
+  chance : des tests sensibles au temps échouent quand les tests qui
+  calculent prennent la machine. Causes corrigées :
+  - `test_sound_device_driver.py` partageait un **vrai pilote dont le flux
+    tournait** : le fil de la carte son mixait les mêmes voix que les tests
+    qui appellent le mixage à la main → flux arrêté à la création ;
+    `test_stream_active` a son propre pilote (marqué `audio`) ;
+  - **8 tests marqués `audio`** (vrai fil de lecture ou attente d'un
+    fichier écrit par un fil) : `test_tape.py` (2), `test_transport.py`
+    (5), `test_sound_cache.py` (1).
+- **`tools/tests.sh`** : un processus par **cœur physique** (lu dans
+  `/proc/cpuinfo`, repli sur le nombre de processeurs) ; Avancé en **deux
+  passages** — A : tout sauf `audio` ; B : les tests `audio` entre eux
+  (ils attendent surtout : ensemble, ils ne se gênent pas) — code
+  d'échec si l'un échoue, code 5 (aucun test choisi, avec `-k`) compté
+  comme réussi ; série (`TESTS_SERIE=1`) : un seul passage.
+- **Mesures** : Avancé **3 passages sur 3 verts**, 45-49 s (A ≈ 32 s, B ≈
+  13 s ; contre ≈ 38 s mais instable) ; Intermédiaire ≈ 17 s.
+- **`docs/SPECS.md`** : parallèle par cœur physique, deux passages,
+  mesures et explication.

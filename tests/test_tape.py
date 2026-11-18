@@ -11,6 +11,7 @@
     Date: Fri, 06/06/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 import time
@@ -1179,6 +1180,7 @@ def test_record_patch_note_off_keeps_chased_bend():
     assert [ev.payload["value"] for ev in _bends(pl._pattern, 0)] == [-8192]
     print("  record_patch_note_off garde le ETYPE_BEND du note-on : OK")
 
+@pytest.mark.audio
 def test_run_thread_replays_chased_bend_before_note_same_time():
     """Vraie boucle _run_thread : au même temps, le ETYPE_BEND posé au
     note-on est rejoué AVANT la note (BEND_TAPE_EVENT=-4 trié avant
@@ -1539,6 +1541,7 @@ def test_bend_tape_no_callback_is_safe():
     except Exception as e:
         assert False, f"Exception inattendue : {e}"
 
+@pytest.mark.audio
 def test_run_thread_replays_bend_from_tape():
     """Phase 7 étape 6b1 : la vraie boucle _run_thread rejoue les ETYPE_BEND
     de _tape vers _on_bend_tape_cb(track, value), dans l'ordre, une seule

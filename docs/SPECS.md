@@ -2520,21 +2520,30 @@ Trois **niveaux**, par `tools/tests.sh` :
 |---|---|---|---|
 | Basique | `tools/tests.sh basique tests/test_x.py …` (ou `b`) | les fichiers donnés ; sans fichier : les derniers tests en échec qui existent encore | à chaque petite modification |
 | Intermédiaire | `tools/tests.sh intermediaire` (ou `i`) | tout sauf `slow`, `audio`, `gui` | à chaque étape d'implémentation, avant l'essai |
-| Avancé | `tools/tests.sh avance` (ou `a`) | toute la suite, avec le garde-fou | avant chaque commit, à chaque clôture |
+| Avancé | `tools/tests.sh avance` (ou `a`) | toute la suite, avec le garde-fou, en deux passages : A tout sauf `audio`, B les tests `audio` entre eux | avant chaque commit, à chaque clôture |
 
 - Options supplémentaires passées à pytest (`-x`, `-k motif`…).
-- **Parallèle** (Phase 8 étape 17c1) : Intermédiaire et Avancé tournent
-  sur tous les cœurs (pytest-xdist, `-n auto --dist worksteal` : un
-  processus libre reprend le travail des autres) ; `TESTS_SERIE=1` force
-  la série ; sans pytest-xdist (paquet Debian `python3-pytest-xdist`), la
+- **Parallèle** (Phase 8 étapes 17c1, 17d2) : Intermédiaire et Avancé
+  tournent avec **un processus par cœur physique** (pytest-xdist,
+  `--dist worksteal` : un processus libre reprend le travail des autres ;
+  les fils de l'hyperthreading partagent un cœur — 4 processus allaient
+  aussi vite que 8) ; les tests `audio` (temps réel) ne sont **jamais
+  mêlés** aux autres : ils échouaient au hasard quand les tests qui
+  calculent prenaient la machine ; `TESTS_SERIE=1` force la série (un seul
+  passage) ; sans pytest-xdist (paquet Debian `python3-pytest-xdist`), la
   série est prise d'office.
 - **Garde-fou** (`--slow-guard`, niveau Avancé) : signale en fin de suite
   tout test **sans marque** qui a pris au moins 0,3 s en série, 1 s en
   parallèle (préparation + exécution) ; le marquer ou l'accélérer, pour
   garder le niveau Intermédiaire rapide.
-- Mesures (2026-11-18, 8 cœurs) : Basique sur un fichier < 1 s ;
-  Intermédiaire 4625 tests ≈ 18 s (série ≈ 30 s) ; Avancé 4723 tests ≈
-  38 s (série ≈ 77 s ; avant ce chantier ≈ 81 s).
+- Mesures (2026-11-18, Intel Core i5-8350U : 4 cœurs physiques, 8 fils) :
+  Basique sur un fichier < 1 s ; Intermédiaire 4613 tests ≈ 17 s (série
+  ≈ 30 s) ; Avancé 4723 tests ≈ 45-49 s, A ≈ 32 s + B ≈ 13 s (série
+  ≈ 77 s ; avant ce chantier ≈ 81 s). Pourquoi pas 8 fois plus vite :
+  4 cœurs physiques et une fréquence qui baisse quand tous travaillent ;
+  travail total doublé en parallèle (échanges entre processus,
+  préparations recréées dans chaque processus, démarrage) ; ≈ 29 s
+  d'attentes réelles des tests `audio`, que le calcul ne raccourcit pas.
 - **Règles pour les tests** : un test ne doit pas dépendre d'un autre
   (lancé seul, sans les tests marqués, ou dans un autre processus que ses
   voisins en parallèle, il passe : une fixture partagée prépare elle-même

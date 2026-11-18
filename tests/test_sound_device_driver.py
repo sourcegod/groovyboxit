@@ -6,6 +6,7 @@
     Date: Thu, 28/05/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 import tempfile
@@ -22,6 +23,10 @@ from audio.sound_device_driver import SoundDeviceDriver, SdSound, _Voice
 # ---------------------------------------------------------------------------
 
 _drv = SoundDeviceDriver()
+# mixage et callback appelés à la main dans ces tests : flux arrêté, sinon le
+# fil de la carte son mixait les mêmes voix en même temps (échecs au hasard
+# sous la charge du parallèle, Phase 8 étape 17d2)
+_drv.stop_stream()
 
 
 def _make_wav(sr=44100, duration_s=0.1, channels=2, freq=440.0):
@@ -60,8 +65,13 @@ def test_sdsound_shape_and_dtype():
 # SoundDeviceDriver — initialisation
 # ---------------------------------------------------------------------------
 
+@pytest.mark.audio
 def test_stream_active():
-    assert _drv._stream.active
+    d = SoundDeviceDriver()                     # son propre pilote (17d2)
+    try:
+        assert d._stream.active
+    finally:
+        d.close()
     print("  stream PortAudio actif au démarrage : OK")
 
 

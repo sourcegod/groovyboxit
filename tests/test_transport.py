@@ -5,6 +5,7 @@
     Date: Sat, 07/06/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 import time
@@ -139,6 +140,7 @@ def test_goto_start_while_stopped_clears_resume_offset():
     print("  goto_start (arrêté) : _resume_offset → None : OK")
 
 
+@pytest.mark.audio
 def test_goto_start_while_playing_preserves_playing_state():
     p = _make_player()
     p.playing = True
@@ -151,6 +153,7 @@ def test_goto_start_while_playing_preserves_playing_state():
     print("  goto_start (lecture) : playing préservé, offset = None : OK")
 
 
+@pytest.mark.audio
 def test_goto_start_while_clicking_preserves_clicking():
     p = _make_player()
     p.clicking = True
@@ -175,6 +178,7 @@ def test_goto_end_while_stopped_sets_resume_offset_to_last():
     print(f"  goto_end (arrêté) : _resume_offset = {total - 1} : OK")
 
 
+@pytest.mark.audio
 def test_goto_end_while_playing_sets_resume_offset_to_last():
     p = _make_player()
     total = p._pattern._num_bars * p._pattern._num_steps
@@ -201,6 +205,7 @@ def test_goto_end_reflects_num_bars():
 # _run_thread — utilise _resume_offset au démarrage
 # ---------------------------------------------------------------------------
 
+@pytest.mark.audio
 def test_run_thread_consumes_resume_offset():
     """_run_thread démarre et efface _resume_offset."""
     p = _make_player()
@@ -213,6 +218,7 @@ def test_run_thread_consumes_resume_offset():
     print("  _run_thread : _resume_offset consommé au démarrage : OK")
 
 
+@pytest.mark.audio
 def test_goto_start_thread_restarts_and_runs():
     """goto_start pendant la lecture : thread redémarre effectivement."""
     p = _make_player()
