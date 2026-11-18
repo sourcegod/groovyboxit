@@ -14938,3 +14938,41 @@ jour) ; `docs/SPECS.md` décrit les niveaux et les marques.
 - Mutations vérifiées (sans le préchargement complet ; export pas hors
   temps réel par défaut) : chacune fait échouer des tests.
 - **`docs/SPECS.md`** : table. Niveau Avancé : 4726 verts, code 0.
+
+### Avancement 17c1 (parallèle)
+
+- **`tools/tests.sh`** : Intermédiaire et Avancé en parallèle
+  (`-n auto --dist worksteal` — essayé : `--dist worksteal` ≈ 40 s contre
+  ≈ 44 s pour la répartition par défaut) ; `TESTS_SERIE=1` force la série ;
+  sans pytest-xdist, série d'office.
+- **Garde-fou** réécrit en greffon (`SlowGuard`, enregistré par
+  `--slow-guard`) : il lit les durées dans les **comptes rendus**, qui
+  reviennent des processus de pytest-xdist vers le processus principal
+  (l'ancienne version mesurait dans le processus du test : rien en
+  parallèle) ; seuil 0,3 s en série, **1 s en parallèle** (8 processus se
+  disputent la machine : sans cela, de fausses alertes).
+- **Défauts révélés et corrigés** :
+  - `test_get_sound`, `test_pitch_shift_steps` (`test_synth_engine.py`)
+    échouaient toujours en parallèle : le patch du moteur partagé était
+    chargé par `test_load_patch`, exécuté par un autre processus → la
+    fixture `engine` charge le patch elle-même ;
+  - `test_focus_on_the_kind_list`, `test_focus_on_mute_without_kind_list`
+    affichent un dialogue et font tourner la boucle d'événements : durée
+    variable selon l'affichage (jusqu'à 2 s en parallèle) → marqués `gui`
+    (marque élargie : « ou dialogue affiché avec sa boucle d'événements »).
+- **pygame retiré des tests** (demande de l'utilisateur : « il ne faut plus
+  lancer les tests de pygame, car c'était pour les anciennes versions,
+  quand on n'avait pas le module sounddevice ») : `test_pygame_driver.py`
+  supprimé (17 tests) ; `test_sound_manager.py` ne crée plus de
+  PygameDriver au chargement (il initialisait pygame à chaque lancement,
+  d'où les avertissements `pkg_resources` répétés par processus), et ses
+  14 tests communs — jamais lancés par pytest, leur nom commençant par
+  « _ » — le sont désormais sur SoundDeviceDriver (test paramétré).
+  `src/audio/pygame_driver.py` et `tools/bench_latency.py` restent (plus
+  importés par l'appli).
+- **Mesures** (8 cœurs, 3 passages) : **Intermédiaire 4625 tests ≈ 18 s**
+  (série ≈ 30 s) ; **Avancé 4723 tests ≈ 37-38 s** (série ≈ 77 s), code 0,
+  aucun avertissement, aucune fausse alerte du garde-fou.
+- **`docs/SPECS.md`** : parallèle, `TESTS_SERIE`, seuils du garde-fou,
+  marque `gui` élargie, règle d'indépendance des tests, mesures ;
+  `test_pygame_driver.py` retiré de l'arborescence et de la table.

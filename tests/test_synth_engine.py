@@ -39,8 +39,14 @@ def patch_dir():
 
 @pytest.fixture(scope="module")
 def engine(patch_dir):
+    """Moteur partagé du module, patch déjà chargé : chaque test part d'un
+    moteur prêt, quel que soit l'ordre ou le processus (Phase 8 étape 17c1 :
+    en parallèle, les tests d'un fichier se répartissent entre processus et
+    get_sound / pitch_shift ne trouvaient plus le patch chargé par
+    test_load_patch)."""
     drv = SoundDeviceDriver()
     eng = SynthEngine(os.path.dirname(patch_dir), driver=drv)
+    eng.load_patch(os.path.basename(patch_dir))
     yield eng
     drv.close()
 
@@ -83,10 +89,7 @@ def test_load_patch(engine, patch_dir):
 
 @pytest.mark.slow
 def test_precompute_scale(engine, patch_dir):
-    # patch chargé ici : sans lui, le test dépendait de test_load_patch
-    # (moteur partagé du module) et échouait lancé seul (Phase 8 étape 17b1)
-    if not engine.is_loaded():
-        engine.load_patch(os.path.basename(patch_dir))
+    # patch chargé par la fixture (Phase 8 étape 17b1, puis 17c1)
     notes = scale_midi_notes("major", note_name_to_midi("C4"), 16)
     print(f"  pré-calcul gamme majeure C4 ({len(notes)} notes)...")
     engine.precompute(notes)

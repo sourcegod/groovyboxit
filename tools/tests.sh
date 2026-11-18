@@ -12,12 +12,21 @@
 #
 # Raccourcis : b, i, a.  Les options supplémentaires sont passées à pytest
 # (par exemple -x pour s'arrêter au premier échec).
+# Intermédiaire et Avancé tournent en parallèle sur tous les cœurs
+# (pytest-xdist, Phase 8 étape 17c1) ; TESTS_SERIE=1 force la série ; sans
+# pytest-xdist installé, la série est prise d'office.
 set -u
 cd "$(dirname "$0")/.." || exit 2
 
 usage() {
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
 }
+
+# options du parallèle : vide en série
+parallele=()
+if [ "${TESTS_SERIE:-0}" != "1" ] && python3 -c "import xdist" 2>/dev/null; then
+    parallele=(-n auto --dist worksteal)
+fi
 
 niveau="${1:-}"
 [ $# -gt 0 ] && shift
@@ -52,10 +61,10 @@ PY
         exec python3 -m pytest -q "${echecs[@]}"
         ;;
     intermediaire|intermédiaire|i)
-        exec python3 -m pytest -q -m "not slow and not audio and not gui" "$@"
+        exec python3 -m pytest -q "${parallele[@]}" -m "not slow and not audio and not gui" "$@"
         ;;
     avance|avancé|a)
-        exec python3 -m pytest -q --slow-guard "$@"
+        exec python3 -m pytest -q "${parallele[@]}" --slow-guard "$@"
         ;;
     *)
         usage

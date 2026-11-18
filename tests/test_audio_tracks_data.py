@@ -461,6 +461,7 @@ def test_kind_lists_first(frame):
         dlg.Destroy()
 
 
+@pytest.mark.gui                  # dialogue affiché, boucle d'événements (Phase 8 étape 17c1)
 @pytest.mark.parametrize("kind", ["midi", "audio"])
 def test_focus_on_the_kind_list(frame, kind):
     dlg = _props(frame, track_kind=kind, audio_inputs=[])
@@ -472,6 +473,7 @@ def test_focus_on_the_kind_list(frame, kind):
         dlg.Destroy()
 
 
+@pytest.mark.gui                  # dialogue affiché, boucle d'événements (17c1)
 def test_focus_on_mute_without_kind_list(frame):
     dlg = _props(frame)
     try:

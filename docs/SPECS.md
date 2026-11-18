@@ -27,7 +27,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 |---|---|
 | GUI | `wxPython` |
 | Audio (kit et synthé) | `sounddevice` + `numpy` (SoundDeviceDriver — seul driver utilisé par l'application) |
-| Audio (ancien driver, optionnel) | `pygame.mixer` (PygameDriver) — non requis pour lancer l'application, utilisé seulement par des tests et `tools/bench_latency.py` |
+| Audio (ancien driver, optionnel) | `pygame.mixer` (PygameDriver) — non requis pour lancer l'application, plus testé depuis la Phase 8 étape 17c1 ; utilisé seulement par `tools/bench_latency.py` |
 | Pitch shifting | `pyrubberband` (bindings Python de Rubber Band C++) |
 | Lecture WAV | `soundfile` |
 | Traitement audio | `numpy` |
@@ -223,7 +223,6 @@ groovyboxit/
     ├── test_preferences_dialog.py
     ├── test_preferences_effects.py
     ├── test_prefs_hardware.py
-    ├── test_pygame_driver.py
     ├── test_quantize.py
     ├── test_quantize_notes.py
     ├── test_rack_mode.py
@@ -2513,7 +2512,7 @@ refusée) ; un test peut en porter plusieurs :
 |---|---|---|
 | `slow` | calcul long, sans matériel ni attente | LUFS et limiteur sur de longs fichiers |
 | `audio` | temps réel (le fil de lecture joue et attend vraiment) ou vraie carte son | songs, décomptes, boucles, prises |
-| `gui` | vraie fenêtre principale (clients ALSA / MIDI) | `test_real_main_window_*`, fixtures à fenêtre (`pytestmark`) |
+| `gui` | vraie fenêtre principale (clients ALSA / MIDI), ou dialogue affiché avec sa boucle d'événements | `test_real_main_window_*`, fixtures à fenêtre (`pytestmark`), focus d'un dialogue (`Show` + `SafeYield`) |
 
 Trois **niveaux**, par `tools/tests.sh` :
 
@@ -2524,14 +2523,22 @@ Trois **niveaux**, par `tools/tests.sh` :
 | Avancé | `tools/tests.sh avance` (ou `a`) | toute la suite, avec le garde-fou | avant chaque commit, à chaque clôture |
 
 - Options supplémentaires passées à pytest (`-x`, `-k motif`…).
+- **Parallèle** (Phase 8 étape 17c1) : Intermédiaire et Avancé tournent
+  sur tous les cœurs (pytest-xdist, `-n auto --dist worksteal` : un
+  processus libre reprend le travail des autres) ; `TESTS_SERIE=1` force
+  la série ; sans pytest-xdist (paquet Debian `python3-pytest-xdist`), la
+  série est prise d'office.
 - **Garde-fou** (`--slow-guard`, niveau Avancé) : signale en fin de suite
-  tout test **sans marque** qui a pris au moins 0,3 s (préparation +
-  exécution) ; le marquer ou l'accélérer, pour garder le niveau
-  Intermédiaire rapide.
-- Mesures (2026-11-18, un cœur) : Intermédiaire 4611 tests ≈ 30 s ;
-  Avancé 4709 tests ≈ 80 s.
+  tout test **sans marque** qui a pris au moins 0,3 s en série, 1 s en
+  parallèle (préparation + exécution) ; le marquer ou l'accélérer, pour
+  garder le niveau Intermédiaire rapide.
+- Mesures (2026-11-18, 8 cœurs) : Basique sur un fichier < 1 s ;
+  Intermédiaire 4625 tests ≈ 18 s (série ≈ 30 s) ; Avancé 4723 tests ≈
+  38 s (série ≈ 77 s ; avant ce chantier ≈ 81 s).
 - **Règles pour les tests** : un test ne doit pas dépendre d'un autre
-  (lancé seul, ou sans les tests marqués, il passe) ; ne jamais détruire la
+  (lancé seul, sans les tests marqués, ou dans un autre processus que ses
+  voisins en parallèle, il passe : une fixture partagée prépare elle-même
+  ce dont les tests ont besoin) ; ne jamais détruire la
   wx.App de la session (`wx.GetApp() or wx.App(False)`, pas de
   `app.Destroy()`) — `tests/conftest.py` en recrée une avant chaque test
   si besoin ; une vraie fenêtre principale ferme son flux audio et son MIDI
@@ -2609,7 +2616,6 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_preferences_dialog.py` | Dialogue des Préférences (Phase 8 étape 10d1) : sept onglets, valeurs lues dans AppConfig, réglages changés (champ vidé = défaut), Ok / Annuler / Appliquer, Parcourir… et Valeurs par défaut, Ctrl+Tab / Ctrl+Shift+Tab et Gauche / Droite sur l'onglet (en boucle, autres touches laissées passer), libellé créé avant chaque champ (Orca) ; _open_preferences / _apply_preferences ; Alt+Shift+P dans la fenêtre principale, l'éditeur MIDI et la fenêtre Songs (60 tests) |
 | `test_preferences_effects.py` | Effets des Préférences (Phase 8 étapes 10f1, 10f2) : projet au démarrage (nouveau, dernier, repli), dernier projet retenu par Ctrl+O / Explorateur / Ctrl+S, dossier de départ de l'Explorateur (utilisateur, appli, ~), effet immédiat (Autoplay, limiteur, gains, dossiers, volume / pan d'un nouveau projet) ou au prochain lancement, FluidSynthEngine.set_gain, bouton « Valeurs par défaut » ; vraie fenêtre principale (44 tests) |
 | `test_prefs_hardware.py` | Onglet Matériel des Préférences (Phase 8 étape 11f1) : HardwarePage sur un matériel factice (ordre des contrôles, libellés, « (Aucun) » coché quand rien d'autre ne l'est et qui décoche tout, périphérique absent gardé, sélection gardée, pilote, sortie principale = sorties cochées ou défaut, réglages changés, valeur par défaut retirée, Valeurs par défaut, Tester sans sélection / ligne non cochée / entrées en différé, focus jamais déplacé, Détecter) ; greffons ALSA, diagnostic d'une entrée (silence, bloqué, présent malgré un pic), RMS, stéréo, écoute de 3 s, nom d'un indice ; clients rtmidi retirés ; HardwareAccess (listes, Synthé FluidSynth, Détecter audio sur la même sortie, La 440 par le pilote ou directement, écoute avec réécoute ou non) ; ports MIDI rouverts depuis les Préférences (71 tests) |
-| `test_pygame_driver.py` | PygameDriver : play, stop, volume, pan |
 | `test_quantize.py` | (Phase 8 étape 13e1 : notes de grille placées comme de vraies notes, plus dans float_offsets) Quantisation : apply_quant_row, apply_quant_to_pattern, force/swing/fenêtre/direction |
 | `test_quantize_notes.py` | Quantisation de toutes les notes (Phase 8 étapes 13d1-13d3) : grille, kit et synthé de la même façon (vélocité, canal, durée gardés ; contrôleurs intacts ; arrondi au pas hors de la fenêtre), « Enlever les doublons » (la dernière jouée ; autre pad, canal ou type gardés ; sans déplacement), « Quantiser la vélocité », réglages retenus (quant_kwargs, Ctrl+Q, Shift+Q, dialogue, état de l'Undo) ; QuantizeDialog (cases, liste, mode enregistrement) ; snap_position ; frappes enregistrées (position, vélocité, doublons remplacés, canal, case décochée, Note Repeat) ; dialogue Alt+Shift+Q (réglages, annonces, Undo, autre fenêtre) ; Alt+Shift+Q dans la fenêtre principale et l'éditeur MIDI (50 tests) |
 | `test_rack_mode.py` | Mode Rack 16 canaux, moteur (Phase 8 étape 5c1) : `_rack_mode` du pattern (défaut, .gvp, clé absente ou non booléenne, copy_from, song figé), slot effectif (canal N → slot N, repli sur le premier slot Banque, slot vide muet sans banque, `_track_slots` intact, mode normal), lecture par canal (PATCH, KIT, cases de grille, Pitch Bend et modulation, batterie GM au canal 10, mute), note PATCH sur un kit par sa note GM (deux modes), Program Change sans pont (la piste suit son canal et son slot, ignoré sur un synthé, instrument d'une banque ou du repli, rejeu), pont gardé en mode normal, poursuite de toutes les pistes, moteurs des slots synthé des canaux joués, `render_copy`, kit du pattern (canal 10 d'abord, autres kits, canaux muets), `kit_note_of_gm` et `kit_path`, `_apply_rack_kit` (sans renommer les pads, pas de rechargement, avertissements, sons par défaut, mode normal), mode posé au changement de pattern, à l'avance du song et à l'export WAV (62 tests) |
@@ -2630,7 +2636,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_sound_device_driver.py` | SoundDeviceDriver : play, mix, polyphonie |
 | `test_signature.py` | Signatures rythmiques : unités (temps du dénominateur, noire du tempo, résolution), pas par mesure, changement de signature qui garde les notes en place, sauvegarde, valeurs de note, minutage, métronome, position, décompte, import et export (3/4, 6/8, 5/4, 7/8, 2/2) |
 | `test_signature_ui.py` | Interface des signatures : dialogue des propriétés (champ Tempo, signature, résolution, longueur recalculée ; tempo et signature en direct, Annuler, Undo), application au pattern (notes en place, Nouveau, Doubler), grille limitée à la mesure |
-| `test_sound_manager.py` | SoundManager : load_kit, mute_groups, play_note |
+| `test_sound_manager.py` | SoundManager : load_kit, mute_groups, play_note ; Phase 8 étape 17c1 : SoundDeviceDriver seul (plus de PygameDriver), tests communs lancés par pytest |
 | `test_step_duration.py` | Durée du pas indépendante de la résolution : set_bpm, load_pattern, song, métronome, Note Repeat |
 | `test_synth_engine.py` | SynthEngine : chargement patch, pré-calcul, lecture |
 | `test_synth_utils.py` | Utilitaires : scale_midi_notes, midi_to_note_name |
@@ -2658,7 +2664,8 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 ### `tools/tests.sh`
 
 Tests en trois niveaux (Phase 8 étape 17b1) : `basique [fichiers…]`,
-`intermediaire`, `avance` (raccourcis `b`, `i`, `a`) ; voir « Tests
+`intermediaire`, `avance` (raccourcis `b`, `i`, `a`), les deux derniers en
+parallèle (17c1 ; `TESTS_SERIE=1` pour la série) ; voir « Tests
 unitaires », Niveaux et marques. Sans argument : l'aide. Code de sortie :
 celui de pytest (0 si tout passe).
 

@@ -1,9 +1,10 @@
 #python3
 """
     File: tests/test_sound_manager.py
-    Tests unitaires de SoundManager avec SoundDeviceDriver (défaut) et
-    PygameDriver (optionnel). Vérifie que les deux backends donnent le même
-    comportement observable : chargement, note_map, play, stop, volume.
+    Tests unitaires de SoundManager avec SoundDeviceDriver : chargement,
+    note_map, play, stop, volume (Phase 8 étape 17c1 : plus de PygameDriver,
+    ancien pilote d'avant sounddevice ; les tests communs, jamais lancés par
+    pytest car leur nom commençait par « _ », le sont maintenant).
     Notes des pads et correspondance GM du kit (Phase 7 étape 11e1) ;
     courbe de volume GM aux points d'entrée du son (Phase 7 étape 12c1).
     Date: Thu, 28/05/2026
@@ -19,8 +20,6 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import pygame
-from audio.pygame_driver      import PygameDriver
 from audio.sound_device_driver import SoundDeviceDriver, SdSound
 from audio.sound_manager      import SoundManager
 
@@ -30,8 +29,7 @@ MEDIA16   = (WAVS * 2)[:16]   # 16 chemins WAV (on boucle si < 16)
 CLICK1    = WAVS[0]
 CLICK2    = WAVS[1]
 
-# Drivers partagés
-_pygame_drv = PygameDriver()
+# Driver partagé
 _sd_drv     = SoundDeviceDriver()
 
 
@@ -74,7 +72,7 @@ def test_default_driver_is_sounddevice():
 
 
 def test_click_sounds_loaded():
-    sm = make_sm(_pygame_drv)
+    sm = make_sm(_sd_drv)
     assert sm.sound_click1 is not None
     assert sm.sound_click2 is not None
     print("  click1/click2 chargés à l'init : OK")
@@ -535,6 +533,20 @@ def test_sd_set_volume_updates_master_vol():
 # Lancer tous les tests pour les deux backends
 # ---------------------------------------------------------------------------
 
+COMMON = ("load_sounds", "load_pad_sound", "load_pad_sound_extends_list",
+          "silent_sound_not_none", "load_kit_labels", "load_kit_populates_drum_sounds",
+          "load_kit_populates_note_map", "play_sound_no_crash", "play_note_valid_no_crash",
+          "play_note_invalid_no_crash", "play_metronome_no_crash", "stop_all_no_crash",
+          "set_volume_no_crash", "shift_kit_returns_labels")
+
+
+@pytest.mark.parametrize("name", COMMON)
+def test_common_on_sounddevice(name):
+    """Tests communs, lancés par pytest sur SoundDeviceDriver (17c1)."""
+    globals()[f"_test_{name}"](_sd_drv, "SD")
+    _sd_drv.stop_all()
+
+
 def _run_all_common(driver, tag):
     _test_load_sounds(driver, tag)
     _test_load_pad_sound(driver, tag)
@@ -558,10 +570,6 @@ if __name__ == "__main__":
     # Init
     test_default_driver_is_sounddevice()
     test_click_sounds_loaded()
-
-    # Backend PygameDriver
-    print("--- PygameDriver ---")
-    _run_all_common(_pygame_drv, "PG")
 
     # Backend SoundDeviceDriver
     print("--- SoundDeviceDriver ---")

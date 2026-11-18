@@ -52,6 +52,10 @@ def isolated_preferences(tmp_path_factory):
 # ---------------------------------------------------------------------------
 
 SLOW_GUARD_SECS = 0.3
+# en parallèle (pytest-xdist), les processus se disputent la machine et tout
+# s'allonge : seuil plus haut, pour ne signaler que les tests vraiment lents
+# (Phase 8 étape 17c1)
+SLOW_GUARD_SECS_PARALLEL = 1.0
 LEVEL_MARKS = ("slow", "audio", "gui")
 
 
@@ -61,37 +65,40 @@ def pytest_addoption(parser):
                           f"{SLOW_GUARD_SECS} s")
 
 
+class SlowGuard:
+    """Greffon actif avec --slow-guard : durées lues dans les comptes rendus
+    (avec pytest-xdist, ce sont eux qui reviennent des processus vers le
+    processus principal, Phase 8 étape 17c1), résumé en fin de suite."""
+
+    def __init__(self, threshold=SLOW_GUARD_SECS):
+        self.secs = {}
+        self.threshold = threshold
+
+    def pytest_runtest_logreport(self, report):
+        if report.when not in ("setup", "call"):
+            return
+        if any(m in report.keywords for m in LEVEL_MARKS):
+            return
+        self.secs[report.nodeid] = self.secs.get(report.nodeid, 0.0) + report.duration
+
+    def pytest_terminal_summary(self, terminalreporter):
+        slow = sorted(((secs, nid) for nid, secs in self.secs.items()
+                       if secs >= self.threshold), reverse=True)
+        if not slow:
+            return
+        terminalreporter.section("Tests lents non marqués (slow / audio / gui)")
+        for secs, nid in slow:
+            terminalreporter.write_line(f"{secs:5.2f} s  {nid}")
+        terminalreporter.write_line(
+            f"{len(slow)} test(s) de plus de {self.threshold} s sans marque : les marquer, "
+            "ou les accélérer (docs/SPECS.md, Tests).")
+
+
 def pytest_configure(config):
-    config._slow_guard = {} if config.getoption("--slow-guard") else None
-    config._level_marked = set()
-
-
-def pytest_collection_modifyitems(config, items):
-    for item in items:
-        if any(item.get_closest_marker(m) for m in LEVEL_MARKS):
-            config._level_marked.add(item.nodeid)
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    outcome = yield
-    guard = item.config._slow_guard
-    if guard is not None and call.when in ("setup", "call") \
-            and item.nodeid not in item.config._level_marked:
-        guard[item.nodeid] = guard.get(item.nodeid, 0.0) + call.duration
-
-
-def pytest_terminal_summary(terminalreporter, config):
-    guard = getattr(config, "_slow_guard", None)
-    if not guard:
-        return
-    slow = sorted(((secs, nid) for nid, secs in guard.items() if secs >= SLOW_GUARD_SECS),
-                  reverse=True)
-    if not slow:
-        return
-    terminalreporter.section("Tests lents non marqués (slow / audio / gui)")
-    for secs, nid in slow:
-        terminalreporter.write_line(f"{secs:5.2f} s  {nid}")
-    terminalreporter.write_line(
-        f"{len(slow)} test(s) de plus de {SLOW_GUARD_SECS} s sans marque : les marquer, "
-        "ou les accélérer (docs/SPECS.md, Tests).")
+    if config.getoption("--slow-guard"):
+        try:
+            parallel = bool(config.getoption("numprocesses"))     # pytest-xdist
+        except ValueError:
+            parallel = False
+        threshold = SLOW_GUARD_SECS_PARALLEL if parallel else SLOW_GUARD_SECS
+        config.pluginmanager.register(SlowGuard(threshold), "groovyboxit-slow-guard")
