@@ -314,6 +314,7 @@ def test_cli_lists_midi_ports(rt, capsys, monkeypatch):
     assert "== MIDI ==" in out and f"  - {MPK}" in out and "Sorties (2) :" in out
 
 
+@pytest.mark.audio
 def test_cli_note(rt, capsys):
     assert devices_cli.main(["--note", "Synth USB 24:0"]) == 0
     out = rt.midi_outs[-1]
@@ -514,6 +515,7 @@ def test_test_output_opened_port(tmp_path, rt, monkeypatch):
     assert win._midi_outs["Synth USB 24:0"].sent[0] == [0x90, 69, 100]
 
 
+@pytest.mark.audio
 def test_test_output_temporary_port(tmp_path, rt, monkeypatch):
     monkeypatch.setattr(md, "TEST_SECONDS", 0.01)
     win = _win(tmp_path, {})
@@ -568,6 +570,7 @@ class _Driver:
         self.sources.remove(fn)
 
 
+@pytest.mark.audio
 def test_test_synth_output(tmp_path, monkeypatch):
     import audio.engines.fluidsynth_engine as fe
     _FakeEngine.made, _FakeEngine.fail_load = [], False
@@ -725,6 +728,7 @@ def test_f12_shortcuts_midi_editor(monkeypatch):
 # Vraie fenêtre principale : entrée MIDI introuvable au démarrage
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gui
 def test_real_main_window_missing_midi_input(isolated_preferences, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA), vrai rtmidi."""
     path = str(isolated_preferences)

@@ -38,6 +38,9 @@ from rack import InstrumentType
 from test_key_manager import FakeEvent
 from test_note_cuts import _env, _live_window, SYNTH, SYNTH2   # noqa: F401 (fixture)
 
+# vraie fenêtre principale pour presque tout le fichier (Phase 8 étape 17b1)
+pytestmark = pytest.mark.gui
+
 # slots d'essai de la vraie fenêtre (en mémoire seulement, jamais sauvés)
 S_BANK, S_SFZ, S_KIT, S_WAV, S_EMPTY = 11, 12, 13, 14, 15
 

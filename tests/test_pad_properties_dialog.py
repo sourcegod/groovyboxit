@@ -39,7 +39,7 @@ DEFAULT = dict(volume=75, pan=-20, mute=True, solo=False, duration_ms=500)
 
 def make_dlg(on_change=None, on_play=None, on_play_toggle=None, **kwargs):
     params = {**DEFAULT, **kwargs}
-    app    = wx.App(False)
+    app    = wx.GetApp() or wx.App(False)  # wx.App de la session, jamais détruite (Phase 8 étape 17b1)
     frame  = wx.Frame(None)
     dlg    = PadPropertiesDialog(
         frame, 3,
@@ -58,7 +58,6 @@ def make_dlg(on_change=None, on_play=None, on_play_toggle=None, **kwargs):
 def teardown(app, frame, dlg):
     dlg.Destroy()
     frame.Destroy()
-    app.Destroy()
 
 
 # ---------------------------------------------------------------------------

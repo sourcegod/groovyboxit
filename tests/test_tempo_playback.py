@@ -475,6 +475,7 @@ def test_on_play_stopped_resets_controllers_and_shows_tempo(monkeypatch):
 # Lecture réelle, chronométrée
 # ---------------------------------------------------------------------------
 
+@pytest.mark.audio
 def test_real_playback_follows_map():
     """120 BPM, 60 BPM dès le pas 4 : notes aux pas 0, 4, 6 attendues à 0,
     0,5 et 1,0 s ; tempos franchis signalés."""

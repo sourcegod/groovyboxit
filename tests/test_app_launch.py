@@ -6,6 +6,7 @@
     Date: Mon, 18/05/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -16,6 +17,7 @@ def test_import_main_window():
     print("  import MainWindow : OK")
 
 
+@pytest.mark.gui
 def test_instantiate_main_window():
     import wx
     from ui.main_window import MainWindow

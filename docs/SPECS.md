@@ -140,9 +140,11 @@ groovyboxit/
 │   ├── presets/          # Presets JSON (ex. preset_01.json)  [ancien format]
 │   └── PROJECTS/         # Projets .gvp (ex. project_01.gvp)
 ├── media/                # Sons drum par défaut (1.wav … 16.wav) + métronome
+├── pytest.ini            # Configuration de pytest : testpaths, marques slow / audio / gui (Phase 8 étape 17b1)
 ├── tools/
 │   ├── bench_latency.py      # Comparaison latence PygameDriver vs SoundDeviceDriver
 │   ├── check_specs_tests.py  # Vérifie que SPECS.md liste tous les tests/test_*.py
+│   ├── tests.sh              # Tests en trois niveaux : basique, intermediaire, avance (Phase 8 étape 17b1)
 │   ├── diag_loop.py          # Diagnostic points de bouclage
 │   ├── extract_gm_drums.py   # Script extraction drums GM depuis FluidSynth
 │   ├── extract_instruments_sf2.py # Exporteur général d'instruments SF2
@@ -2497,7 +2499,43 @@ Catégories principales :
 
 ## Tests unitaires
 
-Tous les tests sont dans `tests/`. Exécution globale : `bash tests/test_all.sh`
+Tous les tests sont dans `tests/`, lancés par pytest (`pytest.ini` à la
+racine : `testpaths = tests`, `--strict-markers`). Exécution : en trois
+niveaux par `tools/tests.sh` (voir ci-dessous) ; `bash tests/test_all.sh`
+(chaque fichier lancé seul comme un script) n'est plus la référence.
+
+### Niveaux et marques (Phase 8 étape 17)
+
+Trois **marques**, déclarées dans `pytest.ini` (une marque inconnue est
+refusée) ; un test peut en porter plusieurs :
+
+| Marque | Tests | Exemples |
+|---|---|---|
+| `slow` | calcul long, sans matériel ni attente | LUFS et limiteur sur de longs fichiers |
+| `audio` | temps réel (le fil de lecture joue et attend vraiment) ou vraie carte son | songs, décomptes, boucles, prises |
+| `gui` | vraie fenêtre principale (clients ALSA / MIDI) | `test_real_main_window_*`, fixtures à fenêtre (`pytestmark`) |
+
+Trois **niveaux**, par `tools/tests.sh` :
+
+| Niveau | Commande | Contenu | Quand |
+|---|---|---|---|
+| Basique | `tools/tests.sh basique tests/test_x.py …` (ou `b`) | les fichiers donnés ; sans fichier : les derniers tests en échec qui existent encore | à chaque petite modification |
+| Intermédiaire | `tools/tests.sh intermediaire` (ou `i`) | tout sauf `slow`, `audio`, `gui` | à chaque étape d'implémentation, avant l'essai |
+| Avancé | `tools/tests.sh avance` (ou `a`) | toute la suite, avec le garde-fou | avant chaque commit, à chaque clôture |
+
+- Options supplémentaires passées à pytest (`-x`, `-k motif`…).
+- **Garde-fou** (`--slow-guard`, niveau Avancé) : signale en fin de suite
+  tout test **sans marque** qui a pris au moins 0,3 s (préparation +
+  exécution) ; le marquer ou l'accélérer, pour garder le niveau
+  Intermédiaire rapide.
+- Mesures (2026-11-18, un cœur) : Intermédiaire 4611 tests ≈ 30 s ;
+  Avancé 4709 tests ≈ 80 s.
+- **Règles pour les tests** : un test ne doit pas dépendre d'un autre
+  (lancé seul, ou sans les tests marqués, il passe) ; ne jamais détruire la
+  wx.App de la session (`wx.GetApp() or wx.App(False)`, pas de
+  `app.Destroy()`) — `tests/conftest.py` en recrée une avant chaque test
+  si besoin ; une vraie fenêtre principale ferme son flux audio et son MIDI
+  avant `Destroy`.
 
 Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` : à vérifier avec `python3 tools/check_specs_tests.py` avant de committer un nouveau fichier de tests, et à chaque clôture de chantier.
 
@@ -2616,6 +2654,13 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 ---
 
 ## Outils
+
+### `tools/tests.sh`
+
+Tests en trois niveaux (Phase 8 étape 17b1) : `basique [fichiers…]`,
+`intermediaire`, `avance` (raccourcis `b`, `i`, `a`) ; voir « Tests
+unitaires », Niveaux et marques. Sans argument : l'aide. Code de sortie :
+celui de pytest (0 si tout passe).
 
 ### `tools/check_specs_tests.py`
 

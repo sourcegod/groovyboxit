@@ -5,6 +5,7 @@
     Date: Mon, 08/06/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 import time
@@ -175,14 +176,17 @@ def _run_song_advance_test(num_patterns, bpm=600, num_bars=1):
     return advances
 
 
+@pytest.mark.audio
 def test_song_single_pattern_ends():
     advances = _run_song_advance_test(1, bpm=600)
     assert advances == [-1]
 
+@pytest.mark.audio
 def test_song_two_patterns_advance_then_end():
     advances = _run_song_advance_test(2, bpm=600)
     assert advances == [1, -1]
 
+@pytest.mark.audio
 def test_song_three_patterns_all_advances():
     advances = _run_song_advance_test(3, bpm=600)
     assert advances == [1, 2, -1]
@@ -219,6 +223,7 @@ def test_play_song_sets_looping_flag():
     assert player._song_looping is True
     player.stop_pattern()
 
+@pytest.mark.audio
 def test_song_looping_loops_back():
     """Avec looping=True, le callback reçoit l'indice du 1er pattern au lieu de -1."""
     pats = [make_pattern(bpm=600) for _ in range(2)]

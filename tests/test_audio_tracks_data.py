@@ -607,6 +607,7 @@ def test_kind_change_cuts_the_track_notes(tmp_path, monkeypatch):
 # Vraie fenêtre principale : enregistrer puis rouvrir
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gui
 def test_real_main_window_save_and_reopen(isolated_preferences, tmp_path, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA)."""
     from ui.main_window import MainWindow

@@ -6,6 +6,7 @@
     Date: Mon, 18/05/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 
@@ -137,6 +138,7 @@ def test_halve_pattern_all_tracks():
 # Test dispatch via _on_track_play_cb
 # ---------------------------------------------------------------------------
 
+@pytest.mark.audio
 def test_on_track_play_cb_called_per_track():
     """
     Simule un cycle de lecture (sans audio réel) et vérifie que le callback

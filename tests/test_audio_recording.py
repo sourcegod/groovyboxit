@@ -478,6 +478,7 @@ def test_measure_end_without_take_pauses_as_before(player):
     assert player._pattern._num_bars == n and not player.playing
 
 
+@pytest.mark.audio
 def test_thread_anchors_the_take_when_playback_starts():
     """Vrai fil de lecture : la prise armée à l'arrêt est ancrée au premier
     tour de lecture enregistrée."""
@@ -834,6 +835,8 @@ class _Key:
 _APP = None
 
 
+@pytest.mark.gui
+@pytest.mark.audio
 def test_real_main_window_records_a_take(isolated_preferences, monkeypatch, tmp_path):
     """Une seule vraie MainWindow (clients ALSA) : R, prise posée, Ctrl+Z ;
     R puis Espace ; noms de piste par F2 et Undo."""

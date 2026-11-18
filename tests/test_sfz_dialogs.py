@@ -233,6 +233,7 @@ def _explore(win, monkeypatch, slot, **kw):
     return fake
 
 
+@pytest.mark.gui
 def test_explorer_sfz_fills_slot(win, library, monkeypatch):
     win._sfz_dir = library.root
     win._router.sfz_dir = library.root
@@ -249,6 +250,7 @@ def test_explorer_sfz_fills_slot(win, library, monkeypatch):
     assert win._undo.last_entry().title == "SFZ slot 11"
 
 
+@pytest.mark.gui
 def test_explorer_sfz_cancel_keeps_slot_and_pops_undo(win, library, monkeypatch):
     win._rack.clear_slot(11)
     before = win._undo.last_entry()
@@ -258,6 +260,7 @@ def test_explorer_sfz_cancel_keeps_slot_and_pops_undo(win, library, monkeypatch)
     assert win._undo.last_entry() is before                 # Undo retiré
 
 
+@pytest.mark.gui
 def test_explorer_sfz_unchanged(win, library, monkeypatch):
     win._sfz_dir = win._router.sfz_dir = library.root
     _explore(win, monkeypatch, 12, source=library.sax, gain=0)
@@ -268,6 +271,7 @@ def test_explorer_sfz_unchanged(win, library, monkeypatch):
     assert win._undo.last_entry() is before                       # Undo retiré
 
 
+@pytest.mark.gui
 def test_explorer_sfz_keeps_other_settings_of_sfz_slot(win, library, monkeypatch):
     win._sfz_dir = win._router.sfz_dir = library.root
     _explore(win, monkeypatch, 13, source=library.sax)
@@ -279,6 +283,7 @@ def test_explorer_sfz_keeps_other_settings_of_sfz_slot(win, library, monkeypatch
     assert slot.name == "Cello"
 
 
+@pytest.mark.gui
 def test_explorer_sfz_old_key_replaced(win, library, monkeypatch):
     win._sfz_dir = win._router.sfz_dir = library.root
     win._rack.set_slot(14, InstrumentType.SFZ, "Ancien", {"sfz_file": "Solo/Sax.sfz"})
@@ -286,6 +291,7 @@ def test_explorer_sfz_old_key_replaced(win, library, monkeypatch):
     assert "sfz_file" not in win._rack.get_slot(14).config
 
 
+@pytest.mark.gui
 def test_undo_restores_slot_list_label(win, library, monkeypatch):
     # Essai de 7h1 : Undo d'un slot rempli par l'Explorateur, libellé rétabli
     win._sfz_dir = win._router.sfz_dir = library.root
@@ -305,6 +311,7 @@ def test_explorer_lists_sfz_item():
     assert ExplorerDialog.ITEMS[-1] == "SFZ"
 
 
+@pytest.mark.gui
 def test_open_explorer_dispatches_sfz(win, monkeypatch):
     calls = []
     monkeypatch.setattr(mw_pads, "ExplorerDialog", lambda parent: types.SimpleNamespace(
@@ -685,6 +692,7 @@ def test_cancelled_composition_changes_nothing(library, monkeypatch):
 # Explorateur : même source modifiée, relue (correction de l'essai de 7j1)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gui
 def test_explorer_rereads_modified_source(win, library, monkeypatch):
     from test_sfz_slot import FakeSfzEngine
     win._sfz_dir = win._router.sfz_dir = library.root

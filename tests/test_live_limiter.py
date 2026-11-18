@@ -86,6 +86,7 @@ def test_constants_match_the_export_limiter():
     assert RELEASE_S == audio_export.RELEASE_S == 0.05
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("sizes", [[512], [1], [4096], [7, 300, 1500, 1, 64]])
 def test_matches_sample_by_sample_reference(sizes):
     x = _signal()
@@ -338,6 +339,7 @@ class _RecordingDriver(Mixer):
         pass
 
 
+@pytest.mark.gui
 @pytest.mark.parametrize("enabled", [True, False])
 def test_main_window_passes_live_limiter_key(monkeypatch, enabled):
     global _APP
@@ -354,7 +356,12 @@ def test_main_window_passes_live_limiter_key(monkeypatch, enabled):
         assert win._set_master_volume_undo(180) == 180
         assert win._audio_driver._master_vol == pytest.approx(1.8)
     finally:
+        # flux audio et MIDI fermés avant Destroy (comme test_app_launch, 14c1) :
+        # sinon plantage à la sortie de Python (Phase 8 étape 17b1, trouvé par
+        # le code de retour des niveaux : test_key_manager + ce test → 139)
         win._router.wait_loaded()
+        win._close_midi_devices()
+        win._audio_driver.close()
         win.Destroy()
 
 

@@ -270,6 +270,7 @@ def _wrap_measure_end(player, looping=True, recording=True, count_in=0, anchor=T
     return calls, now + 0.4
 
 
+@pytest.mark.audio
 def test_wrap_callback_before_each_loop_end(player):
     calls, end = _wrap_measure_end(player)
     assert len(calls) == 1
@@ -279,6 +280,7 @@ def test_wrap_callback_before_each_loop_end(player):
     assert player.AUDIO_WRAP_LEAD == 0.3
 
 
+@pytest.mark.audio
 @pytest.mark.parametrize("case", ["no_loop", "not_recording", "no_anchor"])
 def test_no_wrap_callback(player, case):
     calls, _ = _wrap_measure_end(player, looping=case != "no_loop",
@@ -582,6 +584,8 @@ class _Key:
 _APP = None
 
 
+@pytest.mark.gui
+@pytest.mark.audio
 def test_real_main_window_loop_takes(isolated_preferences, tmp_path):
     """Une seule vraie MainWindow (clients ALSA) : Overdub en boucle (passages
     posés pendant la prise), puis Remplacer (piste muette dès le 1er

@@ -56,7 +56,7 @@ DEFAULT = dict(
 
 def make_dlg(on_play_toggle=None, **kwargs):
     p = {**DEFAULT, **kwargs}
-    app   = wx.App(False)
+    app   = wx.GetApp() or wx.App(False)  # wx.App de la session, jamais détruite (Phase 8 étape 17b1)
     frame = wx.Frame(None)
     dlg   = PatternPropertiesDialog(
         frame, 0,
@@ -70,7 +70,6 @@ def make_dlg(on_play_toggle=None, **kwargs):
 def teardown(app, frame, dlg):
     dlg.Destroy()
     frame.Destroy()
-    app.Destroy()
 
 
 # ---------------------------------------------------------------------------

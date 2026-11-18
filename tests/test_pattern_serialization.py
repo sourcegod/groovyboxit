@@ -6,6 +6,7 @@
     Date: Mon, 18/05/2026
     Author: Coolbrother
 """
+import pytest
 import sys
 import os
 import json
@@ -297,6 +298,7 @@ def test_json_roundtrip_single_pattern():
     print("  JSON round-trip (fichier temporaire) : OK")
 
 
+@pytest.mark.slow
 def test_json_roundtrip_99_patterns():
     """Un preset complet de 99 patterns doit se recharger sans perte."""
     pattern_list = [Pattern() for _ in range(99)]

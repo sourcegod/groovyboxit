@@ -14849,3 +14849,49 @@ jour) ; `docs/SPECS.md` décrit les niveaux et les marques.
 - **17c1 — parallèle** : pytest-xdist, corrections des tests qui ne le
   supportent pas, second passage en série si besoin ; mesures.
 - **17d1 — clôture** (SPECS, mémoire, `git gc`).
+
+### Avancement 17b1 (marques et niveaux)
+
+- **`pytest.ini`** (nouveau) : `testpaths = tests`, `--strict-markers`,
+  marques `slow`, `audio`, `gui` (descriptions en français).
+- **Marques posées** (≥ 0,3 s mesurées, plus les vraies fenêtres et le
+  vrai fil de lecture) : 49 marques de tests et 2 de module
+  (`pytestmark = pytest.mark.gui` : `test_auto_input_mode.py`,
+  `test_playback_rewind.py`, dont presque tous les tests partagent une
+  vraie fenêtre) — une fois les tests paramétrés comptés : `gui` 61
+  tests, `audio` 16, `slow` 23, soit 98 tests écartés du niveau
+  Intermédiaire (un test peut avoir deux marques).
+- **`tools/tests.sh`** (nouveau) : `basique [fichiers…]` (sans fichier :
+  les derniers échecs **qui existent encore** — le cache de pytest garde
+  ceux de tests renommés ou supprimés, et `--lf` relançait alors toute la
+  suite), `intermediaire` (`-m "not slow and not audio and not gui"`),
+  `avance` (`--slow-guard`) ; raccourcis `b`, `i`, `a` ; options passées à
+  pytest ; code de sortie de pytest.
+- **Garde-fou** (`tests/conftest.py`, `--slow-guard`) : en fin de suite,
+  liste des tests sans marque de plus de 0,3 s (préparation + exécution).
+- `.gitignore` : `.pytest_cache/`.
+- **Défauts révélés et corrigés** :
+  - en écartant les tests `gui`, **61 échecs `PyNoAppError`** : des
+    fichiers détruisaient la wx.App de la session et les tests à vraie
+    fenêtre en recréaient une au passage → `conftest.py` recrée une wx.App
+    avant chaque test si besoin (`wx_app_alive`) ;
+  - **`test_precompute_scale`** échouait lancé seul (moteur partagé du
+    module, patch chargé par le test précédent) → il charge son patch ;
+  - **Python plantait à la sortie de la suite complète** (code 139,
+    « Erreur de segmentation », pendant le ramasse-miettes) — **déjà le
+    cas avant ce chantier**, masqué parce que la sortie de pytest était
+    toujours filtrée (`| tail`) : trouvé par dichotomie sur les fichiers
+    (`test_key_manager.py` puis `test_app_launch.py`, déterministe) ;
+    cause : six fichiers de tests **créaient puis détruisaient une wx.App**
+    à chaque test (`test_key_manager`, `test_pattern_properties_dialog`,
+    `test_loop_select_dialog`, `test_pad_properties_dialog`,
+    `test_save_confirm_dialog`, `test_signature_ui`) → ils réutilisent la
+    wx.App de la session (`wx.GetApp() or wx.App(False)`) sans la détruire ;
+    `test_live_limiter` ferme aussi son MIDI et son pilote avant `Destroy`.
+- **Mesures** (2026-11-18, un cœur) : avant, suite complète ≈ 81 s (code
+  139) ; Basique sur un fichier < 1 s ; **Intermédiaire 4611 tests ≈ 30 s**
+  (code 0) ; **Avancé 4709 tests ≈ 80 s** (code 0, aucun test lent non
+  marqué).
+- **`docs/SPECS.md`** : « Tests unitaires » — Niveaux et marques, règles
+  pour les tests ; `tools/tests.sh` dans les Outils ; arborescence
+  (`pytest.ini`, `tools/tests.sh`).

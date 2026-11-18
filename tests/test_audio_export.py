@@ -742,6 +742,7 @@ def test_limiter_loop_matches_steady_state():
     assert np.allclose(yl, yt[n:2 * n], atol=2e-3)
 
 
+@pytest.mark.slow
 def test_limiter_long_file_is_fast():
     x = (np.random.default_rng(5).standard_normal((SR * 60, 2)) * 0.4).astype(np.float32)
     t0 = time.perf_counter()
@@ -769,6 +770,7 @@ def test_lufs_reference_997hz_one_channel(sr):
     assert ax.loudness_lufs(_tone(0.0, sr=sr, channels=(0,)), sr) == pytest.approx(-3.01, abs=0.02)
 
 
+@pytest.mark.slow
 def test_lufs_stereo_and_linear_in_db():
     assert ax.loudness_lufs(_tone(0.0), SR) == pytest.approx(0.0, abs=0.03)
     assert ax.loudness_lufs(_tone(-20.0), SR) == pytest.approx(-20.0, abs=0.03)
@@ -788,12 +790,14 @@ def test_k_weighting_response():
     assert db(20) < -10 < db(60)
 
 
+@pytest.mark.slow
 def test_lufs_k_weighting_favours_treble():
     low = ax.loudness_lufs(_tone(-20.0, freq=40.0), SR)
     high = ax.loudness_lufs(_tone(-20.0, freq=8000.0), SR)
     assert high > -20.0 + 3 and low < -20.0 - 1
 
 
+@pytest.mark.slow
 def test_lufs_absolute_gate_ignores_silence():
     """6 s de silence de part et d'autre ne changent rien : seuls comptent
     les blocs qui touchent le son (ceux du bord, en partie, comme le veut
@@ -806,6 +810,7 @@ def test_lufs_absolute_gate_ignores_silence():
     assert ax.loudness_lufs(pad(6.0), SR) > ax.loudness_lufs(tone, SR) - 0.5
 
 
+@pytest.mark.slow
 def test_lufs_relative_gate_ignores_quiet_part():
     loud, quiet = _tone(-20.0, seconds=5.0), _tone(-45.0, seconds=5.0)
     both = np.concatenate([loud, quiet])
@@ -815,6 +820,7 @@ def test_lufs_relative_gate_ignores_quiet_part():
     assert ax.loudness_lufs(both, SR) == pytest.approx(-20.0, abs=0.3)
 
 
+@pytest.mark.slow
 def test_lufs_silence_and_below_gate_is_none():
     assert ax.loudness_lufs(np.zeros((SR, 2), np.float32), SR) is None
     assert ax.loudness_lufs(_tone(-80.0), SR) is None
@@ -826,6 +832,7 @@ def test_lufs_short_file_single_block():
     assert ax.loudness_lufs(short, SR) == pytest.approx(-20.0, abs=0.5)
 
 
+@pytest.mark.slow
 def test_lufs_long_file_is_fast():
     x = (np.random.default_rng(2).standard_normal((SR * 120, 2)) * 0.1).astype(np.float32)
     t0 = time.perf_counter()
@@ -845,6 +852,7 @@ def test_measure_peak_and_rms():
         ax.measure_level(x, "true_peak", SR)
 
 
+@pytest.mark.slow
 def test_normalize_down_too():
     loud = _tone(-3.0)
     out, gain_db, limit_db = ax.apply_gain(loud, True, "lufs", -20, samplerate=SR)
@@ -853,6 +861,7 @@ def test_normalize_down_too():
     assert ax.loudness_lufs(out, SR) == pytest.approx(-20.0, abs=0.03)
 
 
+@pytest.mark.slow
 def test_normalize_then_limiter_holds_peaks():
     """Niveau visé élevé : le morceau monte, le limiteur tient les crêtes ;
     la loudness finale reste un peu sous la cible (comme Reaper)."""
@@ -1017,6 +1026,7 @@ def test_render_loop_result_is_looped(tmp_path):
     assert not _render(pat, live, end=ax.END_TAIL).looped
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("measure, level", [("peak", -6), ("rms", -20), ("lufs", -14)])
 def test_write_wav_normalize_to_target(tmp_path, measure, level):
     path = str(tmp_path / f"n_{measure}.wav")
@@ -1027,6 +1037,7 @@ def test_write_wav_normalize_to_target(tmp_path, measure, level):
     assert ax.measure_level(back, measure, SR) == pytest.approx(level, abs=0.05)
 
 
+@pytest.mark.slow
 def test_write_wav_default_normalization_is_lufs_minus_14(tmp_path):
     path = str(tmp_path / "d.wav")
     ax.write_wav(path, _result(_tone(-30.0, seconds=2.0)), "FLOAT", normalize=True)
@@ -1590,6 +1601,7 @@ def test_limit_envelope_none_below_threshold_and_matches_limiter():
 
 @pytest.mark.parametrize("normalize, measure, loop", [
     (False, "lufs", False), (True, "peak", False), (True, "rms", True), (True, "lufs", False)])
+@pytest.mark.slow
 def test_compute_gain_then_apply_equals_apply_gain(normalize, measure, loop):
     data = _spiked()
     gain = ax.compute_gain(data, normalize, measure, -6, samplerate=SR, loop=loop)

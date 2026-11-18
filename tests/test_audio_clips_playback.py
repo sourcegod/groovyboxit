@@ -588,6 +588,7 @@ def test_window_saved_and_loaded_in_the_gvp():
 _APP = None
 
 
+@pytest.mark.gui
 def test_real_main_window_wiring(isolated_preferences, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA)."""
     global _APP

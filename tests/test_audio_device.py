@@ -712,6 +712,7 @@ def test_other_keys_do_not_touch_the_output(tmp_path, fake_sd):
 # Vraie fenêtre principale : sortie absente au démarrage
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gui
 def test_real_main_window_missing_output(isolated_preferences, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA, cf. test_auto_input_mode)."""
     path = str(isolated_preferences)

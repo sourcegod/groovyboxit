@@ -168,6 +168,7 @@ def test_sfz_status_goes_through_call_after(fakes, monkeypatch):
 # Vraie fenêtre principale sans les deux moteurs
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gui
 def test_main_window_runs_without_both_engines(monkeypatch):
     calls = []
     real_call_after = wx.CallAfter

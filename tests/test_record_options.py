@@ -522,6 +522,7 @@ def test_count_in_click_done(record, click_record, click_play, before, clicking)
 _APP = None
 
 
+@pytest.mark.gui
 def test_real_main_window_project_options(isolated_preferences, monkeypatch, tmp_path):
     """Une seule vraie MainWindow (clients ALSA)."""
     global _APP

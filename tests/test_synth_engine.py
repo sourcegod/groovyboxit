@@ -81,7 +81,12 @@ def test_load_patch(engine, patch_dir):
     print(f"  load_patch : OK  ({engine})")
 
 
-def test_precompute_scale(engine):
+@pytest.mark.slow
+def test_precompute_scale(engine, patch_dir):
+    # patch chargé ici : sans lui, le test dépendait de test_load_patch
+    # (moteur partagé du module) et échouait lancé seul (Phase 8 étape 17b1)
+    if not engine.is_loaded():
+        engine.load_patch(os.path.basename(patch_dir))
     notes = scale_midi_notes("major", note_name_to_midi("C4"), 16)
     print(f"  pré-calcul gamme majeure C4 ({len(notes)} notes)...")
     engine.precompute(notes)

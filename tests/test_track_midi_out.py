@@ -491,6 +491,7 @@ def test_render_copy_has_no_port(env):
 _APP = None
 
 
+@pytest.mark.gui
 def test_real_main_window_sends_to_an_open_port(isolated_preferences, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA) ; port factice ouvert à la
     place du vrai, pattern chargé avec une sortie absente."""

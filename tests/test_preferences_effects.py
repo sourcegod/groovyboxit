@@ -500,6 +500,7 @@ def test_default_button_click(dialog):
 # Vraie fenêtre principale : démarrage, Autoplay, limiteur
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gui
 def test_real_main_window_startup_new_and_live_settings(isolated_preferences, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA, cf. test_auto_input_mode)."""
     from ui.main_window import MainWindow

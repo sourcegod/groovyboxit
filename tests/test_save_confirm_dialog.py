@@ -28,7 +28,7 @@ class FakeKeyEvent:
 
 
 def make_dlg():
-    app   = wx.App(False)
+    app   = wx.GetApp() or wx.App(False)  # wx.App de la session, jamais détruite (Phase 8 étape 17b1)
     frame = wx.Frame(None)
     dlg   = SaveConfirmDialog(frame, "Message", "Titre")
     results = []
@@ -39,7 +39,6 @@ def make_dlg():
 def teardown(app, frame, dlg):
     dlg.Destroy()
     frame.Destroy()
-    app.Destroy()
 
 
 # ---------------------------------------------------------------------------

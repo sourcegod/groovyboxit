@@ -378,14 +378,14 @@ class FakeEvent:
 # ---------------------------------------------------------------------------
 
 def make_km():
-    app = wx.App(False)
+    app = wx.GetApp() or wx.App(False)  # wx.App de la session, jamais détruite (Phase 8 étape 17b1)
     win = FakeWindow()
     km  = KeyManager(win)
     return app, win, km
 
 
 def teardown(app):
-    app.Destroy()
+    pass                     # la wx.App de la session reste (17b1)
 
 
 # ---------------------------------------------------------------------------

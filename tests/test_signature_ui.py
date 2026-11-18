@@ -33,13 +33,13 @@ RES = Pattern.VALID_RESOLUTIONS
 
 @pytest.fixture
 def frame():
-    """wx.App propre au test (comme les autres tests de dialogues)."""
-    app = wx.App(False)
+    """Fenêtre du test, sur la wx.App de la session (jamais détruite : une
+    wx.App détruite en cours de suite faisait planter Python à la sortie,
+    Phase 8 étape 17b1)."""
     f = wx.Frame(None)
     yield f
     for w in wx.GetTopLevelWindows():
         w.Destroy()
-    app.Destroy()
 
 
 def _dlg(frame, num_bars=4, num_steps=16, num_beats=4, denominator=4, max_bars=999):

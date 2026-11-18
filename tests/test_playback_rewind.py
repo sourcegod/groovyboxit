@@ -23,6 +23,9 @@ import wx
 from ui.mw_project import ProjectMixin
 from ui.main_window import MainWindow
 
+# vraie fenêtre principale pour presque tout le fichier (Phase 8 étape 17b1)
+pytestmark = pytest.mark.gui
+
 
 # ---------------------------------------------------------------------------
 # _rewind_playback sur un lecteur factice
