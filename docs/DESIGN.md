@@ -15065,3 +15065,94 @@ s'en sert.
   13 s ; contre ≈ 38 s mais instable) ; Intermédiaire ≈ 17 s.
 - **`docs/SPECS.md`** : parallèle par cœur physique, deux passages,
   mesures et explication.
+
+---
+
+## Phase 8 étape 18a — Volume et pan de piste en temps réel
+
+### Numérotation des commits de ce chantier
+
+18a (plan), puis paires implémentation → tests (18b1 / 18c1), 18d1
+(clôture) ; un commit imprévu prend le suffixe suivant, toujours après
+les commits déjà faits.
+
+### Origine du besoin (utilisateur, 2026-11-15 / 18)
+
+Noté pendant l'étape 14 : « le changement du volume et pan du clip doit
+s'entendre tout de suite, au même titre qu'une piste synthé ou Wave » ;
+demandé le 2026-11-18 : « on attaque le Volume et le Pan en temps réel, en
+faisant bien attention dans quelle catégorie on met les tests ».
+
+### État des lieux constaté en code (2026-11-18)
+
+- **Piste Banque / Synth SFZ** : `set_track_volume` / `set_track_pan`
+  envoient tout de suite CC7 / CC10 au moteur (pan de piste + pan global)
+  — les notes tenues l'entendent.
+- **Piste Wave (synthé à échantillons), Kit, clip audio** : volume et pan
+  lus **au départ** de la note ou du clip (`on_play`, `on_kit_tape`,
+  `on_patch_tape`, `_play_synth_note`, `on_audio_clip`) ; la voix lancée
+  n'est pas suivie : un son qui sonne garde ses réglages de départ.
+- Mixer : `play(sound, vol, pan)` calcule une fois `vol_l` / `vol_r` (le pan
+  atténue un seul côté) ; notes passées par la courbe GM (`gm_gain`, le
+  carré du facteur) ; clips sans courbe.
+- **Le pan global** est ajouté pour les banques et les notes de grille,
+  **pas pour les clips audio** (oubli).
+- Volume global : au niveau du Mixer, déjà en temps réel.
+
+### Décisions de l'utilisateur (2026-11-18)
+
+- **V1 — portée** : les **clips audio, les notes Wave et les notes Kit** en
+  cours suivent tout de suite le volume et le pan de leur piste (toutes
+  les pistes se comportent pareil).
+- **V2 — pan global ajouté aux clips audio**, comme les banques et la
+  grille (temps réel et export).
+- **V3 — rampe anti-clic** : le changement passe de l'ancienne à la
+  nouvelle valeur en une dizaine de millisecondes, comme Sonar / Reaper.
+
+### Choix de conception proposés
+
+**V4 — voix suivies** (`TrackRouter`) : un registre « piste → voix en
+cours », chaque entrée gardant les **valeurs de départ hors piste**
+(facteur de la note : vélocité × volume du pad…, pan propre : pan du pad,
+pan global si la formule de départ l'ajoutait, courbe GM ou non). À un
+changement de volume ou de pan de la piste — et du pan global —, le gain
+de chaque voix de la piste est recalculé **avec la même formule qu'au
+départ** ; les voix finies quittent le registre (au passage). Portable en
+C/C++ : quelques nombres par voix.
+
+**V5 — rampe dans le Mixer** : chaque voix a un gain courant et un gain
+visé (gauche, droite) ; `Mixer.set_voice_gain(voix, vol, pan)` (même loi de
+pan que `play`) pose le visé ; le mixage passe du courant au visé
+linéairement sur `GAIN_RAMP` échantillons (≈ 10 ms, un bloc à 44,1 kHz),
+puis garde le visé. Sans changement : aucun coût. Le départ d'une voix ne
+fait pas de rampe (comme aujourd'hui).
+
+**V6 — chemins couverts** : `on_play` (grille : Kit et Wave),
+`on_kit_tape`, `on_patch_tape`, `_play_synth_note`, `on_audio_clip`
+(clips : suivis par leur entrée de `_clip_voices`, à laquelle s'ajoute le
+gain du clip) ; les pistes Banque / SFZ gardent CC7 / CC10 ; les ports
+MIDI externes gardent leurs CC.
+
+**V7 — hors champ** : l'export WAV (rendu à réglages fixes, comme
+aujourd'hui) ; l'automation du volume et du pan (chantier à part) ; les
+réglages de pad (volume, pan du pad) pendant qu'une note sonne.
+
+**V8 — catégories des tests** (demande de l'utilisateur) :
+- rampe et loi de pan sur un **`Mixer` sans flux**, à l'échantillon près :
+  tests **sans marque** (rapides, au niveau Intermédiaire) ;
+- registre et recalcul sur un **vrai `TrackRouter` + `Mixer`**, moteurs
+  factices ou légers, horloge factice : **sans marque** ;
+- un vrai moteur Wave qui charge un patch, si sa préparation dépasse
+  0,3 s : **`slow`** (le garde-fou le signalera sinon) ;
+- **aucune attente en temps réel** : les voix sont mixées à la main
+  (`Mixer.mix`), jamais par le fil de la carte ; si un test devait
+  attendre : **`audio`** ;
+- une **vraie fenêtre principale** (Alt+Haut sur une piste audio pendant
+  qu'un clip sonne, voix mixées à la main) : **`gui`**.
+
+### Découpage (validé, 2026-11-18)
+
+- **18b1 — implémentation** : rampe du Mixer, registre des voix, recalcul
+  au changement de volume / pan / pan global, pan global des clips.
+- **18c1 — tests** (catégories de V8).
+- **18d1 — clôture** (`git gc`).
