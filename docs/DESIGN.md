@@ -14976,3 +14976,54 @@ jour) ; `docs/SPECS.md` décrit les niveaux et les marques.
 - **`docs/SPECS.md`** : parallèle, `TESTS_SERIE`, seuils du garde-fou,
   marque `gui` élargie, règle d'indépendance des tests, mesures ;
   `test_pygame_driver.py` retiré de l'arborescence et de la table.
+
+### Clôture de l'étape 17 (17d1)
+
+**Bilan** (Phase 8 étapes 17a à 17c1, 2026-11-17 / 18) : tests en **trois
+niveaux** — Basique (fichiers liés à la modification, ou derniers échecs,
+< 1 s par fichier), Intermédiaire (sans les marques `slow`, `audio`,
+`gui` : **≈ 18 s**), Avancé (toute la suite avec garde-fou : **≈ 38 s**,
+contre ≈ 81 s au départ) — par `tools/tests.sh`, en parallèle sur les 8
+cœurs (pytest-xdist) ; `pytest.ini` et `--strict-markers` ; garde-fou des
+tests lents non marqués. Suite : 4723 tests, code 0.
+
+**Commits** : 17a (plan), 17b1 (marques et niveaux), 17b2 / 17b3
+(correctif sfizz et ses tests), 17c1 (parallèle), 17d1 (clôture).
+
+**Décisions de l'utilisateur** : T1 (trois niveaux), T2 (marques `slow`,
+`gui`, et `audio` ajoutée pour le temps réel), T3 (pas de pytest-testmon
+pour commencer) ; plan validé (T4-T8) ; correctif 17b2 accepté (export :
+échantillons sfizz préchargés en entier) ; tests pygame retirés ;
+`pygame_driver.py` et `bench_latency.py` gardés pour plus tard, hors des
+tests.
+
+**Défauts révélés par ce chantier** (tous corrigés) :
+- **Python plantait à la sortie de la suite complète** (code 139), depuis
+  longtemps, masqué par le filtrage de la sortie (`| tail`) : six fichiers
+  de tests créaient puis détruisaient une wx.App ;
+- **l'export WAV pouvait rendre des notes sfizz muettes** sur une machine
+  chargée (22 sur 48 mesurées) : préchargement partiel de sfizz (17b2) —
+  c'était aussi la cause des échecs instables de `test_sfizz_engine.py` ;
+- **dépendances d'ordre entre tests** : wx.App recréée par les tests à
+  vraie fenêtre (61 échecs en les écartant), `test_precompute_scale`,
+  `test_get_sound`, `test_pitch_shift_steps` (moteur partagé préparé par
+  un autre test) ;
+- tests pygame qui initialisaient pygame à chaque lancement ; 14 tests
+  communs de `test_sound_manager.py` qu'aucun lancement de pytest
+  n'exécutait.
+
+**Méthode de travail** (T8, mémoire mise à jour) : Basique pendant le
+travail, Intermédiaire à chaque étape d'implémentation, **Avancé avant
+chaque commit et à chaque clôture**, en vérifiant le **code de retour**
+(pas seulement « N passed »).
+
+**`docs/SPECS.md`** : « Tests unitaires » — Niveaux et marques, parallèle,
+règles pour les tests ; `tools/tests.sh` ; `pytest.ini` ; ligne Phase 8 ;
+`pygame_driver.py` noté hors des tests.
+
+**Suites notées** : pytest-testmon (sélection automatique des tests
+touchés par une modification) si le niveau Basique ne suffit plus ;
+regarder les tests de plus de 1 s restants (songs en temps réel) pour les
+accélérer ; `tests/test_all.sh` (lancement fichier par fichier comme des
+scripts) n'est plus la référence — à supprimer un jour si personne ne
+s'en sert.
