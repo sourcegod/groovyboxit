@@ -79,6 +79,14 @@ def _declare(lib):
         fn = getattr(lib, name)
         fn.argtypes = args
         fn.restype  = res
+    # Rendu hors temps réel (Phase 8 étape 17b2) : facultatives (libsfizz
+    # plus ancienne : rendu comme avant)
+    for name, args in (("sfizz_enable_freewheeling", [vp]),
+                       ("sfizz_set_preload_size", [vp, ctypes.c_uint32])):
+        fn = getattr(lib, name, None)
+        if fn is not None:
+            fn.argtypes = args
+            fn.restype  = None
 
 
 def load_library():
@@ -136,17 +144,31 @@ class SfzEngine(BankEngine):
     # par la clé "sfizz_gain".
     GAIN           = 1.5
 
-    def __init__(self, samplerate=44100, gain=GAIN, realtime=True, status_cb=None):
+    # Taille de préchargement « tout le fichier » (en trames ; sfizz ne lit
+    # que la longueur réelle du fichier : pas de mémoire réservée en plus)
+    PRELOAD_ALL = (1 << 31) - 1
+
+    def __init__(self, samplerate=44100, gain=GAIN, realtime=True, status_cb=None,
+                 offline=None):
         """realtime : True = file d'événements vidée par render() et
         chargements dans un fil (écoute) ; False = appels directs et
         chargements bloquants (rendu hors temps réel). status_cb(str) :
         message de fin de chargement ou d'erreur, appelé depuis le fil de
-        chargement (doit être thread-safe)."""
+        chargement (doit être thread-safe).
+        offline : instances pour un rendu plus rapide que le temps réel
+        (Phase 8 étape 17b2) — échantillons préchargés EN ENTIER et mode
+        freewheeling. Sans lui, sfizz ne précharge que le début de chaque
+        échantillon (≈ 0,2 s) et lit la suite dans un fil pendant le rendu :
+        la machine chargée, la suite arrivait trop tard et des notes de
+        l'export WAV étaient rendues en silence (22 sur 48 mesurées). Par
+        défaut : hors temps réel seulement (realtime False, render_copy) ;
+        True pour des tests qui rendent hors du flux audio."""
         super().__init__("gs")
         self._lib        = load_library()
         self._samplerate = samplerate
         self.gain        = gain
         self._realtime   = realtime
+        self._offline    = (not realtime) if offline is None else bool(offline)
         self.status_cb   = status_cb
         n = self.NUM_CHANNELS
         self._paths      = [None] * self.NUM_BANK_SLOTS   # source de chaque slot
@@ -343,6 +365,11 @@ class SfzEngine(BankEngine):
         programme courant."""
         lib = self._lib
         synth = lib.sfizz_create_synth()
+        if self._offline:                               # rendu hors temps réel (17b2)
+            if getattr(lib, "sfizz_set_preload_size", None) is not None:
+                lib.sfizz_set_preload_size(synth, self.PRELOAD_ALL)
+            if getattr(lib, "sfizz_enable_freewheeling", None) is not None:
+                lib.sfizz_enable_freewheeling(synth)
         lib.sfizz_set_sample_rate(synth, float(self._samplerate))
         lib.sfizz_set_samples_per_block(synth, self.MAX_BLOCK)
         for name, value in prog.defines:

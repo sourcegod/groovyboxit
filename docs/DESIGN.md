@@ -14895,3 +14895,33 @@ jour) ; `docs/SPECS.md` décrit les niveaux et les marques.
 - **`docs/SPECS.md`** : « Tests unitaires » — Niveaux et marques, règles
   pour les tests ; `tools/tests.sh` dans les Outils ; arborescence
   (`pytest.ini`, `tools/tests.sh`).
+
+### Correctif 17b2 (sfizz : notes muettes dans l'export WAV)
+
+- **Trouvé en préparant le parallèle (17c1)** : en lançant le niveau
+  Intermédiaire sur 8 cœurs, `test_sfizz_engine.py::
+  test_replaced_instance_keeps_sounding` échouait parfois (comme
+  `test_gain_scales_the_output`, noté instable depuis longtemps).
+- **Cause** (mesurée) : sfizz ne précharge que le début de chaque
+  échantillon (≈ 0,2 s) et lit la suite dans un fil pendant le rendu. À
+  l'écoute, c'est voulu ; mais l'**export WAV** rend plus vite que le temps
+  réel : la machine chargée, la suite arrivait trop tard et la note était
+  rendue **en silence** dans le fichier. Moteur de l'export, 8 rendus en
+  parallèle : **22 notes muettes sur 48** ; avec le mode freewheeling de
+  sfizz (jamais activé par l'appli) : encore 7 sur 48 ; avec les
+  échantillons **préchargés en entier** : 96 sur 96 justes. libsfizz n'a
+  pas de fonction pour attendre la fin de ses chargements.
+- **Correctif** : `SfzEngine(offline=…)` — par défaut hors temps réel
+  (`realtime=False`, donc `render_copy`, l'export) : chaque instance
+  précharge ses échantillons **en entier** (`sfizz_set_preload_size`,
+  `PRELOAD_ALL` : sfizz ne lit que la longueur réelle du fichier, aucune
+  mémoire réservée en plus) et passe en **freewheeling** ; fonctions
+  facultatives (libsfizz plus ancienne : rendu comme avant). L'écoute en
+  temps réel ne change pas. Contrepartie : pendant un export, les
+  échantillons des programmes SFZ utilisés sont en mémoire en entier
+  (comme le rendu hors temps réel de Sonar ou Reaper).
+- Tests : le moteur de `test_sfizz_engine.py` (fixture `eng`, qui rend
+  hors du flux audio) prend `offline=True`.
+- Vérifié : 128 rendus en parallèle (export et bascule de programme) tous
+  justes ; `test_sfizz_engine.py` 5 fois sur 8 cœurs sans échec ; niveau
+  Avancé 4709 verts, code 0.

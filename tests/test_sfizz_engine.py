@@ -76,7 +76,11 @@ def sfz(tmp_path):
 @pytest.fixture
 def eng():
     msgs = []
-    e = SfzEngine(SR, status_cb=msgs.append)
+    # offline : ces tests rendent hors du flux audio, plus vite que le temps
+    # réel ; sans lui, la machine chargée (tests en parallèle), sfizz lisait
+    # la suite des échantillons trop tard et des notes restaient muettes
+    # (Phase 8 étape 17b2)
+    e = SfzEngine(SR, status_cb=msgs.append, offline=True)
     e.msgs = msgs
     yield e
     e.close()
