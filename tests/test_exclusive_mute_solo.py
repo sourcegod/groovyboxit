@@ -194,6 +194,45 @@ def test_undo_of_activation_returns_to_state_before(win):
     assert win.state() == ([6], [8])
 
 
+@pytest.mark.parametrize("mode, after", [("solo", ([6], [1])), ("mute", ([1], []))])
+def test_undo_of_first_activation_leaves_mode_then_key_activates_again(win, mode, after):
+    """Essai de l'utilisateur (Phase 8 étape 18c3) : F4, Ctrl+Z, puis F4 ne
+    déclenchait plus le Solo exclusif — le mode était resté actif."""
+    win._toggle_exclusive(mode)
+    win._undo_action()
+    assert win._exclusive is None and win._exclusive_saved is None
+    assert win.state() == ([6], [8])
+    win._toggle_exclusive(mode)
+    assert win._exclusive == mode and win.state() == after
+
+
+def test_undo_of_exit_returns_to_mode_then_key_exits_again(win):
+    """Ctrl+Z de la sortie : le mode et l'état d'avant reviennent ; F4
+    quitte de nouveau en rétablissant l'état d'avant le mode."""
+    win._toggle_exclusive("solo")
+    win._toggle_exclusive("solo")
+    win._undo_action()
+    assert win._exclusive == "solo" and win.state() == ([6], [1])
+    win._toggle_exclusive("solo")
+    assert win._exclusive is None and win.state() == ([6], [8])
+
+
+def test_undo_of_switch_returns_to_first_mode(win):
+    win._toggle_exclusive("solo")
+    win._toggle_exclusive("mute")
+    win._undo_action()
+    assert win._exclusive == "solo" and win.state() == ([6], [1])
+    win._toggle_exclusive("solo")                # quitter : l'état du tout début
+    assert win._exclusive is None and win.state() == ([6], [8])
+
+
+def test_redo_of_activation_returns_mode(win):
+    win._toggle_exclusive("solo")
+    win._undo_action()
+    win._redo_action()
+    assert win._exclusive == "solo" and win.state() == ([6], [1])
+
+
 def test_exclusive_flags_are_real_mute_solo(win):
     """N4 : écrits dans les drapeaux, donc suivis par l'écoute et l'export."""
     win._toggle_exclusive("solo")

@@ -15267,3 +15267,10 @@ réglages de pad (volume, pan du pad) pendant qu'une note sonne.
   `_restore_state` (Undo, Rétablir ; F3 comme F4 ; passage d'un mode à
   l'autre).
 - **Numérotation** : correctif 18c3, tests 18c4, clôture 18d1.
+
+### Avancement 18c4 (tests du correctif 18c3)
+
+- `test_exclusive_mute_solo.py` : 5 tests de plus (32) — Undo du premier
+  F4 / F3 puis la touche réactive le mode (paramétré), Undo de la sortie
+  puis la touche quitte de nouveau, Undo du passage Solo → Mute, Rétablir ;
+  sans l'état capturé, ou avec l'Undo pris après le mode : 3 échecs.
