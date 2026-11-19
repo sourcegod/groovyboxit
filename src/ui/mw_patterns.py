@@ -108,6 +108,9 @@ class PatternMixin:
         self._router.chase(live._tape, self._player._current_offset())
         if new._rack_mode:
             self._apply_rack_kit(live._tape)            # M6, M12
+        # voix en cours aux volumes et pans rétablis : Ctrl+Z d'Alt+Haut,
+        # changement de pattern (Phase 8 étape 18c1, essai en vraie fenêtre)
+        self._router.refresh_track_voices()
 
     def _play_toggle(self):
         """Bascule lecture / arrêt (utilisé comme callback par les dialogs de propriétés)."""

@@ -171,6 +171,7 @@ class SongMixin:
         self._router.chase(new._tape, 0.0)  # instruments du nouveau pattern (17f1, § 17e3 O4)
         if new._rack_mode:
             self._apply_rack_kit(new._tape)             # M6, M12
+        self._router.refresh_track_voices()             # voix en cours (18c1)
         self._bpm_ctrl.SetValue(int(round(new._bpm)))
         self._show_status(f"Song → Pat_{next_pat_idx+1:02d}")
         if self._song_window:

@@ -15213,3 +15213,19 @@ réglages de pad (volume, pan du pad) pendant qu'une note sonne.
 - Tests en échec à ce commit (13, doublures à mettre à jour en 18c1) :
   `test_mix_undo` (routeur sans `__init__`), `test_rack_mode` (faux
   `play_note` sans pan).
+
+### Correctif 18c1 (Ctrl+Z de volume / pan, trouvé par le test en vraie fenêtre)
+
+- **Défaut** : l'Undo (et le changement de pattern, le song qui enchaîne)
+  rétablit les listes de volume et de pan de piste du routeur directement,
+  sans `set_track_volume` / `set_track_pan` : un Ctrl+Z d'Alt+Haut rendait
+  bien la valeur, mais une note qui sonnait gardait l'ancien gain.
+- **Correctif** : `refresh_track_voices()` à la fin de
+  `_apply_pattern_from_store` (Undo, changement de pattern, chargement) et
+  dans l'enchaînement des patterns du song (`mw_songs.py`) ; le pan global
+  rétabli passait déjà par `set_master_pan`.
+- Rappel : l'Undo **coupe les clips audio** (14d1), la lecture les relance
+  à leur place avec les valeurs rétablies.
+- **Numérotation** : ce correctif devient 18c1, les tests 18c2, la clôture
+  18d1.
+
