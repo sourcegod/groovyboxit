@@ -184,6 +184,7 @@ groovyboxit/
     ├── test_key_manager.py
     ├── test_kit_channel_migration.py
     ├── test_live_limiter.py
+    ├── test_live_volume_pan.py
     ├── test_live_take.py
     ├── test_load_project_cache.py
     ├── test_loop_points_pattern.py
@@ -2608,6 +2609,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_midi_parser.py` | midi_parser en isolation : decode_message, describe_note/cc/program |
 | `test_midi_virtual_keyboard.py` | VirtualKeyboardMixin : clavier virtuel de l'éditeur MIDI |
 | `test_mix_undo.py` | Undo du mute, du solo et du volume : regroupement < 1 s, chaque chemin, dialogue du pad (40 tests) |
+| `test_live_volume_pan.py` | Volume et pan de piste en temps réel (Phase 8 étape 18c2, docs/DESIGN.md § Phase 8 étape 18a, V1-V8) : loi de pan, rampe de 10 ms à l'échantillon près (voix simple, bouclante, sur plusieurs blocs, demi-tour, sans changement), voix finie, `live_voice_ids`, formule `live_gain` ; vrai TrackRouter + Mixer : grille Kit et Wave, notes KIT / PATCH avec pan de piste + pan global, clips sans courbe GM, piste voisine intacte, sortie mixée, banque par CC, voix finies oubliées, copie de rendu ; retour de boucle en retard sans note perdue, réveil sans note rejouée (`audio`) ; vrais FluidSynth, sfizz, Wave, Kit et clip sous pan global (`slow`) ; vraie fenêtre : clip qui suit volume, pan, Ctrl+Droite, note de kit qui suit les Ctrl+Z (`gui`) (32 tests) |
 | `test_mixer.py` | Mixer (Phase 8 étape 1c1) : mélange sans carte son ni écrêtage, volume global, pan, sources externes, voix qui avancent d'un appel à l'autre, découpage en blocs sans effet, release, callback du driver sans limiteur = mix puis écrêtage (le limiteur : `test_live_limiter.py`) |
 | `test_multitrack.py` | Dispatch audio multi-piste (mute, solo, volume, pan) |
 | `test_mute_groups.py` | Groupes mute exclusif (AudioSampler + SoundManager) |

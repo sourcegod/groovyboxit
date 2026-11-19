@@ -15229,3 +15229,27 @@ réglages de pad (volume, pan du pad) pendant qu'une note sonne.
 - **Numérotation** : ce correctif devient 18c1, les tests 18c2, la clôture
   18d1.
 
+### Avancement 18c2 (tests)
+
+- **`tests/test_live_volume_pan.py`** (32 tests), catégories du plan V8 :
+  - **sans marque** (29) : loi de pan, rampe à l'échantillon près (voix
+    simple, bouclante, sur plusieurs blocs, demi-tour, sans changement),
+    voix finie, `live_voice_ids`, `live_gain` ; vrai `TrackRouter` +
+    `Mixer` (moteur Wave léger) : grille Kit et Wave, notes KIT / PATCH
+    avec pan de piste + pan global (défaut de l'essai 18b1), clips sans
+    courbe GM, piste voisine intacte, sortie mixée, banque par CC, voix
+    finies oubliées (au recalcul, au-delà de 32), copie de rendu ;
+  - **`audio`** (2) : retour de boucle en retard de 20 ms sans note perdue
+    (défaut de l'essai 18b1), réveil en cours de passage sans note rejouée ;
+  - **`slow`** (1) : vrais FluidSynth (soundfont GM du système), sfizz
+    (SFZ généré), Wave (patch généré), Kit et clip sous pan global —
+    tout à gauche sauf FluidSynth, nettement à gauche ;
+  - **`gui`** (1) : vraie fenêtre — un clip suit volume, pan et Ctrl+Droite ;
+    une note de kit longue suit les Ctrl+Z (correctif 18c1).
+- **Doublures mises à jour** : `test_mix_undo` (registre des voix du
+  routeur construit sans `__init__`), `test_rack_mode` (faux `play_note`
+  avec pan).
+- **Mutations** (restaurées par copie) : sans passage neuf → 1 échec ;
+  notes sans pan global → 3 ; sans rampe → 5 ; sans le correctif 18c1 →
+  le test en vraie fenêtre échoue.
+- Avancé : A 4728 + B 27 verts, code 0, sans alerte du garde-fou.

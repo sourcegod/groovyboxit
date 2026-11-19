@@ -144,7 +144,7 @@ class FakeSoundManager:
     def play_sound(self, pad_idx, vol, pan):
         self.played.append(pad_idx)
 
-    def play_note(self, note, vol):
+    def play_note(self, note, vol, pan=0):     # pan de piste + global (18b1)
         self.played_notes.append(note)
 
     kit_note_of_gm = SoundManager.kit_note_of_gm

@@ -73,6 +73,8 @@ def _make_router():
     r._slot_synths   = {}
     r._synth = r._kit_synth = r._bank_preview = None
     r._snd           = SimpleNamespace(stop_all=lambda: None)
+    r.master_pan     = 0
+    r._init_live_mix()               # voix suivies en temps réel (Phase 8 étape 18b1)
     return r
 
 
