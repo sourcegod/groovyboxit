@@ -1422,7 +1422,16 @@ class ProjectMixin:
             "master":              self._master_dict(),      # 15d1 D2
             "record_options":      dict(getattr(self, "_record_options",
                                                 record_modes.DEFAULTS)),   # 16b1
+            "exclusive":           self._exclusive_dict(),   # 18c3
         }
+
+    def _exclusive_dict(self):
+        """Mode Mute / Solo exclusif et Mute / Solo d'avant le mode, pour
+        l'Undo (Phase 8 étape 18c3, essai : après Ctrl+Z du premier F4, le
+        mode restait actif et F4 le quittait au lieu de l'activer)."""
+        saved = getattr(self, "_exclusive_saved", None)
+        return {"mode": getattr(self, "_exclusive", None),
+                "saved": None if saved is None else [list(saved[0]), list(saved[1])]}
 
     def _clipboard_to_dict(self):
         """Sérialise le presse-papier TrackEditor (grille GRID + tape
@@ -1563,6 +1572,10 @@ class ProjectMixin:
             self._apply_master(*self._master_from_dict(state["master"]))
         if "record_options" in state and hasattr(self, "_apply_record_options"):
             self._apply_record_options(state["record_options"])          # 16b1, O10
+        excl = state.get("exclusive") or {}                            # 18c3
+        saved = excl.get("saved")
+        self._exclusive = excl.get("mode")
+        self._exclusive_saved = None if saved is None else (list(saved[0]), list(saved[1]))
         new = self._pattern_list[self._cur_pattern_idx]
         # clips audio coupés : un clip retiré par l'Undo ne doit plus sonner ;
         # ceux qui restent reprennent au rappel suivant (Phase 8 étape 14f1, essai)

@@ -517,11 +517,13 @@ class TrackMixin:
             self._refresh_track_list()
             self._show_status(f"{name} exclusif : Off — Mute et Solo d'avant rétablis")
             return
+        t = self._player._cur_track
+        # Undo AVANT de noter le mode (Phase 8 étape 18c3, essai : Ctrl+Z du
+        # premier F4 laissait le mode actif, et F4 le quittait)
+        self._add_mix_undo(f"{name} exclusif : piste {t + 1}")
         if getattr(self, "_exclusive", None) is None:   # état d'avant le mode
             self._exclusive_saved = (list(r._track_mutes), list(r._track_solos))
         self._exclusive = mode
-        t = self._player._cur_track
-        self._add_mix_undo(f"{name} exclusif : piste {t + 1}")
         self._apply_exclusive(t)
         self._show_status(f"{name} exclusif : On — piste {t + 1}")
 

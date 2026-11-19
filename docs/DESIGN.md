@@ -15253,3 +15253,17 @@ réglages de pad (volume, pan du pad) pendant qu'une note sonne.
   notes sans pan global → 3 ; sans rampe → 5 ; sans le correctif 18c1 →
   le test en vraie fenêtre échoue.
 - Avancé : A 4728 + B 27 verts, code 0, sans alerte du garde-fou.
+
+### Correctif 18c3 (Solo / Mute exclusif et Undo, essai de l'utilisateur)
+
+- **Défaut** : F4 (Solo exclusif) sur une piste, Ctrl+Z : la piste revenait
+  à la normale, mais F4 ne redéclenchait pas le Solo exclusif — le mode
+  restait noté actif, F4 le quittait.
+- **Causes** : `_toggle_exclusive` prenait le point d'Undo **après** avoir
+  noté le mode ; et l'état de l'Undo ne gardait ni le mode ni les Mute /
+  Solo d'avant le mode.
+- **Correctif** : point d'Undo pris avant de noter le mode ; clé
+  `exclusive` ({mode, saved}) dans `_capture_state`, rétablie par
+  `_restore_state` (Undo, Rétablir ; F3 comme F4 ; passage d'un mode à
+  l'autre).
+- **Numérotation** : correctif 18c3, tests 18c4, clôture 18d1.
