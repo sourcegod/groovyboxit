@@ -294,21 +294,22 @@ class SoundManager(object):
         """Joue un son par note MIDI (utilise note_map).
         Applique automatiquement le mute exclusif de groupe. volume_factor
         linéaire, passé au driver selon la courbe GM (gm_gain, Phase 7
-        étape 12b1)."""
+        étape 12b1). Rend la voix lancée (suivie par le routeur, Phase 8
+        étape 18b1), ou None."""
         sound = self.note_map.get(midi_note)
         if sound is None:
-            return
+            return None
         self._apply_mute_group(sound)
-        self._driver.play(sound, gm_gain(volume_factor), pan)
+        return self._driver.play(sound, gm_gain(volume_factor), pan)
 
     def play_sound(self, index, volume_factor=1.0, pan=0):
         """Joue drum_sounds[index].
         Applique automatiquement le mute exclusif de groupe. volume_factor
         linéaire, passé au driver selon la courbe GM (gm_gain, Phase 7
-        étape 12b1)."""
+        étape 12b1). Rend la voix lancée (18b1), ou None."""
         sound = self.drum_sounds[index]
         self._apply_mute_group(sound)
-        self._driver.play(sound, gm_gain(volume_factor), pan)
+        return self._driver.play(sound, gm_gain(volume_factor), pan)
 
     def preview_sound(self, sound_name):
         if sound_name in self.drum_sounds:

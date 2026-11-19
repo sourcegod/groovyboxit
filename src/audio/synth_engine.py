@@ -322,11 +322,12 @@ class SynthEngine:
         - Sans bend : phase_incr = 1.0 → lecture à vitesse normale, qualité max.
         - volume_factor linéaire, passé au driver selon la courbe GM
           (gm_gain, Phase 7 étape 12b1).
+        Rend la voix lancée (suivie par le routeur, Phase 8 étape 18b1), ou None.
         """
         sound = self.get_sound(midi_note, maxtime_ms)
         if sound is None:
             bend_log(f"ENGINE_PLAY note={midi_note} bend={self.pitch_bend} → sound=None (pas de voix créée!)")
-            return
+            return None
         phase_incr = 2.0 ** (self.pitch_bend_semitones / 12.0)
         lfo_depth  = self.mod_wheel / 127.0 * self._driver.LFO_DEPTH_MAX
         voice = self._driver.play(sound, gm_gain(volume_factor), pan, phase_incr, lfo_depth)
@@ -335,6 +336,7 @@ class SynthEngine:
                   f"phase_incr={phase_incr:.5f} voice={'LoopVoice' if loop else 'Voice'} "
                   f"voice_id={id(voice)} engine_id={id(self)}")
         self._active_voices[midi_note] = voice
+        return voice
 
     def _stop_now(self, midi_note):
         voice = self._active_voices.pop(midi_note, None)

@@ -155,12 +155,18 @@ class TrackAudioMixin:
             return None                       # clip déjà fini à cette position
         if playing is not None:               # nouveau départ : l'ancienne voix s'arrête
             driver.stop_voice(playing[1])
-        vol = max(0.0, float(gain)) * self._track_volumes[track_idx] / 100.0
-        voice = driver.play(sound, vol, self._track_pans[track_idx])
+        factor = max(0.0, float(gain))
+        vol = factor * self._track_volumes[track_idx] / 100.0
+        master = getattr(self, "master_pan", 0)          # pan global (18b1, V2)
+        pan = max(-100, min(100, self._track_pans[track_idx] + master))
+        voice = driver.play(sound, vol, pan)
         if voice is None:
             return None
         voice.pos = float(first)
         self._clip_voices[clip_id] = (track_idx, voice)
+        track_voice = getattr(self, "_track_voice", None)
+        if track_voice is not None:                      # suivi en temps réel (18b1)
+            track_voice(track_idx, driver, voice, factor, master_ref=0, gm=False)
         return voice
 
     def _voice_alive(self, voice):

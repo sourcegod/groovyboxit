@@ -15156,3 +15156,60 @@ réglages de pad (volume, pan du pad) pendant qu'une note sonne.
   au changement de volume / pan / pan global, pan global des clips.
 - **18c1 — tests** (catégories de V8).
 - **18d1 — clôture** (`git gc`).
+
+### Avancement 18b1 (implémentation)
+
+- **Mixer** (`sound_device_driver.py`) : chaque voix a un gain visé
+  (`tgt_l`, `tgt_r`, pas, `ramp`) ; `set_voice_gain(voix, vol, pan)` (loi
+  de pan commune `pan_gains`, celle de `play`) ; `GAIN_RAMP_MS = 10` (441
+  échantillons à 44,1 kHz) ; rampe vectorisée sur les voix simples, par
+  échantillon sur les voix bouclantes ; sans rampe en cours : aucun coût ;
+  `live_voice_ids()` pour oublier les voix finies.
+- **`src/audio/track_live_mix.py`** (nouveau) : `TrackLiveMixMixin` du
+  `TrackRouter` — `LiveVoice` (Mixer, voix, facteur, pan de base, pan
+  global au départ ou None, courbe GM, borne à 1), `live_gain` (même
+  formule qu'au départ), `_track_voice`, `refresh_track_voices`,
+  `forget_track_voices` ; voix finies oubliées au-delà de 32 par piste et
+  à chaque recalcul.
+- **Routeur** : `set_track_volume` / `set_track_pan` recalculent les voix
+  de la piste, `set_master_pan` toutes ; voix suivies dans `on_play`
+  (grille Kit et Wave, pan global au départ), `on_kit_tape`,
+  `on_patch_tape` (kit), `_play_synth_note`, `on_audio_clip`.
+- `SoundManager.play_note` / `play_sound` et `SynthEngine.play` rendent la
+  voix lancée.
+- **Clips audio** : pan = pan de piste + pan global (V2).
+- **Écart constaté** : les notes KIT et PATCH jouées sur un kit partaient
+  au pan 0 (le pan de piste était ignoré) ; avec le suivi, le premier
+  changement de volume les aurait déplacées d'un coup → elles partent
+  désormais avec le pan de leur piste, comme la grille et le Wave.
+- **Essai de l'utilisateur (2026-11-19)** : piste audio concluante (volume,
+  pan de piste, pan global). Deux défauts :
+  - **le pan global ne touchait que les deux premières pistes** du projet
+    d'essai (guitare Wave et TR-707) : elles ne contenaient que des notes
+    de grille, seules à recevoir le pan global ; l'orgue et le piano (Wave,
+    notes PATCH enregistrées au clavier) ne l'avaient **jamais**, même au
+    départ → `_note_pan` : toute note KIT / PATCH sur le Mixer (kit, Wave)
+    part avec pan de piste + pan global et le suit en direct ;
+  - **le retour de boucle sautait le début** (guitare) quand on changeait
+    le pan global — **défaut ancien de la boucle de lecture** : au début
+    d'un passage, la liste des événements écartait ceux de plus de 2 ms
+    dans le passé ; sous la charge du fil principal (ici le point d'Undo du
+    premier appui, qui capture le projet ; le GIL n'est rendu que toutes
+    les 5 ms), le fil arrivait en retard et perdait les notes du début.
+    Mesuré : pas 0 joué **2 fois sur 11** sous charge, contre 10 sur 10
+    pour le pas 8 → `_run_thread` : un passage neuf après une fin de
+    mesure normale n'écarte rien (notes jouées avec quelques ms de retard
+    au lieu d'être perdues) ; le filtre reste après un réveil, à la fin
+    d'un décompte (reprise au milieu) et au-delà d'un passage de retard.
+    Après correctif : **10 sur 10** sous charge.
+- **Essai combiné** (demandé par l'utilisateur) : vrais moteurs sur un même
+  Mixer — Kit (grille), Wave (PATCH, guitare), FluidSynth (FluidR3), sfizz
+  (jRhodes), clip audio ; note qui sonne, puis pan global −100 : la droite
+  tombe à 0 pour Kit, Wave, sfizz et le clip ; FluidSynth suit mais pas
+  jusqu'au bout (la flûte passe de G 0,063 / D 0,047 à G 0,10 / D 0,04),
+  **comme un pan de piste à −100** (même CC10 = 0) et comme une note lancée
+  au pan −100 : manière de FluidSynth / FluidR3 d'appliquer CC10 (pan propre
+  des presets), hors de ce chantier.
+- Tests en échec à ce commit (13, doublures à mettre à jour en 18c1) :
+  `test_mix_undo` (routeur sans `__init__`), `test_rack_mode` (faux
+  `play_note` sans pan).

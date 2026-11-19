@@ -56,7 +56,8 @@ class _Voice:
     phase_incr=1.0 → lecture normale ; >1.0 → plus aigu ; <1.0 → plus grave.
     Modifiable depuis le thread principal (GIL garantit l'atomicité float)."""
     __slots__ = ("data", "pos", "vol_l", "vol_r", "phase_incr",
-                 "lfo_depth", "lfo_phase", "lfo_freq")
+                 "lfo_depth", "lfo_phase", "lfo_freq",
+                 "tgt_l", "tgt_r", "step_l", "step_r", "ramp")
 
     def __init__(self, data: np.ndarray, vol_l: float, vol_r: float,
                  phase_incr: float = 1.0, lfo_depth: float = 0.0,
@@ -69,6 +70,47 @@ class _Voice:
         self.lfo_depth   = lfo_depth  # amplitude LFO (0=off) ; modifiable depuis thread principal
         self.lfo_phase   = 0.0        # phase LFO courante (radians)
         self.lfo_freq    = lfo_freq   # fréquence LFO en Hz
+        _init_ramp(self)
+
+
+def _init_ramp(v):
+    """Gain visé d'une voix (Phase 8 étape 18b1, V5) : vol_l / vol_r est le
+    gain courant ; Mixer.set_voice_gain pose tgt_l / tgt_r, et le mixage y
+    va en ramp échantillons (pas step_l / step_r par échantillon)."""
+    v.tgt_l  = v.vol_l
+    v.tgt_r  = v.vol_r
+    v.step_l = 0.0
+    v.step_r = 0.0
+    v.ramp   = 0
+
+
+def pan_gains(vol, pan):
+    """(gauche, droite) d'un volume et d'un pan −100..100 : le pan atténue un
+    seul côté (loi de Mixer.play, commune à set_voice_gain, 18b1)."""
+    pan_norm = max(-1.0, min(1.0, pan / 100.0))
+    return vol * (1.0 - max(0.0, pan_norm)), vol * (1.0 + min(0.0, pan_norm))
+
+
+def _block_gains(v, frames):
+    """Gains (gauche, droite) d'une voix pour un bloc de frames échantillons :
+    deux réels sans rampe en cours ; sinon deux tableaux qui vont du gain
+    courant au gain visé puis le gardent. Le gain courant avance."""
+    if v.ramp <= 0:
+        return v.vol_l, v.vol_r
+    n = min(v.ramp, frames)
+    k = np.arange(1, frames + 1, dtype=np.float32)
+    k[n:] = n
+    gl = (v.vol_l + v.step_l * k).astype(np.float32)
+    gr = (v.vol_r + v.step_r * k).astype(np.float32)
+    v.ramp -= n
+    if v.ramp <= 0:
+        gl[n - 1:] = v.tgt_l
+        gr[n - 1:] = v.tgt_r
+        v.vol_l, v.vol_r = v.tgt_l, v.tgt_r
+    else:
+        v.vol_l = float(gl[-1])
+        v.vol_r = float(gr[-1])
+    return gl, gr
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +137,8 @@ class _LoopVoice:
     """
     __slots__ = ("data", "pos", "ls", "le", "xf", "loop_len", "vol_l", "vol_r",
                  "releasing", "rel_pos", "rel_len", "phase_incr",
-                 "lfo_depth", "lfo_phase", "lfo_freq")
+                 "lfo_depth", "lfo_phase", "lfo_freq",
+                 "tgt_l", "tgt_r", "step_l", "step_r", "ramp")
 
     def __init__(self, data: np.ndarray, ls: int, le: int,
                  xf: int, vol_l: float, vol_r: float,
@@ -116,6 +159,7 @@ class _LoopVoice:
         self.lfo_depth  = lfo_depth  # amplitude LFO (0=off) ; modifiable depuis thread principal
         self.lfo_phase  = 0.0        # phase LFO courante (radians)
         self.lfo_freq   = lfo_freq   # fréquence LFO en Hz
+        _init_ramp(self)
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +202,7 @@ class Mixer:
     END_FADE_MS   = 20    # fondu de fin baked dans les sons one-shot (ms)
     RELEASE_MS    = 80    # durée du release des voix bouclantes après stop() (ms)
     LFO_DEPTH_MAX = 2.0 ** (2.0 / 12.0) - 1.0  # ±2 semitones à mod_wheel=127
+    GAIN_RAMP_MS  = 10    # rampe d'un changement de gain d'une voix (18b1, V3)
 
     def __init__(self, samplerate: int = SAMPLERATE):
         self._sr          = samplerate
@@ -228,8 +273,9 @@ class Mixer:
         sr = v.data[ip_c, 1] + (v.data[ip_c1, 1] - v.data[ip_c, 1]) * frac
         sl[~valid] = 0.0
         sr[~valid] = 0.0
-        mix[:, 0] += sl * v.vol_l
-        mix[:, 1] += sr * v.vol_r
+        gl, gr = _block_gains(v, frames)          # rampe de gain (18b1)
+        mix[:, 0] += sl * gl
+        mix[:, 1] += sr * gr
         v.pos = float(src[-1]) + eff_incr
 
     def _mix_loop_voice(self, v: _LoopVoice,
@@ -245,6 +291,9 @@ class Mixer:
         phase_incr  = v.phase_incr # float, modifiable depuis le thread principal
         vl          = v.vol_l
         vr          = v.vol_r
+        ramp        = v.ramp       # rampe de gain (18b1)
+        step_l      = v.step_l
+        step_r      = v.step_r
         releasing   = v.releasing
         rel_pos     = v.rel_pos
         rel_len     = v.rel_len
@@ -289,6 +338,13 @@ class Mixer:
             else:
                 gain = 1.0
 
+            if ramp > 0:
+                ramp -= 1
+                if ramp:
+                    vl += step_l
+                    vr += step_r
+                else:
+                    vl, vr = v.tgt_l, v.tgt_r
             mix[i, 0] += sl * vl * gain
             mix[i, 1] += sr * vr * gain
 
@@ -306,6 +362,7 @@ class Mixer:
 
         v.pos      = pos
         v.rel_pos  = rel_pos
+        v.vol_l, v.vol_r, v.ramp = vl, vr, ramp
         if use_lfo:
             v.lfo_phase = lfo_phase % (2.0 * math.pi)
 
@@ -410,9 +467,7 @@ class Mixer:
         """
         if sound is None or len(sound.data) == 0:
             return None
-        pan_norm = max(-1.0, min(1.0, pan / 100.0))
-        vol_l    = vol * (1.0 - max(0.0, pan_norm))
-        vol_r    = vol * (1.0 + min(0.0, pan_norm))
+        vol_l, vol_r = pan_gains(vol, pan)
         with self._lock:
             if sound.loop_start is not None:
                 voice = _LoopVoice(sound.data, sound.loop_start, sound.loop_end,
@@ -455,6 +510,28 @@ class Mixer:
                 voice.releasing = True
                 voice.rel_pos   = 0
                 voice.rel_len   = rel_len
+
+    def set_voice_gain(self, voice, vol: float, pan: int = 0):
+        """Nouveau volume et pan d'une voix qui sonne (Phase 8 étape 18b1, V5) :
+        même loi que play() ; le mixage y va en GAIN_RAMP_MS (pas de clic).
+        Sans effet sur une voix déjà finie."""
+        if voice is None:
+            return
+        tl, tr = pan_gains(vol, pan)
+        n = max(1, int(self.GAIN_RAMP_MS / 1000 * self._sr))
+        with self._lock:
+            if tl == voice.tgt_l and tr == voice.tgt_r:
+                return
+            voice.tgt_l, voice.tgt_r = tl, tr
+            voice.step_l = (tl - voice.vol_l) / n
+            voice.step_r = (tr - voice.vol_r) / n
+            voice.ramp   = n
+
+    def live_voice_ids(self):
+        """id des voix qui sonnent encore (one-shot et bouclantes), pour que
+        les registres de voix oublient les autres (18b1, V4)."""
+        with self._lock:
+            return {id(v) for v in self._voices} | {id(v) for v in self._loop_voices}
 
     def set_sound_volume(self, sound, vol_norm: float):
         """No-op : le volume est appliqué au moment de play()."""

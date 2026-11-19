@@ -15,6 +15,7 @@ from bend_log import bend_log
 from midi.midi_export import volume_to_cc7, pan_to_cc10
 from midi.track_midi_out import TrackMidiOutMixin
 from audio.track_audio_clips import TrackAudioMixin
+from audio.track_live_mix import TrackLiveMixMixin
 
 
 class BankPreview:
@@ -92,7 +93,7 @@ class BankPreview:
         self.sustain    = False
 
 
-class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
+class TrackRouter(TrackMidiOutMixin, TrackAudioMixin, TrackLiveMixMixin):
     """
     Gère l'association piste → slot → SynthEngine et le dispatch sonore.
 
@@ -187,6 +188,7 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
         self._track_kinds     = ["midi"] * self.NUM_TRACKS
         self._track_audio_ins = [""] * self.NUM_TRACKS
         self._init_audio_clips()          # lecture des clips audio (14d1)
+        self._init_live_mix()             # volume et pan en temps réel (18b1)
 
     @staticmethod
     def _timer_schedule(delay_ms, fn, *args):
@@ -699,6 +701,12 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             return self.DRUM_GRID_BASE + pad_idx
         return self.kb_notes_input[pad_idx]
 
+    def _note_pan(self, track_idx):
+        """Pan d'une note KIT / PATCH sur le Mixer (kit, Wave) : pan de piste +
+        pan global, borné à ±100, comme la grille, les banques et les clips
+        (Phase 8 étape 18b1, essai : le pan global ne touchait que la grille)."""
+        return max(-100, min(100, self._track_pans[track_idx] + self.master_pan))
+
     def _send_bank_mix(self, track_idx):
         """CC7 (volume de piste) et CC10 (pan de piste + pan global) au canal
         courant de la piste (D11, D13), dans le moteur de son slot."""
@@ -898,11 +906,13 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
         self.stop_audio_clips()                      # clips audio (14d1)
 
     def set_master_pan(self, pan):
-        """Pan global, ajouté au CC10 des canaux de banque (D13)."""
+        """Pan global, ajouté au CC10 des canaux de banque (D13), et aux voix
+        en cours qui l'avaient au départ : grille, clips (Phase 8 étape 18b1)."""
         self.master_pan = max(-100, min(100, int(pan)))
         for t in range(self.NUM_TRACKS):
             if self._chan_slot_of(t) is not None:
                 self._send_bank_mix(t)
+        self.refresh_track_voices()
 
     def program_change(self, track_idx, program, channel=None):
         """Program Change d'une piste (rejeu de _tape et réception live).
@@ -1016,6 +1026,7 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             return
         if self._chan_slot_of(track_idx) is not None:
             self._send_bank_mix(track_idx)
+        self.refresh_track_voices(track_idx)         # Wave, Kit, clips (18b1)
 
     def get_track_pan(self, track_idx):
         return self._track_pans[track_idx]
@@ -1026,6 +1037,7 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             return
         if self._chan_slot_of(track_idx) is not None:
             self._send_bank_mix(track_idx)
+        self.refresh_track_voices(track_idx)         # Wave, Kit, clips (18b1)
 
     # ------------------------------------------------------------------
     # Canal MIDI par piste (Phase 7 étape 10f1, docs/DESIGN.md § 10a1 D5)
@@ -1236,6 +1248,7 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
                 self.bank_note(self._track_cur_channels[track_idx], note, vel,
                                duration_ms if duration_ms > 0 else 500, engine)
             return
+        base_vol, base_pan = vol_factor, pan          # hors piste : suivi (18b1)
         vol_factor = vol_factor * (self._track_volumes[track_idx] / 100.0)
         pan = max(-100, min(100, pan + self._track_pans[track_idx]))
         if slot.type == InstrumentType.SYNTH:
@@ -1243,10 +1256,14 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             if engine and engine.is_loaded() and pad_idx < len(self._kb_notes_play):
                 midi = self._kb_notes_play[pad_idx]
                 dur  = duration_ms if duration_ms > 0 else 500
-                engine.play(midi, vol_factor, pan, dur)
+                voice = engine.play(midi, vol_factor, pan, dur)
+                self._track_voice(track_idx, getattr(engine, "_driver", None), voice,
+                                  base_vol, base_pan, master_ref=self.master_pan)
                 self._schedule(dur, engine.stop, midi)
         else:
-            self._snd.play_sound(pad_idx, vol_factor, pan)
+            voice = self._snd.play_sound(pad_idx, vol_factor, pan)
+            self._track_voice(track_idx, getattr(self._snd, "_driver", None), voice,
+                              base_vol, base_pan, master_ref=self.master_pan)
 
     def on_kit_tape(self, track_idx, midi_note, velocity, duration_ms=0):
         """Lecture d'un événement kit_tape : note MIDI brute, indépendante du
@@ -1270,7 +1287,9 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             if slot.type != InstrumentType.KIT:
                 return
         vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
-        self._snd.play_note(midi_note, vol)
+        voice = self._snd.play_note(midi_note, vol, self._note_pan(track_idx))
+        self._track_voice(track_idx, getattr(self._snd, "_driver", None), voice,
+                          velocity / 127.0, master_ref=0, cap=True)      # 18b1
 
     def on_patch_tape(self, track_idx, midi_note, velocity, duration_ms=0):
         """Lecture d'un événement patch_tape : note MIDI brute pour un synth.
@@ -1292,7 +1311,10 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
             return
         if slot.type == InstrumentType.KIT:                    # M11
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
-            self._snd.play_note(self._snd.kit_note_of_gm(midi_note), vol)
+            voice = self._snd.play_note(self._snd.kit_note_of_gm(midi_note), vol,
+                                        self._note_pan(track_idx))     # 18b1
+            self._track_voice(track_idx, getattr(self._snd, "_driver", None), voice,
+                              velocity / 127.0, master_ref=0, cap=True)  # 18b1
             return
         if slot.type != InstrumentType.SYNTH:
             return
@@ -1304,11 +1326,13 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin):
         engine = self._slot_synths.get(slot_idx)
         if engine and engine.is_loaded():
             vol = min(1.0, self._track_volumes[track_idx] / 100.0 * velocity / 127.0)
-            pan = self._track_pans[track_idx]
+            pan = self._note_pan(track_idx)
             dur = duration_ms if duration_ms > 0 else 500
             bend_log(f"PLAY note={midi_note} bend={engine.pitch_bend} "
                       f"({engine.pitch_bend_semitones:+.3f}st) engine_id={id(engine)}")
-            engine.play(midi_note, vol, pan, dur)
+            voice = engine.play(midi_note, vol, pan, dur)
+            self._track_voice(track_idx, getattr(engine, "_driver", None), voice,
+                              velocity / 127.0, master_ref=0, cap=True)  # 18b1
             self._schedule(dur, engine.stop, midi_note)
 
     def on_bend_tape(self, track_idx, bend_value):

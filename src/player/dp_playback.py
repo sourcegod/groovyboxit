@@ -28,6 +28,11 @@ class PlaybackLoopMixin:
         pending = self._resume_offset
         self._resume_offset = None
         measure_start = time.perf_counter()
+        # Nouveau passage après une fin de mesure normale (Phase 8 étape 18b1,
+        # essai) : rien n'en est écarté même si le fil arrive en retard — sous
+        # la charge du fil principal (GIL rendu toutes les 5 ms), le retour de
+        # boucle perdait les notes de son début (pas 0 joué 2 fois sur 11).
+        fresh_pass = False
 
         while (self.playing or self.clicking or self._note_repeat_active) \
                 and not self.stop_event.is_set():
@@ -63,8 +68,12 @@ class PlaybackLoopMixin:
                 pending = None
 
             # Avancer measure_start si la mesure précédente est terminée
+            passes = 0
             while measure_start + measure_secs <= now:
                 measure_start += measure_secs
+                passes += 1
+            if passes > 1:
+                fresh_pass = False          # plus d'un passage de retard : au présent
             self._measure_start = measure_start
             elapsed = now - measure_start
             if (self._audio_take is not None and self._audio_take["anchor"] is None
@@ -72,7 +81,8 @@ class PlaybackLoopMixin:
                 self._set_audio_anchor(measure_start, lp_start, now)   # prise audio (14f1)
 
             events = self._build_measure_events(lp_start, lp_end, total_steps,
-                                                loop_bars, elapsed)
+                                                loop_bars, 0.0 if fresh_pass else elapsed)
+            fresh_pass = False
 
             for t_sec, track_or_type, evt_data, velocity in events:
                 if self.stop_event.is_set():
@@ -91,7 +101,10 @@ class PlaybackLoopMixin:
                     break
                 self._dispatch_event(track_or_type, evt_data, velocity, t_sec)
             else:
+                counting = self._count_in > 0     # fin de décompte : reprise au milieu
                 measure_start = self._on_measure_end(measure_start, measure_secs, lp_start)
+                fresh_pass = (not counting and not self._wakeup.is_set()
+                              and not self.stop_event.is_set() and self._resume_offset is None)
 
     #--------------------------------------------------------------------------
 
