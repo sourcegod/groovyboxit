@@ -15274,3 +15274,54 @@ réglages de pad (volume, pan du pad) pendant qu'une note sonne.
   F4 / F3 puis la touche réactive le mode (paramétré), Undo de la sortie
   puis la touche quitte de nouveau, Undo du passage Solo → Mute, Rétablir ;
   sans l'état capturé, ou avec l'Undo pris après le mode : 3 échecs.
+
+### Clôture de l'étape 18 (18d1)
+
+**Bilan.** Le volume et le pan d'une piste, et le pan global, s'entendent
+tout de suite sur ce qui sonne déjà : clips audio, notes Wave et Kit
+(registre des voix par piste, même formule qu'au départ, rampe de 10 ms
+dans le Mixer) ; les pistes Banque / Synth SFZ le faisaient déjà par CC7 /
+CC10. Le pan global touche désormais toutes les pistes.
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 18a (45963ee) | Plan V1-V8 |
+| 18b1 (55ea822) | Implémentation ; pan global des notes KIT / PATCH ; correctif du retour de boucle |
+| 18c1 (b49967d) | Correctif : Ctrl+Z de volume / pan entendu tout de suite |
+| 18c2 (c4519da) | Tests (`test_live_volume_pan.py`, 32) |
+| 18c3 (36eff0c) | Correctif : Solo / Mute exclusif et Undo |
+| 18c4 (c1f1949) | Ses tests (5) |
+| 18d1 | Clôture |
+
+**Défauts révélés et corrigés.**
+- Le pan global ne touchait que les notes de grille ; les notes KIT /
+  PATCH d'un kit ignoraient aussi le pan de leur piste.
+- **Défaut ancien de la boucle de lecture** : sous la charge du fil
+  principal, le retour de boucle perdait les notes de son début (2 fois
+  sur 11 jouées) — révélé par le point d'Undo du pan global.
+- Ctrl+Z, changement de pattern et enchaînement du song ne recalculaient
+  pas les voix en cours (trouvé par le test en vraie fenêtre).
+- Solo / Mute exclusif : le point d'Undo était pris après avoir noté le
+  mode, et le mode n'était pas dans l'état de l'Undo (essai de
+  l'utilisateur).
+
+**Catégories des tests** (demande de l'utilisateur) : 29 sans marque
+(Mixer sans flux, vrai routeur), 2 `audio` (fil de lecture réel), 1
+`slow` (vrais moteurs), 1 `gui` (vraie fenêtre) ; avancé vert, code 0.
+
+**Constat hors chantier.** FluidSynth / FluidR3 n'envoie pas un son tout à
+fait d'un côté avec CC10 = 0 (pan propre des presets), pan de piste comme
+pan global.
+
+**Suites.**
+- **Chantier suivant (décidé)** : cohérence des raccourcis de volume et de
+  pan — Ctrl+Haut/Bas volume global, Ctrl+Retour arrière pour le remettre ;
+  Ctrl+Gauche/Droite pan global, Shift+Retour arrière pour le recentrer ;
+  Alt+Haut/Bas volume de piste, Alt+Retour arrière ; Alt+Gauche/Droite pan
+  de piste, Alt+Shift+Retour arrière. Décisions déjà prises : le retour du
+  volume se base sur les **préférences** ; **Ctrl+0 et Alt+0 libérés**.
+  À voir au plan : volume et pan de pad (Alt+… hors de la liste des pistes).
+- Automation du volume et du pan ; réglages de pad pendant qu'une note
+  sonne ; pan de FluidSynth.

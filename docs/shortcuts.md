@@ -347,6 +347,9 @@ F5               Réinitialiser tous les Mute et Solo de piste et quitter le mod
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
 Alt+← / Alt+→   Pan piste ±10 (-100..+100)
 Alt+0            Recentrer le pan de la piste (Pan 0)
+                 Volume et pan de piste, et pan global, s'entendent tout de
+                 suite sur ce qui sonne déjà (clips, notes Wave et Kit), Ctrl+Z
+                 compris
 
   -- Sélection multi-pistes --
   Ctrl+A           Sélectionner toutes les pistes + limiteurs sur plage complète
