@@ -15325,3 +15325,72 @@ pan global.
   À voir au plan : volume et pan de pad (Alt+… hors de la liste des pistes).
 - Automation du volume et du pan ; réglages de pad pendant qu'une note
   sonne ; pan de FluidSynth.
+
+---
+
+## Phase 8 étape 19a — Raccourcis de volume et de pan : remise par Retour arrière
+
+### Numérotation des commits de ce chantier
+
+19a (plan), puis paires implémentation → tests (19b1 / 19c1), 19d1
+(clôture) ; un commit imprévu prend le suffixe suivant, toujours après
+les commits déjà faits.
+
+### Origine du besoin (utilisateur, 2026-11-19)
+
+« Cohérence des raccourcis de l'interface » : chaque réglage a ses
+flèches et sa remise par Retour arrière, avec le même modificateur.
+
+### État des lieux constaté en code (2026-11-19)
+
+| Réglage | Flèches | Remise aujourd'hui |
+|---|---|---|
+| Volume global (0..200) | Ctrl+Haut/Bas (`key_handler_ctrl.py`) | aucune |
+| Pan global (−100..100) | Ctrl+Gauche/Droite | Ctrl+0 → 0 |
+| Volume de piste / de pad | Alt+Haut/Bas (`key_handler_alt.py`, pad hors de la liste des pistes) | aucune |
+| Pan de piste / de pad | Alt+Gauche/Droite | Alt+0 → 0 |
+
+- Préférences : `master_volume` (100) et `master_pan` (0), valeurs d'un
+  nouveau projet (`MainWindow._master_defaults`, mis à jour quand on les
+  change dans Alt+Shift+P).
+- Volume de piste : pas de préférence ; 100 dans tout nouveau pattern.
+  Volume de pad : 100 (`VoiceManager.reset_pad`).
+- Retour arrière : seulement « supprimer » dans l'éditeur MIDI et la
+  fenêtre Songs ; libre dans la fenêtre principale.
+
+### Décisions de l'utilisateur (2026-11-19)
+
+- **R1 — raccourcis** :
+  - Ctrl+Retour arrière : volume global ← préférences (`master_volume`) ;
+  - Shift+Retour arrière : pan global ← préférences (`master_pan`) ;
+  - Alt+Retour arrière : volume de piste ← 100 (comme un nouveau pattern) ;
+  - Alt+Shift+Retour arrière : pan de piste ← 0.
+- **R2 — pads** : hors de la liste des pistes, Alt+Retour arrière et
+  Alt+Shift+Retour arrière agissent sur le pad courant (volume 100, pan 0),
+  comme Alt+Haut / Alt+Gauche.
+- **R3 — Ctrl+0 et Alt+0 libérés** (plus aucune action).
+
+### Choix de conception proposés
+
+- **R4 — mêmes chemins que les flèches** : `_set_master_volume_undo`,
+  `_set_master_pan_undo`, `_set_track_volume_undo`, `_set_track_pan_undo`,
+  `_set_pad_volume_undo`, `_set_pad_pan_undo` : Undo regroupé, rien si la
+  valeur ne change pas, champs « Vol: » / « Pan: » mis à jour, son en temps
+  réel (étape 18), pad réécouté sur la liste des pads comme Alt+Haut.
+- **R5 — annonces** (Orca, barre d'état) : « Volume Global: 100
+  (préférences) », « Pan Global: 0 (préférences) », « Piste 3: Volume
+  100 », « Piste 3: Pan 0 (centre) », « Pad 5: Volume 100 », « Pad 5: Pan
+  0 (centre) » ; le volume global au-dessus de 100 garde son annonce en dB.
+- **R6 — Ctrl+0 / Alt+0** : retirés des gestionnaires, et vérifié qu'ils
+  ne tombent pas dans un autre (chiffre du pavé, saisie).
+- **R7 — documentation** : aide F1 (`docs/shortcuts.md`), `docs/SPECS.md`
+  (§ Volume et Pan).
+- **R8 — catégories des tests** : KeyManager sur une fenêtre factice avec
+  le vrai Undo (comme `test_mix_undo.py`) : **sans marque** ; aucune vraie
+  fenêtre nécessaire.
+
+### Découpage (validé, 2026-11-19)
+
+- **19b1 — implémentation** (R1-R7).
+- **19c1 — tests** (R8).
+- **19d1 — clôture** (`git gc`).
