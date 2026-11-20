@@ -15477,3 +15477,171 @@ groupés) et le son réellement sorti, mesuré en enregistrant la carte.
 L'utilisateur y reviendra si le cas se présente à nouveau.
 
 **Suites.** Le point ouvert ci-dessus ; automation du volume et du pan.
+
+## Phase 8 étape 20a — Monitoring de l'entrée audio, module audio_beep
+
+### Numérotation des commits de ce chantier
+
+20a (plan), puis paires implémentation → tests (20b1 / 20c1, 20d1 /
+20e1), 20f1 (clôture) ; un commit imprévu prend le suffixe suivant,
+toujours après les commits déjà faits.
+
+### Origine du besoin (utilisateur, 2026-11-20)
+
+- **Monitoring de l'entrée audio** (suite notée aux étapes 14 et 16) :
+  s'entendre dans le casque, à la manière du mode « Auto » de Reaper, avec
+  une **case à cocher** et **F8** comme bascule.
+- **Un bip avant le test de l'entrée audio** (Préférences, onglet Matériel,
+  « Tester l'entrée audio ») : une onde en **dents de scie**, plus audible,
+  comme le bip de Windows, **deux notes montantes**.
+- **Un module `audio_beep` autonome**, utilisable dans d'autres applis.
+- **Les bips des boîtes de message** remplacés par ce module.
+
+### État des lieux constaté en code (2026-11-20)
+
+- Test de l'entrée : `HardwareMixin.test_audio_input` (`mw_devices.py`) —
+  trois secondes d'écoute dans un fil (`audio_device.record_input`),
+  diagnostic, réécoute ; aucun signal de départ, sinon le texte du champ
+  « Résultat du test ».
+- Bip d'alerte : `MainWindow._alert_beep` (`main_window.py`) — deux sinus
+  descendants 880 / 660 Hz de 0,15 s par le pilote de l'appli, `wx.Bell()`
+  en repli ; appelé par la boîte « Périphérique introuvable » et par
+  l'erreur d'ouverture d'une prise audio (`mw_audio_rec.py`).
+- Boîtes d'erreur **sans bip** : tempo invalide et tempo à 1:1:1
+  (`dialogs_tempo.py`, deux `wx.MessageBox`), erreur d'export audio
+  (`dialogs_simple.py`). Les deux `wx.MessageDialog` de `mw_project.py`
+  sont des questions (Remplacer ?), pas des alertes.
+- `wx.Bell()` aux butées de navigation (11 endroits) : bip du bureau,
+  souvent muet.
+- Enregistrement audio : `AudioRecorder` (`audio_recorder.py`) ouvre son
+  propre flux d'entrée PortAudio ; le Mixer accepte des sources de rendu
+  (`add_render_source(fn)`, comme FluidSynth et sfizz).
+- Entrée de la piste : `_track_audio_ins` (par pattern, `pattern.py`),
+  `_audio_input_for(t)` (`mw_audio_rec.py`) ; F8 est libre.
+- Options de l'enregistrement : `record_options` du .gvp
+  (`record_modes.DEFAULTS`), dialogue Ctrl+Shift+R
+  (`RecordOptionsDialog`, `mw_record_options.py`), changement avec Undo.
+- Aucun armement de piste : R enregistre sur la piste courante.
+
+### Décisions de l'utilisateur (2026-11-20)
+
+- **M1 — case à cocher, basculée par F8** ; d'abord « Auto à la Reaper »
+  (« tape style »), **révisé** : l'entrée s'entend **aussi pendant la
+  lecture**, pour essayer en temps réel, sans enregistrer, un effet (à
+  venir) ou sa partie sur le pattern.
+- **M1b — case décochée par défaut.**
+- **M1c — monitoring global, sauvegardé dans le projet** ; il s'applique
+  à la **piste courante** (si c'est une piste audio), **sans armement** :
+  R garde sa simplicité (enregistrer sur la piste courante).
+- **M1d — armement des pistes et enregistrement multipiste** : un autre
+  chantier, gros et non urgent dans un prototype ; l'armement sera par
+  piste.
+- **B0 — sens des bips** (habitude) : alertes et questions **montantes**,
+  confirmation (bip de départ du test de l'entrée) **descendante** — à
+  **essayer à 20b1** avant d'être fixé.
+- **B3b — les `wx.Bell()` des butées de navigation ne changent pas.**
+- **L1 — mesure automatique de la latence** : chantier à part.
+
+### Choix de conception proposés
+
+**Module `audio_beep`**
+
+- **B1 — `src/audio/audio_beep.py`, autonome** (numpy seulement ;
+  sounddevice importé seulement par `play()` sans lecteur fourni) :
+  - `saw(freq, seconds, samplerate, level)` : dents de scie **à bande
+    limitée** (somme des harmoniques sous Nyquist, amplitude 1/k), sans
+    repliement ni sifflement, fondus de 5 ms aux bouts (sans clic) ;
+  - `beep(notes, samplerate, …)` : notes enchaînées (fréquence, durée),
+    stéréo float32 ;
+  - deux bips prêts (B0, à essayer) : **`ALERT`** — deux notes
+    **montantes** (La 5 880 Hz puis Mi 6 1 319 Hz, 0,12 s chacune), pour
+    les alertes et les questions — et **`CONFIRM`** — les mêmes
+    **descendantes**, pour une confirmation (départ du test de l'entrée) ;
+    notes et durées en constantes, faciles à changer après l'essai ;
+  - `duration(notes)` ; `play(notes, samplerate, player=None, device=None)`
+    : `player(données, fréquence)` si fourni (le pilote de l'appli), sinon
+    `sounddevice.play`.
+  Prototype Python, cible C/C++ comme le reste du moteur audio.
+- **B2 — bip avant le test de l'entrée** : `CONFIRM` joué par la sortie
+  principale, le fil **attend la fin du bip** (+ 50 ms) avant d'écouter,
+  pour que le bip ne soit pas capté ; champ : « Entrée audio X : après le
+  bip, parlez ou jouez pendant 3 secondes… ».
+- **B3 — alertes et questions** : `_alert_beep` joue `ALERT` par
+  `audio_beep` (repli `wx.Bell()` sans pilote ou sur erreur) ; ajouté aux
+  trois boîtes d'erreur sans bip (tempo ×2, export audio) et aux boîtes de
+  question (les deux « Remplacer ? » de `mw_project.py`, la demande
+  d'enregistrer les modifications `SaveConfirmDialog`). Les `wx.Bell()` de butée restent tels
+  quels (à revoir dans un autre chantier si l'utilisateur le souhaite).
+
+**Monitoring de l'entrée**
+
+- **M2 — case « Monitoring de l'entrée »** dans le dialogue
+  **Options de l'enregistrement** (Ctrl+Shift+R, toutes les fenêtres),
+  après les cases de clic : réglage global du projet, rangé avec les autres
+  options (`record_options["monitor"]`, `record_modes.DEFAULTS` : False ;
+  absent des anciens projets → décochée ; Ctrl+N → décochée) ; aucune
+  donnée dans les patterns.
+- **M3 — règle** (M1 révisé) : case cochée, on entend l'entrée de la
+  **piste courante** si c'est une piste audio, **à l'arrêt, pendant la
+  lecture et pendant une prise** (décompte compris) ; pendant la lecture,
+  les clips de la piste s'entendent aussi. Changer de piste courante
+  change la piste écoutée (son entrée, son volume, son pan) ; une piste
+  MIDI ou Kit n'écoute rien. Mute de la piste → l'entrée est muette aussi.
+- **M4 — F8** : bascule la case, depuis la fenêtre principale quel que
+  soit le focus (comme F3 / F4) ; annonce « Monitoring de l'entrée activé
+  (piste 3 — <entrée>) » / « Monitoring de l'entrée activé (piste
+  courante non audio) » / « Monitoring de l'entrée désactivé » ; une
+  entrée d'Undo, comme le dialogue (« Options de l'enregistrement »).
+- **M5 — `src/audio/input_monitor.py`, `InputMonitor`** (sans wx) :
+  - un **tampon circulaire** court, rempli par un flux d'entrée, vidé par
+    une source de rendu du Mixer (`render(mix)`) ;
+  - volume et pan de la piste appliqués (même formule et même rampe de
+    10 ms que les voix, étape 18) ; mono → les deux côtés ;
+  - **latence visée** : flux d'entrée à petit bloc (256), tampon gardé à
+    un ou deux blocs ; dérive entre deux cartes rattrapée en sautant ou
+    répétant un bloc ; débordement → le plus ancien est jeté ;
+  - **un seul flux d'entrée** : pendant une prise, le monitor ferme le sien
+    et reçoit les blocs de l'`AudioRecorder` (crochet `on_block`) —
+    plusieurs flux sur un même périphérique ALSA sont souvent refusés ;
+  - `stream_factory` injectable (tests sans carte), comme l'enregistreur.
+- **M6 — mise à jour** (`mw_audio_monitor.py`, mixin de la fenêtre) :
+  `_update_monitor()` recalcule M3 au changement de piste courante, de
+  pattern, de type ou d'entrée de piste (Alt+Entrée), au début et à la
+  fin d'une prise, F8, Ctrl+Shift+R, Ctrl+Z, Ctrl+N / Ctrl+O, changement de
+  périphérique (Préférences), volume ou pan de la piste ; il ouvre, garde,
+  change ou ferme le flux. Entrée refusée → bip `ALERT` et barre d'état, la
+  case reste cochée.
+- **M7 — Larsen** : avec micro et haut-parleurs, le monitoring peut
+  siffler (d'où la case décochée par défaut) ; rappelé dans l'aide F1 (F8
+  coupe tout de suite).
+
+**Documentation et tests**
+
+- **M8 — documentation** : aide F1 (F8, case de Ctrl+Shift+R),
+  `docs/SPECS.md` (§ Pistes audio, test de l'entrée, table des tests).
+- **M9 — catégories des tests** :
+  - `audio_beep` (formes d'onde, bande limitée, fondus, durées, lecteur
+    fourni) et bips des boîtes d'alerte et de question : **sans marque** ;
+  - `InputMonitor` avec un faux flux (tampon, gain, pan, rampe, dérive,
+    crochet de l'enregistreur) : **sans marque** ;
+  - règle M3 et F8 sur la fenêtre factice avec le vrai Undo : **sans
+    marque** ;
+  - bip avant le test de l'entrée (ordre bip → écoute, attente) avec faux
+    pilote et faux enregistrement : **sans marque** ;
+  - un essai sur la vraie carte (flux réel ouvert puis fermé) : **audio** ;
+  - case du dialogue Ctrl+Shift+R sur un vrai dialogue : **gui**.
+
+### Laissé pour plus tard
+
+- Mesure automatique de la latence d'entrée (bip joué, réentendu par
+  l'entrée) : chantier à part, qui pourra réutiliser `audio_beep`.
+- Armement des pistes et enregistrement multipiste (M1d).
+- Remplacement des `wx.Bell()` de butée (B3b : ils restent tels quels).
+
+### Découpage (validé, 2026-11-20)
+
+- **20b1 — `audio_beep`, bip avant le test de l'entrée, alertes** (B1-B3).
+- **20c1 — tests de 20b1**.
+- **20d1 — monitoring de l'entrée** (M2-M8).
+- **20e1 — tests de 20d1**.
+- **20f1 — clôture** (`git gc`).
