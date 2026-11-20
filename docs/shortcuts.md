@@ -130,7 +130,8 @@ Alt+↑            Volume du Pad courant +5
 Alt+↓            Volume du Pad courant -5
 Alt+←            Pan du Pad courant -10 (vers la gauche)
 Alt+→            Pan du Pad courant +10 (vers la droite)
-Alt+0            Recentrer le Pan du Pad courant (→ 0)
+Shift+Retour arrière  Volume du Pad courant à 100 et Pan à 0 (hors de la liste
+                      des pistes)
 
 --- Enregistrement (mode R) ---
 Ctrl+Shift+R     Options de l'enregistrement (aussi depuis l'éditeur MIDI et la
@@ -209,7 +210,9 @@ Ctrl+↓           Volume Global -1 (0..200)
                  l'annonce donne le gain : « Volume Global: 150 (+3,5 dB) »
 Ctrl+→           Pan Global +1 (-100..+100)
 Ctrl+←           Pan Global -1 (-100..+100)
-Ctrl+0           Centrer le Pan Global (→ 0)
+Ctrl+Retour arrière   Volume et Pan Global aux valeurs des Préférences
+                 (Retour arrière garde son rôle dans les champs BPM, Vol:, Pan:
+                 et ceux des pads)
 
 --- Grille (navigation) ---
 Flèches          Déplacer le curseur
@@ -346,7 +349,8 @@ F5               Réinitialiser tous les Mute et Solo de piste et quitter le mod
                  exclusif (Shift+X et Shift+S à la fois)
 Alt+↑ / Alt+↓   Volume piste ±5 (0..100)
 Alt+← / Alt+→   Pan piste ±10 (-100..+100)
-Alt+0            Recentrer le pan de la piste (Pan 0)
+Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste des
+                      pistes)
                  Volume et pan de piste, et pan global, s'entendent tout de
                  suite sur ce qui sonne déjà (clips, notes Wave et Kit), Ctrl+Z
                  compris

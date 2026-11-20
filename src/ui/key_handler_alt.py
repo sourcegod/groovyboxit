@@ -65,18 +65,6 @@ class AltHandler:
                 if on_pad_list:
                     win._play(win._cur_row)
             return True
-        if not ctrl and not shift and (ukey == ord('0') or key == ord('0')):
-            tidx = win._player._cur_track
-            if on_track_list:
-                win._set_track_pan_undo(tidx, 0)
-                win._show_status(f"Piste {tidx + 1}: Pan 0 (centre)")
-            else:
-                win._set_pad_pan_undo(win._cur_row, 0)
-                win._refresh_voice_display(win._cur_row)
-                win._show_status(f"Pad {win._cur_row + 1}: Pan 0 (centre)")
-                if on_pad_list:
-                    win._play(win._cur_row)
-            return True
         if not ctrl and not shift and (ukey in (ord('x'), ord('X')) or key == ord('X')):
             win._open_explorer()
             return True

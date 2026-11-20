@@ -1377,19 +1377,23 @@ rien.
 ## Volume et Pan
 
 ### Global
-- Volume global : 0..200 (Ctrl+↑/↓, `+`/`-`, champ « Vol: ») : volume maître du pilote audio, appliqué à tout le mixage ; 100 = gain ×1, 200 = ×2 (+6 dB, Phase 8 étape 8) : on baisse les instruments, on remonte le mix, le limiteur d'écoute rattrape les crêtes. Au-dessus de 100, l'annonce donne le gain : « Volume Global: 150 (+3,5 dB) »
-- Pan global : -100..+100 (Ctrl+←/→, Ctrl+0 pour centrer, champ « Pan: ») : décalage ajouté au pan de toute piste — notes de grille, notes KIT / PATCH du Mixer (Kit, Wave), clips audio, CC10 des canaux Banque / Synth SFZ (Phase 8 étape 18b1 : avant, seules les notes de grille l'avaient)
+- Volume global : 0..200 (Ctrl+↑/↓, `+`/`-`, champ « Vol: » ; Ctrl+Retour arrière → volume et pan globaux des Préférences, Phase 8 étape 19) : volume maître du pilote audio, appliqué à tout le mixage ; 100 = gain ×1, 200 = ×2 (+6 dB, Phase 8 étape 8) : on baisse les instruments, on remonte le mix, le limiteur d'écoute rattrape les crêtes. Au-dessus de 100, l'annonce donne le gain : « Volume Global: 150 (+3,5 dB) »
+- Pan global : -100..+100 (Ctrl+←/→, champ « Pan: » ; Ctrl+Retour arrière → valeur des Préférences, avec le volume, Phase 8 étape 19 ; Ctrl+0 retiré) : décalage ajouté au pan de toute piste — notes de grille, notes KIT / PATCH du Mixer (Kit, Wave), clips audio, CC10 des canaux Banque / Synth SFZ (Phase 8 étape 18b1 : avant, seules les notes de grille l'avaient)
 - Une valeur par projet, sauvegardée dans la clé `master` du `.gvp` ; défauts dans `data/config.json` (`master_volume`, `master_pan`), appliqués au pilote dès le lancement (Phase 7 étape 15d1)
 
 ### Par pad (Voice Manager)
 - Volume : 0..100 (Alt+↑/↓)
-- Pan : -100..+100 (Alt+←/→, Alt+0)
+- Pan : -100..+100 (Alt+←/→ ; Alt+0 retiré, Phase 8 étape 19)
+- Shift+Retour arrière hors de la liste des pistes : volume 100 et pan 0 du pad courant (Phase 8 étape 19)
 - Mute / Solo (X, S)
 - Durée en ms (configurable via PadPropertiesDialog)
 
 ### Par piste (TrackRouter)
 - Volume : 0..100 (Alt+↑/↓ depuis la liste des pistes)
 - Pan : -100..+100 (Alt+←/→)
+- Shift+Retour arrière depuis la liste des pistes : volume 100 et pan 0 de la piste courante (Phase 8 étape 19 ; Alt+Retour arrière est pris par Orca)
+- Retour arrière avec modificateur ne fait rien dans un champ de saisie
+  (BPM, Vol:, Pan:, champs des pads), où il efface
 - Mute (X) / Solo (S) par piste ; F5 les retire tous
 - **Mute / Solo exclusifs** (Phase 8 étape 6, F3 / F4) : seule la piste
   courante est muette (ou en solo), les autres Mute (ou Solo) retirés ;
@@ -1932,12 +1936,12 @@ UndoManager
 
 `_add_undo(title)` est appelé avant ~20 actions destructives (cocher/décocher cellule, modifier BPM, renommer, quantiser, dupliquer, coller, etc.). Depuis les Phase 7 étapes 13 et 15, les réglages de mixage et les boucles y passent aussi, et marquent le projet modifié :
 - **mute et solo** des pistes et des pads : X, S, Shift+X et Shift+S, sur la liste des pistes, sur les pads et dans l'éditeur MIDI (une seule entrée pour toutes les pistes sélectionnées), et les boutons Mute et Solo des pads ;
-- **volume et pan** des pistes et des pads : Alt+↑/↓, Alt+←/→, Alt+0, les CC7 et CC10 du contrôleur, les SpinCtrl Volume et Pan des pads ;
-- **volume et pan globaux** : Ctrl+↑/↓, Ctrl+←/→, Ctrl+0, `+`/`-`, les champs « Vol: » et « Pan: » ;
+- **volume et pan** des pistes et des pads : Alt+↑/↓, Alt+←/→, Shift+Retour arrière, les CC7 et CC10 du contrôleur, les SpinCtrl Volume et Pan des pads ;
+- **volume et pan globaux** : Ctrl+↑/↓, Ctrl+←/→, Ctrl+Retour arrière, `+`/`-`, les champs « Vol: » et « Pan: » ;
 - **points de boucle** : Ctrl+L, Shift+L, Alt+L, le dialogue Ctrl+Shift+L ; et la case **« Boucler » d'un song** ;
 - les dialogues de propriétés de piste et de pad (entrée retirée si Annuler ou si rien n'a changé).
 
-Rien n'est enregistré si la valeur ne change pas (volume déjà à 100, Alt+0 sur un pan centré, Shift+X sans rien de muet, Ok du dialogue de boucle sans changement).
+Rien n'est enregistré si la valeur ne change pas (volume déjà à 100, Shift+Retour arrière sur une piste déjà à 100 / 0, Shift+X sans rien de muet, Ok du dialogue de boucle sans changement).
 
 `_add_mix_undo(title, key)` : les changements successifs d'un même volume ou pan (même `key`, moins de 1 s entre deux, sans autre action entre eux) ne forment qu'une entrée, dont le titre suit la valeur atteinte (`Volume piste 2: 80`, `Pan pad 5: -20`, `Volume global: 75`). Un tour de bouton rotatif s'annule ainsi d'un seul Ctrl+Z. Les bascules et les boucles font une entrée chacune (`Début de boucle: 2:2:1`, `Song 03: boucle On`).
 

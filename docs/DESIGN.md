@@ -15394,3 +15394,35 @@ flèches et sa remise par Retour arrière, avec le même modificateur.
 - **19b1 — implémentation** (R1-R7).
 - **19c1 — tests** (R8).
 - **19d1 — clôture** (`git gc`).
+
+### Avancement 19b1 (implémentation, révisée à l'essai)
+
+- **Essai de l'utilisateur (2026-11-20)** : Ctrl+Retour arrière, Shift+Retour
+  arrière, Alt+Shift+Retour arrière, pads, Ctrl+Z et champ BPM concluants ;
+  mais **Alt+Retour arrière est pris par Orca** (bascule de ses touches de
+  commande). **Nouvelle répartition décidée** (remplace R1, R2) :
+  - **Ctrl+Retour arrière** : volume **et** pan globaux ← préférences ;
+  - **Shift+Retour arrière** : volume 100 **et** pan 0 de la piste courante
+    (liste des pistes) ou, ailleurs, du pad courant ;
+  - Alt+Retour arrière et Alt+Shift+Retour arrière : aucun.
+- `KeyManager._handle_mix_reset` (`key_manager.py`), appelé pour Retour
+  arrière avant les groupes Alt / Ctrl : **une seule entrée d'Undo** par
+  remise (« Volume et pan globaux : préférences », « Volume et pan piste
+  3 : 100 / 0 », « Volume et pan pad 5 : 100 / 0 »), rien si tout est déjà
+  à sa valeur ; global par `_apply_master` (champs « Vol: » / « Pan: »,
+  CC10 des banques, voix en cours) ; piste par `set_track_volume` /
+  `set_track_pan` (temps réel) ; pad réécouté sur la liste des pads.
+  **Rien dans un champ de saisie** (BPM, Vol:, Pan:, champs des pads) :
+  Retour arrière y efface.
+- Ctrl+0 (`key_handler_ctrl.py`) et Alt+0 (`key_handler_alt.py`) retirés :
+  ils vont au bout de la chaîne, sans action.
+- Aide F1 et `docs/SPECS.md` (§ Volume et Pan, § Undo) mises à jour.
+- **« Ctrl+Gauche/Droite semble accélérer le tempo »** (essai) : mesuré
+  sur la vraie fenêtre, copies de `project_02.gvp` puis `project_01.gvp`
+  (pattern entier, 9,6 s), avec et sans FluidSynth / sfizz, pan balayé de
+  +100 à −100 à 30 pressions par seconde : même nombre de notes par phase de
+  10 s (245 / 248 / 250), retard moyen 0,6 ms (max 2,6 ms) partout, carte
+  son régulière (aucun trou), une pression ≈ 0,3 ms. **Non reproduit** par
+  script ; à préciser avec l'utilisateur.
+- Tests en échec à ce commit (6, anciens tests de Ctrl+0 / Alt+0, réécrits
+  en 19c1) : `test_master_mix`, `test_mix_undo`, `test_key_manager`.

@@ -192,10 +192,6 @@ class CtrlHandler:
             pan = win._set_master_pan_undo(win._player.pan - 1)
             win._show_status(f"Pan Global: {pan}")
             return True
-        if not shift and not alt and key == ord('0'):
-            win._set_master_pan_undo(0)
-            win._show_status("Pan Global: 0 (centré)")
-            return True
         if not shift and not alt and key == wx.WXK_F12:   # Ctrl+F12 : Panic
             win._player.stop_all()
             win._router.panic()

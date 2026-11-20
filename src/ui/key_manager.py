@@ -80,6 +80,9 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if key == wx.WXK_F5 and not (ctx.ctrl or ctx.alt or ctx.shift):
             win._reset_mute_solo()
             return
+        # Retour arrière : remise du volume / pan (Phase 8 étape 19b1, § 19a)
+        if key == wx.WXK_BACK and self._handle_mix_reset(ctx):
+            return
         if ctx.alt and self._handle_alt(event, ctx):
             return
         if ctx.ctrl and self._handle_ctrl(event, ctx):
@@ -94,3 +97,46 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         print(f"DEBUG key={key} ukey={ukey} shift={shift} ctrl={ctrl} "
               f"char={chr(ukey) if ukey > 31 else '?'}")
         event.Skip()
+
+    # Champs de saisie où Retour arrière efface un caractère (19b1)
+    _TEXT_FIELDS = ("on_bpm", "on_volume", "on_pan", "on_voice_spin")
+
+    def _handle_mix_reset(self, ctx):
+        """Retour arrière avec modificateur (Phase 8 étape 19b1, § 19a révisé
+        à l'essai : Alt+Retour arrière est pris par Orca) : Ctrl → volume et
+        pan globaux des préférences ; Shift → volume 100 et pan 0 de la piste
+        courante (liste des pistes) ou, ailleurs, du pad courant. Une seule
+        entrée d'Undo, rien si tout est déjà à sa valeur ; son en temps réel.
+        Rien dans un champ de saisie : Retour arrière y efface."""
+        if any(getattr(ctx, name) for name in self._TEXT_FIELDS):
+            return False
+        win = self._win
+        ctrl, shift, alt = ctx.ctrl, ctx.shift, ctx.alt
+        if alt or ctrl == shift:
+            return False
+        if ctrl:
+            vol, pan = win._master_defaults
+            if (vol, pan) != (win._player.volume, win._player.pan):
+                win._add_mix_undo("Volume et pan globaux : préférences")
+                win._apply_master(vol, pan)
+            win._show_status(f"Volume Global: {win.master_volume_text(win._player.volume)}, "
+                             f"Pan Global: {win._player.pan} (préférences)")
+            return True
+        if ctx.on_track_list:
+            r, t = win._router, win._player._cur_track
+            if (r.get_track_volume(t), r.get_track_pan(t)) != (100, 0):
+                win._add_mix_undo(f"Volume et pan piste {t + 1} : 100 / 0")
+                r.set_track_volume(t, 100)
+                r.set_track_pan(t, 0)
+            win._show_status(f"Piste {t + 1}: Volume 100, Pan 0 (centre)")
+            return True
+        vm, row = win._player.voice_manager, win._cur_row
+        if (vm.get_voice(row).volume, vm.get_pan(row)) != (100, 0):
+            win._add_mix_undo(f"Volume et pan pad {row + 1} : 100 / 0")
+            vm.set_volume(row, 100)
+            vm.set_pan(row, 0)
+        win._refresh_voice_display(row)
+        win._show_status(f"Pad {row + 1}: Volume 100, Pan 0 (centre)")
+        if ctx.on_pad_list:
+            win._play(row)
+        return True
