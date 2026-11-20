@@ -15645,3 +15645,34 @@ toujours après les commits déjà faits.
 - **20d1 — monitoring de l'entrée** (M2-M8).
 - **20e1 — tests de 20d1**.
 - **20f1 — clôture** (`git gc`).
+
+### Avancement 20b1 (bips)
+
+- **`src/audio/audio_beep.py`** (B1) : `saw` (dents de scie à bande
+  limitée, crête 0,25, fondus de 5 ms), `beep`, `duration`, `play(notes,
+  samplerate, player=None, device=None)` ; `ALERT` = 880 puis 1 319 Hz
+  (montant), `CONFIRM` = l'inverse (descendant), 0,12 s par note.
+- **`MainWindow._beep(notes)`**, `_alert_beep()` (ALERT), `_confirm_beep()`
+  (CONFIRM) : par le pilote de l'appli, `wx.Bell()` si le pilote refuse ;
+  l'ancien double sinus 880 / 660 Hz (`ALERT_FREQS`) est retiré.
+- **`src/ui/ui_beep.py`** : `alert(window)` trouve la fenêtre principale
+  (parents, sinon fenêtre de tête de l'appli), `wx.Bell()` sinon ;
+  appelé avant les boîtes du tempo (×2), de l'export audio, des deux
+  « Remplacer ? » de `mw_project.py`, et par `SaveConfirmDialog.ShowModal`.
+- **Test de l'entrée** (B2) : `HardwareAccess.test_audio_input` joue
+  `CONFIRM` dans le fil d'écoute, attend sa durée + 50 ms
+  (`BEEP_GAP`), puis écoute ; champ : « Entrée audio X : après le bip,
+  parlez ou jouez pendant 3 secondes… ».
+- **Essai de l'utilisateur (2026-11-21)** : test de l'entrée, dialogue
+  Tempo, question de Ctrl+N concluants ; sens des bips gardé (montant =
+  alerte / question, descendant = confirmation). Comparaison demandée avec
+  une onde carrée : `square()` ajouté (harmoniques impaires, bande
+  limitée), `beep(…, wave=SAW|SQUARE)`, écoute `python3 -m
+  audio.audio_beep [alert|confirm] [saw|square]` ; **carré choisi**
+  (`WAVE = SQUARE`), au même niveau de crête (environ 4 dB plus fort en
+  moyenne : sans effet notable à l'écoute, selon l'utilisateur).
+  Recherche : `winsound.Beep` = carré du haut-parleur interne jusqu'à
+  Vista ; depuis Windows 7, rendu par la carte son, forme non documentée.
+- **Tests en échec jusqu'à 20c1** : les 5 tests de la boîte « Périphérique
+  introuvable » de `test_audio_device.py` (fixture sur `ALERT_FREQS`) et
+  le texte du test de l'entrée de `test_prefs_hardware.py`.

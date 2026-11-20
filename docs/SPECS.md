@@ -66,6 +66,7 @@ groovyboxit/
 │   ├── audio/            # Audio (Phase 8 étape 8) : pilotes, mixage, sons, moteurs, export WAV
 │   │   ├── track_audio_clips.py # TrackAudioMixin : lecture des clips audio des pistes audio (Phase 8 étape 14d1)
 │   │   ├── audio_takes.py    # Prises audio : dossier Audios, noms, WAV 24 bits, copie à Enregistrer sous (Phase 8 étape 14b1)
+│   │   ├── audio_beep.py     # Bips en dents de scie, module autonome : ALERT (alertes, questions), CONFIRM (Phase 8 étape 20b1)
 │   │   ├── audio_recorder.py # AudioRecorder : prise audio (flux d'entrée, datation, WAV 24 bits), placement compensé (Phase 8 étape 14f1)
 │   │   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1) ; song et stems (étape 2)
 │   │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
@@ -110,6 +111,7 @@ groovyboxit/
 │       ├── dialogs_preferences.py # PreferencesDialog : Préférences à onglets (Alt+Shift+P)
 │       ├── prefs_hardware.py   # HardwarePage : onglet Matériel (pilote, entrées et sorties audio / MIDI)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
+│       ├── ui_beep.py          # Bip des boîtes d'alerte et de question depuis toute fenêtre (Phase 8 étape 20b1)
 │       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
 │       ├── gtk_listbox.py      # select_with_cursor : sélection d'une ListBox qui place aussi le curseur clavier GTK (Phase 8 étape 5d2)
@@ -342,7 +344,9 @@ Le projet garde le nouveau chemin à son prochain enregistrement.
 - **Sortie principale** : les sorties cochées, ou « Défaut du pilote »
   quand aucune ne l'est.
 - **Tester** (ligne sous le curseur, cochée ou non) : sortie audio = La
-  440 Hz d'une seconde ; entrée audio = 3 secondes d'écoute, diagnostic
+  440 Hz d'une seconde ; entrée audio = **bip de confirmation** (Phase 8
+  étape 20b1 ; attendu jusqu'au bout, pour ne pas être capté), puis 3
+  secondes d'écoute, diagnostic
   (« silence », « signal bloqué à pleine échelle », « signal présent —
   niveau moyen, crête ») et **réécoute** de ce qui a été capté ; sortie
   MIDI = A4 d'une seconde (« Synthé FluidSynth » : un FluidSynth à part,
@@ -352,8 +356,16 @@ Le projet garde le nouveau chemin à son prochain enregistrement.
   **sans déplacer le focus**.
 - **Périphérique introuvable** (au démarrage, Shift+F12,
   Ctrl+Shift+F12, Appliquer) : **boîte bloquante** « Périphérique
-  introuvable » avec un bouton Ok, le nom du périphérique et deux bips
-  d'alerte (joués par l'appli) ; aussi dans la barre d'état.
+  introuvable » avec un bouton Ok, le nom du périphérique et le bip
+  d'alerte (joué par l'appli) ; aussi dans la barre d'état.
+- **Bips** (Phase 8 étape 20b1, module autonome `audio/audio_beep.py`) :
+  deux notes en onde carrée (880 et 1 319 Hz, 0,12 s chacune ; dents de
+  scie possibles par le module), jouées
+  par la sortie de l'appli (`wx.Bell()` en repli) ; **montant** pour les
+  alertes et les questions (périphérique introuvable, prise audio refusée,
+  tempo invalide, export audio invalide, « Remplacer ? », « Enregistrer
+  avant de… ? »), **descendant** pour une confirmation (départ du test de
+  l'entrée audio). Les `wx.Bell()` des butées de navigation restent.
 - **Raccourcis MIDI sur F12** (toutes les fenêtres) : **Ctrl+F12** Panic,
   **Shift+F12** connecter / déconnecter les entrées MIDI cochées,
   **Ctrl+Shift+F12** réinitialiser les périphériques MIDI (relire et

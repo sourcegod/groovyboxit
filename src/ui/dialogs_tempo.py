@@ -14,6 +14,7 @@
 import wx
 
 from tempo_map import format_bpm, BPM_MIN, BPM_MAX
+from ui import ui_beep
 
 # Choix « Portée » du dialogue d'édition (§ 19d2 R3, précisé à l'essai :
 # « tous les tempos » seul pouvait vouloir dire « tous à cette valeur »)
@@ -111,12 +112,14 @@ class TempoEditDialog(wx.Dialog):
 
     def _on_ok(self, event):
         if self.get_bpm() is None:
+            ui_beep.alert(self)
             wx.MessageBox(f"Tempo invalide : un nombre de {BPM_MIN} à {BPM_MAX} BPM "
                           "(décimales avec une virgule).", "Tempo", wx.OK | wx.ICON_WARNING, self)
             self._bpm.SetFocus()
             return
         if not self._position_fixed and self.get_scope() == SCOPE_RECENT \
                 and self.get_position() <= 0:
+            ui_beep.alert(self)
             wx.MessageBox("La position 1:1:1 est celle du tempo de départ : "
                           "choisissez une position plus loin.", "Tempo",
                           wx.OK | wx.ICON_WARNING, self)

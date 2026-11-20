@@ -1,11 +1,10 @@
 import os
 import threading
 import wx
-import numpy as np
 from audio.sound_manager import SoundManager
 from audio.sound_device_driver import SoundDeviceDriver, SdSound
 from devices import audio_device as audio_devices
-from audio import audio_takes
+from audio import audio_takes, audio_beep
 from player.drum_player import DrumPlayer
 from pattern import Pattern
 from rack import Rack, InstrumentType
@@ -248,22 +247,26 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         finally:
             dlg.Destroy()
 
-    ALERT_FREQS = (880.0, 660.0)     # deux bips descendants, 0,15 s chacun
-
-    def _alert_beep(self):
-        """Bip d'alerte joué par le pilote audio de l'appli (sortie ouverte,
+    def _beep(self, notes):
+        """Bip audio_beep (onde carrée) joué par le pilote audio de l'appli (sortie ouverte,
         quelle qu'elle soit) : wx.Bell() dépend du bureau et reste souvent
-        muet. Rien si le pilote manque."""
+        muet. Rien si le pilote manque ; wx.Bell() si le pilote refuse."""
         driver = getattr(self, "_audio_driver", None)
         if driver is None:
             return
-        sr = driver.samplerate
-        beep = np.concatenate([audio_devices.tone(sr, freq=f, seconds=0.15, level=0.3)
-                               for f in self.ALERT_FREQS])
         try:
-            driver.play(SdSound(beep, sr))
+            audio_beep.play(notes, driver.samplerate,
+                            player=lambda data, sr: driver.play(SdSound(data, sr)))
         except Exception:
             wx.Bell()
+
+    def _alert_beep(self):
+        """Bip des alertes et des questions (Phase 8 étape 20b1, B0 : montant)."""
+        self._beep(audio_beep.ALERT)
+
+    def _confirm_beep(self):
+        """Bip de confirmation (départ du test de l'entrée ; B0 : descendant)."""
+        self._beep(audio_beep.CONFIRM)
 
     def wait_loaded(self):
         """Affiche 'Chargement…' et bloque jusqu'à ce que tous les sons soient prêts."""

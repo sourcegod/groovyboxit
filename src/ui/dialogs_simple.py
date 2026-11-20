@@ -2,6 +2,7 @@ import os
 import wx
 from pattern import Pattern
 from ui.dialogs_temporal import BBTHelper
+from ui import ui_beep
 
 
 def _load_keyboard_help():
@@ -486,6 +487,7 @@ class AudioExportDialog(wx.Dialog):
     def _on_ok(self, event):
         error = self._validate()
         if error is not None:
+            ui_beep.alert(self)
             wx.MessageBox(error, "Exporter en audio", wx.OK | wx.ICON_WARNING, self)
             return
         self.EndModal(wx.ID_OK)
@@ -786,6 +788,11 @@ class SaveConfirmDialog(wx.Dialog):
 
         self._answered = False
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
+    def ShowModal(self):
+        """Bip de question avant l'affichage (Phase 8 étape 20b1, B3)."""
+        ui_beep.alert(self.GetParent())
+        return super().ShowModal()
 
     def _end(self, result_id):
         """Termine le dialog une seule fois — un second appel (clic + touche

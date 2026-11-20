@@ -258,7 +258,7 @@ class HardwarePage:
     def test_audio_input(self):
         name = self._selected(self.audio_in, "une entrée audio")
         if name is not None:
-            self.say(f"Entrée audio {name} : parlez ou jouez pendant 3 secondes…")
+            self.say(f"Entrée audio {name} : après le bip, parlez ou jouez pendant 3 secondes…")
             self._hw.test_audio_input(self.hostapi.GetStringSelection(), name, self.say)
 
     def test_midi_output(self):

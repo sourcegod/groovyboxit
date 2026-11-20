@@ -12,11 +12,13 @@
     Author: Coolbrother
 """
 import threading
+import time
 
 import numpy as np
 import wx
 
 from app_config import AppConfig
+from audio import audio_beep
 from devices import audio_device
 from devices import midi_device
 
@@ -294,12 +296,15 @@ class HardwareAccess:
             return f"Sortie audio {name} : refusée ({e})"
         return f"Sortie audio {name} : La 440 Hz joué pendant une seconde"
 
+    BEEP_GAP = 0.05          # silence après le bip, avant l'écoute (20b1, B2)
+
     def test_audio_input(self, hostapi, name, done):
-        """Trois secondes d'écoute dans un fil, diagnostic (silence, bloqué,
-        présent) avec niveau moyen et crête, puis réécoute de ce qui a été
-        capté sur la sortie principale si un signal est présent (essai de
-        11f1 : la crête seule ne disait rien) ; done(message) dans le fil de
-        l'interface."""
+        """Bip de confirmation (Phase 8 étape 20b1, B2) puis, sa fin
+        attendue pour qu'il ne soit pas capté, trois secondes d'écoute dans
+        un fil, diagnostic (silence, bloqué, présent) avec niveau moyen et
+        crête, puis réécoute de ce qui a été capté sur la sortie principale
+        si un signal est présent (essai de 11f1 : la crête seule ne disait
+        rien) ; done(message) dans le fil de l'interface."""
         from audio.sound_device_driver import SdSound
         driver = getattr(self._win, "_audio_driver", None)
         sr = driver.samplerate if driver is not None else 44100
@@ -309,6 +314,10 @@ class HardwareAccess:
             if idx is None:
                 msg = f"Entrée audio {name} : introuvable"
             else:
+                beep = getattr(self._win, "_confirm_beep", None)
+                if beep is not None and driver is not None:
+                    beep()
+                    time.sleep(audio_beep.duration(audio_beep.CONFIRM) + self.BEEP_GAP)
                 try:
                     data = audio_device.record_input(idx, samplerate=sr)
                 except audio_device.AudioDeviceError as e:

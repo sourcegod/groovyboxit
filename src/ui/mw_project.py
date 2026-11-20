@@ -17,6 +17,7 @@ from midi.midi_import import import_pattern
 from audio import audio_export
 from audio import audio_takes
 import record_modes
+from ui import ui_beep
 from devices import audio_device as audio_devices
 from .dialogs import AudioExportDialog, ExportTargetDialog, \
     ImportModeDialog
@@ -852,6 +853,7 @@ class ProjectMixin:
                 "Importer un fichier MIDI",
                 wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
             )
+            ui_beep.alert(self)                # question (Phase 8 étape 20b1, B3)
             answer = msg.ShowModal()
             msg.Destroy()
             if answer != wx.ID_YES:
@@ -1216,6 +1218,7 @@ class ProjectMixin:
                 "Remplacer le fichier",
                 wx.YES_NO | wx.YES_DEFAULT | wx.ICON_WARNING,
             )
+            ui_beep.alert(self)                # question (Phase 8 étape 20b1, B3)
             replace = msg.ShowModal()
             msg.Destroy()
             if replace != wx.ID_YES:
