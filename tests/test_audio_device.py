@@ -33,6 +33,7 @@ from devices import audio_device as ad
 from devices import __main__ as devices_cli
 import audio.sound_device_driver as sdd
 from audio.sound_device_driver import SoundDeviceDriver, Mixer, SdSound
+from audio import audio_beep
 import ui.main_window as main_window
 from ui.main_window import MainWindow
 from ui.mw_project import ProjectMixin
@@ -568,8 +569,8 @@ class _PlayDriver:
 def notes_win(monkeypatch):
     _Dialog.shown = []
     monkeypatch.setattr(main_window.wx, "MessageDialog", _Dialog)
-    win = SimpleNamespace(_device_notes=[], _audio_driver=_PlayDriver(),
-                          ALERT_FREQS=MainWindow.ALERT_FREQS)
+    win = SimpleNamespace(_device_notes=[], _audio_driver=_PlayDriver())
+    win._beep = lambda notes: MainWindow._beep(win, notes)          # 20b1
     win._alert_beep = lambda: MainWindow._alert_beep(win)
     return win
 
@@ -597,11 +598,11 @@ def test_device_box_beeps(notes_win):
     MainWindow._show_device_notes(notes_win)
     (beep,) = notes_win._audio_driver.played
     assert isinstance(beep, SdSound) and beep.samplerate == 44100
-    assert beep.data.shape == (int(44100 * 0.15) * 2, 2)       # deux bips de 0,15 s
+    assert np.array_equal(beep.data, audio_beep.beep(audio_beep.ALERT, 44100))   # 20b1
     half = len(beep.data) // 2
     first = np.argmax(np.abs(np.fft.rfft(beep.data[:half, 0])))
     second = np.argmax(np.abs(np.fft.rfft(beep.data[half:, 0])))
-    assert first > second                                      # descendants : 880 puis 660
+    assert first < second                          # alerte montante (20b1, B0)
 
 
 def test_beep_falls_back_to_bell(notes_win, monkeypatch):

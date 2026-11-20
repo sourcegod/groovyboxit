@@ -295,6 +295,19 @@ def test_non_empty_pattern_no_keeps_pattern(tmp_path):
     assert len(win._player._pattern._tape[3]) == 1
     print("  pattern non vide + Non : rien ne change : OK")
 
+def test_non_empty_pattern_question_beeps(tmp_path):
+    """« Le pattern n'est pas vide. Le remplacer ? » : bip de question avant
+    la boîte (Phase 8 étape 20b1, B3) ; pattern vide : ni boîte ni bip."""
+    win = _ImportWindow(str(tmp_path))
+    beeps = []
+    with patch("ui.mw_project.ui_beep.alert", lambda w=None: beeps.append(w)):
+        _, asked = _run(win, _write_mid(str(tmp_path / "a.mid")))
+        assert beeps == [] and asked == []
+        win._player._pattern._tape[3].append(
+            TapeEvent(ETYPE_PATCH, payload={"note": 60, "vel": 1}, time=0))
+        _, asked = _run(win, _write_mid(str(tmp_path / "b.mid")), answer=wx.ID_NO)
+    assert beeps == [win] and len(asked) == 1
+
 def test_non_empty_pattern_yes_replaces(tmp_path):
     win = _ImportWindow(str(tmp_path))
     win._player._pattern._tape[3].append(

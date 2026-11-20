@@ -549,16 +549,19 @@ def test_dialog_whole_pattern_without_limiters():
 def test_dialog_invalid_selection_keeps_dialog_open(monkeypatch):
     shown = []
     monkeypatch.setattr(wx, "MessageBox", lambda msg, *a, **k: shown.append(msg))
+    import ui.dialogs_simple as ds                          # bip (Phase 8 étape 20b1, B3)
+    monkeypatch.setattr(ds.ui_beep, "alert", lambda w=None: shown.append(("bip", w)))
     dlg = _dialog(source_idx=2, num_bars=4, lim_left=16, lim_right=47)
     ended = []
     dlg.EndModal = ended.append
     try:
         dlg._right.SetValue("1:1:1")
         dlg._on_ok(None)
-        assert shown == ["La fin de la sélection est avant son début"] and ended == []
+        assert shown == [("bip", dlg), "La fin de la sélection est avant son début"] \
+            and ended == []
         dlg._right.SetValue("4:1:1")
         dlg._on_ok(None)
-        assert ended == [wx.ID_OK]
+        assert ended == [wx.ID_OK] and len(shown) == 2
     finally:
         dlg.Destroy()
 

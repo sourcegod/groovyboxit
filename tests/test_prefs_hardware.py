@@ -349,7 +349,8 @@ def test_test_audio_input_async(dialog):
     _, page, hw, _ = dialog()
     page.audio_in.ctrl.SetSelection(2)
     page.test_audio_input()
-    assert page.result.GetValue() == "Entrée audio pipewire : parlez ou jouez pendant 3 secondes…"
+    assert page.result.GetValue() == \
+        "Entrée audio pipewire : après le bip, parlez ou jouez pendant 3 secondes…"   # 20b1
     hw.pending.pop()("Entrée audio pipewire : signal présent")
     assert page.result.GetValue() == "Entrée audio pipewire : signal présent"
 
@@ -644,6 +645,62 @@ def test_input_missing_or_refused(tmp_path, monkeypatch, sync_call_after):
     monkeypatch.setattr(ad, "record_input", refuse)
     _access(tmp_path).test_audio_input("ALSA", "x", said.append).join(2)
     assert said[-1] == "Entrée audio x : refusée (occupé)"
+
+
+# -- Bip de confirmation avant l'écoute (Phase 8 étape 20b1, B2) -------------
+
+def _beep_access(tmp_path, monkeypatch, driver, order):
+    """HardwareAccess sur une fenêtre dont _confirm_beep est le vrai
+    (MainWindow._beep par le pilote) ; l'attente et l'écoute notées."""
+    from ui.main_window import MainWindow
+    hw = _access(tmp_path, driver)
+    win = hw._win
+    win._beep = lambda notes: (order.append("bip"), MainWindow._beep(win, notes))
+    win._confirm_beep = lambda: MainWindow._confirm_beep(win)
+    monkeypatch.setattr(mw_devices.time, "sleep", lambda s: order.append(("attente", s)))
+    monkeypatch.setattr(ad, "find_device", lambda n, a, k: 2)
+
+    def record(idx, samplerate=44100):
+        order.append("écoute")
+        return np.zeros((100, 1), np.float32)
+    monkeypatch.setattr(ad, "record_input", record)
+    return hw
+
+
+def test_input_beep_then_wait_then_listen(tmp_path, monkeypatch, sync_call_after):
+    from audio import audio_beep
+    order, said, driver = [], [], _Driver()
+    _beep_access(tmp_path, monkeypatch, driver, order).test_audio_input(
+        "ALSA", "pipewire", said.append).join(2)
+    wait = audio_beep.duration(audio_beep.CONFIRM) + HardwareAccess.BEEP_GAP
+    assert order == ["bip", ("attente", pytest.approx(wait)), "écoute"]
+    (snd,) = driver.played                                    # le bip, pas de réécoute
+    assert np.array_equal(snd.data, audio_beep.beep(audio_beep.CONFIRM, 44100))
+    assert said == ["Entrée audio pipewire : silence (rien ne rentre)"]
+
+
+def test_input_confirm_beep_is_falling(tmp_path, monkeypatch, sync_call_after):
+    order, driver = [], _Driver()
+    _beep_access(tmp_path, monkeypatch, driver, order).test_audio_input(
+        "ALSA", "pipewire", lambda m: None).join(2)
+    data = driver.played[0].data[:, 0]
+    half = len(data) // 2
+    assert np.argmax(np.abs(np.fft.rfft(data[:half]))) > np.argmax(np.abs(np.fft.rfft(data[half:])))
+
+
+def test_input_missing_no_beep(tmp_path, monkeypatch, sync_call_after):
+    order, said, driver = [], [], _Driver()
+    hw = _beep_access(tmp_path, monkeypatch, driver, order)
+    monkeypatch.setattr(ad, "find_device", lambda n, a, k: None)
+    hw.test_audio_input("ALSA", "x", said.append).join(2)
+    assert order == [] and driver.played == [] and said == ["Entrée audio x : introuvable"]
+
+
+def test_input_without_driver_listens_without_beep(tmp_path, monkeypatch, sync_call_after):
+    order, said = [], []
+    hw = _beep_access(tmp_path, monkeypatch, None, order)
+    hw.test_audio_input("ALSA", "pipewire", said.append).join(2)
+    assert order == ["écoute"]
 
 
 def test_midi_tests_delegate(tmp_path):

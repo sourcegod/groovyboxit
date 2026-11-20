@@ -283,17 +283,19 @@ class _OkEvent:
 def test_edit_dialog_rejects_bad_bpm_and_start_position(app, monkeypatch):
     msgs = []
     monkeypatch.setattr(dt.wx, "MessageBox", lambda *a, **k: msgs.append(a[0]))
+    # bip d'alerte avant chaque boîte (Phase 8 étape 20b1, B3)
+    monkeypatch.setattr(dt.ui_beep, "alert", lambda w=None: msgs.append("bip"))
     ed = _tempo_dlg(app)._edit_dialog("Insérer", 8, 92)
     ed._bpm.SetValue("700")
     e = _OkEvent(); ed._on_ok(e)
-    assert not e.skipped and "Tempo invalide" in msgs[-1]
+    assert not e.skipped and "Tempo invalide" in msgs[-1] and msgs[-2] == "bip"
     ed._bpm.SetValue("80")
     ed._bar.SetValue(1); ed._beat.SetValue(1); ed._tick.SetValue(1)
     e = _OkEvent(); ed._on_ok(e)
-    assert not e.skipped and "départ" in msgs[-1]
+    assert not e.skipped and "départ" in msgs[-1] and msgs[-2] == "bip"
     ed._tick.SetValue(2)
     e = _OkEvent(); ed._on_ok(e)
-    assert e.skipped
+    assert e.skipped and len(msgs) == 4                     # Ok : ni boîte ni bip
     ed.Destroy()
 
 

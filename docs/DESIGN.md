@@ -15676,3 +15676,28 @@ toujours après les commits déjà faits.
 - **Tests en échec jusqu'à 20c1** : les 5 tests de la boîte « Périphérique
   introuvable » de `test_audio_device.py` (fixture sur `ALERT_FREQS`) et
   le texte du test de l'entrée de `test_prefs_hardware.py`.
+
+### Avancement 20c1 (tests des bips)
+
+- **`tests/test_audio_beep.py`** (29 tests, sans marque) : module
+  autonome (imports), carré par défaut, forme inconnue refusée,
+  longueur / crête / fondus, fondamentale, harmoniques (impaires pour le
+  carré, toutes pour la dent de scie), rien de replié au-dessus de
+  Nyquist, stéréo float32 contigu, sens d'ALERT et de CONFIRM, durée,
+  `play` (lecteur fourni, sounddevice, erreurs), ligne de commande ;
+  `MainWindow._alert_beep` / `_confirm_beep` (pilote, `wx.Bell`, sans
+  pilote) ; `ui_beep.alert` (parents, fenêtre de tête, `wx.Bell`) ;
+  `SaveConfirmDialog` bipe avant de s'afficher.
+- **Dans les fichiers existants** : boîte « Périphérique introuvable »
+  (bip ALERT montant, `test_audio_device.py`) ; test de l'entrée : bip
+  descendant, attente de sa durée + 50 ms, puis écoute ; sans bip si
+  l'entrée manque ou sans pilote ; nouveau texte du champ
+  (`test_prefs_hardware.py`, +4) ; bip avant les deux boîtes du Tempo
+  (`test_tempo_dialog.py`), avant celle de l'export audio
+  (`test_audio_export_ui.py`), avant « Le remplacer ? » de l'import MIDI
+  (`test_midi_import_ui.py`, +1).
+- Les 6 tests rouges de 20b1 sont corrigés.
+- **Mutations détectées** (9) : bip retiré du Tempo, de l'export, de
+  `SaveConfirmDialog`, de l'import MIDI ; attente retirée du test de
+  l'entrée ; ALERT inversé ; harmoniques paires dans le carré ; bande
+  non limitée ; parents non remontés par `ui_beep`.
