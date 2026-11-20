@@ -456,15 +456,30 @@ def test_alt_right_increments_pad_pan():
     teardown(app)
     print("  Alt+→ → voice_manager.set_pan(row, pan+10) : OK")
 
-def test_alt_0_resets_pad_pan():
+def test_alt_0_no_longer_resets_pad_pan():
+    """Alt+0 libéré (Phase 8 étape 19b1, R3)."""
     app, win, km = make_km()
     win._cur_row = 1
     win._player.voice_manager.get_voice(1).pan = 30
     km.handle(FakeEvent(key=ord('0'), alt=True))
-    assert ('set_pan', 1, 0) in win._player.voice_manager.calls
-    assert ('_add_mix_undo', "Pan pad 2: 0", ("pad_pan", 1)) in win.calls
+    assert not any(c[0] == 'set_pan' for c in win._player.voice_manager.calls)
+    assert not any(c[0] == '_add_mix_undo' for c in win.calls)
     teardown(app)
-    print("  Alt+0 → voice_manager.set_pan(row, 0) : OK")
+
+
+def test_shift_backspace_resets_pad_through_handle():
+    """Chemin complet : KeyManager.handle → remise du pad (Phase 8 étape 19c1)."""
+    app, win, km = make_km()
+    win._cur_row = 1
+    v = win._player.voice_manager.get_voice(1)
+    v.volume, v.pan = 40, 30
+    ev = FakeEvent(key=wx.WXK_BACK, shift=True)
+    km.handle(ev)
+    calls = win._player.voice_manager.calls
+    assert ('set_volume', 1, 100) in calls and ('set_pan', 1, 0) in calls
+    assert ('_add_mix_undo', "Volume et pan pad 2 : 100 / 0", None) in win.calls
+    assert not ev.skipped
+    teardown(app)
 
 
 # ---------------------------------------------------------------------------

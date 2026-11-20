@@ -354,13 +354,65 @@ def _ctx(key, ukey=0, ctrl=False, on_pan=False):
     (wx.WXK_DOWN,  (90, 0), (89, 0),  "Volume global: 89"),
     (wx.WXK_RIGHT, (90, 0), (90, 1),  "Pan global: 1"),
     (wx.WXK_LEFT,  (90, 0), (90, -1), "Pan global: -1"),
-    (ord('0'),     (90, 7), (90, 0),  "Pan global: 0"),
 ])
 def test_ctrl_shortcuts(win, key, start, expected, title):
     win._apply_master(*start)
     assert KeyManager(win)._handle_ctrl(_Event(key), _ctx(key, ctrl=True))
     assert win.master() == expected
     assert win.titles() == [title]
+
+
+# --- Ctrl+Retour arrière (Phase 8 étape 19c1, § 19a révisé à l'essai 19b1)
+
+def _ctrl_back(win, on_pan=False, shift=False):
+    ctx = _ctx(wx.WXK_BACK, ctrl=True, on_pan=on_pan)
+    ctx.shift = shift
+    return KeyManager(win)._handle_mix_reset(ctx)
+
+
+def test_ctrl_0_is_free(win):
+    """Ctrl+0 libéré (R3) : plus de remise du pan global."""
+    win._apply_master(90, 7)
+    assert not KeyManager(win)._handle_ctrl(_Event(ord('0')), _ctx(ord('0'), ctrl=True))
+    assert win.master() == (90, 7) and win.titles() == []
+
+
+def test_ctrl_backspace_resets_master_volume_and_pan_to_preferences(tmp_path):
+    w = _Win(tmp_path, defaults=(80, -20))
+    w._apply_master(150, 30)
+    assert _ctrl_back(w)
+    assert w.master() == (80, -20)
+    assert w.titles() == ["Volume et pan globaux : préférences"]   # une seule entrée
+    assert w.status[-1] == "Volume Global: 80, Pan Global: -20 (préférences)"
+    w._undo_action()
+    assert w.master() == (150, 30)                                  # un seul Ctrl+Z
+
+
+def test_ctrl_backspace_announces_gain_above_100(tmp_path):
+    w = _Win(tmp_path, defaults=(150, 0))
+    assert _ctrl_back(w)
+    assert w.master() == (150, 0)
+    assert w.status[-1] == f"Volume Global: {w.master_volume_text(150)}, Pan Global: 0 (préférences)"
+    assert "dB" in w.status[-1]
+
+
+def test_ctrl_backspace_at_preferences_adds_no_entry(win):
+    win._apply_master(100, 0)
+    assert _ctrl_back(win)
+    assert win.titles() == [] and win._project_modified is False
+    assert win.status[-1] == "Volume Global: 100, Pan Global: 0 (préférences)"
+
+
+def test_ctrl_backspace_in_pan_field_is_left_to_the_field(win):
+    win._apply_master(90, 7)
+    assert not _ctrl_back(win, on_pan=True)        # Retour arrière y efface
+    assert win.master() == (90, 7) and win.titles() == []
+
+
+def test_ctrl_shift_backspace_does_nothing(win):
+    win._apply_master(90, 7)
+    assert not _ctrl_back(win, shift=True)
+    assert win.master() == (90, 7)
 
 
 @pytest.mark.parametrize("key, ukey, expected", [

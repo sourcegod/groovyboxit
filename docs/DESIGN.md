@@ -15426,3 +15426,21 @@ flèches et sa remise par Retour arrière, avec le même modificateur.
   script ; à préciser avec l'utilisateur.
 - Tests en échec à ce commit (6, anciens tests de Ctrl+0 / Alt+0, réécrits
   en 19c1) : `test_master_mix`, `test_mix_undo`, `test_key_manager`.
+
+### Avancement 19c1 (tests)
+
+- Tous **sans marque** (R8), fenêtres factices avec le vrai Undo :
+  - `test_master_mix.py` : Ctrl+Retour arrière (préférences 80 / −20 et
+    150 / 0 avec l'annonce en dB, une entrée, un seul Ctrl+Z, rien si déjà
+    aux préférences, champ Pan: laissé au champ, Ctrl+Shift sans effet),
+    Ctrl+0 libéré ;
+  - `test_mix_undo.py` : Shift+Retour arrière sur piste (une entrée, piste
+    voisine intacte) et sur pad (réécouté sur la liste des pads, piste
+    intacte), rien si déjà à 100 / 0, combinaisons sans effet (Alt — pris
+    par Orca —, Alt+Shift, Ctrl+Shift, Ctrl+Alt, seul), quatre champs de
+    saisie, Alt+0 libéré ;
+  - `test_key_manager.py` : Alt+0 libéré, Shift+Retour arrière par
+    `KeyManager.handle`.
+- Les 6 anciens tests de Ctrl+0 / Alt+0 remplacés.
+- **Mutations** (restaurées par copie) : sans garde des champs → 5 échecs ;
+  Alt accepté → 2 ; pan de piste oublié → 1 ; deux entrées d'Undo → 1.

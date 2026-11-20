@@ -418,20 +418,101 @@ def test_alt_right_track_pan_at_max_adds_nothing(win):
     assert win.status[-1] == "Piste 1: Pan 100"
 
 
+# --- Shift+Retour arrière (Phase 8 étape 19c1, § 19a révisé à l'essai 19b1 :
+# Alt+Retour arrière est pris par Orca)
+
+def _back(win, ctrl=False, shift=False, alt=False, on_track_list=False,
+          on_pad_list=False, field=None):
+    ctx = _ctx(wx.WXK_BACK, shift=shift, alt=alt, on_track_list=on_track_list)
+    ctx.ctrl, ctx.on_pad_list = ctrl, on_pad_list
+    if field:
+        setattr(ctx, field, True)
+    return KeyManager(win)._handle_mix_reset(ctx)
+
+
+@pytest.mark.parametrize("key", [ord('0')])
 @pytest.mark.parametrize("on_track_list", [True, False])
-def test_alt_0_on_centered_pan_adds_nothing(win, on_track_list):
-    _alt(win, ord('0'), on_track_list=on_track_list)
-    assert win.titles() == []
-    assert win._project_modified is False
-
-
-def test_alt_0_track_pan_entry_and_undo(win):
+def test_alt_0_is_free(win, key, on_track_list):
+    """Alt+0 libéré (R3) : plus de remise du pan de piste ni de pad."""
     win._router.set_track_pan(0, -40)
-    _alt(win, ord('0'), on_track_list=True)
-    assert win._router.get_track_pan(0) == 0
-    assert win.titles() == ["Pan piste 1: 0"]
+    win.vm().set_pan(0, 30)
+    km = KeyManager(win)
+    assert not km._handle_alt(_Event(key), _ctx(key, alt=True, on_track_list=on_track_list))
+    assert win._router.get_track_pan(0) == -40 and win.vm().get_pan(0) == 30
+    assert win.titles() == []
+
+
+def test_shift_backspace_resets_track_volume_and_pan_in_one_entry(win):
+    r = win._router
+    win._player._cur_track = 2
+    r.set_track_volume(2, 40)
+    r.set_track_pan(2, -30)
+    assert _back(win, shift=True, on_track_list=True)
+    assert (r.get_track_volume(2), r.get_track_pan(2)) == (100, 0)
+    assert win.titles() == ["Volume et pan piste 3 : 100 / 0"]
+    assert win.status[-1] == "Piste 3: Volume 100, Pan 0 (centre)"
+    assert win._project_modified is True
+    win._undo_action()                                  # un seul Ctrl+Z
+    assert (r.get_track_volume(2), r.get_track_pan(2)) == (40, -30)
+
+
+def test_shift_backspace_leaves_other_tracks(win):
+    r = win._router
+    r.set_track_volume(1, 40)
+    r.set_track_volume(0, 50)
+    assert _back(win, shift=True, on_track_list=True)
+    assert r.get_track_volume(0) == 100 and r.get_track_volume(1) == 40
+
+
+@pytest.mark.parametrize("on_pad_list", [True, False])
+def test_shift_backspace_resets_pad_volume_and_pan_in_one_entry(win, on_pad_list):
+    played = []
+    win._play = played.append
+    win._cur_row = 4
+    win.vm().set_volume(4, 50)
+    win.vm().set_pan(4, 40)
+    assert _back(win, shift=True, on_pad_list=on_pad_list)
+    assert (win.vm().get_voice(4).volume, win.vm().get_pan(4)) == (100, 0)
+    assert win.titles() == ["Volume et pan pad 5 : 100 / 0"]
+    assert win.status[-1] == "Pad 5: Volume 100, Pan 0 (centre)"
+    assert played == ([4] if on_pad_list else [])      # réécouté sur la liste des pads
     win._undo_action()
-    assert win._router.get_track_pan(0) == -40
+    assert (win.vm().get_voice(4).volume, win.vm().get_pan(4)) == (50, 40)
+
+
+def test_shift_backspace_on_pad_does_not_touch_track(win):
+    win._router.set_track_volume(0, 40)
+    win.vm().set_volume(0, 50)
+    assert _back(win, shift=True)
+    assert win._router.get_track_volume(0) == 40 and win.vm().get_voice(0).volume == 100
+
+
+@pytest.mark.parametrize("on_track_list", [True, False])
+def test_shift_backspace_at_default_adds_no_entry(win, on_track_list):
+    assert _back(win, shift=True, on_track_list=on_track_list)
+    assert win.titles() == [] and win._project_modified is False
+
+
+@pytest.mark.parametrize("mods", [
+    dict(alt=True), dict(alt=True, shift=True), dict(ctrl=True, shift=True),
+    dict(ctrl=True, alt=True), dict(),
+])
+def test_backspace_without_reset_combination_does_nothing(win, mods):
+    """Alt+Retour arrière (pris par Orca), Alt+Shift, Ctrl+Shift, Ctrl+Alt,
+    Retour arrière seul : aucune remise."""
+    win._router.set_track_volume(0, 40)
+    win.vm().set_volume(0, 50)
+    assert not _back(win, on_track_list=True, **mods)
+    assert not _back(win, **mods)
+    assert win._router.get_track_volume(0) == 40 and win.vm().get_voice(0).volume == 50
+    assert win.titles() == []
+
+
+@pytest.mark.parametrize("field", ["on_bpm", "on_volume", "on_pan", "on_voice_spin"])
+def test_shift_backspace_in_text_field_is_left_to_the_field(win, field):
+    win.vm().set_volume(0, 50)
+    assert not _back(win, shift=True, field=field)
+    assert win.vm().get_voice(0).volume == 50 and win.titles() == []
 
 
 def test_alt_left_pad_pan_entry_and_undo(win):
@@ -442,16 +523,6 @@ def test_alt_left_pad_pan_entry_and_undo(win):
     assert win._project_modified is True
     win._undo_action()
     assert win.vm().get_pan(5) == 0
-
-
-def test_alt_0_pad_pan_entry_and_undo(win):
-    win.vm().set_pan(2, 50)
-    win._cur_row = 2
-    _alt(win, ord('0'))
-    assert win.vm().get_pan(2) == 0
-    assert win.titles() == ["Pan pad 3: 0"]
-    win._undo_action()
-    assert win.vm().get_pan(2) == 50
 
 
 def test_pan_and_volume_of_same_track_are_separate_entries(win):
