@@ -15444,3 +15444,36 @@ flèches et sa remise par Retour arrière, avec le même modificateur.
 - Les 6 anciens tests de Ctrl+0 / Alt+0 remplacés.
 - **Mutations** (restaurées par copie) : sans garde des champs → 5 échecs ;
   Alt accepté → 2 ; pan de piste oublié → 1 ; deux entrées d'Undo → 1.
+
+### Clôture de l'étape 19 (19d1)
+
+**Bilan.** Volume et pan se remettent par Retour arrière :
+**Ctrl+Retour arrière** rend le volume et le pan globaux des Préférences,
+**Shift+Retour arrière** le volume 100 et le pan 0 de la piste courante
+(liste des pistes) ou du pad courant (ailleurs) ; une seule entrée d'Undo
+par remise, son en temps réel, Retour arrière laissé aux champs de saisie.
+Ctrl+0 et Alt+0 sont libérés.
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 19a (33b1319) | Plan R1-R8 |
+| 19b1 (15c82de) | Implémentation, révisée à l'essai |
+| 19c1 (4053191) | Tests (sans marque) |
+| 19d1 | Clôture |
+
+**Décision prise à l'essai.** Le plan prévoyait quatre raccourcis (Ctrl,
+Shift, Alt, Alt+Shift + Retour arrière) ; **Alt+Retour arrière est pris par
+Orca** (bascule de ses touches de commande) → deux raccourcis seulement,
+chacun remettant volume **et** pan ensemble.
+
+**Point ouvert (non urgent).** « Ctrl+Droite tenu semble accélérer le
+tempo de toutes les pistes, puis il revient à la fin » — sans parole
+d'Orca. Non reproduit par script (`project_01.gvp`, FluidSynth et sfizz,
+30 pressions par seconde : notes à l'heure, carte son régulière). Pistes
+non explorées : la vraie répétition de touche de GTK (fréquence, appuis
+groupés) et le son réellement sorti, mesuré en enregistrant la carte.
+L'utilisateur y reviendra si le cas se présente à nouveau.
+
+**Suites.** Le point ouvert ci-dessus ; automation du volume et du pan.
