@@ -15770,3 +15770,33 @@ toujours après les commits déjà faits.
 - **Tests en échec jusqu'à 20e1** (5, `test_record_options.py`) : options
   par défaut et normalisées (clé `monitor`), champs du dialogue (case
   ajoutée), vraie fenêtre principale (options comparées sans `monitor`).
+
+### Avancement 20e1 (tests du monitoring)
+
+- **`tests/test_input_monitor.py`** (64 tests) : `InputMonitor` sur un
+  flux factice (ouverture à bloc de 256 et latence basse, canaux bornés,
+  refus, fermeture, anomalies, flux sounddevice par défaut ; mono sur les
+  deux côtés, retard plafonné, bloc plus grand que le tampon, plusieurs
+  tours sans perte, amorce et vide, ajout au mix ; gain : départ à zéro,
+  rampe de 10 ms, loi du pan, même cible sans nouvelle rampe, rampe qui
+  avance pendant l'amorce) ; `AudioRecorder.on_block` ;
+  `AudioMonitorMixin` sur une fenêtre factice avec les vrais
+  `AudioRecMixin` et `RecordOptionsMixin` (règle, entrée de la piste,
+  flux rouvert seulement au changement, gain de piste, entrée refusée,
+  entrée remplacée, relais et libération autour de la prise, fréquence
+  changée, options du projet, fermeture) ; F8 (Undo, annonces,
+  `KeyManager`, modificateurs sans effet) ; Détecter ; latences de
+  Tester. Marques : **audio** (vraie entrée, 1), **gui** (minuterie sur
+  une fenêtre détruite, case du dialogue affiché, 2), le reste sans marque.
+- **`test_audio_beep.py`** (+2) : carré au niveau moyen des dents de scie,
+  niveau par forme d'onde.
+- **`test_record_options.py`** : les 5 tests rouges de 20d1 corrigés (clé
+  `monitor`, case du dialogue, annonce), +2 valeurs invalides de
+  `monitor`.
+- **Mutations détectées** (24) : plafond du retard, amorce, mono, ajout au
+  mix, rampe (cible, durée), latence basse ; flux rouvert à chaque top ou
+  entrée refusée redemandée ; Mute, pan global ; relais de la prise,
+  détachement, libération ; annonce du refus ; règle sans piste audio ;
+  remarque d'entrée remplacée ; `normalize` ; F8 ; `on_block` ; latence
+  du test de l'entrée ; Détecter ; libération avant la prise ; niveau du
+  carré.

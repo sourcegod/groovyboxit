@@ -58,7 +58,8 @@ def test_mode_of(mode_id, expected):
 
 def test_defaults_are_the_old_behaviour():
     assert rm.DEFAULTS == {"mode": "overdub", "click_play": False, "count_in_play": 0,
-                           "click_record": True, "count_in": 1}
+                           "click_record": True, "count_in": 1,
+                           "monitor": False}            # monitoring décoché (20d1, M1b)
     assert rm.COUNT_IN_CHOICES == (0, 1, 2, 4, 8)
 
 
@@ -69,7 +70,7 @@ def test_normalize_without_options(data):
 
 def test_normalize_keeps_valid_fields():
     opts = {"mode": "mpc", "click_play": True, "count_in_play": 4, "click_record": False,
-            "count_in": 8}
+            "count_in": 8, "monitor": True}
     assert rm.normalize(opts) == opts
 
 
@@ -77,7 +78,8 @@ def test_normalize_keeps_valid_fields():
     ({"mode": "inconnu"}, "mode"), ({"click_play": 1}, "click_play"),
     ({"click_record": "oui"}, "click_record"), ({"count_in": 3}, "count_in"),
     ({"count_in": True}, "count_in"), ({"count_in_play": -1}, "count_in_play"),
-    ({"count_in_play": 2.0}, "count_in_play")])
+    ({"count_in_play": 2.0}, "count_in_play"), ({"monitor": 1}, "monitor"),
+    ({"monitor": "oui"}, "monitor")])
 def test_normalize_invalid_field_gets_its_default(bad, key):
     assert rm.normalize(bad)[key] == rm.DEFAULTS[key]
 
@@ -102,6 +104,9 @@ def test_describe():
         ("Mode : Remplacer puis Overdub (MPC) ; clic : lecture ; décompte de lecture : "
          "2 mesures ; décompte d'enregistrement : aucun")
     assert "clic : aucun" in rm.describe({"click_record": False})
+    # monitoring (20d1) : nommé seulement s'il est coché
+    assert rm.describe({"monitor": True}).endswith(" ; monitoring de l'entrée")
+    assert "monitoring" not in rm.describe({"monitor": False})
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +119,7 @@ def test_dialog_fields_in_order_with_focus_on_the_mode():
         assert dlg.GetTitle() == "Options de l'enregistrement"
         fields = [c for c in dlg.GetChildren() if not isinstance(c, (wx.StaticText, wx.Button))]
         assert fields == [dlg._mode_lb, dlg._click_play, dlg._count_play_lb,
-                          dlg._click_record, dlg._count_lb]
+                          dlg._click_record, dlg._count_lb, dlg._monitor]
         assert wx.Window.FindFocus() in (dlg._mode_lb, None)
         assert dlg._mode_lb.GetStrings() == ["Mode : Overdub", "Mode : Remplacer",
                                              "Mode : Remplacer puis Overdub (MPC)"]
@@ -123,20 +128,24 @@ def test_dialog_fields_in_order_with_focus_on_the_mode():
         assert dlg._count_play_lb.GetStrings()[:2] == [
             "Décompte pendant la lecture : aucun", "Décompte pendant la lecture : 1 mesure"]
         assert dlg._count_lb.GetStrings()[-1] == "Décompte pendant l'enregistrement : 8 mesures"
+        assert dlg._monitor.GetLabel() == "Monitoring de l'entrée (F8)"     # 20d1
+        assert not dlg._monitor.GetValue()
     finally:
         dlg.Destroy()
 
 
 def test_dialog_shows_and_returns_the_options():
     opts = {"mode": "mpc", "click_play": True, "count_in_play": 2, "click_record": False,
-            "count_in": 4}
+            "count_in": 4, "monitor": True}
     dlg = RecordOptionsDialog(None, opts)
     try:
         assert dlg.get_options() == opts
         dlg._mode_lb.SetSelection(1)
         dlg._count_lb.SetSelection(0)
         dlg._click_play.SetValue(False)
-        assert dlg.get_options() == dict(opts, mode="replace", count_in=0, click_play=False)
+        dlg._monitor.SetValue(False)
+        assert dlg.get_options() == dict(opts, mode="replace", count_in=0, click_play=False,
+                                         monitor=False)
     finally:
         dlg.Destroy()
 
@@ -538,7 +547,7 @@ def test_real_main_window_project_options(isolated_preferences, monkeypatch, tmp
         p = win._player
         assert win._record_options == rm.DEFAULTS
         new = {"mode": "replace", "click_play": True, "count_in_play": 2,
-               "click_record": False, "count_in": 4}
+               "click_record": False, "count_in": 4, "monitor": False}
         _FakeOptDlg.options = new
         assert win._open_record_options()
         assert (p.count_in_bars, p.click_in_recording, p.click_in_playback,

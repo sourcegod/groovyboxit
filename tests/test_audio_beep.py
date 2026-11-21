@@ -71,6 +71,26 @@ def test_square_is_the_default_wave():
     assert not np.array_equal(ab.beep(ab.ALERT), ab.beep(ab.ALERT, wave=ab.SAW))
 
 
+def _rms(d):
+    return float(np.sqrt(np.mean(np.square(d[:, 0], dtype=np.float64))))
+
+
+def test_square_as_loud_as_saw_on_average():
+    """Essai de 20d1 : le carré à la même crête était un peu fort aux
+    haut-parleurs → crête 0,15, même niveau moyen que les dents de scie."""
+    sq, sw = ab.beep(ab.ALERT, wave=ab.SQUARE), ab.beep(ab.ALERT, wave=ab.SAW)
+    assert abs(np.max(np.abs(sq)) - ab.SQUARE_LEVEL) < 1e-6 and ab.SQUARE_LEVEL == 0.15
+    assert abs(np.max(np.abs(sw)) - ab.LEVEL) < 1e-6
+    assert abs(20 * np.log10(_rms(sq) / _rms(sw))) < 0.5            # à 0,5 dB près
+
+
+def test_default_level_per_wave():
+    assert ab.default_level(ab.SQUARE) == ab.SQUARE_LEVEL
+    assert ab.default_level(ab.SAW) == ab.LEVEL
+    assert ab.default_level() == ab.SQUARE_LEVEL                    # carré par défaut
+    assert abs(np.max(np.abs(ab.beep(ab.ALERT, level=0.5))) - 0.5) < 1e-6   # level imposé
+
+
 def test_unknown_wave_refused():
     with pytest.raises(KeyError):
         ab.beep(ab.ALERT, wave="triangle")
