@@ -15954,3 +15954,172 @@ part, non urgent) ; mesure automatique de la latence d'entrée ; effets
 sur l'entrée ; borner le cache des sons du synthé Wave si besoin ;
 libérer aussi la mémoire des dialogues dans les tests si la suite
 regrossit ; `wx.Bell()` des butées inchangés.
+
+---
+
+# Phase 9
+
+## Phase 9 étape 1a — Barre de menus et menus
+
+### Numérotation des commits de ce chantier
+
+1a (plan), puis paires implémentation → tests (1b1 / 1c1, 1d1 / 1e1),
+1f1 (clôture) ; un commit imprévu prend le suffixe suivant, toujours
+après les commits déjà faits.
+
+### Origine du besoin (utilisateur, 2026-11-21)
+
+- **Stabiliser l'interface** : ne plus devoir donner un raccourci à chaque
+  nouvelle fonction ; une barre de menus et des sous-menus, remplis au fil
+  des chantiers.
+- **Raccourcis affichés dans les éléments** (« Enregistrer sous…
+  Ctrl+Shift+S ») ; chaque menu a sa lettre (Fichier → Alt+F).
+- **Échap** : ferme la barre, ou remonte d'un sous-menu au menu du dessus.
+- **Menus de départ** : Fichier (Alt+F), Edition (Alt+E), Transport
+  (Alt+T), Insertion (Alt+I), Piste (Alt+T), Affichage (Alt+A),
+  Traitement (Alt+R), Effets (Alt+F), Outils (Alt+O), Options (Alt+N),
+  Fenêtres (Alt+W), Aide (Alt+A).
+
+### Décisions de l'utilisateur (2026-11-21), après la première étude
+
+- **K1 — F10 ouvre la barre**, comme d'habitude sous GTK. **Alt seul**
+  (comme sous Windows) est **reporté** : c'est un gros travail en plus.
+  Pour mémoire, Firefox le fait lui-même et non par GTK : il dessine ses
+  propres menus et surveille Alt ; un appui puis un relâchement d'Alt,
+  sans autre touche entre les deux, affiche la barre et place le curseur
+  sur le premier menu (réglage `ui.key.menuAccessKeyFocuses`). Chez nous,
+  cela demanderait de suivre l'appui et le relâchement d'Alt, puis
+  d'ouvrir la barre GTK par ctypes (`gtk_menu_shell_select_first`) ;
+  chantier à part, si F10 ne suffit pas.
+- **K2 — Alternance entre deux menus de même lettre** (Alt+A : Affichage,
+  puis Aide…) : **seulement si GTK la fait de lui-même**, sinon mise de
+  côté. GTK connaît les mnémoniques « surchargées » (une lettre pour
+  plusieurs éléments) ; ce qu'il en fait dans une barre de menus sera
+  constaté à l'essai de 1b1. Si l'appui n'atteint que le premier menu, le
+  second reste accessible par F10 et les flèches.
+- **K3 — Priorité des commandes** : pas de gestion maison ; un raccourci
+  déjà pris par une commande **n'est pas mis** comme lettre de menu dans
+  la fenêtre concernée. Cas connu : **Alt+I** de l'éditeur MIDI
+  (insérer sans avancer) l'emporte sur le menu Insertion ; dans cette
+  fenêtre, Insertion s'atteint par F10 et les flèches.
+- **K4 — Orca** : on vérifie à l'essai qu'il lit les menus, les éléments
+  et leur raccourci affiché ; sinon, le module SpeechAccess (à venir) s'en
+  chargera.
+- **K5 — Une même barre pour toutes les fenêtres** (principale, éditeur
+  MIDI Alt+4, Songs Alt+5) : les éléments sans objet dans une fenêtre y
+  sont **grisés** (désactivés).
+
+### État des lieux constaté en code (2026-11-21)
+
+- Aucune barre de menus dans l'appli (aucun `wx.MenuBar`).
+- Les trois fenêtres sont des `wx.Frame` : `MainWindow` (raccourcis par
+  `KeyManager`, `EVT_CHAR_HOOK`), `MidiEditorWindow` (`mew_keymap.py`),
+  `SongWindow` (`song_window.py`).
+- **F10** n'est utilisé nulle part : `KeyManager` laisse passer les
+  touches qu'il ne connaît pas (`event.Skip()`), GTK le recevra.
+- Alt+lettre déjà pris : X (Explorateur), L (boucle), 4 et 5 (fenêtres)
+  dans la fenêtre principale ; **I dans l'éditeur MIDI** (voir K3).
+  Aucun autre conflit avec F, E, T, I, A, R, O, N, W.
+- wxPython 4.2.3, wxWidgets 3.2.7, GTK3.
+
+### Points techniques
+
+- **T1 — Raccourcis affichés, mais non déclenchés par GTK.** Dans wx, un
+  libellé « Enregistrer sous…\tCtrl+Shift+S » crée aussi un vrai
+  raccourci GTK. Or nos raccourcis restent ceux de `KeyManager` et des
+  fenêtres, selon le focus : des touches sans modificateur (R, g, l, U,
+  Espace…) se déclencheraient alors aussi dans les champs de saisie, ou
+  deux fois. **Règle : le menu affiche le raccourci, le clavier reste
+  seul à le déclencher.** Moyens, dans l'ordre, essayés en 1b1 :
+  1. le texte du raccourci posé sur l'étiquette GTK de l'élément
+     (`GtkAccelLabel`), sans raccourci enregistré ;
+  2. sinon, le raccourci wx enregistré puis la table de raccourcis GTK de
+     la fenêtre retirée ;
+  3. en dernier recours, le raccourci écrit dans le libellé lui-même
+     (« Enregistrer sous… (Ctrl+Shift+S) »).
+  Le moyen retenu doit être lu par Orca (K4).
+- **T2 — Une seule description des menus**, dans un nouveau module
+  `src/ui/menu_bar.py` : pour chaque menu, son titre et sa lettre ; pour
+  chaque élément, son libellé, sa lettre, son raccourci affiché, le nom
+  de l'action, les fenêtres où il est actif. Une fonction construit la
+  barre pour une fenêtre donnée (un `wx.MenuBar` ne peut appartenir qu'à
+  une fenêtre : chaque fenêtre a donc sa copie, faite de la même
+  description).
+- **T3 — Un élément appelle la même méthode que son raccourci**, jamais
+  une copie du code. Les actions qui dépendent du focus (F2 : renommer la
+  piste ou le pattern ; X / S : Mute / Solo selon la liste) deviennent
+  des éléments **explicites** (« Renommer la piste », « Renommer le
+  pattern »), car le focus est sur la barre quand le menu agit. L'action
+  est lancée par `wx.CallAfter`, une fois le menu refermé et le focus
+  revenu.
+- **T4 — Menus encore vides** (Effets, et peut-être Insertion) : un
+  élément « Aucun effet pour l'instant », actif, qui l'annonce dans la
+  barre d'état (un élément grisé est sauté par les flèches de GTK, et un
+  menu vide ne s'ouvre pas).
+- **T5 — Lettres des éléments** (« &Nouveau projet ») : uniques dans
+  chaque menu ; vérifiées par les tests.
+- **T6 — Cohérence** : chaque raccourci affiché doit exister dans
+  `docs/shortcuts.md` ; vérifié par les tests.
+
+### Contenu de départ proposé
+
+Les éléments reprennent les commandes existantes ; les menus se rempliront
+au fil des chantiers. (P) = fenêtre principale, (M) = éditeur MIDI,
+(S) = fenêtre Songs ; sans mention : les trois.
+
+- **Fichier** : Nouveau projet (Ctrl+N), Ouvrir un projet… (Ctrl+O),
+  Enregistrer (Ctrl+S), Enregistrer sous… (Ctrl+Shift+S) ; Enregistrer
+  le pattern (Ctrl+W, P), Dupliquer le pattern… (Ctrl+Shift+W, P) ;
+  Importer un fichier MIDI… (Alt+Shift+I, P M), Exporter en MIDI…
+  (Alt+Shift+E), Exporter en audio… (Alt+Shift+W) ; Quitter.
+- **Edition** : Annuler (Ctrl+Z), Refaire (Shift+Z), Historique des
+  annulations (Ctrl+Shift+Z) ; Renommer la piste (F2, P), Renommer le
+  pattern (F2, P).
+- **Transport** : Lecture / Arrêt (Espace), Enregistrer (R),
+  Enregistrer en remplacement (Shift+R), Décompte puis enregistrer
+  (Ctrl+R) ; Aller au début (g), Aller à la fin (Shift+G), Aller à une
+  position… (Ctrl+G), État et position (U) ; Boucle On / Off (l), Points
+  de boucle… (Ctrl+Shift+L) ; Panic (Ctrl+F12).
+- **Insertion** : Tempos… (Alt+Shift+T).
+- **Piste** : Mute exclusif (F3, P), Solo exclusif (F4, P), Réinitialiser
+  les Mute et Solo (F5, P) ; Propriétés de la piste… (Alt+Entrée, P).
+- **Affichage** : Grille… (Ctrl+Shift+G), Filtre des événements…
+  (Ctrl+Shift+F) ; Notes (Ctrl+1, M), Liste des événements (Ctrl+2, M).
+- **Traitement** : Quantiser (Ctrl+Q, P M), Quantiser avec les derniers
+  réglages (Shift+Q, P M), Quantisation à l'enregistrement…
+  (Alt+Shift+Q, P M).
+- **Effets** : « Aucun effet pour l'instant » (T4).
+- **Outils** : Explorateur… (Alt+X, P).
+- **Options** : Préférences… (Alt+Shift+P), Options de
+  l'enregistrement… (Ctrl+Shift+R), Monitoring de l'entrée (F8, P) ;
+  Connecter / déconnecter les entrées MIDI (Shift+F12), Réinitialiser
+  les périphériques MIDI (Ctrl+Shift+F12).
+- **Fenêtres** : Fenêtre principale, Éditeur MIDI (Alt+4), Songs (Alt+5).
+- **Aide** : Aide clavier (F1), À propos de GroovyboxIt.
+
+L'utilisateur ajoutera d'autres éléments après l'essai de 1b1 (accord du
+plan, 2026-11-21). La liste exacte (libellés, fenêtres) sera arrêtée en 1b1 en lisant chaque
+raccourci dans le code des trois fenêtres ; un raccourci qui n'existe pas
+dans une fenêtre y grise l'élément (K5).
+
+### Étapes
+
+- **1b1 — Implémentation, fenêtre principale** : `menu_bar.py`
+  (description, construction, raccourcis affichés selon T1), barre de la
+  fenêtre principale, actions (T3), menus vides (T4) ; essais de
+  l'utilisateur : F10, flèches, Échap, lettres des menus (alternance,
+  K2), lecture par Orca (K4), aucun double déclenchement.
+- **1c1 — Tests** : `tests/test_menu_bar.py` — description cohérente
+  (lettres uniques, actions existantes, raccourcis présents dans
+  `shortcuts.md`), construction, éléments grisés, un élément appelle la
+  même méthode que son raccourci, aucun raccourci GTK enregistré.
+- **1d1 — Implémentation, éditeur MIDI et Songs** : même barre, éléments
+  grisés selon la fenêtre, Alt+I de l'éditeur (K3).
+- **1e1 — Tests** de 1d1.
+- **1f1 — Clôture** ; aide F1 (`shortcuts.md` : F10), SPECS, DESIGN.
+
+### Reporté
+
+- Alt seul pour ouvrir la barre (K1, à la manière de Firefox).
+- Alternance maison des lettres partagées, si GTK ne la fait pas (K2).
+- Lecture des menus par SpeechAccess, si Orca ne suffit pas (K4).
