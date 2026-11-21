@@ -15800,3 +15800,43 @@ toujours après les commits déjà faits.
   remarque d'entrée remplacée ; `normalize` ; F8 ; `on_block` ; latence
   du test de l'entrée ; Détecter ; libération avant la prise ; niveau du
   carré.
+
+## Phase 8 étape 20e2 — Correctif : niveau Avancé borné par la mémoire
+
+- **Constat (2026-11-21)** : en relançant le niveau Avancé pendant 20e1,
+  la machine s'est **bloquée** (redémarrage obligé). Mesures sous
+  surveillance (arrêt si moins de 1 Go disponible) : les nouveaux tests
+  passent seuls, mémoire stable ; Intermédiaire : ≥ 4,9 Go disponibles ;
+  **Avancé : 4 processus pytest-xdist jusqu'à 2 Go chacun**, mémoire
+  disponible à 0,9-1,3 Go sur 7,8 Go — déjà au commit 15c4ca1, avant le
+  monitoring : le problème grossit avec la suite.
+- **Cause** : un processus ne rend jamais la mémoire des fichiers qu'il a
+  passés. Mémoire gardée par fichier (série, un seul processus) :
+  `test_live_limiter` +611 Mo ; `test_app_launch`, `test_audio_device`,
+  `test_audio_clips_playback`, `test_record_options`, `test_sfz_dialogs`,
+  `test_audio_tracks_data`, `test_live_volume_pan` +240 à +350 Mo (vraie
+  fenêtre principale, FluidSynth, sfizz) ; toute la suite en série :
+  2,6 Go.
+- **Correctif** (`tools/tests.sh`) : nombre de processus = min(cœurs
+  physiques, (mémoire disponible − réserve) / coût d'un processus), au
+  moins 1 (1 → série) ; coût 2 Go pour le passage A de l'Avancé, 768 Mo
+  pour l'Intermédiaire et le passage B (tests audio, légers) ; réserve
+  1,5 Go ; réglables (`TESTS_RESERVE_MO`, `TESTS_MO_AVANCE`,
+  `TESTS_MO_INTERMEDIAIRE`) ; processus et mémoire annoncés en tête.
+- **Mesure** (5,6 Go disponibles) : Avancé A en 2 processus ≈ 37 s (avant
+  ≈ 30 s), B en 4 ≈ 11 s ; mémoire disponible jamais sous 2,3 Go ;
+  Intermédiaire inchangé (4 processus, ≈ 16 s, ≥ 4,2 Go). Mémoire très
+  basse simulée (`TESTS_RESERVE_MO=99999`) : Avancé en série.
+- **Écarté** : regrouper les fichiers à vraie fenêtre sur un seul
+  processus (`xdist_group`) — plus rapide, mais une douzaine de fichiers à
+  marquer, et chaque futur fichier à vraie fenêtre à ne pas oublier.
+- Plus tard, si besoin : libérer vraiment la mémoire des vraies fenêtres
+  dans les tests (moteurs fermés, fenêtre détruite), ce qui rendrait les 4
+  processus possibles.
+- **Essai de l'utilisateur** : `tools/tests.sh a` concluant. **Demande** :
+  options sous forme standard — courtes `-b`, `-i`, `-a`, longues
+  `--basic`, `--intermediate`, `--advanced`, plus `-h`, `--help` ;
+  anciennes formes (`b`, `basique`, `i`, `intermediaire`, `a`, `avance`)
+  encore acceptées ; option inconnue → message, aide, code 2 ; l'aide ne
+  montre que le mode d'emploi. Essayé : toutes les formes, l'aide, sans
+  argument, option inconnue.

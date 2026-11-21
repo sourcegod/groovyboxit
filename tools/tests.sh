@@ -1,28 +1,38 @@
 #!/usr/bin/env bash
 # Tests en trois niveaux (Phase 8 étape 17b1, docs/DESIGN.md § Phase 8 étape 17a T5).
 #
-#   tools/tests.sh basique [fichiers ou motifs pytest…]
+#   tools/tests.sh -b, --basic [fichiers ou motifs pytest…]
 #       les tests liés à la modification ; sans argument : les derniers en échec
 #       (--lf), sinon rien.  À chaque petite modification.
-#   tools/tests.sh intermediaire [options pytest…]
+#   tools/tests.sh -i, --intermediate [options pytest…]
 #       toute la suite sauf les marques slow, audio et gui.  À chaque étape.
-#   tools/tests.sh avance [options pytest…]
+#   tools/tests.sh -a, --advanced [options pytest…]
 #       toute la suite, avec le garde-fou des tests lents non marqués, en deux
 #       passages : A tout sauf audio, puis B les tests audio seuls.
 #       Avant chaque commit et à chaque clôture.
+#   tools/tests.sh -h, --help
+#       cette aide (aussi sans argument).
 #
-# Raccourcis : b, i, a.  Les options supplémentaires sont passées à pytest
-# (par exemple -x pour s'arrêter au premier échec).
+# Les options qui suivent le niveau sont passées à pytest (par exemple -x
+# pour s'arrêter au premier échec).  Anciennes formes encore acceptées :
+# b / basique, i / intermediaire, a / avance (Phase 8 étape 20e2).
 # Intermédiaire et Avancé tournent en parallèle, un processus par cœur
 # PHYSIQUE (pytest-xdist, Phase 8 étapes 17c1, 17d2) ; les tests audio (temps
 # réel) ne sont jamais mêlés aux autres : ils échouaient au hasard quand les
 # tests qui calculent prenaient la machine.  TESTS_SERIE=1 force la série ;
 # sans pytest-xdist installé, la série est prise d'office.
+# Mémoire (Phase 8 étape 20e2) : un processus ne rend jamais la mémoire des
+# fichiers qu'il a passés (vraies fenêtres principales, FluidSynth, sfizz :
+# environ 300 Mo chacune) ; au niveau Avancé, 4 processus montaient à 2 Go
+# chacun et la machine (7,8 Go) s'est bloquée.  Le nombre de processus est
+# donc aussi borné par la mémoire disponible : (disponible − réserve) / coût
+# d'un processus, au moins 1.  Réglages : TESTS_RESERVE_MO (1536),
+# TESTS_MO_AVANCE (2048), TESTS_MO_INTERMEDIAIRE (768).
 set -u
 cd "$(dirname "$0")/.." || exit 2
 
 usage() {
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # Cœurs physiques (les fils de l'hyperthreading partagent un cœur : 4 processus
@@ -50,17 +60,55 @@ except OSError:
 PY
 )
 
-# options du parallèle : vide en série
-parallele=()
-if [ "${TESTS_SERIE:-0}" != "1" ] && python3 -c "import xdist" 2>/dev/null; then
-    parallele=(-n "$coeurs" --dist worksteal)
-fi
-
 niveau="${1:-}"
 [ $# -gt 0 ] && shift
 
+# Processus permis par la mémoire disponible pour un coût par processus (Mo)
+processus_memoire() {
+    local cout=$1 dispo reserve=${TESTS_RESERVE_MO:-1536}
+    dispo=$(awk '/MemAvailable/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+    if [ -z "$dispo" ]; then
+        echo "$coeurs"
+        return
+    fi
+    local n=$(( (dispo - reserve) / cout ))
+    [ "$n" -lt 1 ] && n=1
+    [ "$n" -gt "$coeurs" ] && n=$coeurs
+    echo "$n"
+}
+
+# niveau : options standard (-b / --basic…), anciennes formes acceptées
 case "$niveau" in
-    basique|b)
+    -b|--basic|basique|b)                         niveau=basique ;;
+    -i|--intermediate|intermediaire|intermédiaire|i) niveau=intermediaire ;;
+    -a|--advanced|avance|avancé|a)                niveau=avance ;;
+    -h|--help|"")                                 usage; exit 0 ;;
+    *)  echo "tests.sh : option inconnue : $niveau" >&2
+        usage >&2
+        exit 2 ;;
+esac
+
+case "$niveau" in
+    avance)                           cout=${TESTS_MO_AVANCE:-2048} ;;
+    *)                                cout=${TESTS_MO_INTERMEDIAIRE:-768} ;;
+esac
+processus=$(processus_memoire "$cout")
+dispo_mo=$(awk '/MemAvailable/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+
+# options du parallèle : vide en série (ou un seul processus permis)
+parallele=()
+if [ "${TESTS_SERIE:-0}" != "1" ] && [ "$processus" -gt 1 ] \
+        && python3 -c "import xdist" 2>/dev/null; then
+    parallele=(-n "$processus" --dist worksteal)
+fi
+# passage B de l'Avancé (28 tests audio, peu de mémoire) : coût de l'Intermédiaire
+parallele_b=("${parallele[@]}")
+if [ ${#parallele[@]} -gt 0 ]; then
+    parallele_b=(-n "$(processus_memoire "${TESTS_MO_INTERMEDIAIRE:-768}")" --dist worksteal)
+fi
+
+case "$niveau" in
+    basique)
         if [ $# -gt 0 ]; then
             exec python3 -m pytest -q "$@"
         fi
@@ -83,24 +131,26 @@ PY
 )
         if [ ${#echecs[@]} -eq 0 ]; then
             echo "Aucun test en échec à relancer : donner des fichiers de tests,"
-            echo "par exemple  tools/tests.sh basique tests/test_song.py"
+            echo "par exemple  tools/tests.sh -b tests/test_song.py"
             exit 0
         fi
         exec python3 -m pytest -q "${echecs[@]}"
         ;;
-    intermediaire|intermédiaire|i)
+    intermediaire)
         exec python3 -m pytest -q "${parallele[@]}" -m "not slow and not audio and not gui" "$@"
         ;;
-    avance|avancé|a)
+    avance)
         if [ ${#parallele[@]} -eq 0 ]; then         # série : un seul passage
+            echo "=== Avancé en série (${dispo_mo:-?} Mo disponibles) ==="
             exec python3 -m pytest -q --slow-guard "$@"
         fi
-        echo "=== Avancé, passage A : tout sauf audio, en parallèle ($coeurs processus) ==="
+        echo "=== Avancé, passage A : tout sauf audio, en parallèle ($processus processus ;" \
+             "$coeurs cœurs, ${dispo_mo:-?} Mo disponibles) ==="
         python3 -m pytest -q "${parallele[@]}" --slow-guard -m "not audio" "$@"
         code_a=$?
         [ $code_a -eq 5 ] && code_a=0               # 5 : aucun test choisi (-k…)
-        echo "=== Avancé, passage B : tests audio (temps réel), entre eux ==="
-        python3 -m pytest -q "${parallele[@]}" --slow-guard -m "audio" "$@"
+        echo "=== Avancé, passage B : tests audio (temps réel), entre eux (${parallele_b[1]} processus) ==="
+        python3 -m pytest -q "${parallele_b[@]}" --slow-guard -m "audio" "$@"
         code_b=$?
         [ $code_b -eq 5 ] && code_b=0
         if [ $code_a -ne 0 ] || [ $code_b -ne 0 ]; then

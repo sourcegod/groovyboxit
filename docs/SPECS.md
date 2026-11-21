@@ -148,7 +148,7 @@ groovyboxit/
 ├── tools/
 │   ├── bench_latency.py      # Comparaison latence PygameDriver vs SoundDeviceDriver
 │   ├── check_specs_tests.py  # Vérifie que SPECS.md liste tous les tests/test_*.py
-│   ├── tests.sh              # Tests en trois niveaux : basique, intermediaire, avance (Phase 8 étape 17b1)
+│   ├── tests.sh              # Tests en trois niveaux : -b, -i, -a (--basic, --intermediate, --advanced) (Phase 8 étape 17b1, options 20e2)
 │   ├── diag_loop.py          # Diagnostic points de bouclage
 │   ├── extract_gm_drums.py   # Script extraction drums GM depuis FluidSynth
 │   ├── extract_instruments_sf2.py # Exporteur général d'instruments SF2
@@ -2578,9 +2578,9 @@ Trois **niveaux**, par `tools/tests.sh` :
 
 | Niveau | Commande | Contenu | Quand |
 |---|---|---|---|
-| Basique | `tools/tests.sh basique tests/test_x.py …` (ou `b`) | les fichiers donnés ; sans fichier : les derniers tests en échec qui existent encore | à chaque petite modification |
-| Intermédiaire | `tools/tests.sh intermediaire` (ou `i`) | tout sauf `slow`, `audio`, `gui` | à chaque étape d'implémentation, avant l'essai |
-| Avancé | `tools/tests.sh avance` (ou `a`) | toute la suite, avec le garde-fou, en deux passages : A tout sauf `audio`, B les tests `audio` entre eux | avant chaque commit, à chaque clôture |
+| Basique | `tools/tests.sh -b tests/test_x.py …` (ou `--basic`) | les fichiers donnés ; sans fichier : les derniers tests en échec qui existent encore | à chaque petite modification |
+| Intermédiaire | `tools/tests.sh -i` (ou `--intermediate`) | tout sauf `slow`, `audio`, `gui` | à chaque étape d'implémentation, avant l'essai |
+| Avancé | `tools/tests.sh -a` (ou `--advanced`) | toute la suite, avec le garde-fou, en deux passages : A tout sauf `audio`, B les tests `audio` entre eux | avant chaque commit, à chaque clôture |
 
 - Options supplémentaires passées à pytest (`-x`, `-k motif`…).
 - **Parallèle** (Phase 8 étapes 17c1, 17d2) : Intermédiaire et Avancé
@@ -2592,6 +2592,18 @@ Trois **niveaux**, par `tools/tests.sh` :
   calculent prenaient la machine ; `TESTS_SERIE=1` force la série (un seul
   passage) ; sans pytest-xdist (paquet Debian `python3-pytest-xdist`), la
   série est prise d'office.
+- **Mémoire** (Phase 8 étape 20e2) : un processus ne rend jamais la
+  mémoire des fichiers qu'il a passés (vraie fenêtre principale,
+  FluidSynth, sfizz : ≈ 300 Mo chacune ; `test_live_limiter` ≈ 600 Mo) ;
+  4 processus montaient à 2 Go chacun au niveau Avancé et la machine
+  (7,8 Go) s'est bloquée. Le nombre de processus est aussi borné par la
+  mémoire disponible : (disponible − 1,5 Go de réserve) / coût d'un
+  processus — 2 Go pour le passage A de l'Avancé, 768 Mo pour
+  l'Intermédiaire et le passage B — au moins 1 (série) ; annoncé en tête
+  du passage A. Réglages : `TESTS_RESERVE_MO`, `TESTS_MO_AVANCE`,
+  `TESTS_MO_INTERMEDIAIRE`. Mesure (2026-11-21, 5,6 Go disponibles) :
+  Avancé A en 2 processus ≈ 37 s, B en 4 ≈ 11 s, mémoire disponible
+  jamais sous 2,3 Go (avant : 4 processus, ≈ 30 s, ≈ 0,9-1,3 Go).
 - **Garde-fou** (`--slow-guard`, niveau Avancé) : signale en fin de suite
   tout test **sans marque** qui a pris au moins 0,3 s en série, 1 s en
   parallèle (préparation + exécution) ; le marquer ou l'accélérer, pour
@@ -2735,11 +2747,15 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 
 ### `tools/tests.sh`
 
-Tests en trois niveaux (Phase 8 étape 17b1) : `basique [fichiers…]`,
-`intermediaire`, `avance` (raccourcis `b`, `i`, `a`), les deux derniers en
-parallèle (17c1 ; `TESTS_SERIE=1` pour la série) ; voir « Tests
-unitaires », Niveaux et marques. Sans argument : l'aide. Code de sortie :
-celui de pytest (0 si tout passe).
+Tests en trois niveaux (Phase 8 étape 17b1) : `-b, --basic [fichiers…]`,
+`-i, --intermediate`, `-a, --advanced`, `-h, --help` (options standard
+depuis Phase 8 étape 20e2 ; anciennes formes `b` / `basique`, `i` /
+`intermediaire`, `a` / `avance` encore acceptées), les deux derniers en
+parallèle (17c1 ; `TESTS_SERIE=1` pour la série ; nombre de processus
+borné par la mémoire, 20e2) ; voir « Tests unitaires », Niveaux et
+marques. Sans argument : l'aide. Option inconnue : l'aide, code 2. Les
+options qui suivent le niveau vont à pytest. Code de sortie : celui de
+pytest (0 si tout passe).
 
 ### `tools/check_specs_tests.py`
 
