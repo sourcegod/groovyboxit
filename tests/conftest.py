@@ -30,6 +30,40 @@ def wx_app_alive():
     yield
 
 
+def _top_windows():
+    """Fenêtres lourdes ouvertes : celles qui portent un pilote audio (vraie
+    fenêtre principale : moteurs, sons) ; les dialogues sont légers."""
+    import wx
+    if wx.GetApp() is None:
+        return set()
+    return {id(w) for w in wx.GetTopLevelWindows() if hasattr(w, "_audio_driver")}
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    item._gbx_windows_before = _top_windows()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Fenêtres détruites vraiment supprimées après chaque test (Phase 8
+    étape 20e3) : Destroy() ne supprime une fenêtre de premier niveau qu'au
+    repos de la boucle d'événements, que pytest ne fait jamais tourner ; la
+    vraie fenêtre principale, FluidSynth, sfizz et les sons restaient en
+    mémoire jusqu'à la fin du processus (suite en série : 2,6 Go au lieu de
+    0,6 Go ; 4 processus en parallèle ont bloqué la machine, 20e2).
+    Seulement si le test a laissé une fenêtre lourde (pilote audio) qui
+    n'existait pas avant lui :
+    un SafeYield par test rallongeait la suite de 51 s à 4 min 30, et les
+    fenêtres gardées d'un test à l'autre (fixtures de module) n'ont rien à
+    supprimer. (IsBeingDeleted() ne repère pas toutes les fenêtres détruites.)"""
+    import gc
+    import wx
+    if _top_windows() - getattr(item, "_gbx_windows_before", set()):
+        wx.SafeYield()
+        gc.collect()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def isolated_preferences(tmp_path_factory):
     """Préférences de l'utilisateur hors de ~/.config pendant les tests

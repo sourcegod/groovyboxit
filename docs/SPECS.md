@@ -2601,9 +2601,14 @@ Trois **niveaux**, par `tools/tests.sh` :
   processus — 2 Go pour le passage A de l'Avancé, 768 Mo pour
   l'Intermédiaire et le passage B — au moins 1 (série) ; annoncé en tête
   du passage A. Réglages : `TESTS_RESERVE_MO`, `TESTS_MO_AVANCE`,
-  `TESTS_MO_INTERMEDIAIRE`. Mesure (2026-11-21, 5,6 Go disponibles) :
-  Avancé A en 2 processus ≈ 37 s, B en 4 ≈ 11 s, mémoire disponible
-  jamais sous 2,3 Go (avant : 4 processus, ≈ 30 s, ≈ 0,9-1,3 Go).
+  `TESTS_MO_INTERMEDIAIRE`. **Fenêtres vraiment supprimées** (Phase 8
+  étape 20e3, `tests/conftest.py`) : `Destroy()` ne supprime une fenêtre
+  qu'au repos de la boucle d'événements, que pytest ne fait pas tourner ;
+  après chaque test qui a laissé une nouvelle fenêtre lourde (pilote
+  audio), un `wx.SafeYield()` la supprime avec ses moteurs. Coût compté
+  pour le passage A : 900 Mo. Mesure (5,5 Go disponibles) : Avancé A en 4
+  processus ≈ 30 s, B ≈ 12 s, mémoire disponible jamais sous 2,4 Go
+  (avant 20e2 : 0,9-1,3 Go) ; suite en série : 0,6 Go au lieu de 2,6 Go.
 - **Garde-fou** (`--slow-guard`, niveau Avancé) : signale en fin de suite
   tout test **sans marque** qui a pris au moins 0,3 s en série, 1 s en
   parallèle (préparation + exécution) ; le marquer ou l'accélérer, pour
@@ -2752,7 +2757,7 @@ Tests en trois niveaux (Phase 8 étape 17b1) : `-b, --basic [fichiers…]`,
 depuis Phase 8 étape 20e2 ; anciennes formes `b` / `basique`, `i` /
 `intermediaire`, `a` / `avance` encore acceptées), les deux derniers en
 parallèle (17c1 ; `TESTS_SERIE=1` pour la série ; nombre de processus
-borné par la mémoire, 20e2) ; voir « Tests unitaires », Niveaux et
+borné par la mémoire, 20e2 ; fenêtres supprimées après chaque test, 20e3) ; voir « Tests unitaires », Niveaux et
 marques. Sans argument : l'aide. Option inconnue : l'aide, code 2. Les
 options qui suivent le niveau vont à pytest. Code de sortie : celui de
 pytest (0 si tout passe).

@@ -570,6 +570,9 @@ def test_detect_midi(tmp_path, monkeypatch):
 
 def test_tone_through_the_app_driver(tmp_path, monkeypatch):
     monkeypatch.setattr(ad, "find_device", lambda n, a, k: 4)
+    # latence de sortie (20d1) : pas celle de la vraie carte, qui dépend de la
+    # numérotation des périphériques (test fragile en parallèle, 20e3)
+    monkeypatch.setattr(ad, "device_latency", lambda idx, kind: None)
     monkeypatch.setattr(ad, "play_tone", lambda idx: pytest.fail("ouverture en double"))
     driver = _Driver(device=4)
     msg = _access(tmp_path, driver).test_audio_output("ALSA", "pipewire")
@@ -605,6 +608,7 @@ def sync_call_after(monkeypatch):
 
 def _listen(tmp_path, monkeypatch, data, driver):
     monkeypatch.setattr(ad, "find_device", lambda n, a, k: 2)
+    monkeypatch.setattr(ad, "device_latency", lambda idx, kind: None)   # 20e3 : pas la vraie carte
     monkeypatch.setattr(ad, "record_input", lambda idx, samplerate=44100: data)
     said = []
     _access(tmp_path, driver).test_audio_input("ALSA", "pipewire", said.append).join(2)
@@ -642,6 +646,7 @@ def test_input_missing_or_refused(tmp_path, monkeypatch, sync_call_after):
     def refuse(idx, samplerate=44100):
         raise ad.AudioDeviceError("occupé")
     monkeypatch.setattr(ad, "find_device", lambda n, a, k: 2)
+    monkeypatch.setattr(ad, "device_latency", lambda idx, kind: None)
     monkeypatch.setattr(ad, "record_input", refuse)
     _access(tmp_path).test_audio_input("ALSA", "x", said.append).join(2)
     assert said[-1] == "Entrée audio x : refusée (occupé)"
@@ -658,6 +663,7 @@ def _beep_access(tmp_path, monkeypatch, driver, order):
     win._beep = lambda notes: (order.append("bip"), MainWindow._beep(win, notes))
     win._confirm_beep = lambda: MainWindow._confirm_beep(win)
     monkeypatch.setattr(mw_devices.time, "sleep", lambda s: order.append(("attente", s)))
+    monkeypatch.setattr(ad, "device_latency", lambda idx, kind: None)
     monkeypatch.setattr(ad, "find_device", lambda n, a, k: 2)
 
     def record(idx, samplerate=44100):

@@ -15840,3 +15840,67 @@ toujours après les commits déjà faits.
   encore acceptées ; option inconnue → message, aide, code 2 ; l'aide ne
   montre que le mode d'emploi. Essayé : toutes les formes, l'aide, sans
   argument, option inconnue.
+
+## Phase 8 étape 20e3 — Recensement de la mémoire, correctif des tests
+
+### Demande (utilisateur, 2026-11-21)
+
+« Recensement de l'optimisation de la mémoire, pour voir où l'appli perd
+de la mémoire ou ne libère pas assez : après une fermeture de projet, un
+export audio, un changement de pattern… Ensuite décider s'il faut ouvrir
+un autre chantier pour les corrections. »
+
+### Méthode
+
+Vraie fenêtre principale (vrais FluidSynth et sfizz), copies des projets
+et des préférences ; chaque opération répétée 10 à 20 fois ; mémoire
+résidente (VmRSS) après chaque répétition, événements traités, `gc`
+fait, réserve de l'allocateur rendue (`malloc_trim`) pour séparer une
+vraie perte d'une mémoire gardée en réserve ; `tracemalloc` pour le côté
+Python ; surveillance de la mémoire disponible (arrêt sous 1 Go).
+
+### Résultats : l'appli
+
+| Opération | Constat |
+|---|---|
+| Ctrl+O (même projet), Ctrl+N | stable (± 1 Mo) |
+| Allers-retours entre 4 projets (`project_01`, audio, banque, SFZ), 4 fois | chaque projet revient au même niveau (285 à 495 Mo) : un changement de projet libère |
+| 10 changements de pattern | stable |
+| Export audio | +25 Mo sur les 10 premiers, puis palier (488 Mo du 11e au 20e) ; côté Python, rien de gardé (< 32 Ko) : réserve des copies natives de FluidSynth / sfizz |
+| Lecture 2 s puis Stop | oscille de 432 à 460 Mo, sans tendance ; le cache des sons du synthé Wave (`SynthEngine._loop_cache`, `_cache`) garde un son par note jouée, borné par les notes |
+| Éditeur MIDI, fenêtre Songs (ouvertes / fermées), Undo, monitoring F8 | stables |
+| Fenêtre principale créée puis fermée (ou détruite), 4 fois | revient au même niveau ; aucune fenêtre gardée |
+
+**Aucune perte dans l'appli** : pas de chantier de correction. Plus tard,
+si besoin : borner le cache des sons du synthé Wave.
+
+### Résultats : les tests
+
+La vraie cause du gonflement (et du blocage de 20e2) : les tests
+détruisent la vraie fenêtre principale par `Destroy()`, qui ne la
+supprime qu'au repos de la boucle d'événements — que pytest ne fait
+jamais tourner. La fenêtre, ses moteurs et ses sons restaient jusqu'à la
+fin du processus : toute la suite en série finissait à **2 563 Mo**, et
+**621 Mo** en laissant wx supprimer les fenêtres après chaque test.
+
+### Correctif
+
+- **`tests/conftest.py`** : `pytest_runtest_setup` note les fenêtres
+  lourdes ouvertes (celles qui portent un pilote audio : la vraie fenêtre
+  principale) ; `pytest_runtest_teardown` (en dernier) fait
+  `wx.SafeYield()` et `gc.collect()` si le test en a laissé une nouvelle.
+  Essais écartés : un SafeYield après chaque test (suite en série de 51 s
+  à 4 min 30) ; dès qu'une fenêtre existe (Intermédiaire de 16 à 24 s : les
+  fenêtres gardées par des fixtures de module) ; `IsBeingDeleted()` (ne
+  repère pas toutes les fenêtres détruites : mémoire disponible
+  redescendue à 1,4 Go).
+- **`tools/tests.sh`** : coût compté pour le passage A de 2 Go à **900 Mo**
+  (la limite par la mémoire reste, en filet de sécurité).
+- **Tests rendus fiables** (`test_prefs_hardware.py`) : les messages des
+  tests de la sortie et de l'entrée lisaient la latence de la vraie carte
+  (`device_latency`, 20d1), selon la numérotation des périphériques ;
+  latence fixée dans ces tests. Révélé par un échec au hasard en
+  parallèle.
+- **Mesures** : Intermédiaire ≈ 16 s ; Avancé A en **4 processus ≈ 30 s**
+  (2 processus et 37 s depuis 20e2), B ≈ 12 s ; mémoire disponible jamais
+  sous **2,4 Go** (avant 20e2 : 0,9-1,3 Go).

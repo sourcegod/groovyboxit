@@ -27,7 +27,9 @@
 # chacun et la machine (7,8 Go) s'est bloquée.  Le nombre de processus est
 # donc aussi borné par la mémoire disponible : (disponible − réserve) / coût
 # d'un processus, au moins 1.  Réglages : TESTS_RESERVE_MO (1536),
-# TESTS_MO_AVANCE (2048), TESTS_MO_INTERMEDIAIRE (768).
+# TESTS_MO_AVANCE (900), TESTS_MO_INTERMEDIAIRE (768).  Depuis 20e3, les
+# fenêtres détruites sont vraiment supprimées après chaque test
+# (tests/conftest.py) : ≈ 600 Mo par processus au lieu de 2 Go.
 set -u
 cd "$(dirname "$0")/.." || exit 2
 
@@ -89,7 +91,7 @@ case "$niveau" in
 esac
 
 case "$niveau" in
-    avance)                           cout=${TESTS_MO_AVANCE:-2048} ;;
+    avance)                           cout=${TESTS_MO_AVANCE:-900} ;;
     *)                                cout=${TESTS_MO_INTERMEDIAIRE:-768} ;;
 esac
 processus=$(processus_memoire "$cout")
