@@ -15904,3 +15904,53 @@ fin du processus : toute la suite en série finissait à **2 563 Mo**, et
 - **Mesures** : Intermédiaire ≈ 16 s ; Avancé A en **4 processus ≈ 30 s**
   (2 processus et 37 s depuis 20e2), B ≈ 12 s ; mémoire disponible jamais
   sous **2,4 Go** (avant 20e2 : 0,9-1,3 Go).
+
+## Phase 8 étape 20f1 — Clôture : monitoring de l'entrée audio, bips, mémoire des tests
+
+**Bilan.**
+- **Bips** (module autonome `src/audio/audio_beep.py`) : onde carrée à
+  bande limitée, choisie à l'essai face aux dents de scie, au même niveau
+  moyen ; **montant** pour les alertes et les questions (périphérique
+  introuvable, prise refusée, tempo, export, « Remplacer ? », « Enregistrer
+  avant… ? »), **descendant** pour une confirmation (départ du test de
+  l'entrée, attendu jusqu'au bout pour ne pas être capté) ; écoute par
+  `python3 -m audio.audio_beep`.
+- **Monitoring de l'entrée** : case « Monitoring de l'entrée (F8) » des
+  Options de l'enregistrement, décochée, gardée dans le projet ; **F8**
+  avec Undo et annonce ; entrée de la piste audio courante entendue à
+  l'arrêt, en lecture et en prise, au volume et au pan de la piste, muette
+  si la piste l'est ; un seul flux d'entrée (la prise relaie) ; latence
+  « très acceptable » avec une carte de base.
+- **Latences** affichées par Tester (entrée : basse à haute, estimation du
+  monitoring ; sortie).
+- **Mémoire** : blocage de la machine pendant les tests → nombre de
+  processus borné par la mémoire (20e2) ; recensement : **aucune perte
+  dans l'appli** ; vraie cause dans les tests (fenêtres détruites jamais
+  supprimées sous pytest), corrigée (20e3) ; options standard de
+  `tools/tests.sh` (`-b`, `-i`, `-a`, `--basic`…).
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 20a (00ba40d) | Plan |
+| 20b1 (4951aed) | Bips audio_beep |
+| 20c1 (15c4ca1) | Tests des bips |
+| 20d1 (cccf6bf) | Monitoring, latences de Tester, niveau du carré |
+| 20e1 (f396f91) | Tests du monitoring |
+| 20e2 (f40a5cd) | Correctif : Avancé borné par la mémoire, options standard |
+| 20e3 (74e865a) | Recensement de la mémoire, correctif des tests |
+| 20f1 | Clôture |
+
+**Décisions prises en route.** Monitoring global au projet et sur la
+piste courante, **sans armement** (R reste simple) ; audible aussi en
+lecture (essayer un effet sans enregistrer) ; case décochée par défaut
+(Larsen) ; sens des bips montant / descendant ; onde carrée ; minuterie
+de 100 ms sans fenêtre propriétaire (un top en file visait une fenêtre
+détruite : plantage).
+
+**Suites.** Armement des pistes et enregistrement multipiste (chantier à
+part, non urgent) ; mesure automatique de la latence d'entrée ; effets
+sur l'entrée ; borner le cache des sons du synthé Wave si besoin ;
+libérer aussi la mémoire des dialogues dans les tests si la suite
+regrossit ; `wx.Bell()` des butées inchangés.
