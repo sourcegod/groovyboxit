@@ -172,6 +172,9 @@ class AudioRecorder:
         self._captured = 0
         self._taps     = []             # [premier, out, rempli jusqu'à]
         self._lock     = threading.Lock()
+        # Monitoring de l'entrée (Phase 8 étape 20d1, M5) : on_block(bloc)
+        # reçoit chaque bloc capté, dans le thread de la carte.
+        self.on_block  = None
 
     @property
     def active(self):
@@ -216,6 +219,9 @@ class AudioRecorder:
             if self._taps:
                 self._taps = [tap for tap in self._taps if not self._fill_tap(tap, first, block)]
         self._queue.put(block)
+        on_block = self.on_block
+        if on_block is not None:
+            on_block(block)
 
     @staticmethod
     def _copy_into(out, out_first, block, block_first):

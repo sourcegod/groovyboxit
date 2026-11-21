@@ -542,7 +542,7 @@ class RecordOptionsDialog(wx.Dialog):
     record_modes.MODES — d'autres modes viendront : Punch In/Out, Automation,
     Live Looper), « Clic pendant la lecture », « Décompte pendant la
     lecture » (16b1, essai), « Clic pendant l'enregistrement », « Décompte pendant
-    l'enregistrement ». Focus sur le mode ; Entrée sur une liste valide
+    l'enregistrement », « Monitoring de l'entrée (F8) » (20d1). Focus sur le mode ; Entrée sur une liste valide
     (GTK : EVT_LISTBOX_DCLICK)."""
 
     def __init__(self, parent, options):
@@ -567,6 +567,9 @@ class RecordOptionsDialog(wx.Dialog):
             choices=[f"Décompte pendant l'enregistrement : {count_label(n)}"
                      for n in COUNT_IN_CHOICES])
         self._count_lb.SetSelection(COUNT_IN_CHOICES.index(opts["count_in"]))
+        # Monitoring de l'entrée (Phase 8 étape 20d1, M2), F8 hors du dialogue
+        self._monitor = wx.CheckBox(self, label="Monitoring de l'entrée (F8)")
+        self._monitor.SetValue(opts["monitor"])
         for lb in (self._mode_lb, self._count_play_lb, self._count_lb):
             lb.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.EndModal(wx.ID_OK))
 
@@ -583,6 +586,7 @@ class RecordOptionsDialog(wx.Dialog):
         vbox.Add(self._count_play_lb, 0, wx.EXPAND | wx.ALL, 6)
         vbox.Add(self._click_record, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(self._count_lb, 0, wx.EXPAND | wx.ALL, 6)
+        vbox.Add(self._monitor, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         vbox.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
         self.Fit()
@@ -599,6 +603,7 @@ class RecordOptionsDialog(wx.Dialog):
             "count_in_play": self._counts[cp if cp != wx.NOT_FOUND else 0],
             "click_record": self._click_record.GetValue(),
             "count_in": self._counts[c if c != wx.NOT_FOUND else 1],
+            "monitor": self._monitor.GetValue(),
         }
 
 

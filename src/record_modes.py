@@ -45,6 +45,7 @@ DEFAULTS = {                                # le comportement d'avant 16b1
     "count_in_play": 0,                     # décompte avant Play (16b1, essai)
     "click_record": True,
     "count_in": 1,
+    "monitor": False,                       # monitoring de l'entrée (20d1, M2)
 }
 
 
@@ -67,7 +68,7 @@ def normalize(data):
     if not isinstance(data, dict):
         return out
     out["mode"] = mode_of(data.get("mode")).id
-    for key in ("click_play", "click_record"):
+    for key in ("click_play", "click_record", "monitor"):
         if isinstance(data.get(key), bool):
             out[key] = data[key]
     for key in ("count_in", "count_in_play"):
@@ -91,4 +92,5 @@ def describe(options):
     return (f"Mode : {mode_of(opts['mode']).label} ; clic : "
             f"{', '.join(clicks) if clicks else 'aucun'} ; décompte de lecture : "
             f"{count_label(opts['count_in_play'])} ; décompte d'enregistrement : "
-            f"{count_label(opts['count_in'])}")
+            f"{count_label(opts['count_in'])}"
+            + (" ; monitoring de l'entrée" if opts["monitor"] else ""))

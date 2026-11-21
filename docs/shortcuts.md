@@ -121,6 +121,7 @@ Shift+S          Désolo toutes les Pistes
 F3               Mute exclusif On / Off (fenêtre principale, quel que soit le focus)
 F4               Solo exclusif On / Off (fenêtre principale, quel que soit le focus)
 F5               Réinitialiser tous les Mute et Solo de piste
+F8               Monitoring de l'entrée audio On / Off (voir « Enregistrement »)
                  Chaque Mute / Solo de piste coupe d'abord toutes les notes en cours
                  (pédale relâchée ; Pitch Bend et modulation gardés) ; détails des
                  modes exclusifs dans « Pistes »
@@ -139,8 +140,14 @@ Ctrl+Shift+R     Options de l'enregistrement (aussi depuis l'éditeur MIDI et la
                  (MPC)), Clic pendant la lecture, Décompte pendant la lecture
                  (Espace, Ctrl+Espace), Clic pendant l'enregistrement, Décompte
                  pendant l'enregistrement (Ctrl+R) ; décomptes : aucun, 1, 2, 4
-                 ou 8 mesures. Gardées dans le projet ; Ctrl+Z annule un
-                 changement. Espace pendant un décompte l'annule.
+                 ou 8 mesures ; Monitoring de l'entrée (F8). Gardées dans le
+                 projet ; Ctrl+Z annule un changement. Espace pendant un
+                 décompte l'annule.
+F8               Monitoring de l'entrée audio On / Off (fenêtre principale) :
+                 l'entrée de la piste audio courante s'entend à l'arrêt, en
+                 lecture et pendant une prise, au volume et au pan de la piste ;
+                 avec un micro et des haut-parleurs, attention au Larsen : F8
+                 le coupe tout de suite
                  Mode MPC « Remplacer puis Overdub » : en boucle, le premier
                  passage remplace (la piste se tait), les suivants s'ajoutent
                  (annoncé « Rec (MPC) : Overdub ») ; MIDI et audio ; sans
@@ -539,6 +546,7 @@ Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
 F1               Afficher cette aide
 F3 / F4          Mute exclusif / Solo exclusif (voir « Pistes »)
 F5               Réinitialiser tous les Mute et Solo de piste
+F8               Monitoring de l'entrée audio On / Off
 F2               Renommer l'élément courant :
                    focus liste des pistes  → renommer la piste
                    focus ailleurs          → renommer le pattern courant

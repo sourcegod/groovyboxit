@@ -255,6 +255,8 @@ class HardwareAccess:
         rouvert sur la même sortie, retrouvée par son nom."""
         driver = getattr(self._win, "_audio_driver", None)
         name = ""
+        if hasattr(self._win, "_monitor_close"):     # flux d'entrée fermé (20d1)
+            self._win._monitor_close()
         if driver is not None and hasattr(driver, "stop_stream"):
             name = audio_device.device_name(driver.device)
             driver.stop_stream()
@@ -294,7 +296,36 @@ class HardwareAccess:
                 audio_device.play_tone(idx)
         except Exception as e:                      # AudioDeviceError, PortAudioError
             return f"Sortie audio {name} : refusée ({e})"
-        return f"Sortie audio {name} : La 440 Hz joué pendant une seconde"
+        return f"Sortie audio {name} : La 440 Hz joué pendant une seconde" + \
+            self._output_latency_text(idx, driver)
+
+    # -- latences (Phase 8 étape 20d1, demande de l'utilisateur) ----------
+
+    @staticmethod
+    def _output_latency_text(idx, driver):
+        """« ; latence de sortie : 23,2 ms » : celle du flux de l'appli si
+        c'est sa sortie, sinon la latence basse annoncée par PortAudio."""
+        if driver is not None and idx == getattr(driver, "device", "?") \
+                and getattr(driver, "output_latency", 0.0):
+            return f" ; latence de sortie : {audio_device.format_ms(driver.output_latency)}"
+        lat = audio_device.device_latency(idx, audio_device.OUTPUT)
+        return f" ; latence de sortie : {audio_device.format_ms(lat[0])}" if lat else ""
+
+    @staticmethod
+    def _input_latency_text(idx, driver, samplerate):
+        """« ; latence d'entrée : 5,8 ms (basse) à 34,8 ms (haute) ;
+        monitoring ≈ 30,1 ms » — monitoring : entrée basse (le monitoring
+        ouvre l'entrée en latence basse) + sortie de l'appli + tampon
+        d'amorce du monitoring."""
+        lat = audio_device.device_latency(idx, audio_device.INPUT)
+        if not lat:
+            return ""
+        from audio.input_monitor import InputMonitor
+        fmt = audio_device.format_ms
+        out = float(getattr(driver, "output_latency", 0.0) or 0.0) if driver is not None else 0.0
+        mon = lat[0] + out + InputMonitor.PRIME / float(samplerate)
+        return (f" ; latence d'entrée : {fmt(lat[0])} (basse) à {fmt(lat[1])} (haute)"
+                f" ; monitoring ≈ {fmt(mon)}")
 
     BEEP_GAP = 0.05          # silence après le bip, avant l'écoute (20b1, B2)
 
@@ -325,6 +356,7 @@ class HardwareAccess:
                 else:
                     verdict, rms, peak = audio_device.analyse_input(data)
                     msg = f"Entrée audio {name} : " + audio_device.describe_input(verdict, rms, peak)
+                    msg += self._input_latency_text(idx, driver, sr)
                     if verdict == audio_device.PRESENT and driver is not None:
                         driver.play(SdSound(audio_device.to_stereo(data), sr))
                         msg += " ; réécoute des 3 secondes captées"

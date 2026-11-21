@@ -15701,3 +15701,72 @@ toujours après les commits déjà faits.
   `SaveConfirmDialog`, de l'import MIDI ; attente retirée du test de
   l'entrée ; ALERT inversé ; harmoniques paires dans le carré ; bande
   non limitée ; parents non remontés par `ui_beep`.
+
+### Avancement 20d1 (monitoring de l'entrée)
+
+- **`src/audio/input_monitor.py`, `InputMonitor`** (M5) : flux d'entrée
+  à bloc de 256 (`latency="low"`), tampon circulaire de 16 384
+  échantillons ; `feed` (thread de la carte : flux propre ou
+  enregistreur) jette les plus anciens au-delà de `MAX_LAG` (3 blocs du
+  mix) ; `render(mix)` (source de rendu du Mixer) : silence tant que le
+  tampon n'a pas retrouvé `PRIME` (256) après un vide ; `set_gain(vol,
+  pan)` : `pan_gains` et rampe de 10 ms des voix (`_init_ramp`,
+  `_block_gains`) ; `stream_factory` injectable.
+- **`AudioRecorder.on_block`** : chaque bloc capté est aussi passé au
+  monitoring pendant une prise ; `_audio_rec_prepare` ferme d'abord le flux
+  propre (`_monitor_release`), puis la prise relaie (`_update_monitor`).
+- **`src/ui/mw_audio_monitor.py`, `AudioMonitorMixin`** (M3, M4, M6) :
+  `_update_monitor()` — rien si la case est décochée, la piste courante
+  pas audio ou sans pilote ; prise sur la piste → blocs de l'enregistreur ;
+  sinon flux propre sur l'entrée de la piste (`_audio_input_for`), rouvert
+  seulement si la piste, son entrée ou le pilote change ; gain = volume de
+  piste, pan de piste + pan global, 0 si muette ou hors solo ; entrée
+  refusée → bip d'alerte, barre d'état, pas redemandée avant un
+  changement. **Changement par rapport à M6** : plutôt qu'un appel dans
+  chacun des chemins qui changent la piste courante, le pattern, le type
+  ou l'entrée de piste, le volume, le pan, Mute / Solo et la fin de
+  prise, une **minuterie de 100 ms** (`MONITOR_TICK_MS`) rappelle
+  `_update_monitor` (sans coût quand la case est décochée) ; appel
+  immédiat par `_apply_record_options` (F8, Ctrl+Shift+R, Ctrl+Z,
+  Ctrl+N / Ctrl+O) et au début d'une prise. **Détecter** (Préférences)
+  ferme le flux avant de relire PortAudio ; la fermeture de la fenêtre
+  arrête la minuterie et le flux. **Minuterie sans fenêtre propriétaire**
+  (`wx.Timer()`, événements liés à elle-même), arrêtée à
+  `EVT_WINDOW_DESTROY` et ignorée si la fenêtre est détruite : avec la
+  fenêtre pour propriétaire, un test qui la détruit par `Destroy()`
+  (suppression différée) laissait un top en file viser une fenêtre morte →
+  plantage (erreur de segmentation) dans le test gui suivant du même
+  processus ; constaté au niveau Avancé, absent sur le commit précédent.
+- **F8** (`key_manager.py`, comme F3 / F4) → `_toggle_monitor` : point
+  d'Undo « Monitoring de l'entrée activé / désactivé », annonce de
+  `_monitor_describe` (+ « — entrée refusée », ou la remarque d'une entrée
+  remplacée).
+- **Options** (M2) : `record_modes.DEFAULTS["monitor"] = False`,
+  `normalize`, `describe` (« ; monitoring de l'entrée » si cochée) ; case
+  « Monitoring de l'entrée (F8) » en dernier dans `RecordOptionsDialog`.
+- **Essais** : `InputMonitor` sur la vraie entrée (pipewire : flux ouvert,
+  blocs reçus, retard plafonné, rendu, fermeture) ; vraie fenêtre
+  principale : F8 sur une piste audio (« activé (piste 1 — pipewire) »,
+  flux ouvert, source branchée), piste MIDI → coupé, retour → rouvert,
+  volume 50 et Mute suivis, Ctrl+Z → décochée et fermé.
+- Aide F1 (F8, case de Ctrl+Shift+R, Larsen), `docs/SPECS.md`
+  (§ Monitoring de l'entrée audio, Options, arborescence, ligne Phase 8).
+- **Essai de l'utilisateur (2026-11-21)** : F8, prise, changement de
+  piste, volume / pan / Mute, case de Ctrl+Shift+R et Ctrl+Z concluants ;
+  « latence d'écoute très acceptable, avec une carte audio de base ».
+  Deux demandes, ajoutées à 20d1 :
+  - **latences dans « Résultat du test »** (Préférences, Matériel), pour
+    comparer : `audio_device.device_latency(index, kind)` (basse, haute,
+    annoncées par PortAudio) et `format_ms` ; Tester l'entrée ajoute
+    « ; latence d'entrée : 5,8 ms (basse) à 34,8 ms (haute) ; monitoring ≈
+    34,8 ms » (entrée basse + sortie de l'appli + `InputMonitor.PRIME`) ;
+    Tester la sortie ajoute « ; latence de sortie : 23,2 ms » (flux de
+    l'appli si c'est sa sortie, sinon latence basse annoncée) ;
+  - **bips moins forts aux haut-parleurs** : le carré au même niveau
+    moyen (RMS) que les dents de scie — crête `SQUARE_LEVEL` = 0,15 au lieu
+    de 0,25 (`default_level(wave)`, `beep(level=None)`).
+  Essai des deux ajouts (2026-11-21) : latences de chaque entrée et de la
+  sortie, bips aux haut-parleurs : concluants.
+- **Tests en échec jusqu'à 20e1** (5, `test_record_options.py`) : options
+  par défaut et normalisées (clé `monitor`), champs du dialogue (case
+  ajoutée), vraie fenêtre principale (options comparées sans `monitor`).

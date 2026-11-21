@@ -27,7 +27,10 @@ import math
 
 import numpy as np
 
-LEVEL   = 0.25          # crête d'environ −12 dBFS
+LEVEL   = 0.25          # crête d'environ −12 dBFS (dents de scie)
+# Carré : crête plus basse, même niveau moyen (RMS) que les dents de scie —
+# essai de 20d1 : le carré à la même crête était un peu fort aux haut-parleurs
+SQUARE_LEVEL = 0.15
 FADE_MS = 5.0           # fondu aux deux bouts de chaque note
 NOTE_SECONDS = 0.12
 
@@ -74,10 +77,16 @@ def square(freq, seconds, samplerate=44100, level=LEVEL, fade_ms=FADE_MS):
 _WAVES = {SAW: saw, SQUARE: square}
 
 
-def beep(notes=ALERT, samplerate=44100, level=LEVEL, wave=None):
+def default_level(wave=None):
+    """Crête par défaut de la forme d'onde (même niveau moyen pour les deux)."""
+    return SQUARE_LEVEL if (wave or WAVE) == SQUARE else LEVEL
+
+
+def beep(notes=ALERT, samplerate=44100, level=None, wave=None):
     """Notes enchaînées en stéréo float32 contigu (frames, 2) ; wave : SAW
-    ou SQUARE (None = WAVE)."""
+    ou SQUARE (None = WAVE) ; level : crête (None = default_level)."""
     gen = _WAVES[wave or WAVE]
+    level = default_level(wave) if level is None else level
     parts = [gen(f, s, samplerate, level) for f, s in notes]
     mono = np.concatenate(parts) if parts else np.zeros(0)
     return np.ascontiguousarray(np.column_stack([mono, mono]).astype(np.float32))
@@ -88,7 +97,7 @@ def duration(notes):
     return float(sum(s for _f, s in notes))
 
 
-def play(notes=ALERT, samplerate=44100, player=None, device=None, level=LEVEL,
+def play(notes=ALERT, samplerate=44100, player=None, device=None, level=None,
          wave=None):
     """Joue le bip sans attendre : player(données, fréquence) s'il est fourni
     (le pilote d'une appli, sortie déjà ouverte), sinon sounddevice.play sur

@@ -100,6 +100,8 @@ class AudioRecMixin:
                                           self._audio_dir)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         recorder = self._audio_recorder_factory()
+        if hasattr(self, "_monitor_release"):          # un seul flux par entrée (20d1, M5)
+            self._monitor_release()
         try:
             recorder.start(path, device, self._audio_driver.samplerate,
                            audio_devices.input_channels(device))
@@ -113,6 +115,8 @@ class AudioRecMixin:
                            "replace": bool(replace), "mpc": bool(replace and mpc),
                            "base": None, "clips": {}, "base_before": {}}
         self._player.arm_audio_take()
+        if hasattr(self, "_update_monitor"):           # la prise relaie le monitoring
+            self._update_monitor()
         self._audio_rec_note = f"Prise audio piste {t + 1} — {name}" + (f" ({note})" if note else "")
         return True
 

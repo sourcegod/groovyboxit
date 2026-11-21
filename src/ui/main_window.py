@@ -42,6 +42,7 @@ from ui.mw_midi_editor import MidiEditorMixin
 from ui.mw_tempo       import TempoMixin
 from ui.mw_devices     import DevicesMixin
 from ui.mw_audio_rec   import AudioRecMixin
+from ui.mw_audio_monitor import AudioMonitorMixin
 from ui.mw_record_options import RecordOptionsMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
@@ -74,7 +75,7 @@ class _LoadingDialog(wx.Dialog):
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
                  MidiEditorMixin, TempoMixin, DevicesMixin, AudioRecMixin,
-                 RecordOptionsMixin, wx.Frame):
+                 AudioMonitorMixin, RecordOptionsMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
@@ -300,6 +301,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         )
         self._player._on_count_in_done_cb = lambda: wx.CallAfter(self._on_count_in_done)
         self._init_audio_rec()                        # prise audio (Phase 8 étape 14f1)
+        self._init_audio_monitor()                    # monitoring de l'entrée (20d1)
         self._player._on_mpc_overdub_cb = lambda: wx.CallAfter(self._on_mpc_overdub)   # 16d1
 
     def _open_audio_driver(self, cfg):
@@ -610,6 +612,8 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             if resp == wx.ID_YES:
                 self._save_project()
         self._midi.close()
+        if hasattr(self, "_monitor_stop_all"):        # monitoring (20d1)
+            self._monitor_stop_all()
         self._audio_driver.close()
         if self._bank_engine is not None:
             self._bank_engine.close()

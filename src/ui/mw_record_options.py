@@ -39,6 +39,8 @@ class RecordOptionsMixin:
         p.click_in_recording = opts["click_record"]
         p.click_in_playback = opts["click_play"]
         p.count_in_play_bars = opts["count_in_play"]        # 16b1, essai
+        if hasattr(self, "_update_monitor"):                 # monitoring (20d1, M6)
+            self._last_monitor_note = self._update_monitor()
         return opts
 
     def _open_record_options(self, parent=None, status=None):

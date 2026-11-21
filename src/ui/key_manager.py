@@ -67,6 +67,10 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if key in (wx.WXK_F3, wx.WXK_F4) and not (ctx.ctrl or ctx.alt or ctx.shift):
             win._toggle_exclusive("mute" if key == wx.WXK_F3 else "solo")
             return
+        # F8 : monitoring de l'entrée (Phase 8 étape 20d1, M4)
+        if key == wx.WXK_F8 and not (ctx.ctrl or ctx.alt or ctx.shift):
+            win._toggle_monitor()
+            return
         # Raccourcis MIDI regroupés sur F12 (Phase 8 étape 11d1, demande de
         # l'utilisateur) : Ctrl+F12 = Panic (key_handler_ctrl), Shift+F12 =
         # connecter / déconnecter les entrées, Ctrl+Shift+F12 = réinitialiser

@@ -11,7 +11,8 @@
     - rescan() : relit les périphériques (carte branchée après le lancement)
       — PortAudio est réinitialisé : tout flux ouvert doit être arrêté avant ;
     - tone() : La 440 Hz d'une seconde (bouton Tester de la sortie) ;
-      play_tone(device) ; input_peak_db(device) (Tester de l'entrée).
+      play_tone(device) ; input_peak_db(device) (Tester de l'entrée) ;
+    - device_latency(index, kind), format_ms() : latences annoncées.
     kind : "input" ou "output". Prototype Python, cible C/C++ comme le reste
     du moteur audio.
     Date: Wed, 11/11/2026
@@ -136,6 +137,24 @@ def device_name(index):
         return sd.query_devices(index)["name"]
     except (sd.PortAudioError, ValueError, IndexError):
         return ""
+
+
+def device_latency(index, kind):
+    """(basse, haute) : latences annoncées par PortAudio pour le
+    périphérique (secondes), dans le sens kind ; None si inconnu (Phase 8
+    étape 20d1 : affichées par Tester, pour comparer les cartes)."""
+    try:
+        info = sd.query_devices(index, kind) if index is not None else \
+            sd.query_devices(kind=kind)
+        return (float(info[f"default_low_{kind}_latency"]),
+                float(info[f"default_high_{kind}_latency"]))
+    except (sd.PortAudioError, ValueError, IndexError, KeyError, TypeError):
+        return None
+
+
+def format_ms(seconds):
+    """« 5,8 ms »."""
+    return f"{seconds * 1000:.1f} ms".replace(".", ",")
 
 
 def resolve_output(main_output, hostapi):

@@ -17,7 +17,7 @@ Application desktop Python permettant de jouer des sons via le pavé numérique,
 | Phase 5 | Mode Song, UndoManager, ProjectManager, TrackEditor, LoopSelectDialog, cache disque, Tap Tempo | ✓ |
 | Phase 6 | Éditeur MIDI (MidiEditorWindow), QuantizeDialog avancée, GridDialog | ✓ |
 | Phase 7 | Standardisation TapeEvent, parser MIDI, CC/PGM/Bend dans `_tape`, découpage du player, 16 pistes et canal par piste, export MIDI (.mid), conversion GM des notes de kit, courbe de volume GM et réglages GM par slot, Undo du mixage (mute, solo, volume, pan), volume et pan globaux sauvegardés, Undo des boucles, point propre de l'Undo, slot Banque FluidSynth (SF2/SF3, modèle « orchestre » : le canal est l'instrument), import MIDI (.mid → pattern), carte de tempo (plusieurs tempos par pattern, à 0,01 BPM), signatures rythmiques (une par pattern : 3/4, 6/8…) | ✓ |
-| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) ; pistes audio (type de piste Audio par pattern, prises WAV 24 bits dans `Audios/`, clips = fenêtres sur leur fichier, lecture calée sur le tempo à vitesse réelle, enregistrement par R / Shift+R / Ctrl+R avec compensation de latence, Overdub en clips superposés et Remplacer sur la plage en boucle, noms de piste par F2) ; export audio en un seul dialogue (source pattern / song / sélection / presse-papier, pistes sélectionnées, Mutes et Solos pris en compte ou non) puis le nom du fichier ; Options de l'enregistrement (Ctrl+Shift+R : mode Overdub / Remplacer / MPC « Remplacer puis Overdub », clic et décompte pendant la lecture et l'enregistrement, gardées dans le projet), Remplacer qui fait taire la piste ; Undo de la boucle (L) ; tests en trois niveaux Basique / Intermédiaire / Avancé (marques slow, audio, gui ; tools/tests.sh ; en parallèle), export sfizz sans notes muettes ; volume et pan de piste et pan global en temps réel sur ce qui sonne (clips, notes Wave et Kit ; rampe anti-clic de 10 ms), pan global sur toutes les pistes, retour de boucle sans notes perdues sous charge ; remise du volume et du pan par Retour arrière (Ctrl : globaux aux Préférences ; Shift : piste ou pad courant ; Ctrl+0 et Alt+0 libérés) | en cours |
+| Phase 8 | Jouer et produire : export audio WAV du pattern, de la sélection (pistes choisies ou toutes) ou du presse-papier (boucle exacte ou + résonance, limiteur, normalisation crête / RMS / LUFS-I) ; export d'un song en MIDI et en WAV ; pistes séparées (stems) ; pistes kit au canal 10 dans les données des patterns ; export du song depuis la fenêtre principale et l'éditeur MIDI ; mode Rack 16 canaux (le canal N d'une piste joue le slot N, par pattern) ; notes coupées avant un changement de son, relâchement là où la note a été jouée, Mute / Solo exclusifs (F3, F4) et F5 ; slot Synth SFZ joué par sfizz (banques de programmes SFZ : .bank.xml de Sforzando, dossiers, banques composées dans l'appli ; Program Change, gain par slot), appli entièrement fonctionnelle sans FluidSynth ni sfizz (--no-fluidsynth, --no-sfizz) ; fichiers audio rangés dans `src/audio/` ; limiteur du mix à l'écoute (sans latence ajoutée) et volume global jusqu'à 200 (+6 dB) ; mode Clavier d'office sur une banque ou un Synth SFZ, mode Pad sur un kit, pavé et contrôleur sur la même octave (NumPad 1 = touche la plus grave = do 2) ; dialogue des Préférences à onglets (Alt+Shift+P, `~/.config/groovyboxit/preferences.json` par-dessus `data/config.json` ; démarrage, Autoplay, Audio, Midi, dossiers des projets et des banques ; soundfonts et SFZ dans `banks/sf2` et `banks/sfz`) ; onglet Matériel (pilote, entrées et sorties audio et MIDI cochées, ouvertes ensemble au démarrage, sortie principale, Tester avec réécoute d'une entrée, Détecter, périphérique introuvable en boîte bloquante avec bip, raccourcis MIDI sur F12) et paquet autonome `src/devices/` ; entrée et sortie MIDI par piste (propriétés de piste : port externe coché ou son interne, notes traduites comme l'export, port absent → son interne avec avertissement ; jeu en direct filtré par l'entrée de la piste courante) ; overdub comme Sonar (toutes les frappes gardées), quantisation de toutes les notes (doublons, vélocité) et quantisation à l'enregistrement (Alt+Shift+Q) ; pistes audio (type de piste Audio par pattern, prises WAV 24 bits dans `Audios/`, clips = fenêtres sur leur fichier, lecture calée sur le tempo à vitesse réelle, enregistrement par R / Shift+R / Ctrl+R avec compensation de latence, Overdub en clips superposés et Remplacer sur la plage en boucle, noms de piste par F2) ; export audio en un seul dialogue (source pattern / song / sélection / presse-papier, pistes sélectionnées, Mutes et Solos pris en compte ou non) puis le nom du fichier ; Options de l'enregistrement (Ctrl+Shift+R : mode Overdub / Remplacer / MPC « Remplacer puis Overdub », clic et décompte pendant la lecture et l'enregistrement, gardées dans le projet), Remplacer qui fait taire la piste ; Undo de la boucle (L) ; tests en trois niveaux Basique / Intermédiaire / Avancé (marques slow, audio, gui ; tools/tests.sh ; en parallèle), export sfizz sans notes muettes ; volume et pan de piste et pan global en temps réel sur ce qui sonne (clips, notes Wave et Kit ; rampe anti-clic de 10 ms), pan global sur toutes les pistes, retour de boucle sans notes perdues sous charge ; remise du volume et du pan par Retour arrière (Ctrl : globaux aux Préférences ; Shift : piste ou pad courant ; Ctrl+0 et Alt+0 libérés) ; bips en onde carrée (module autonome `audio_beep` : montant pour les alertes et les questions, descendant avant le test de l'entrée) ; monitoring de l'entrée audio (F8, case des Options de l'enregistrement, gardée dans le projet : piste audio courante entendue à l'arrêt, en lecture et en prise) | en cours |
 
 ---
 
@@ -67,6 +67,7 @@ groovyboxit/
 │   │   ├── track_audio_clips.py # TrackAudioMixin : lecture des clips audio des pistes audio (Phase 8 étape 14d1)
 │   │   ├── audio_takes.py    # Prises audio : dossier Audios, noms, WAV 24 bits, copie à Enregistrer sous (Phase 8 étape 14b1)
 │   │   ├── audio_beep.py     # Bips en dents de scie, module autonome : ALERT (alertes, questions), CONFIRM (Phase 8 étape 20b1)
+│   │   ├── input_monitor.py  # InputMonitor : entrée rejouée dans le mix (tampon circulaire, gain de piste) (Phase 8 étape 20d1)
 │   │   ├── audio_recorder.py # AudioRecorder : prise audio (flux d'entrée, datation, WAV 24 bits), placement compensé (Phase 8 étape 14f1)
 │   │   ├── audio_export.py   # Export audio WAV : rendu hors temps réel, limiteur, LUFS-I (Phase 8 étape 1) ; song et stems (étape 2)
 │   │   ├── audio_sampler.py  # AudioSampler : boucle, crossfade, ADSR, pitch shifting
@@ -126,6 +127,7 @@ groovyboxit/
 │       ├── midi_editor_window.py # Fenêtre Éditeur MIDI (Alt+4)
 │       ├── midi_handler_window.py # Logique MIDI (séparée de MainWindow)
 │       ├── mw_devices.py       # Mixin MainWindow : périphériques MIDI (démarrage, F12, tests), HardwareAccess
+│       ├── mw_audio_monitor.py # Mixin MainWindow : monitoring de l'entrée audio, F8 (Phase 8 étape 20d1)
 │       ├── mw_audio_rec.py     # Mixin MainWindow : enregistrement d'une prise audio sur la piste audio courante (Phase 8 étape 14f1)
 │       ├── mw_record_options.py # Mixin MainWindow : Options de l'enregistrement, Ctrl+Shift+R (Phase 8 étape 16b1)
 │       ├── mw_midi_editor.py   # Mixin MainWindow : ouverture éditeur MIDI
@@ -347,7 +349,10 @@ Le projet garde le nouveau chemin à son prochain enregistrement.
 - **Tester** (ligne sous le curseur, cochée ou non) : sortie audio = La
   440 Hz d'une seconde ; entrée audio = **bip de confirmation** (Phase 8
   étape 20b1 ; attendu jusqu'au bout, pour ne pas être capté), puis 3
-  secondes d'écoute, diagnostic
+  secondes d'écoute, diagnostic avec la **latence d'entrée** annoncée
+  (basse à haute) et une estimation de la latence du **monitoring**
+  (entrée basse + sortie de l'appli + amorce de 256 échantillons ; Phase 8
+  étape 20d1) ; la sortie affiche sa **latence de sortie** ;
   (« silence », « signal bloqué à pleine échelle », « signal présent —
   niveau moyen, crête ») et **réécoute** de ce qui a été capté ; sortie
   MIDI = A4 d'une seconde (« Synthé FluidSynth » : un FluidSynth à part,
@@ -360,8 +365,9 @@ Le projet garde le nouveau chemin à son prochain enregistrement.
   introuvable » avec un bouton Ok, le nom du périphérique et le bip
   d'alerte (joué par l'appli) ; aussi dans la barre d'état.
 - **Bips** (Phase 8 étape 20b1, module autonome `audio/audio_beep.py`) :
-  deux notes en onde carrée (880 et 1 319 Hz, 0,12 s chacune ; dents de
-  scie possibles par le module), jouées
+  deux notes en onde carrée (880 et 1 319 Hz, 0,12 s chacune ; crête 0,15,
+  même niveau moyen que les dents de scie à 0,25, possibles par le
+  module), jouées
   par la sortie de l'appli (`wx.Bell()` en repli) ; **montant** pour les
   alertes et les questions (périphérique introuvable, prise audio refusée,
   tempo invalide, export audio invalide, « Remplacer ? », « Enregistrer
@@ -1178,7 +1184,8 @@ volume général ne sont pas concernés.
   4. **Clic pendant l'enregistrement** (cochée) : Rec démarre le métronome
      (il s'arrête au Stop s'il ne tournait pas avant) ; décochée, ni Rec ni
      la fin du décompte de Ctrl+R ne le laissent tourner ;
-  5. **Décompte pendant l'enregistrement** (1 mesure) : celui de Ctrl+R.
+  5. **Décompte pendant l'enregistrement** (1 mesure) : celui de Ctrl+R ;
+  6. **Monitoring de l'entrée (F8)** (décochée) : voir ci-dessous.
 
   Décomptes : aucun, 1, 2, 4 ou 8 mesures. Espace pendant un décompte
   l'annule.
@@ -1189,9 +1196,32 @@ volume général ne sont pas concernés.
 - **R et Ctrl+R suivent le mode** (annonce « Rec : … », « Replace Rec :
   … », « Rec (MPC) : … ») ; **Shift+R** reste un Remplacer simple.
 - **Gardées dans le projet** : clé `record_options` du `.gvp` (`mode`,
-  `click_play`, `count_in_play`, `click_record`, `count_in`) ; absente ou
-  Ctrl+N → les défauts (le comportement d'avant) ; changer les options est
-  un point d'Undo.
+  `click_play`, `count_in_play`, `click_record`, `count_in`, `monitor`) ;
+  absente ou Ctrl+N → les défauts (le comportement d'avant) ; changer les
+  options est un point d'Undo.
+
+### Monitoring de l'entrée audio (F8, Phase 8 étape 20)
+- **Case « Monitoring de l'entrée (F8) »** des Options de l'enregistrement,
+  **décochée** par défaut, gardée dans le projet (aucune donnée dans les
+  patterns) ; **F8** la bascule depuis la fenêtre principale, quel que soit
+  le focus, avec un point d'Undo et l'annonce « Monitoring de l'entrée
+  activé (piste 3 — <entrée>) », « … activé (piste courante non audio) »
+  ou « … désactivé ».
+- Case cochée : l'entrée de la **piste courante**, si c'est une piste
+  audio, s'entend **à l'arrêt, pendant la lecture et pendant une prise**
+  (décompte compris), au **volume** et au **pan** de la piste (+ pan
+  global), muette si la piste l'est (Mute, hors Solo) ; pendant la
+  lecture, les clips de la piste s'entendent aussi. Changer de piste
+  change l'entrée écoutée ; une piste MIDI n'écoute rien. Pas
+  d'armement : R enregistre toujours sur la piste courante.
+- **Un seul flux d'entrée** : pendant une prise, l'enregistrement relaie
+  ce qu'il capte. Entrée refusée → bip d'alerte et barre d'état (pas
+  redemandée avant un changement de piste ou d'entrée).
+- Latence : bloc d'entrée de 256 échantillons, retard gardé sous trois
+  blocs du mix ; la mise à jour suit la piste, le volume, le pan, le Mute
+  en 100 ms au plus.
+- **Larsen** : avec un micro et des haut-parleurs, le monitoring peut
+  siffler — F8 le coupe tout de suite.
 
 ### Mode Overdub (R)
 - Ajoute les nouvelles notes sans effacer les existantes
