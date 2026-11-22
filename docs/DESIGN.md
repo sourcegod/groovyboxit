@@ -16493,3 +16493,17 @@ jour) ; 2d1 — clôture.
 - `tests/test_menu_bar.py` importe encore `ui.gtk_menu` : en erreur
   jusqu'à 2c1 (le reste de l'Avancé est vert).
 - **Essai concluant (2026-11-22)** : l'appli marche comme avant ; démonstration python3 -m menukeys concluante.
+
+### Avancement 2c1 — tests du paquet menukeys (2026-11-22)
+
+- `tests/test_menukeys.py`, 56 tests (13 `gui`, sur la fenêtre de
+  démonstration) ; `tests/test_menu_bar.py` importe `menukeys.gtk_menu`
+  (103 tests, de nouveau chargés).
+- 12 mutations détectées : autre touche qui ne désarme pas, AltGr compté,
+  focus perdu sans effet, Ctrl+Alt armé, fenêtre inactive, pas de suivi
+  d'Alt dans les menus, sur la fenêtre, « && » lu comme une lettre,
+  lettres prises ignorées, lettre ajoutée absente, raccourcis non
+  affichés, signal « key-release-event » au lieu de « event ».
+- Piège : le sous-menu d'un élément sélectionné ne s'ouvre qu'après un
+  court délai de GTK → attente de son affichage avant d'y envoyer une
+  touche.

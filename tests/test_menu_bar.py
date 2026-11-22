@@ -25,7 +25,8 @@ import pytest
 import wx
 from conftest import main_thread_call_after
 
-from ui import gtk_menu, menu_bar
+from menukeys import gtk_menu
+from ui import menu_bar
 from ui.key_manager import KeyManager
 from ui.menu_bar import Item, MENUS, SEP, Submenu
 
