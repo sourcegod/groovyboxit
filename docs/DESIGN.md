@@ -16507,3 +16507,37 @@ jour) ; 2d1 — clôture.
 - Piège : le sous-menu d'un élément sélectionné ne s'ouvre qu'après un
   court délai de GTK → attente de son affichage avant d'y envoyer une
   touche.
+
+## Phase 9 étape 2d1 — Clôture : Alt seul, paquet menukeys
+
+**Bilan.** Alt seul ouvre et ferme la barre de menus dans les trois
+fenêtres, à la manière de Firefox (au relâchement d'Alt sans autre
+touche ; AltGr, Alt+lettre, Ctrl+Alt, retour par Alt+Tab, fenêtre
+inactive : rien). Tout le clavier de la barre est devenu un paquet
+autonome, `src/menukeys/` (wx + ctypes), réutilisable dans d'autres
+applis, avec sa démonstration (`python3 -m menukeys`) ; GroovyboxIt
+l'utilise. 56 tests du paquet, 12 mutations détectées.
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 2a (5dc2e88) | Plan |
+| 2b1 (167f2a1) | Alt seul |
+| 2b2 (edef37a) | Avenant : paquet autonome menukeys |
+| 2b3 (38bcea8) | Paquet menukeys, démonstration |
+| 2c1 (16a1c7e) | Tests du paquet |
+| 2d1 | Clôture |
+
+**Décisions.** Alt seul referme aussi la barre ; aucune durée limite ;
+pas une touche d'Orca ; F10 gardé ; paquet de portée complète, nommé
+menukeys (demandes de l'utilisateur).
+
+**Trouvailles.** Le signal GTK « event » passe avant « key-press-event » :
+le suivi d'Alt voit aussi les touches que wx prend ; la perte du focus
+désarme Alt (Alt+Tab) ; dans les tests, `wx.SafeYield` désactive les
+fenêtres et empêche une barre de s'ouvrir → vider les `CallAfter` d'abord.
+
+**Suites.** Éléments de menus à ajouter par l'utilisateur ; Copier /
+Couper / Coller, Sélectionner tout dans Edition ; éléments propres à
+l'éditeur MIDI ; SpeechAccess si besoin.
