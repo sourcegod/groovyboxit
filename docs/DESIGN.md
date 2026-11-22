@@ -16429,3 +16429,49 @@ d'Orca. Plan accepté.
   `CallAfter` se vident d'abord par `ProcessPendingEvents`.
 - Aide F1 : « F10 / Alt seul ».
 - **Essai concluant (2026-11-22)** : Alt seul ouvre et ferme la barre dans les trois fenêtres et les sous-menus ; Alt+X, AltGr, Alt+Tab : rien ; Alt+I de l'éditeur gardé. Demande de l'utilisateur : en faire un paquet autonome (avenant 2b2).
+
+### Avenant 2b2 — paquet autonome `menukeys` (2026-11-22)
+
+**Demande de l'utilisateur** (essai de 2b1) : « cela marche tellement bien
+qu'il faut en faire un module autonome, utilisable dans d'autres
+applis » ; portée **complète** (tout le comportement clavier de la barre),
+nom **menukeys**.
+
+**M1 — Paquet `src/menukeys/`**, AUTONOME comme `src/devices/` et
+`audio_beep` : n'importe rien de GroovyboxIt ; dépendances wxPython
+(GTK3) et ctypes. Hors de GTK, ou GTK introuvable : sans effet, la barre
+reste celle de wx.
+
+**M2 — Contenu :**
+- `menukeys/gtk_menu.py` : l'actuel `src/ui/gtk_menu.py`, déplacé
+  (`git mv`) — accès GTK par ctypes, AltState, rappels.
+- `menukeys/keys.py` : `key_event(accel)`, `accel_of(evt)`,
+  `gtk_accel(accel)` (syntaxe « Ctrl+Shift+S »).
+- `menukeys/__init__.py` : `enable(frame, accels=None, letters=None,
+  taken=(), on_status=None)` → un objet `MenuKeys` :
+  - raccourcis **affichés** sans être enregistrés : `accels` = {id de
+    l'élément wx : « Ctrl+S »} ;
+  - **lettres** : celles des titres (« &Fichier »), plus `letters` =
+    {indice du menu : lettre absente du titre} (Alt+W) ; `taken` = lettres
+    prises par les commandes de la fenêtre (K3) ;
+  - **Alt seul** ouvre / ferme ; **Alt+lettre** menu ouvert, alternance ;
+    **Échap** dans un sous-menu où l'on est entré ;
+  - méthodes : `handle_key(evt)` (à appeler dans le clavier de la fenêtre,
+    après ses commandes : Alt+lettre d'un menu, F10 ; True si pris),
+    `open_menu(lettre)`, `open_first()`, `close()`, `open_menus()`.
+- `python3 -m menukeys` : petite fenêtre de démonstration (barre avec
+  lettres partagées, sous-menu, raccourcis affichés, champ de saisie), pour
+  l'essayer seul.
+
+**M3 — GroovyboxIt** : `menu_bar.py` garde ce qui est propre à l'appli
+(MENUS, fenêtres, grisés, rejeu des raccourcis, Fichier de partout, retour
+du focus) et confie le reste à `menukeys.enable` ; `KeyManager`,
+`mew_keymap`, `song_window` passent par `MenuKeys.handle_key` (via
+`menu_bar`).
+
+**Étapes (renumérotées)** : 2b3 — implémentation (paquet, déplacement,
+GroovyboxIt branché, démonstration ; les tests qui visent
+`ui.gtk_menu` restent rouges jusqu'à 2c1) ; essai de l'utilisateur
+(l'appli inchangée, et `python3 -m menukeys`) ; 2c1 — tests (paquet :
+autonomie, enable, Alt seul, lettres, Échap ; tests de la barre mis à
+jour) ; 2d1 — clôture.
