@@ -544,6 +544,14 @@ Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
 
 --- Aide ---
 F1               Afficher cette aide
+F10              Ouvrir la barre de menus (menu Fichier) ; Gauche / Droite : menu
+                 voisin, Haut / Bas : élément, Échap : remonter d'un sous-menu ou
+                 fermer la barre ; les raccourcis sont affichés dans les éléments
+Alt+lettre       Ouvrir un menu : F Fichier / Effets, E Edition, T Transport /
+                 Piste, G Aller à, I Insertion, A Affichage / Aide, R Traitement,
+                 O Outils, N Options, W Fenêtres ; une lettre partagée alterne,
+                 même menu ouvert ; les commandes Alt+lettre (Alt+X, Alt+L…)
+                 gardent la priorité
 F3 / F4          Mute exclusif / Solo exclusif (voir « Pistes »)
 F5               Réinitialiser tous les Mute et Solo de piste
 F8               Monitoring de l'entrée audio On / Off

@@ -16123,3 +16123,48 @@ dans une fenêtre y grise l'élément (K5).
 - Alt seul pour ouvrir la barre (K1, à la manière de Firefox).
 - Alternance maison des lettres partagées, si GTK ne la fait pas (K2).
 - Lecture des menus par SpeechAccess, si Orca ne suffit pas (K4).
+
+### Avancement 1b1 — barre de la fenêtre principale (2026-11-22)
+
+- `src/ui/gtk_menu.py` (accès GTK par ctypes) et `src/ui/menu_bar.py`
+  (description `MENUS`, `Item`, `Submenu`, construction, actions,
+  `MenuBarMixin`) ; `MainWindow` pose sa barre ; `KeyManager` : F10, puis
+  Alt+lettre d'un menu **après** les commandes Alt+lettre (K3).
+- **T1 retenu : moyen 1.** `gtk_accel_label_set_accel` affiche le
+  raccourci sans l'enregistrer ; ATK le transmet (Orca le lit : essai).
+- **T3 :** un élément rejoue son raccourci par `_on_char_hook` (vrai chemin
+  du clavier, focus revenu) ; sans effet ici → annoncé dans la barre d'état.
+  Les actions dépendant du focus appellent leur méthode (Renommer la piste,
+  Renommer le pattern).
+- **K2 :** GTK alterne de lui-même les menus de même lettre. **Essai :** il
+  fallait refermer le menu pour passer au suivant → rappel GTK
+  `key-press-event` sur chaque menu ouvert : Alt+lettre d'un menu y rouvre
+  le menu de la lettre (alternance immédiate, Alt+F : Fichier, Effets…).
+- Lettres absentes du titre ajoutées par `gtk_window_add_mnemonic` :
+  Fenêtres (Alt+W), Aller à (Alt+G).
+- **Demandes de l'essai (2026-11-22) :** Quitter affiche Alt+F4 ; Panic
+  passe de Transport à Options ; nouveau menu **Aller à** après Transport
+  (début, fin, position, mesure, battement, pas, seconde) ; Fenêtres
+  numérotées (« 1 - Fenêtre principale »…) ; Traitement en sous-menus
+  **Audio** (vide pour l'instant) et **MIDI** (quantisation).
+- **Alt seul (K1), recherche demandée à l'essai :** Firefox le fait dans
+  son propre code (`nsMenuBarListener`, réglage
+  `ui.key.menuAccessKeyFocuses`) : la barre prend le focus au
+  **relâchement** d'Alt, si aucune autre touche n'a été frappée. VLC (Qt) :
+  c'est `QMenuBar` qui le fait, selon le style (`SH_MenuBar_AltKeyNavigation`).
+  Ni l'un ni l'autre ne passe par GTK. Chez nous : suivre l'appui d'Alt
+  dans `EVT_CHAR_HOOK`, puis son relâchement (`wx.GetKeyState`), sans autre
+  touche entre les deux et fenêtre toujours active (Alt+Tab), puis
+  `open_first` — étape à part si l'utilisateur le décide.
+- **Second essai (2026-11-22) :** alternance menu ouvert, Aller à,
+  Fenêtres, Alt+F4 : concluants. Corrigés : **Échap dans un sous-menu**
+  refermait toute la barre (GTK) → dans un sous-menu, Échap émet
+  `move-current` vers le parent, comme Gauche. Essais suivants : dans
+  Traitement, Échap ne fermait plus la barre — GTK ouvre de lui-même le
+  sous-menu de l'élément sélectionné (Audio, Midi) sans y entrer, et lui
+  envoie les touches ; remonter le rouvrait aussitôt. Échap n'est donc
+  pris que si l'on est **entré** dans le sous-menu (un élément y est
+  sélectionné), sinon il est laissé à GTK, qui ferme la barre ; sous-menu « MIDI » écrit
+  « **Midi** » (Orca l'épelait en majuscules). **Alt seul** : noté pour une
+  prochaine étape (décision de l'utilisateur).
+- **Essai concluant (2026-11-22)** : Échap ferme la barre depuis Traitement, remonte d'un sous-menu (Audio, Midi) puis ferme.

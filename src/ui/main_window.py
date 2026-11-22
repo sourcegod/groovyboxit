@@ -44,6 +44,8 @@ from ui.mw_devices     import DevicesMixin
 from ui.mw_audio_rec   import AudioRecMixin
 from ui.mw_audio_monitor import AudioMonitorMixin
 from ui.mw_record_options import RecordOptionsMixin
+from ui import menu_bar
+from ui.menu_bar import MenuBarMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -75,7 +77,7 @@ class _LoadingDialog(wx.Dialog):
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
                  MidiEditorMixin, TempoMixin, DevicesMixin, AudioRecMixin,
-                 AudioMonitorMixin, RecordOptionsMixin, wx.Frame):
+                 AudioMonitorMixin, RecordOptionsMixin, MenuBarMixin, wx.Frame):
     ROWS = 16
     COLS = 16
     NR_BINARY  = [0, 1, 3, 5, 7, 9, 11, 13]
@@ -219,6 +221,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         self._router.load_slot_preview(1)
         self._key_manager = KeyManager(self)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        menu_bar.install(self, menu_bar.MAIN)      # barre de menus (Phase 9 étape 1b1)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Centre()
         self._started = True        # avertissements suivants : boîte tout de suite (12b1)

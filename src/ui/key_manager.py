@@ -8,6 +8,8 @@
 import types
 import wx
 
+from . import menu_bar
+
 from .key_handler_alt        import AltHandler
 from .key_transport          import TransportHandler
 from .key_handler_ctrl       import CtrlHandler
@@ -88,6 +90,14 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if key == wx.WXK_BACK and self._handle_mix_reset(ctx):
             return
         if ctx.alt and self._handle_alt(event, ctx):
+            return
+        # Alt+lettre d'un menu, après les commandes Alt+lettre (K3), F10 :
+        # barre de menus (Phase 9 étape 1b1, § 1a K1, K2)
+        if ctx.alt and not (ctx.ctrl or ctx.shift) and 0 < ukey < 128 \
+                and chr(ukey).isalpha() and menu_bar.open_menu(win, chr(ukey)):
+            return
+        if key == wx.WXK_F10 and not (ctx.ctrl or ctx.alt or ctx.shift) \
+                and menu_bar.open_first(win):
             return
         if ctx.ctrl and self._handle_ctrl(event, ctx):
             return
