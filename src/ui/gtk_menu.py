@@ -226,6 +226,86 @@ def on_menu_alt_letter(parent_item, handler, keep, escape_to_parent=False):
     _gobject().g_signal_connect_data(sub, b"key-press-event", cb, None, None, 0)
 
 
+# ----------------------------------------------------------------------
+# Alt seul (Phase 9 étape 2b1, docs/DESIGN.md § Phase 9 étape 2a)
+# ----------------------------------------------------------------------
+
+ALT_KEYS = (0xffe9, 0xffea)     # Alt_L, Alt_R ; AltGr (ISO_Level3_Shift, 0xfe03) exclu (A2)
+GDK_KEY_PRESS, GDK_KEY_RELEASE, GDK_FOCUS_CHANGE = 8, 9, 12
+
+
+class AltState:
+    """Alt « armé » : appuyé seul, sans autre touche depuis (A1, à la manière
+    de Firefox). Partagé par une fenêtre et ses menus."""
+
+    def __init__(self):
+        self.armed = False
+
+    def feed(self, etype, keyval=0, state=0):
+        """Un événement GDK ; True au relâchement d'un Alt armé (Alt seul)."""
+        if etype == GDK_KEY_PRESS:
+            # toute autre touche désarme (Alt+X, Alt+F4…) ; Ctrl+Alt, Shift+Alt
+            # ne s'arment pas
+            self.armed = keyval in ALT_KEYS and not state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)
+            return False
+        if etype == GDK_KEY_RELEASE and keyval in ALT_KEYS:
+            fired, self.armed = self.armed, False
+            return fired
+        if etype == GDK_FOCUS_CHANGE:
+            # Alt+Tab : la fenêtre perd le focus, Tab ne lui arrive pas ; au
+            # retour, le relâchement d'Alt ne doit rien ouvrir (A4)
+            self.armed = False
+        return False
+
+
+class _GdkEventAny(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int)]
+
+
+def watch_alt(widget, alt_state, on_alone, keep):
+    """Suit Alt sur widget (fenêtre de premier niveau ou menu) par le signal
+    GTK « event », émis AVANT « key-press-event » : la fenêtre (wx) ou le
+    rappel des lettres de menu peuvent prendre une touche, le suivi la voit
+    quand même. Ne prend jamais la touche. on_alone() au relâchement d'un Alt
+    seul."""
+    if not available() or not widget:
+        return
+
+    def _cb(_widget, event, _data):
+        try:
+            etype = ctypes.cast(event, ctypes.POINTER(_GdkEventAny)).contents.type
+            if etype in (GDK_KEY_PRESS, GDK_KEY_RELEASE):
+                ev = ctypes.cast(event, ctypes.POINTER(_GdkEventKey)).contents
+                if alt_state.feed(etype, ev.keyval, ev.state):
+                    on_alone()
+            elif etype == GDK_FOCUS_CHANGE:
+                alt_state.feed(etype)
+        except Exception:               # jamais d'exception à travers GTK
+            pass
+        return 0
+
+    cb = _KEY_CB(_cb)
+    if not hasattr(keep, "_gtk_menu_callbacks"):
+        keep._gtk_menu_callbacks = []
+    keep._gtk_menu_callbacks.append(cb)
+    _gobject().g_signal_connect_data(widget, b"event", cb, None, None, 0)
+
+
+def toplevel(menubar):
+    """GtkWindow de la fenêtre qui porte la barre, ou None."""
+    if not available() or not isinstance(menubar, wx.MenuBar):
+        return None
+    return _toplevel(menubar)
+
+
+def submenu(item):
+    """GtkMenu d'un élément de barre ou de menu, ou None."""
+    if not available():
+        return None
+    g, _gl = _lib()
+    return g.gtk_menu_item_get_submenu(item)
+
+
 _gobj = None
 
 

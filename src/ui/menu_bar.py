@@ -242,15 +242,36 @@ def _decorate(win, bar, kind):
     if not gtk_menu.available():
         return
     gtk_bar = gtk_menu.bar_items(bar)
+    # Alt seul (Phase 9 étape 2b1) : un état partagé par la fenêtre et ses
+    # menus ; fenêtre → ouvre la barre, menu ouvert → la referme
+    win._alt_state = gtk_menu.AltState()
+    gtk_menu.watch_alt(gtk_menu.toplevel(bar), win._alt_state,
+                       lambda: wx.CallAfter(alt_alone, win), keep=win)
     for (title, letter, items), bar_item in zip(MENUS, gtk_bar):
         if letter not in TAKEN.get(kind, ()) and letter.lower() not in title.lower():
             gtk_menu.add_mnemonic(bar, letter, bar_item)
         _decorate_menu(win, items, bar_item)
 
 
+def alt_alone(win):
+    """Alt seul relâché dans la fenêtre (2a, A1-A5) : ouvre la barre sur
+    Fichier, si la fenêtre est toujours là et active (A4)."""
+    if not win or win.IsBeingDeleted() or not win.IsActive():
+        return
+    open_first(win)
+
+
+def alt_alone_in_menu(win):
+    """Alt seul relâché dans un menu ouvert (A3) : referme la barre."""
+    if win and not win.IsBeingDeleted():
+        gtk_menu.close(win.GetMenuBar())
+
+
 def _decorate_menu(win, items, gtk_parent, nested=False):
     """nested : sous-menu d'un menu (Échap y remonte d'un niveau, essai de
     1b1 : GTK refermait toute la barre)."""
+    gtk_menu.watch_alt(gtk_menu.submenu(gtk_parent), win._alt_state,
+                       lambda: wx.CallAfter(alt_alone_in_menu, win), keep=win)
     gtk_menu.on_menu_alt_letter(gtk_parent, lambda letter: open_menu(win, letter),
                                 keep=win, escape_to_parent=nested)
     for item, gtk_item in zip(items, gtk_menu.menu_items(gtk_parent)):

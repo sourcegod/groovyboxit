@@ -550,7 +550,8 @@ Note: les raccourcis de transport (PageUp/Down, w, b, Ctrl+G, Ctrl+Shift+G…)
 
 --- Aide ---
 F1               Afficher cette aide
-F10              Ouvrir la barre de menus (menu Fichier) ; Gauche / Droite : menu
+F10 / Alt seul   Ouvrir la barre de menus (menu Fichier) ; Alt seul (appuyé puis
+                 relâché sans autre touche, pas AltGr) la referme aussi ; Gauche / Droite : menu
                  voisin, Haut / Bas : élément, Échap : remonter d'un sous-menu ou
                  fermer la barre ; les raccourcis sont affichés dans les éléments
 Alt+lettre       Ouvrir un menu : F Fichier / Effets, E Edition, T Transport /

@@ -16409,3 +16409,23 @@ d'Orca. Plan accepté.
   et aux menus, sous Xvfb (Alt seul, Alt+lettre, Alt+Tab au retour, AltGr,
   fenêtre inactive, fermeture par Alt).
 - **2d1** — clôture ; aide F1, SPECS, DESIGN.
+
+### Avancement 2b1 — Alt seul (2026-11-22)
+
+- `gtk_menu.AltState` (armé à l'appui d'Alt_L / Alt_R sans Ctrl ni Shift,
+  désarmé par toute autre touche et par la perte du focus, déclenché au
+  relâchement d'un Alt armé ; AltGr exclu) et `gtk_menu.watch_alt`
+  (signal GTK « event », émis avant « key-press-event » : le suivi voit
+  aussi les touches que wx ou le rappel des lettres prennent ; ne prend
+  jamais la touche) ; un état par fenêtre, partagé avec ses menus.
+- `menu_bar` : `alt_alone` (fenêtre active → Fichier, comme F10),
+  `alt_alone_in_menu` (menu ouvert → la barre se referme), lancés par
+  `wx.CallAfter` ; branchés dans `_decorate` pour la fenêtre et chaque
+  menu ou sous-menu ; les trois fenêtres en profitent.
+- Essai synthétique (Xvfb, touches par `gtk_widget_event`) : Alt seul ouvre
+  Fichier ; Alt seul menu ouvert referme ; Alt+X, AltGr, relâchement sans
+  appui : rien. Piège de test : `wx.SafeYield` désactive les fenêtres
+  pendant qu'il tourne ; un menu ouvert à ce moment ne s'ouvre pas → les
+  `CallAfter` se vident d'abord par `ProcessPendingEvents`.
+- Aide F1 : « F10 / Alt seul ».
+- **Essai concluant (2026-11-22)** : Alt seul ouvre et ferme la barre dans les trois fenêtres et les sous-menus ; Alt+X, AltGr, Alt+Tab : rien ; Alt+I de l'éditeur gardé. Demande de l'utilisateur : en faire un paquet autonome (avenant 2b2).
