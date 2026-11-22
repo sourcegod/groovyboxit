@@ -11,6 +11,7 @@ Ctrl+Shift+S     Enregistrer le projet sous... ; case « Créer un nouveau dossi
 Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
 Shift+Z          Refaire
 Ctrl+Shift+Z     Afficher l'historique des annulations
+Alt+F4           Quitter (demande d'enregistrer si le projet est modifié)
 Alt+Shift+P      Préférences (depuis toutes les fenêtres) : onglets Général, Matériel
                  (pilote audio ; entrées et sorties audio et MIDI à cocher, Espace ;
                  sortie principale ; Tester : La 440 Hz / A4 d'une seconde, niveau
@@ -320,6 +321,7 @@ Ctrl+T / Entrée  Assigner le slot sélectionné dans la liste des slots à la p
                  (Undo « Piste N → canal M ») ; les notes de la piste sont
                  coupées avant
 Ctrl+Entrée      Ouvrir la boîte de sélection de pistes + plage temporelle (bar:beat:tick)
+Ctrl+Shift+T     Propriétés de la piste courante, quel que soit le focus (≡ Alt+Entrée)
 Alt+Entrée       Ouvrir les propriétés de la piste sélectionnée :
                  Type de piste (MIDI ou Audio ; une piste audio enregistre une entrée
                  audio, ses réglages MIDI sont grisés), Entrée audio (entrées cochées

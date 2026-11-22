@@ -16168,3 +16168,18 @@ dans une fenêtre y grise l'élément (K5).
   « **Midi** » (Orca l'épelait en majuscules). **Alt seul** : noté pour une
   prochaine étape (décision de l'utilisateur).
 - **Essai concluant (2026-11-22)** : Échap ferme la barre depuis Traitement, remonte d'un sous-menu (Audio, Midi) puis ferme.
+
+### Avancement 1c1 — tests de la barre de menus (2026-11-22)
+
+- `tests/test_menu_bar.py`, 62 tests (17 `gui` : une fenêtre affichée pour
+  tout le module, une vraie fenêtre principale). Les touches ne passent
+  jamais par le vrai clavier : elles sont envoyées aux menus GTK par
+  `gtk_widget_event` (fenêtre GDK posée dans l'événement, sinon GTK
+  l'ignore). T1 vérifié par `gtk_accel_groups_activate` : Ctrl+Shift+S et R
+  ne déclenchent rien par GTK.
+- 7 mutations détectées : raccourci enregistré par wx, Échap sans le test
+  « entré dans le sous-menu », Alt+lettre menu ouvert, Alt+W / Alt+G,
+  priorité des commandes Alt+lettre, annonce « sans effet ici », éléments
+  grisés.
+- Aide F1 : Ctrl+Shift+T (propriétés de la piste) et Alt+F4 (Quitter)
+  manquaient ; ajoutés.
