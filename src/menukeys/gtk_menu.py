@@ -1,16 +1,19 @@
 #python3
 """
-    File: src/ui/gtk_menu.py
-    Accès GTK de la barre de menus (Phase 9 étape 1b1, docs/DESIGN.md
-    § Phase 9 étape 1a, T1, K2) — par ctypes, comme gtk_listbox.py :
+    File: src/menukeys/gtk_menu.py
+    Paquet menukeys — accès GTK de la barre de menus, par ctypes (GroovyboxIt,
+    Phase 9 étapes 1b1-2b1 ; déplacé de src/ui/ en 2b3, docs/DESIGN.md
+    § Phase 9 étape 2a, avenant 2b2). AUTONOME : wx et ctypes seulement.
     - set_accel_text(item, accel) : raccourci AFFICHÉ dans l'élément de menu
       (GtkAccelLabel) et transmis à Orca (ATK), sans raccourci GTK enregistré :
       le clavier de l'appli reste seul à déclencher les commandes ;
-    - add_mnemonic(window, letter, item) : lettre d'un menu dont le titre ne
+    - add_mnemonic(menubar, letter, item) : lettre d'un menu dont le titre ne
       la contient pas (Fenêtres → Alt+W) ;
-    - activate_mnemonic(window, letter) : ouvre le menu de la lettre comme
-      Alt+lettre ; deux menus de même lettre → GTK alterne de lui-même
-      (constaté en 1b1 : Alt+A = Affichage, Aide, Affichage…) ;
+    - activate_mnemonic(menubar, letter) : ouvre le menu de la lettre comme
+      Alt+lettre ; deux menus de même lettre → GTK alterne de lui-même ;
+    - on_menu_alt_letter : Alt+lettre dans un menu ouvert, Échap dans un
+      sous-menu où l'on est entré ;
+    - AltState, watch_alt : Alt seul (appuyé puis relâché sans autre touche) ;
     - bar_items(menubar), menu_items(bar_item) : éléments GTK, dans l'ordre.
     Hors de GTK, ou si GTK est introuvable : rien (fonctions sans effet).
     Date: Sat, 21/11/2026
@@ -19,6 +22,8 @@
 import ctypes
 
 import wx
+
+from .keys import gtk_accel
 
 _gtk = None          # (libgtk-3, libglib-2.0) chargées, False si indisponibles
 
@@ -98,17 +103,6 @@ def label(item):
     g, _gl = _lib()
     text = g.gtk_menu_item_get_label(item)
     return (text or b"").decode("utf-8").replace("_", "")
-
-
-def gtk_accel(accel):
-    """« Ctrl+Shift+S » → « <Control><Shift>s » (syntaxe de GTK)."""
-    parts = accel.split("+")
-    mods = {"Ctrl": "<Control>", "Shift": "<Shift>", "Alt": "<Alt>"}
-    keys = {"Espace": "space", "Entrée": "Return", "Échap": "Escape",
-            "PageUp": "Page_Up", "PageDown": "Page_Down"}
-    prefix = "".join(mods[p] for p in parts[:-1])
-    key = parts[-1]
-    return prefix + keys.get(key, key.lower() if len(key) == 1 else key)
 
 
 def set_accel_text(item, accel):

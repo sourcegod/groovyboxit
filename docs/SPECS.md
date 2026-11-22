@@ -88,6 +88,11 @@ groovyboxit/
 │   │   ├── __main__.py   # python3 -m devices : liste, --tone, --input, --note, --listen
 │   │   ├── audio_device.py # Pilotes et périphériques PortAudio par nom, La 440 Hz, crête d'une entrée
 │   │   └── midi_device.py  # Ports MIDI par nom, plusieurs entrées ensemble, sorties, A4, prochaine note
+│   ├── menukeys/         # Paquet AUTONOME (wx + ctypes, sans import de l'appli) : clavier d'une barre de menus GTK3 (Phase 9 étape 2b3)
+│   │   ├── __init__.py   # enable(frame, accels, letters, taken) → MenuKeys : Alt seul, F10, Alt+lettre et alternance, Échap de sous-menu
+│   │   ├── __main__.py   # python3 -m menukeys : fenêtre de démonstration
+│   │   ├── gtk_menu.py   # Accès GTK par ctypes : raccourcis affichés sans être enregistrés, lettres, rappels des menus, Alt seul
+│   │   └── keys.py       # key_event, accel_of, gtk_accel (« Ctrl+Shift+S »)
 │   ├── midi/             # MIDI (Phase 7 étape 3, export en Phase 7 étape 10, import en Phase 7 étape 18)
 │   │   ├── midi_constants.py # Noms CC, GM, kits GM2 ; guess_gm_program
 │   │   ├── midi_editor.py    # MidiEditor : logique événements MIDI (lecture, édition)
@@ -117,7 +122,6 @@ groovyboxit/
 │       ├── dialogs_tempo.py    # TempoDialog (Alt+Shift+T) et TempoEditDialog
 │       ├── dialogs_temporal.py # Boîtes temporelles (LoopSelectDialog, GotoDialog, QuantizeDialog)
 │       ├── gtk_listbox.py      # select_with_cursor : sélection d'une ListBox qui place aussi le curseur clavier GTK (Phase 8 étape 5d2)
-│       ├── gtk_menu.py         # Accès GTK de la barre de menus : raccourcis affichés sans être enregistrés, lettres, Alt+lettre et Échap dans un menu ouvert (Phase 9 étape 1b1)
 │       ├── menu_bar.py         # Barre de menus : description unique MENUS, construction par fenêtre, éléments grisés, actions (Phase 9 étape 1b1)
 │       ├── key_handler_alt.py  # Raccourcis Alt+*
 │       ├── key_handler_chars.py # Raccourcis caractères (H, R, E, Q…)

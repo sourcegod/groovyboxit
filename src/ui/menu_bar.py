@@ -6,7 +6,7 @@
       fenêtre construit sa copie (un wx.MenuBar n'appartient qu'à une fenêtre),
       les éléments sans objet dans la fenêtre y sont grisés.
     - Raccourcis AFFICHÉS mais jamais enregistrés dans GTK (T1) : le clavier
-      de la fenêtre reste seul à les déclencher (gtk_menu.set_accel_text).
+      de la fenêtre reste seul à les déclencher (paquet menukeys, 2b3).
     - Un élément refait son raccourci par le vrai chemin du clavier de la
       fenêtre (T3 : jamais une copie du code), ou appelle une méthode quand
       l'action dépend du focus ou n'a pas de raccourci ; lancé par
@@ -19,7 +19,8 @@
 """
 import wx
 
-from . import gtk_menu
+import menukeys
+from menukeys.keys import accel_of, key_event   # noqa: F401 (rejeu des raccourcis)
 
 MAIN, MIDI, SONGS = "main", "midi", "songs"
 ALL = (MAIN, MIDI, SONGS)
@@ -237,48 +238,13 @@ def _build_menu(win, kind, items):
 
 
 def _decorate(win, bar, kind):
-    """Raccourcis affichés (T1), lettres absentes des titres (Alt+W, Alt+G),
-    Alt+lettre dans un menu ouvert (alternance réactive, essai de 1b1)."""
-    if not gtk_menu.available():
-        return
-    gtk_bar = gtk_menu.bar_items(bar)
-    # Alt seul (Phase 9 étape 2b1) : un état partagé par la fenêtre et ses
-    # menus ; fenêtre → ouvre la barre, menu ouvert → la referme
-    win._alt_state = gtk_menu.AltState()
-    gtk_menu.watch_alt(gtk_menu.toplevel(bar), win._alt_state,
-                       lambda: wx.CallAfter(alt_alone, win), keep=win)
-    for (title, letter, items), bar_item in zip(MENUS, gtk_bar):
-        if letter not in TAKEN.get(kind, ()) and letter.lower() not in title.lower():
-            gtk_menu.add_mnemonic(bar, letter, bar_item)
-        _decorate_menu(win, items, bar_item)
-
-
-def alt_alone(win):
-    """Alt seul relâché dans la fenêtre (2a, A1-A5) : ouvre la barre sur
-    Fichier, si la fenêtre est toujours là et active (A4)."""
-    if not win or win.IsBeingDeleted() or not win.IsActive():
-        return
-    open_first(win)
-
-
-def alt_alone_in_menu(win):
-    """Alt seul relâché dans un menu ouvert (A3) : referme la barre."""
-    if win and not win.IsBeingDeleted():
-        gtk_menu.close(win.GetMenuBar())
-
-
-def _decorate_menu(win, items, gtk_parent, nested=False):
-    """nested : sous-menu d'un menu (Échap y remonte d'un niveau, essai de
-    1b1 : GTK refermait toute la barre)."""
-    gtk_menu.watch_alt(gtk_menu.submenu(gtk_parent), win._alt_state,
-                       lambda: wx.CallAfter(alt_alone_in_menu, win), keep=win)
-    gtk_menu.on_menu_alt_letter(gtk_parent, lambda letter: open_menu(win, letter),
-                                keep=win, escape_to_parent=nested)
-    for item, gtk_item in zip(items, gtk_menu.menu_items(gtk_parent)):
-        if isinstance(item, Submenu):
-            _decorate_menu(win, item.items, gtk_item, nested=True)
-        elif item is not SEP and item.accel:
-            gtk_menu.set_accel_text(gtk_item, item.accel)
+    """Clavier de la barre confié au paquet autonome menukeys (Phase 9
+    étape 2b3) : raccourcis affichés, Alt seul, Alt+lettre et alternance,
+    lettres absentes des titres (Alt+W, Alt+G), Échap de sous-menu."""
+    accels = {i: it.accel for i, it in win._menu_items.items() if it.accel}
+    letters = {i: letter for i, (title, letter, _it) in enumerate(MENUS)
+               if letter.lower() not in title.lower()}
+    menukeys.enable(win, accels=accels, letters=letters, taken=TAKEN.get(kind, ()))
 
 
 # ----------------------------------------------------------------------
@@ -350,21 +316,6 @@ def _back_to(win, main):
     wx.CallLater(BACK_DELAY_MS, _raise)
 
 
-def accel_of(evt):
-    """« Ctrl+Shift+S » d'un événement clavier (lettres, chiffres, F1-F12),
-    None pour les autres touches."""
-    key = evt.GetKeyCode()
-    if ord("A") <= key <= ord("Z") or ord("0") <= key <= ord("9"):
-        name = chr(key)
-    elif wx.WXK_F1 <= key <= wx.WXK_F12:
-        name = f"F{key - wx.WXK_F1 + 1}"
-    else:
-        return None
-    mods = [m for m, down in (("Ctrl", evt.ControlDown()), ("Alt", evt.AltDown()),
-                              ("Shift", evt.ShiftDown())) if down]
-    return "+".join(mods + [name])
-
-
 def _main_items():
     return {it.accel: it for _t, _l, items in MENUS for it in items
             if it is not SEP and not isinstance(it, Submenu) and it.main and it.accel}
@@ -388,47 +339,19 @@ def handle_key(win, evt):
     return False
 
 
-_KEYS = {"Espace": (wx.WXK_SPACE, ord(" ")), "Entrée": (wx.WXK_RETURN, 13),
-         "Échap": (wx.WXK_ESCAPE, 27), "PageUp": (wx.WXK_PAGEUP, 0),
-         "PageDown": (wx.WXK_PAGEDOWN, 0)}
-
-
-def key_event(accel):
-    """wx.KeyEvent (EVT_CHAR_HOOK) du raccourci « Ctrl+Shift+S », tel que le
-    clavier le donne : code en majuscule, caractère en minuscule sans Shift."""
-    parts = accel.split("+")
-    mods, key = set(parts[:-1]), parts[-1]
-    evt = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
-    if key in _KEYS:
-        code, uni = _KEYS[key]
-    elif key[0] == "F" and key[1:].isdigit():
-        code, uni = wx.WXK_F1 + int(key[1:]) - 1, 0
-    else:
-        code = ord(key.upper())
-        uni = ord(key.upper() if "Shift" in mods else key.lower())
-    evt.SetKeyCode(code)
-    evt.SetUnicodeKey(uni)
-    evt.SetControlDown("Ctrl" in mods)
-    evt.SetRawControlDown("Ctrl" in mods)
-    evt.SetShiftDown("Shift" in mods)
-    evt.SetAltDown("Alt" in mods)
-    return evt
-
-
 def open_menu(win, letter):
     """Alt+lettre (K2) : ouvre le menu de la lettre, en alternance si elle est
     partagée ; False si la lettre n'est pas celle d'un menu de la fenêtre."""
-    kind = getattr(win, "_menu_kind", None)
-    if kind is None or letter.upper() not in menu_letters(kind):
+    if getattr(win, "_menu_kind", None) is None or getattr(win, "_menukeys", None) is None:
         return False
-    return gtk_menu.activate_mnemonic(win.GetMenuBar(), letter)
+    return win._menukeys.open_menu(letter)
 
 
 def open_first(win):
     """F10 (K1) : ouvre le premier menu de la barre (Fichier)."""
-    if getattr(win, "_menu_kind", None) is None:
+    if getattr(win, "_menu_kind", None) is None or getattr(win, "_menukeys", None) is None:
         return False
-    return gtk_menu.open_item(win.GetMenuBar(), 0)
+    return win._menukeys.open_first()
 
 
 class MenuBarMixin:

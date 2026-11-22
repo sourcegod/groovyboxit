@@ -16475,3 +16475,21 @@ GroovyboxIt branché, démonstration ; les tests qui visent
 (l'appli inchangée, et `python3 -m menukeys`) ; 2c1 — tests (paquet :
 autonomie, enable, Alt seul, lettres, Échap ; tests de la barre mis à
 jour) ; 2d1 — clôture.
+
+### Avancement 2b3 — paquet menukeys (2026-11-22)
+
+- `src/menukeys/` : `gtk_menu.py` déplacé de `src/ui/` (`git mv`),
+  `gtk_accel` passé dans `keys.py` avec `key_event` et `accel_of` (sortis
+  de `menu_bar`) ; `__init__.py` : `title_letter`, `MenuKeys`
+  (`handle_key`, `open_menu`, `open_first`, `close`, `open_menus` ; Alt
+  seul de la fenêtre et des menus, Alt+lettre menu ouvert, Échap de
+  sous-menu, raccourcis affichés), `enable` ; `__main__.py` :
+  démonstration. Imports : wx, ctypes, et le paquet lui-même.
+- `menu_bar._decorate` se réduit à `menukeys.enable(win, accels, letters,
+  taken)` ; `open_menu` / `open_first` passent par `win._menukeys`.
+- Essai synthétique (Xvfb) dans l'appli et dans la démonstration : Alt
+  seul ouvre, Alt+A alterne menu ouvert, Alt seul menu ouvert referme,
+  Alt+W ouvre Fenêtres, raccourcis affichés.
+- `tests/test_menu_bar.py` importe encore `ui.gtk_menu` : en erreur
+  jusqu'à 2c1 (le reste de l'Avancé est vert).
+- **Essai concluant (2026-11-22)** : l'appli marche comme avant ; démonstration python3 -m menukeys concluante.
