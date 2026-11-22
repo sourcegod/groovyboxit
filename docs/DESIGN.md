@@ -16327,3 +16327,85 @@ relâchement d'Alt sans autre touche) — prochaine étape demandée ; nouveaux
 éléments de menus par l'utilisateur ; Copier / Couper / Coller,
 Sélectionner tout dans Edition ; éléments propres à l'éditeur MIDI
 (insertion, limiteurs) ; SpeechAccess si Orca ne suffit plus.
+
+---
+
+## Phase 9 étape 2a — Alt seul ouvre et ferme la barre de menus
+
+### Numérotation des commits de ce chantier
+
+2a (plan), puis 2b1 (implémentation) / 2c1 (tests), 2d1 (clôture) ; un
+commit imprévu prend le suffixe suivant, toujours après les commits déjà
+faits.
+
+### Origine du besoin (utilisateur)
+
+- Demande de départ (Phase 9 étape 1, 2026-11-21) : « la touche Alt
+  active / désactive la barre de menus, comme sous Windows » ; reportée en
+  1a (K1), F10 en attendant ; recherche faite en 1b1 ; demandée comme
+  étape suivante à la clôture 1f1.
+
+### Ce que font les autres (recherche de 1b1)
+
+- **Firefox** (`nsMenuBarListener`, réglage `ui.key.menuAccessKeyFocuses`) :
+  la barre prend le focus au **relâchement** d'Alt, si aucune autre touche
+  n'a été frappée pendant qu'Alt était tenu.
+- **Qt** (VLC) : `QMenuBar` le fait lui-même, selon le style
+  (`SH_MenuBar_AltKeyNavigation`).
+- Ni l'un ni l'autre ne passe par GTK, qui ne le fait pas : à nous de le
+  faire.
+
+### État des lieux constaté en code (2026-11-22)
+
+- `gtk_menu.on_menu_alt_letter` branche déjà un rappel GTK
+  `key-press-event` sur chaque menu ouvert ; `menu_bar.open_first` ouvre
+  Fichier comme F10.
+- Les touches de la fenêtre arrivent par `EVT_CHAR_HOOK` (appui
+  seulement) ; wx ne remonte pas le **relâchement** d'une touche à la
+  fenêtre (EVT_KEY_UP reste sur le champ qui a le focus).
+
+### Proposition
+
+- **A1 — Suivi d'Alt au niveau GTK** : deux rappels GTK sur la fenêtre de
+  premier niveau (comme les menus en 1b1), `key-press-event` et
+  `key-release-event`, qui ne prennent jamais la touche (la fenêtre la
+  reçoit comme avant) :
+  - appui d'**Alt gauche ou droit** (`Alt_L`, `Alt_R`) : « Alt armé » ;
+  - appui de **toute autre touche** pendant qu'Alt est tenu : désarmé
+    (Alt+X, Alt+F, Alt+Tab, Alt+F4…) ;
+  - **relâchement** d'Alt encore armé : la barre s'ouvre sur Fichier
+    (`open_first`, comme F10).
+- **A2 — AltGr n'est pas Alt** : sur un clavier français, AltGr donne
+  `ISO_Level3_Shift`, qui ne s'arme pas (AltGr seul ne fait rien).
+- **A3 — Alt seul referme la barre** quand un menu est ouvert (« active /
+  désactive ») : même suivi dans le rappel des menus ouverts (les touches
+  y vont, pas à la fenêtre).
+- **A4 — Seulement un Alt vu dans la fenêtre** : revenir dans l'appli par
+  Alt+Tab apporte un relâchement d'Alt sans appui → rien. Fenêtre qui
+  n'est plus active au relâchement → rien.
+- **A5 — Les trois fenêtres** (principale, éditeur MIDI, Songs) ; pas les
+  dialogues (ils n'ont pas de barre). F10 reste.
+- **A6 — Aucune durée limite** : un Alt tenu longtemps puis relâché seul
+  ouvre aussi la barre (comme Firefox).
+
+### Questions à l'utilisateur
+
+- Q1 — A3 : Alt seul, menu ouvert, referme-t-il la barre ? (proposé : oui)
+- Q2 — A6 : faut-il ignorer un Alt tenu longtemps (par exemple plus d'une
+  seconde) ? (proposé : non)
+- Q3 — Orca : Alt seul n'est pas une touche d'Orca (Insert ou Verr. Maj.),
+  à vérifier à l'essai.
+
+**Réponses de l'utilisateur (2026-11-22)** : Q1 oui (Alt seul referme la
+barre) ; Q2 non (aucune durée limite) ; Q3 Alt seul n'est pas une touche
+d'Orca. Plan accepté.
+
+### Étapes
+
+- **2b1** — implémentation : `gtk_menu` (rappels de la fenêtre, armement,
+  AltGr exclu), `menu_bar` (ouverture, fermeture), branchement dans
+  `install` ; essai de l'utilisateur.
+- **2c1** — tests : touches envoyées par `gtk_widget_event` à la fenêtre
+  et aux menus, sous Xvfb (Alt seul, Alt+lettre, Alt+Tab au retour, AltGr,
+  fenêtre inactive, fermeture par Alt).
+- **2d1** — clôture ; aide F1, SPECS, DESIGN.
