@@ -16235,3 +16235,28 @@ dans une fenêtre y grise l'élément (K5).
   différé de 200 ms (`wx.CallLater`) ; Ctrl+O, Ctrl+Shift+S, Quitter puis
   Annuler rendent la main à l'éditeur MIDI et à Songs. Trouvaille notée
   dans SPECS, « Astuces d'accessibilité ».
+
+### Avancement 1e1 — tests de l'éditeur MIDI et de Songs (2026-11-22)
+
+- `tests/test_menu_bar.py` : 62 → 103 tests. Les deux tests rouges de 1d1
+  sont corrigés (fenêtre factice : élément non Item.main, SetFocus).
+  Nouveaux : Fichier de partout, raccourcis Fichier joués par la
+  principale, retour du focus **différé** (et jamais si une fenêtre se
+  ferme), Quitter depuis Songs, handle_key (Alt+I gardé à l'éditeur),
+  barres des trois fenêtres (aucun menu tout grisé, grisés 5 / 20 / 29,
+  sous-menu Midi grisé dans Songs), vraies fenêtres (une principale pour
+  le module, éditeur et Songs ouverts dessus).
+- 9 mutations détectées : handle_key retiré de l'éditeur, de Songs ;
+  élément « Aucune commande » retiré ; retour du focus immédiat ;
+  raccourcis Fichier non renvoyés ; élément Fichier non routé ;
+  `_menu_main` sur soi ; Quitter sans retour ; retour même à la fermeture.
+- Tests lancés sous Xvfb et sous surveillance (mémoire, durée).
+- **Orca à 100 % du processeur** pendant un niveau Avancé : même sous
+  Xvfb, les fenêtres de test se déclaraient sur le bus d'accessibilité du
+  bureau → `tools/tests.sh` exporte `NO_AT_BRIDGE=1` et `GTK_A11Y=none`
+  (Orca ≤ 20 % ensuite, relevé toutes les 2 s) ; c'est aussi la piste la
+  plus probable du gel de la machine pendant 1d1.
+- Plantage rare de `test_audio_tracks_data` (wx.CallAfter rendu
+  synchrone : le fil du routeur appelle GTK hors du fil principal) : déjà
+  évité dans `test_menu_bar` (synchrone dans le fil principal seulement) ;
+  les autres fichiers → correctif 1e2.

@@ -19,6 +19,7 @@
 import ctypes
 import os
 import re
+import threading
 import time
 
 import pytest
@@ -243,8 +244,8 @@ class _Win(wx.EvtHandler):
 
 def test_run_replays_the_shortcut_through_the_window_keyboard():
     win = _Win()
-    menu_bar.run(win, _find("Enregistrer sous…"))
-    assert win.keys == [(ord("S"), ord("S"), True, True, False)]
+    menu_bar.run(win, _find("Dupliquer le pattern…"))      # pas un élément Item.main (1e1)
+    assert win.keys == [(ord("W"), ord("W"), True, True, False)]
     assert win.status == []
 
 
@@ -294,6 +295,9 @@ def test_mixin_actions():
 
         def Raise(self):
             self.raised += 1
+
+        def SetFocus(self):             # « Fenêtre principale » rend le focus (1d1)
+            pass
     m = _M()
     m._menu_quit()
     m._menu_no_effect()
@@ -610,33 +614,473 @@ def test_escape_in_a_menu_of_the_bar_is_left_to_gtk(bar, emitted):
     assert emitted == []
 
 
+
+
 # ----------------------------------------------------------------------
-# Vraie fenêtre principale
+# Éditeur MIDI et Songs (Phase 9 étape 1e1, tests de 1d1)
 # ----------------------------------------------------------------------
 
-@pytest.mark.gui
-def test_main_window_bar_and_real_keyboard_path(monkeypatch):
-    from ui.main_window import MainWindow
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
-    win = MainWindow()
+def test_file_items_reach_every_window():
+    """Essai de 1d1 : Nouveau, Ouvrir, Enregistrer, Enregistrer sous et
+    Quitter accessibles de partout ; les quatre premiers joués par la
+    fenêtre principale (Item.main)."""
+    for text in ("Nouveau projet", "Ouvrir un projet…", "Enregistrer sous…"):
+        it = _find(text)
+        assert it.main and set(it.windows) == set(menu_bar.ALL), text
+    fichier = dict((t, i) for t, _l, i in MENUS)["Fichier"]
+    save = [it for it in fichier if it is not SEP and it.text() == "Enregistrer"][0]
+    assert save.main and save.accel == "Ctrl+S"
+    quit_ = _find("Quitter")
+    assert set(quit_.windows) == set(menu_bar.ALL) and not quit_.main
+
+
+def test_main_items_are_the_file_shortcuts():
+    assert set(menu_bar._main_items()) == {"Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S"}
+
+
+def test_song_items_only_in_songs():
+    for text in ("Enregistrer le song", "Dupliquer le song…", "Renommer le song…"):
+        assert _find(text).windows == (menu_bar.SONGS,), text
+    assert _find("Enregistrer le pattern").windows == (menu_bar.MAIN,)
+
+
+def test_windows_and_help_items_everywhere():
+    for text in ("1 - Fenêtre principale", "2 - Éditeur MIDI", "3 - Songs", "Aide clavier"):
+        it = _find(text)
+        assert it.call and set(it.windows) == set(menu_bar.ALL), text
+    assert _find("2 - Éditeur MIDI").accel == "Alt+4"
+    assert _find("Aide clavier").accel == "F1"
+
+
+@pytest.mark.parametrize("kind, cls", [
+    (menu_bar.MIDI, "ui.midi_editor_window.MidiEditorWindow"),
+    (menu_bar.SONGS, "ui.song_window.SongWindow"),
+])
+def test_called_methods_exist_on_each_window(kind, cls):
+    import importlib
+    mod, name = cls.rsplit(".", 1)
+    klass = getattr(importlib.import_module(mod), name)
+    for _t, _l, items in MENUS:
+        for it in _all_items(items):
+            if it.call and kind in it.windows:
+                assert callable(getattr(klass, it.call, None)), (kind, it.call)
+
+
+@pytest.mark.parametrize("accel", ["Ctrl+S", "Ctrl+Shift+S", "Alt+F4", "F10", "Shift+G",
+                                   "Ctrl+Alt+X", "4"])
+def test_accel_of_is_the_inverse_of_key_event(accel):
+    assert menu_bar.accel_of(menu_bar.key_event(accel)) == accel
+
+
+def test_accel_of_other_keys():
+    assert menu_bar.accel_of(menu_bar.key_event("Espace")) is None
+    assert menu_bar.accel_of(menu_bar.key_event("PageDown")) is None
+
+
+# --- Clavier de l'éditeur et de Songs : handle_key --------------------
+
+class _Child(_Win):
+    """Fenêtre secondaire factice (éditeur MIDI, Songs) et sa principale."""
+
+    def __init__(self, kind, main=None):
+        super().__init__()
+        self._menu_kind = kind
+        self._parent = main
+        self.raised, self.deleting = 0, False
+
+    def _menu_main(self):
+        return menu_bar.MenuBarMixin._menu_main(self)
+
+    def _on_key(self, evt):
+        self._on_char_hook(evt)
+
+    def Raise(self):
+        self.raised += 1
+
+    def IsBeingDeleted(self):
+        return self.deleting
+
+
+class _Main(_Child):
+    def __init__(self):
+        super().__init__(menu_bar.MAIN)
+        self.main_keys = []
+
+    def _on_menu_key(self, evt):
+        self.main_keys.append(menu_bar.accel_of(evt))
+
+
+@pytest.fixture
+def now(monkeypatch):
+    """wx.CallLater synchrone : le retour différé du focus tout de suite."""
+    delays = []
+    monkeypatch.setattr(wx, "CallLater",
+                        lambda ms, fn, *a: (delays.append(ms), fn(*a)))
+    return delays
+
+
+def test_handle_key_alt_letter_and_f10(monkeypatch):
+    seen = []
+    monkeypatch.setattr(menu_bar, "open_menu", lambda w, l: seen.append(l) or True)
+    monkeypatch.setattr(menu_bar, "open_first", lambda w: seen.append("F10") or True)
+    win = _Child(menu_bar.MIDI, _Main())
+    assert menu_bar.handle_key(win, menu_bar.key_event("Alt+T"))
+    assert menu_bar.handle_key(win, menu_bar.key_event("F10"))
+    assert seen == ["t", "F10"]
+
+
+def test_handle_key_leaves_alt_i_to_the_midi_editor():
+    """K3 : Alt+I reste « insérer sans avancer » ; la vraie open_menu le
+    refuse sans toucher à GTK."""
+    win = _Child(menu_bar.MIDI, _Main())
+    assert not menu_bar.handle_key(win, menu_bar.key_event("Alt+I"))
+    assert not menu_bar.open_menu(win, "i")
+
+
+def test_handle_key_leaves_other_keys():
+    win = _Child(menu_bar.SONGS, _Main())
+    for accel in ("Ctrl+W", "Ctrl+Shift+W", "G", "Alt+Shift+P", "F2", "Espace"):
+        assert not menu_bar.handle_key(win, menu_bar.key_event(accel)), accel
+    assert win._parent.main_keys == []
+
+
+@pytest.mark.parametrize("kind", [menu_bar.MIDI, menu_bar.SONGS])
+def test_file_shortcuts_typed_in_a_child_go_to_the_main_window(kind, now):
+    main = _Main()
+    win = _Child(kind, main)
+    for accel in ("Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S"):
+        assert menu_bar.handle_key(win, menu_bar.key_event(accel))
+    assert main.main_keys == ["Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S"]
+    assert win.keys == [] and win.raised == 4
+
+
+def test_file_shortcuts_in_the_main_window_stay_its_own():
+    main = _Main()
+    assert not menu_bar.handle_key(main, menu_bar.key_event("Ctrl+S"))
+    assert main.main_keys == []
+
+
+def test_file_item_chosen_in_a_child_runs_on_the_main_window(now):
+    main = _Main()
+    win = _Child(menu_bar.MIDI, main)
+    menu_bar.run(win, _find("Ouvrir un projet…"))
+    assert main.main_keys == ["Ctrl+O"] and win.keys == []
+    assert win.raised == 1 and now == [menu_bar.BACK_DELAY_MS]
+
+
+def test_file_item_in_the_main_window_uses_its_own_keyboard(now):
+    main = _Main()
+    menu_bar.run(main, _find("Ouvrir un projet…"))
+    assert main.keys == [(ord("O"), ord("o"), True, False, False)]
+    assert main.main_keys == [] and now == []
+
+
+def test_focus_comes_back_late_not_at_once(monkeypatch):
+    """Essai de 1d1 : un Raise immédiat était défait par la réactivation de
+    la fenêtre principale après sa boîte → différé."""
+    later = []
+    monkeypatch.setattr(wx, "CallLater", lambda ms, fn, *a: later.append((ms, fn)))
+    main = _Main()
+    win = _Child(menu_bar.SONGS, main)
+    menu_bar.run_on_main(win, menu_bar.key_event("Ctrl+O"))
+    assert win.raised == 0 and len(later) == 1
+    assert later[0][0] == menu_bar.BACK_DELAY_MS >= 100
+    later[0][1]()
+    assert win.raised == 1
+
+
+@pytest.mark.parametrize("who", ["main", "win"])
+def test_no_focus_back_when_a_window_closes(who, now):
+    main = _Main()
+    win = _Child(menu_bar.MIDI, main)
+    (main if who == "main" else win).deleting = True
+    menu_bar.run_on_main(win, menu_bar.key_event("Ctrl+N"))
+    assert win.raised == 0 and main.main_keys == ["Ctrl+N"]
+
+
+def test_quit_from_a_child_closes_the_main_window(now):
+    class _QMain(_Main):
+        closed = 0
+
+        def Close(self):
+            self.closed += 1
+
+    class _QChild(menu_bar.MenuBarMixin, _Child):
+        pass
+    main = _QMain()
+    win = _QChild(menu_bar.SONGS, main)
+    win._menu_quit()                                   # Annuler : la principale reste
+    assert main.closed == 1 and win.raised == 1
+    main.deleting = True                               # quitter pour de bon
+    win._menu_quit()
+    assert main.closed == 2 and win.raised == 1
+
+
+def test_menu_main_of_each_window():
+    main = _Main()
+
+    class _C(menu_bar.MenuBarMixin):
+        pass
+    child = _C()
+    child._menu_kind, child._parent = menu_bar.MIDI, main
+    assert child._menu_main() is main
+    child._menu_kind = menu_bar.MAIN
+    assert child._menu_main() is child
+
+
+def test_window_items_delegate_to_the_main_window(monkeypatch):
+    calls = []
+
+    class _M:
+        def _open_midi_editor_window(self):
+            calls.append("midi")
+
+        def _open_song_window(self):
+            calls.append("songs")
+
+    class _C(menu_bar.MenuBarMixin):
+        _menu_kind = menu_bar.SONGS
+        _parent = _M()
+    _C()._menu_midi_editor()
+    _C()._menu_songs()
+    assert calls == ["midi", "songs"]
+
+
+def test_help_item_opens_the_keyboard_help_on_the_window(monkeypatch):
+    import ui.dialogs as dialogs
+    shown = []
+
+    class _Dlg:
+        def __init__(self, parent):
+            shown.append(parent)
+
+        def ShowModal(self):
+            shown.append("modal")
+
+        def Destroy(self):
+            shown.append("destroy")
+    monkeypatch.setattr(dialogs, "KeyboardHelpDialog", _Dlg)
+
+    class _C(menu_bar.MenuBarMixin):
+        pass
+    c = _C()
+    c._menu_help()
+    assert shown == [c, "modal", "destroy"]
+
+
+def test_nothing_here_is_announced_in_the_status_bar():
+    class _C(menu_bar.MenuBarMixin):
+        def __init__(self):
+            self.msgs = []
+
+        def _set_status(self, msg):                    # éditeur MIDI, Songs
+            self.msgs.append(msg)
+    c = _C()
+    c._menu_nothing_here()
+    c._menu_no_effect()
+    assert c.msgs == ["Aucune commande de ce menu dans cette fenêtre",
+                      "Aucun effet pour l'instant"]
+
+
+def test_skipped_shortcut_announced_in_a_child_status_bar():
+    class _S(_Child):
+        _on_char_hook = None                           # Songs : _on_key seul
+
+        def _on_key(self, evt):
+            evt.Skip()
+    win = _S(menu_bar.SONGS, _Main())
+    win._set_status = win.status.append
+    win._show_status = None                          # Songs : _set_status seul
+    menu_bar.run(win, _find("Grille…"))
+    assert win.status == ["Grille… : sans effet ici"]
+
+
+# --- Barres construites pour chaque fenêtre ---------------------------
+
+def _built(kind):
+    frame = _Frame()
+    bar = menu_bar.install(frame, kind)
+    return frame, bar
+
+
+def _enabled_texts(bar, title):
+    menu = bar.GetMenu(TITLES.index(title))
+    return [it.GetItemLabelText() for it in menu.GetMenuItems()
+            if not it.IsSeparator() and it.IsEnabled()]
+
+
+def _greyed(frame, bar):
+    return {it.text() for i, it in frame._menu_items.items()
+            if not bar.FindItemById(i).IsEnabled()}
+
+
+@pytest.mark.parametrize("kind, filled", [
+    (menu_bar.MAIN, set()),
+    (menu_bar.MIDI, {"Piste", "Outils"}),
+    (menu_bar.SONGS, {"Insertion", "Piste", "Outils"}),
+])
+def test_menu_without_active_item_gets_one(kind, filled):
+    """Essai de 1d1 : GTK ne prenait pas le clavier dans un menu tout grisé
+    (flèches et Échap retombaient sur l'éditeur)."""
+    frame, bar = _built(kind)
     try:
-        mb = win.GetMenuBar()
-        assert mb is not None and mb.GetMenuCount() == len(TITLES)
-        assert win._menu_kind == menu_bar.MAIN
-        status = []
-        monkeypatch.setattr(win, "_show_status", status.append)
-        menu_bar.run(win, _find("État et position"))              # U
-        assert status and "Pos" in status[-1]
-        if gtk_menu.available():
-            win.Show()
-            _yield(10)
-            win._key_manager.handle(_hook(wx.WXK_F10, 0))
-            _yield()
-            assert gtk_menu.open_menus(mb) == [0]
-            gtk_menu.close(mb)
-            _yield()
+        nothing = menu_bar.NOTHING_HERE.replace("&", "")
+        got = set()
+        for title in TITLES:
+            enabled = _enabled_texts(bar, title)
+            assert enabled, (kind, title)                       # jamais tout grisé
+            if nothing in enabled:
+                got.add(title)
+                assert enabled == [nothing]
+        assert got == filled
     finally:
-        win._router.wait_loaded()
-        win._close_midi_devices()
-        win._audio_driver.close()
-        win.Destroy()
+        frame.Destroy()
+
+
+def test_greyed_items_of_each_window():
+    expected = {
+        menu_bar.MAIN: {"Enregistrer le song", "Dupliquer le song…", "Renommer le song…",
+                        "Notes", "Liste des événements"},
+    }
+    frames = []
+    try:
+        greyed = {}
+        for kind in menu_bar.ALL:
+            frame, bar = _built(kind)
+            frames.append(frame)
+            greyed[kind] = _greyed(frame, bar)
+        assert greyed[menu_bar.MAIN] == expected[menu_bar.MAIN]
+        assert len(greyed[menu_bar.MIDI]) == 20 and len(greyed[menu_bar.SONGS]) == 29
+        # Fichier, Fenêtres, Aide jamais grisés
+        for kind in menu_bar.ALL:
+            for text in ("Nouveau projet", "Ouvrir un projet…", "Enregistrer sous…",
+                         "Quitter", "1 - Fenêtre principale", "Aide clavier"):
+                assert text not in greyed[kind], (kind, text)
+        assert {"Notes", "Liste des événements", "Quantiser"} <= greyed[menu_bar.SONGS]
+        assert not {"Notes", "Quantiser", "Tempos…", "Importer un fichier MIDI…"} \
+            & greyed[menu_bar.MIDI]
+        assert {"Enregistrer", "Propriétés de la piste…", "Explorateur…"} <= \
+            greyed[menu_bar.MIDI]
+    finally:
+        for f in frames:
+            f.Destroy()
+
+
+def test_midi_submenu_greyed_in_songs_audio_kept():
+    frame, bar = _built(menu_bar.SONGS)
+    try:
+        menu = bar.GetMenu(TITLES.index("Traitement"))
+        state = {it.GetItemLabelText(): it.IsEnabled() for it in menu.GetMenuItems()}
+        assert state == {"Audio": True, "Midi": False}
+    finally:
+        frame.Destroy()
+
+
+def test_insertion_title_has_no_letter_in_the_midi_editor():
+    frame, bar = _built(menu_bar.MIDI)
+    try:
+        assert bar.GetMenuLabel(TITLES.index("Insertion")) == "Insertion"
+        assert bar.GetMenuLabel(TITLES.index("Fichier")) == "&Fichier"
+    finally:
+        frame.Destroy()
+
+
+# ----------------------------------------------------------------------
+# Vraies fenêtres : principale, éditeur MIDI, Songs (une seule principale
+# pour le module)
+# ----------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def real():
+    from ui.main_window import MainWindow
+    win = MainWindow()
+    win._open_midi_editor_window()
+    win._open_song_window()
+    yield win
+    for child in (win._song_window, win._midi_editor_window):
+        if child:
+            child.Destroy()
+    win._router.wait_loaded()
+    win._close_midi_devices()
+    win._audio_driver.close()
+    win.Destroy()
+
+
+@pytest.mark.gui
+def test_main_window_bar_and_real_keyboard_path(real, monkeypatch):
+    # synchrone dans le fil principal seulement : le fil de chargement du
+    # routeur annonce aussi par CallAfter, et GTK hors du fil principal
+    # interrompt Python (vu dans test_audio_tracks_data)
+    real_call_after = wx.CallAfter
+    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k)
+                        if threading.current_thread() is threading.main_thread()
+                        else real_call_after(fn, *a, **k))
+    win = real
+    mb = win.GetMenuBar()
+    assert mb is not None and mb.GetMenuCount() == len(TITLES)
+    assert win._menu_kind == menu_bar.MAIN
+    status = []
+    monkeypatch.setattr(win, "_show_status", status.append)
+    # focus dans la principale (l'éditeur et Songs du module l'ont pris)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: None))
+    menu_bar.run(win, _find("État et position"))              # U
+    assert status and "Pos" in status[-1]
+    if gtk_menu.available():
+        win.Show()
+        _yield(10)
+        win._key_manager.handle(_hook(wx.WXK_F10, 0))
+        _yield()
+        assert gtk_menu.open_menus(mb) == [0]
+        gtk_menu.close(mb)
+        _yield()
+
+
+@pytest.mark.gui
+def test_child_windows_have_the_same_bar(real):
+    for child, kind in ((real._midi_editor_window, menu_bar.MIDI),
+                        (real._song_window, menu_bar.SONGS)):
+        assert child._menu_kind == kind
+        assert child.GetMenuBar().GetMenuCount() == len(TITLES)
+        assert child._menu_main() is real
+
+
+@pytest.mark.gui
+def test_midi_editor_keyboard_with_the_bar(real, monkeypatch, now):
+    ed = real._midi_editor_window
+    inserted, main_keys, menus = [], [], []
+    monkeypatch.setattr(ed, "_quick_insert", inserted.append)
+    monkeypatch.setattr(real, "_on_menu_key",
+                        lambda evt: main_keys.append(menu_bar.accel_of(evt)))
+    monkeypatch.setattr(menu_bar, "open_menu",       # décision de la vraie, sans GTK
+                        lambda w, l: l.upper() in menu_bar.menu_letters(w._menu_kind)
+                        and not menus.append(l))
+    ed._on_key(menu_bar.key_event("Alt+I"))           # « insérer sans avancer »
+    ed._on_key(menu_bar.key_event("Ctrl+S"))          # Fichier : la principale
+    ed._on_key(menu_bar.key_event("Alt+R"))           # Traitement, pas « rafraîchir »
+    assert inserted == [False] and main_keys == ["Ctrl+S"] and menus == ["r"]
+
+
+@pytest.mark.gui
+def test_midi_editor_items_by_its_keyboard(real, monkeypatch):
+    ed = real._midi_editor_window
+    status = []
+    monkeypatch.setattr(ed, "_set_status", status.append)
+    menu_bar.run(ed, _find("Liste des événements"))
+    assert ed._view_mode == ed.MODE_ALL
+    menu_bar.run(ed, _find("Notes"))
+    assert ed._view_mode == ed.MODE_NOTES
+    assert status == ["Mode : Tous les événements MIDI", "Mode : Notes de la piste courante"]
+
+
+@pytest.mark.gui
+def test_songs_items_by_its_keyboard(real, monkeypatch, now):
+    sw = real._song_window
+    calls, main_keys = [], []
+    monkeypatch.setattr(sw, "_rename_song", lambda: calls.append("rename"))
+    monkeypatch.setattr(real, "_save_song", lambda: calls.append("save song"))
+    monkeypatch.setattr(real, "_on_menu_key",
+                        lambda evt: main_keys.append(menu_bar.accel_of(evt)))
+    menu_bar.run(sw, _find("Renommer le song…"))
+    menu_bar.run(sw, _find("Enregistrer le song"))            # Ctrl+W de Songs
+    sw._on_key(menu_bar.key_event("Ctrl+O"))                  # Fichier : la principale
+    assert calls == ["rename", "save song"] and main_keys == ["Ctrl+O"]

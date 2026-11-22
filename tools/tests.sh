@@ -37,6 +37,12 @@
 set -u
 cd "$(dirname "$0")/.." || exit 2
 
+# Accessibilité coupée pour les tests (Phase 9 étape 1e1) : même sous Xvfb,
+# chaque fenêtre de test se déclarait sur le bus d'accessibilité du bureau ;
+# Orca recevait les événements de milliers de fenêtres et de menus et
+# montait à 100 % du processeur (machine ralentie, peut-être le gel de 1d1).
+export NO_AT_BRIDGE=1 GTK_A11Y=none
+
 if [ "${TESTS_XVFB:-1}" != 0 ] && [ -z "${TESTS_XVFB_ACTIF:-}" ] \
         && command -v xvfb-run > /dev/null; then
     export TESTS_XVFB_ACTIF=1
