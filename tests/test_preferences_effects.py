@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 import wx
+from conftest import main_thread_call_after
 
 from app_config import AppConfig
 from project_manager import ProjectManager
@@ -507,7 +508,7 @@ def test_real_main_window_startup_new_and_live_settings(isolated_preferences, mo
     path = str(isolated_preferences)
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"startup": "new", "autoplay": False}, f)
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = None
     try:
         win = MainWindow(no_fluidsynth=True, no_sfizz=True)

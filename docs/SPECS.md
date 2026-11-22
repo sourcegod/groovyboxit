@@ -2669,6 +2669,20 @@ Trois **niveaux**, par `tools/tests.sh` :
   `app.Destroy()`) — `tests/conftest.py` en recrée une avant chaque test
   si besoin ; une vraie fenêtre principale ferme son flux audio et son MIDI
   avant `Destroy`.
+- **Écran virtuel et accessibilité** (Phase 9 étape 1d1, 1e1) : avec
+  `xvfb-run` (paquet xvfb), `tools/tests.sh` fait tourner toute la suite
+  sur un écran virtuel (`TESTS_XVFB=0` l'évite) — les tests ouvrent de
+  vrais menus GTK, qui prennent clavier et souris du bureau ; et il coupe
+  l'accessibilité des tests (`NO_AT_BRIDGE=1`, `GTK_A11Y=none`) : même
+  sous Xvfb, chaque fenêtre de test se déclarait au bus d'accessibilité
+  du bureau, et Orca montait à 100 % du processeur (machine ralentie,
+  piste la plus probable d'un gel pendant un niveau Avancé).
+- **wx.CallAfter synchrone** dans un test à vraie fenêtre principale :
+  `monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())`
+  (`tests/conftest.py`, Phase 9 étape 1e2) — synchrone dans le fil
+  principal seulement ; un fil (chargement du routeur) qui appelait GTK
+  hors du fil principal interrompait Python au hasard (« Fatal Python
+  error: Aborted »).
 
 Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` : à vérifier avec `python3 tools/check_specs_tests.py` avant de committer un nouveau fichier de tests, et à chaque clôture de chantier.
 

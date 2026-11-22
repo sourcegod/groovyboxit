@@ -19,11 +19,11 @@
 import ctypes
 import os
 import re
-import threading
 import time
 
 import pytest
 import wx
+from conftest import main_thread_call_after
 
 from ui import gtk_menu, menu_bar
 from ui.key_manager import KeyManager
@@ -1008,13 +1008,8 @@ def real():
 
 @pytest.mark.gui
 def test_main_window_bar_and_real_keyboard_path(real, monkeypatch):
-    # synchrone dans le fil principal seulement : le fil de chargement du
-    # routeur annonce aussi par CallAfter, et GTK hors du fil principal
-    # interrompt Python (vu dans test_audio_tracks_data)
-    real_call_after = wx.CallAfter
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k)
-                        if threading.current_thread() is threading.main_thread()
-                        else real_call_after(fn, *a, **k))
+    # synchrone dans le fil principal seulement (conftest, 1e2)
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = real
     mb = win.GetMenuBar()
     assert mb is not None and mb.GetMenuCount() == len(TITLES)

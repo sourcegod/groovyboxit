@@ -29,6 +29,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 import wx
+from conftest import main_thread_call_after
 
 from pattern import Pattern, TapeEvent, ETYPE_AUDIO, ETYPE_GRID, TRACK_AUDIO
 from app_config import AppConfig
@@ -845,7 +846,7 @@ def test_real_main_window_records_a_take(isolated_preferences, monkeypatch, tmp_
         _APP = wx.App(False)
     from ui.main_window import MainWindow
     from ui import mw_tracks
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = None
     try:
         win = MainWindow(no_fluidsynth=True, no_sfizz=True)

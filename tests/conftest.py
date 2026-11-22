@@ -136,3 +136,22 @@ def pytest_configure(config):
             parallel = False
         threshold = SLOW_GUARD_SECS_PARALLEL if parallel else SLOW_GUARD_SECS
         config.pluginmanager.register(SlowGuard(threshold), "groovyboxit-slow-guard")
+
+
+def main_thread_call_after():
+    """wx.CallAfter de remplacement pour les tests à vraie fenêtre principale
+    (Phase 9 étape 1e2) : synchrone dans le fil principal, comme avant ;
+    venu d'un autre fil (chargement du routeur, moteurs), remis au vrai
+    CallAfter. Synchrone partout, un fil appelait GTK (barre d'état) hors
+    du fil principal : « Fatal Python error: Aborted » au hasard
+    (test_audio_tracks_data, niveau Avancé de 1e1).
+    Usage : monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())"""
+    import threading
+    import wx
+    real = wx.CallAfter
+
+    def call_after(fn, *a, **k):
+        if threading.current_thread() is threading.main_thread():
+            return fn(*a, **k)
+        return real(fn, *a, **k)
+    return call_after

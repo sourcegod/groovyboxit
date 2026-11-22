@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 import wx
+from conftest import main_thread_call_after
 
 from app_config import AppConfig
 from devices import midi_device as md
@@ -737,7 +738,7 @@ def test_real_main_window_missing_midi_input(isolated_preferences, monkeypatch):
     shown = []
     monkeypatch.setattr(wx.MessageDialog, "ShowModal",
                         lambda self: shown.append((self.GetTitle(), self.GetMessage())) or wx.ID_OK)
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = None
     try:
         win = MainWindow(no_fluidsynth=True, no_sfizz=True)

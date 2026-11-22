@@ -27,6 +27,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 import wx
+from conftest import main_thread_call_after
 
 from pattern import (Pattern, TapeEvent, ETYPE_AUDIO, ETYPE_GRID, TRACK_MIDI, TRACK_AUDIO,
                      TRACK_KINDS)
@@ -613,7 +614,7 @@ def test_kind_change_cuts_the_track_notes(tmp_path, monkeypatch):
 def test_real_main_window_save_and_reopen(isolated_preferences, tmp_path, monkeypatch):
     """Une seule vraie MainWindow (clients ALSA)."""
     from ui.main_window import MainWindow
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = None
     try:
         win = MainWindow(no_fluidsynth=True, no_sfizz=True)

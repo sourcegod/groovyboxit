@@ -16260,3 +16260,22 @@ dans une fenêtre y grise l'élément (K5).
   synchrone : le fil du routeur appelle GTK hors du fil principal) : déjà
   évité dans `test_menu_bar` (synchrone dans le fil principal seulement) ;
   les autres fichiers → correctif 1e2.
+
+## Phase 9 étape 1e2 — Correctif : wx.CallAfter synchrone hors du fil principal
+
+- **Constat** (niveau Avancé de 1e1) : « Fatal Python error: Aborted » dans
+  `test_audio_tracks_data::test_real_main_window_save_and_reopen`, au
+  hasard (6 lancements seuls : verts). Le test rendait `wx.CallAfter`
+  synchrone ; le fil de chargement du routeur annonce par
+  `wx.CallAfter(self._show_status, …)`, donc appelait GTK hors du fil
+  principal.
+- **Correctif** : `tests/conftest.py` — `main_thread_call_after()`,
+  synchrone dans le fil principal seulement, sinon le vrai `CallAfter`.
+  Employé dans les 9 tests à vraie fenêtre principale qui rendaient
+  `CallAfter` synchrone (test_audio_clips_playback, test_audio_recording,
+  test_audio_device, test_audio_tracks_data, test_auto_input_mode,
+  test_midi_device, test_preferences_effects, test_track_midi_out,
+  test_menu_bar). Les tests à fenêtres factices (fils d'écoute de
+  `mw_devices`, prises) gardent leur `CallAfter` synchrone : ils
+  attendent le résultat du fil sans boucle d'événements, sans GTK.
+- SPECS : écran virtuel, accessibilité coupée, `main_thread_call_after`.

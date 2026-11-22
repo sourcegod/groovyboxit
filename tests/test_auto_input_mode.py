@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import pytest
 import wx
+from conftest import main_thread_call_after
 
 import ui.midi_handler_window as mh
 from pattern import Pattern
@@ -83,7 +84,7 @@ def win(_main_window, monkeypatch):
     w._set_input_mode("pad", announce=False)
     w._status_ctrl.SetString(0, "")
     # wx.CallAfter synchrone (feedback : fragilité des tests en suite complète)
-    monkeypatch.setattr(main_window.wx, "CallAfter", lambda fn, *a, **kw: fn(*a, **kw))
+    monkeypatch.setattr(main_window.wx, "CallAfter", main_thread_call_after())
     yield w
     w._router.wait_loaded()
 

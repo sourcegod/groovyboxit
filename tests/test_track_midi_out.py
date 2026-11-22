@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 import wx
+from conftest import main_thread_call_after
 
 import track_router as tr_mod
 from track_router import TrackRouter
@@ -509,7 +510,7 @@ def test_real_main_window_sends_to_an_open_port(isolated_preferences, monkeypatc
     shown = []
     monkeypatch.setattr(wx.MessageDialog, "ShowModal",
                         lambda self: shown.append(self.GetMessage()) or wx.ID_OK)
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = None
     try:
         win = MainWindow(no_fluidsynth=True, no_sfizz=True)

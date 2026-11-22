@@ -29,6 +29,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 import wx
+from conftest import main_thread_call_after
 
 from pattern import Pattern, TapeEvent, ETYPE_AUDIO, ETYPE_GRID, clip_payload, clip_window
 from rack import Rack
@@ -595,7 +596,7 @@ def test_real_main_window_wiring(isolated_preferences, monkeypatch):
     if wx.GetApp() is None:
         _APP = wx.App(False)
     from ui.main_window import MainWindow
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(wx, "CallAfter", main_thread_call_after())
     win = None
     try:
         win = MainWindow(no_fluidsynth=True, no_sfizz=True)
