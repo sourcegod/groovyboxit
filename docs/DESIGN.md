@@ -16183,3 +16183,55 @@ dans une fenêtre y grise l'élément (K5).
   grisés.
 - Aide F1 : Ctrl+Shift+T (propriétés de la piste) et Alt+F4 (Quitter)
   manquaient ; ajoutés.
+
+### Avancement 1d1 — éditeur MIDI et fenêtre Songs (2026-11-22)
+
+- `MidiEditorWindow` et `SongWindow` posent la même barre
+  (`menu_bar.install`, `MenuBarMixin`) ; `menu_bar.handle_key` en tête de
+  leur `_on_key` : Alt+lettre d'un menu et F10 (plusieurs raccourcis de
+  l'éditeur ne regardent pas Alt : R, o…) ; Alt+I de l'éditeur reste
+  « insérer sans avancer » (K3 : Insertion sans lettre).
+- Fenêtres de chaque élément relevées dans le clavier des trois fenêtres
+  (`KeyManager`, `mew_keymap._on_key`, `SongWindow._on_key`) : 5 éléments
+  grisés dans la principale, 25 dans l'éditeur MIDI, 34 dans Songs.
+- Ajouts propres à Songs : Enregistrer le song (Ctrl+W), Dupliquer le
+  song… (Ctrl+Shift+W), Renommer le song… (F2).
+- Fenêtres (1, 2, 3) et Aide clavier : actifs partout, par méthode
+  (`_menu_main_window`, `_menu_midi_editor`, `_menu_songs`, `_menu_help`) ;
+  « Fenêtre principale » lui rend aussi le focus.
+- `run` : clavier `_on_char_hook` (principale) ou `_on_key` ; barre d'état
+  `_show_status` ou `_set_status`.
+- **Blocage de la machine** pendant le premier niveau Avancé de 1d1
+  (redémarrage forcé) : journal sans manque de mémoire ni trace du noyau ;
+  non reproduit ensuite, sous surveillance (mémoire disponible ≥ 3,2 Go,
+  limite de 3 minutes). Piste : les tests ouvrent de vrais menus GTK, qui
+  prennent le clavier et la souris de tout le bureau ; un processus bloqué
+  menu ouvert gèlerait le bureau. Les niveaux Avancé se lancent désormais
+  sous surveillance (mémoire et durée).
+- **Essai de 1d1 (2026-11-22), mitigé :** dans l'éditeur MIDI, à partir
+  du menu Piste, Gauche / Droite jouaient les notes de l'éditeur et Échap
+  le refermait (retour à la fenêtre principale) ; l'Aide n'était plus
+  atteinte. Cause probable : Piste et Outils n'y ont que des éléments
+  grisés, et GTK ne prend pas le clavier dans un tel menu → un menu sans
+  élément actif dans la fenêtre reçoit en dernier « Aucune commande dans
+  cette fenêtre » (actif, annoncé) : Piste et Outils dans l'éditeur,
+  Insertion, Piste et Outils dans Songs.
+- **Fichier accessible de partout** (demande de l'essai) : Nouveau projet,
+  Ouvrir, Enregistrer, Enregistrer sous… rejoués par le clavier de la
+  fenêtre principale (`Item.main`, `MainWindow._on_menu_key`, sans le test
+  du focus de `_on_char_hook`) ; Quitter ferme la fenêtre principale.
+- **Xvfb** installé par l'utilisateur : `tools/tests.sh` relance toute la
+  suite sous `xvfb-run` (écran virtuel : les menus ouverts par les tests ne
+  prennent plus le clavier du bureau) ; `TESTS_XVFB=0` l'évite.
+- **Troisième essai de 1d1 :** les raccourcis du menu Fichier ne
+  marchaient pas au clavier dans l'éditeur MIDI et Songs → `handle_key`
+  les joue par la fenêtre principale ; les boîtes de la fenêtre principale
+  (Ouvrir, Enregistrer sous, Annuler de Quitter) rendaient le focus à la
+  principale → la fenêtre d'origine le reprend (`run_on_main`, `_back_to`).
+  Alt+F4 dans l'éditeur MIDI ou Songs ferme cette fenêtre seulement (le
+  gestionnaire de fenêtres), Fichier → Quitter ferme l'appli.
+- **Quatrième essai, concluant :** le retour du focus était défait par la
+  réactivation de la fenêtre principale, *après* la boîte → retour
+  différé de 200 ms (`wx.CallLater`) ; Ctrl+O, Ctrl+Shift+S, Quitter puis
+  Annuler rendent la main à l'éditeur MIDI et à Songs. Trouvaille notée
+  dans SPECS, « Astuces d'accessibilité ».

@@ -11,12 +11,14 @@ from ui.mew_numpad           import NumpadMixin
 from ui.mew_quantize         import QuantizeMixin
 from ui.mew_delete_clipboard import DeleteClipboardMixin
 from ui.mew_keymap           import KeymapMixin
+from ui                      import menu_bar
+from ui.menu_bar             import MenuBarMixin
 
 
 class MidiEditorWindow(VirtualKeyboardMixin, DisplayMixin, PlaybackMixin,
                        NavigationMixin, UndoMixin, SelectionMixin, EditingMixin,
                        NumpadMixin, QuantizeMixin, DeleteClipboardMixin,
-                       KeymapMixin, wx.Frame):
+                       KeymapMixin, MenuBarMixin, wx.Frame):
     """Fenêtre d'éditeur MIDI — deux modes : notes (Ctrl+1) et tous les événements (Ctrl+2).
 
     Navigation :
@@ -50,6 +52,7 @@ class MidiEditorWindow(VirtualKeyboardMixin, DisplayMixin, PlaybackMixin,
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE,     self._on_close)
         self.Bind(wx.EVT_ACTIVATE,  self._on_activate)
+        menu_bar.install(self, menu_bar.MIDI)       # barre de menus (Phase 9 étape 1d1)
         self._refresh()
 
     # ------------------------------------------------------------------

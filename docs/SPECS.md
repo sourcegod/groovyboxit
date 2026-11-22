@@ -2308,6 +2308,43 @@ Un `SpinCtrl` isolé n'annonce que sa valeur, jamais le `wx.StaticText` voisin
 dans `_MidiEventEditDialog`/`_CcEventEditDialog`), donner un nom accessible
 distinct à chacun via `SetName("Bar")`/`SetName("Beat")`/`SetName("Tick")`.
 
+#### Retour du focus après une boîte d'une autre fenêtre (Phase 9 étape 1d1)
+
+Une boîte modale ouverte par la fenêtre principale (Ouvrir, Enregistrer
+sous, demande d'enregistrer de Quitter) depuis l'éditeur MIDI ou Songs :
+à sa fermeture, GTK et le gestionnaire de fenêtres **réactivent sa fenêtre
+parente**, la principale — et ce, *après* le retour de la boîte. Un
+`Raise()` immédiat de la fenêtre d'origine est aussitôt défait : elle
+passe bien au premier plan (on la retrouve en changeant d'espace de
+travail), mais le focus clavier, et donc Orca, restent sur la principale
+(les flèches y jouent les pads).
+
+**Fix :** rendre la main à la fenêtre d'origine **en différé**, une fois la
+réactivation de la parente finie (`menu_bar._back_to`) :
+
+```python
+wx.CallLater(200, win.Raise)    # pas de SetFocus : GTK rend le focus du dernier champ
+```
+
+Plus sûr encore, si un jour le délai ne suffit pas : ouvrir la boîte sur la
+fenêtre d'origine elle-même (le focus y revient alors de lui-même).
+
+#### Barre de menus : menu sans élément actif, raccourcis affichés (Phase 9 étape 1)
+
+- Un menu dont **tous les éléments sont grisés** ne prend pas le clavier :
+  Gauche / Droite et Échap retombent sur la fenêtre (l'éditeur MIDI jouait
+  ses notes, Échap le fermait). Tout menu garde donc au moins un élément
+  actif (« Aucune commande dans cette fenêtre »). Les éléments grisés, eux,
+  sont sautés par les flèches, et Orca ne les lit pas.
+- Raccourci **affiché** dans un élément sans être enregistré dans GTK :
+  `gtk_accel_label_set_accel` sur son `GtkAccelLabel` ; ATK le transmet et
+  Orca le lit (« Enregistrer sous… Ctrl+Maj+S »), mais seul le clavier de
+  la fenêtre déclenche la commande (un raccourci wx « \tCtrl+S » se
+  déclencherait aussi par GTK, jusque dans les champs de saisie).
+- GTK ouvre de lui-même, sans y entrer, le sous-menu de l'élément
+  sélectionné, et lui envoie les touches : un Échap pris pour « remonter »
+  doit vérifier qu'un élément du sous-menu est sélectionné.
+
 #### EVT_CHAR_HOOK sur un dialog à boutons : Entrée casse l'activation native
 
 Un `wx.Dialog` avec `EVT_CHAR_HOOK` bindé au niveau du dialog (ex. pour des

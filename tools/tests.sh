@@ -30,8 +30,18 @@
 # TESTS_MO_AVANCE (900), TESTS_MO_INTERMEDIAIRE (768).  Depuis 20e3, les
 # fenêtres détruites sont vraiment supprimées après chaque test
 # (tests/conftest.py) : ≈ 600 Mo par processus au lieu de 2 Go.
+# Écran virtuel (Phase 9 étape 1d1) : les tests ouvrent de vrais menus GTK,
+# qui prennent le clavier et la souris de tout le bureau ; la machine s'est
+# gelée pendant un niveau Avancé.  Avec xvfb-run (paquet xvfb), toute la
+# suite tourne sur un écran virtuel, loin du bureau ; TESTS_XVFB=0 l'évite.
 set -u
 cd "$(dirname "$0")/.." || exit 2
+
+if [ "${TESTS_XVFB:-1}" != 0 ] && [ -z "${TESTS_XVFB_ACTIF:-}" ] \
+        && command -v xvfb-run > /dev/null; then
+    export TESTS_XVFB_ACTIF=1
+    exec xvfb-run -a -s "-screen 0 1280x1024x24" "$0" "$@"
+fi
 
 usage() {
     sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'

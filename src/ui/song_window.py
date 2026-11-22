@@ -1,8 +1,11 @@
 import wx
 from song import Song
 
+from . import menu_bar
+from .menu_bar import MenuBarMixin
 
-class SongWindow(wx.Frame):
+
+class SongWindow(MenuBarMixin, wx.Frame):
     def __init__(self, parent):
         super().__init__(parent, title="Songs", size=(820, 420),
                          style=wx.DEFAULT_FRAME_STYLE | wx.FRAME_FLOAT_ON_PARENT)
@@ -11,6 +14,7 @@ class SongWindow(wx.Frame):
         self._build_ui()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        menu_bar.install(self, menu_bar.SONGS)      # barre de menus (Phase 9 étape 1d1)
 
     # ------------------------------------------------------------------
 
@@ -283,6 +287,10 @@ class SongWindow(wx.Frame):
         ukey  = evt.GetUnicodeKey()
         ctrl  = evt.ControlDown()
         shift = evt.ShiftDown()
+
+        # Barre de menus (Phase 9 étape 1d1) : Alt+lettre d'un menu, F10
+        if menu_bar.handle_key(self, evt):
+            return
 
         if key == wx.WXK_F2:
             self._rename_song()

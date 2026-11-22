@@ -11,7 +11,11 @@ Ctrl+Shift+S     Enregistrer le projet sous... ; case « Créer un nouveau dossi
 Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
 Shift+Z          Refaire
 Ctrl+Shift+Z     Afficher l'historique des annulations
-Alt+F4           Quitter (demande d'enregistrer si le projet est modifié)
+Alt+F4           Quitter (demande d'enregistrer si le projet est modifié) ; dans
+                 l'éditeur MIDI et Songs, Alt+F4 ferme cette fenêtre seulement
+                 (menu Fichier → Quitter : toute l'appli)
+Note: Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S et le menu Fichier marchent aussi
+      depuis l'éditeur MIDI et Songs ; la fenêtre d'origine reprend le focus
 Alt+Shift+P      Préférences (depuis toutes les fenêtres) : onglets Général, Matériel
                  (pilote audio ; entrées et sorties audio et MIDI à cocher, Espace ;
                  sortie principale ; Tester : La 440 Hz / A4 d'une seconde, niveau

@@ -805,3 +805,10 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             return
         self._key_manager.handle(event)
         self._take_end_if_idle()
+
+    def _on_menu_key(self, event):
+        """Raccourci d'un élément de menu choisi dans une autre fenêtre
+        (éditeur MIDI, Songs : Fichier, Phase 9 étape 1d1) : le clavier de
+        la fenêtre principale, sans le test du focus de _on_char_hook."""
+        self._key_manager.handle(event)
+        self._take_end_if_idle()

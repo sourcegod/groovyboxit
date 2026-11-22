@@ -1,5 +1,7 @@
 import wx
 
+from . import menu_bar
+
 
 class KeymapMixin:
     """MidiEditorWindow — dispatch clavier (_on_key)."""
@@ -10,6 +12,12 @@ class KeymapMixin:
         ctrl  = evt.ControlDown()
         shift = evt.ShiftDown()
         alt   = evt.AltDown()
+
+        # Barre de menus (Phase 9 étape 1d1) : Alt+lettre d'un menu, F10 —
+        # en tête, car plusieurs raccourcis ci-dessous ne regardent pas Alt
+        # (R, o…) ; Alt+I reste « insérer sans avancer » (K3)
+        if menu_bar.handle_key(self, evt):
+            return
 
         if key == wx.WXK_ESCAPE:
             self.Close()

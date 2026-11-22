@@ -28,10 +28,13 @@ ALL = (MAIN, MIDI, SONGS)
 class Item:
     """Élément de menu : label (avec « & » devant sa lettre), accel (raccourci
     affiché et rejoué, ou None), call (méthode de la fenêtre, sinon le
-    raccourci est rejoué), windows (fenêtres où il est actif)."""
+    raccourci est rejoué), windows (fenêtres où il est actif), main (le
+    raccourci est rejoué par le clavier de la fenêtre principale, depuis
+    toutes les fenêtres : essai de 1d1, Fichier accessible de partout)."""
 
-    def __init__(self, label, accel=None, call=None, windows=ALL):
+    def __init__(self, label, accel=None, call=None, windows=ALL, main=False):
         self.label, self.accel, self.call, self.windows = label, accel, call, tuple(windows)
+        self.main = main
 
     def text(self):
         """Libellé sans « & »."""
@@ -53,25 +56,28 @@ class Submenu:
 
 SEP = None      # séparateur
 
-P, PM = (MAIN,), (MAIN, MIDI)
+P, PM, S = (MAIN,), (MAIN, MIDI), (SONGS,)
 
-# Menus : (titre, lettre de Alt+lettre, éléments). Fenêtres (1b1) : seule la
-# principale a sa barre ; l'éditeur MIDI et Songs viennent en 1d1.
+# Menus : (titre, lettre de Alt+lettre, éléments). Fenêtres d'un élément : celles
+# dont le clavier connaît son raccourci (1d1 : relevé dans KeyManager,
+# mew_keymap._on_key, SongWindow._on_key) ; ailleurs, il est grisé (K5).
 MENUS = [
     ("Fichier", "F", [
-        Item("&Nouveau projet", "Ctrl+N", windows=P),
-        Item("&Ouvrir un projet…", "Ctrl+O", windows=P),
-        Item("&Enregistrer", "Ctrl+S", windows=P),
-        Item("Enregistrer &sous…", "Ctrl+Shift+S", windows=P),
+        Item("&Nouveau projet", "Ctrl+N", main=True),
+        Item("&Ouvrir un projet…", "Ctrl+O", main=True),
+        Item("&Enregistrer", "Ctrl+S", main=True),
+        Item("Enregistrer &sous…", "Ctrl+Shift+S", main=True),
         SEP,
         Item("Enregistrer le &pattern", "Ctrl+W", windows=P),
         Item("&Dupliquer le pattern…", "Ctrl+Shift+W", windows=P),
+        Item("Enre&gistrer le song", "Ctrl+W", windows=S),
+        Item("D&upliquer le song…", "Ctrl+Shift+W", windows=S),
         SEP,
         Item("&Importer un fichier MIDI…", "Alt+Shift+I", windows=PM),
         Item("Exporter en &MIDI…", "Alt+Shift+E"),
         Item("Exporter en &audio…", "Alt+Shift+W"),
         SEP,
-        Item("&Quitter", "Alt+F4", call="_menu_quit", windows=P),
+        Item("&Quitter", "Alt+F4", call="_menu_quit"),
     ]),
     ("Edition", "E", [
         Item("&Annuler", "Ctrl+Z", windows=PM),
@@ -80,6 +86,7 @@ MENUS = [
         SEP,
         Item("Renommer la &piste…", "F2", call="_rename_track", windows=P),
         Item("Renommer le pa&ttern…", "F2", call="_rename_pattern", windows=P),
+        Item("Renommer le so&ng…", "F2", call="_rename_song", windows=S),
     ]),
     ("Transport", "T", [
         Item("&Lecture / Pause", "Espace"),
@@ -158,11 +165,11 @@ MENUS = [
     ]),
     ("Fenêtres", "W", [
         Item("&1 - Fenêtre principale", call="_menu_main_window"),
-        Item("&2 - Éditeur MIDI", "Alt+4", windows=P),
-        Item("&3 - Songs", "Alt+5", windows=P),
+        Item("&2 - Éditeur MIDI", "Alt+4", call="_menu_midi_editor"),
+        Item("&3 - Songs", "Alt+5", call="_menu_songs"),
     ]),
     ("Aide", "A", [
-        Item("Aide &clavier", "F1", windows=P),
+        Item("Aide &clavier", "F1", call="_menu_help"),
         Item("À &propos de GroovyboxIt", call="_menu_about"),
     ]),
 ]
@@ -204,8 +211,17 @@ def install(win, kind):
     return bar
 
 
+NOTHING_HERE = "&Aucune commande dans cette fenêtre"
+
+
 def _build_menu(win, kind, items):
+    """Menu de la fenêtre kind ; un menu dont tous les éléments seraient
+    grisés reçoit en dernier un élément actif « Aucune commande dans cette
+    fenêtre » (essai de 1d1 : GTK ne prenait pas le clavier dans un tel
+    menu, Gauche / Droite et Échap retombaient sur la fenêtre)."""
     menu = wx.Menu()
+    if not any(it is not SEP and kind in it.windows for it in items):
+        items = list(items) + [SEP, Item(NOTHING_HERE, call="_menu_nothing_here")]
     for item in items:
         if item is SEP:
             menu.AppendSeparator()
@@ -266,9 +282,89 @@ def run(win, item):
         return
     evt = key_event(item.accel)
     evt.SetEventObject(win)
-    win._on_char_hook(evt)
-    if evt.GetSkipped() and hasattr(win, "_show_status"):
-        win._show_status(f"{item.text()} : sans effet ici")
+    # clavier de la fenêtre : MainWindow._on_char_hook, éditeur MIDI et
+    # Songs : _on_key (1d1)
+    if item.main and win._menu_main() is not win:   # Fichier depuis l'éditeur, Songs
+        run_on_main(win, evt)
+        return
+    handler = getattr(win, "_on_char_hook", None) or win._on_key
+    handler(evt)
+    if evt.GetSkipped():
+        _status(win, f"{item.text()} : sans effet ici")
+
+
+def _status(win, msg):
+    """Barre d'état de la fenêtre (principale : _show_status ; éditeur MIDI
+    et Songs : _set_status)."""
+    fn = getattr(win, "_show_status", None) or getattr(win, "_set_status", None)
+    if fn:
+        fn(msg)
+
+
+def run_on_main(win, evt):
+    """Raccourci d'un élément Fichier (Item.main) depuis l'éditeur MIDI ou
+    Songs : joué par le clavier de la fenêtre principale, puis la fenêtre
+    d'origine reprend le focus (essai de 1d1 : les boîtes de la fenêtre
+    principale — Ouvrir, Enregistrer sous, Annuler — le lui laissaient)."""
+    main = win._menu_main()
+    main._on_menu_key(evt)
+    _back_to(win, main)
+
+
+BACK_DELAY_MS = 200
+
+
+def _back_to(win, main):
+    """Rend le focus à win, sauf si win ou la fenêtre principale se ferme.
+    Différé (essai de 1d1) : une boîte modale refermée, GTK et le
+    gestionnaire de fenêtres réactivent ensuite sa fenêtre parente (la
+    principale) ; un Raise immédiat était aussitôt défait."""
+    if win is main:
+        return
+
+    def _raise():
+        if not win or not main or main.IsBeingDeleted() or win.IsBeingDeleted():
+            return
+        win.Raise()                     # active la fenêtre, GTK y rend son focus
+    wx.CallLater(BACK_DELAY_MS, _raise)
+
+
+def accel_of(evt):
+    """« Ctrl+Shift+S » d'un événement clavier (lettres, chiffres, F1-F12),
+    None pour les autres touches."""
+    key = evt.GetKeyCode()
+    if ord("A") <= key <= ord("Z") or ord("0") <= key <= ord("9"):
+        name = chr(key)
+    elif wx.WXK_F1 <= key <= wx.WXK_F12:
+        name = f"F{key - wx.WXK_F1 + 1}"
+    else:
+        return None
+    mods = [m for m, down in (("Ctrl", evt.ControlDown()), ("Alt", evt.AltDown()),
+                              ("Shift", evt.ShiftDown())) if down]
+    return "+".join(mods + [name])
+
+
+def _main_items():
+    return {it.accel: it for _t, _l, items in MENUS for it in items
+            if it is not SEP and not isinstance(it, Submenu) and it.main and it.accel}
+
+
+def handle_key(win, evt):
+    """Clavier de l'éditeur MIDI et de Songs (1d1), en tête de _on_key :
+    Alt+lettre d'un menu (K2 ; les lettres prises par une commande de la
+    fenêtre ne sont pas des lettres de menu, K3), F10 (K1), raccourcis du
+    menu Fichier (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S) joués par la fenêtre
+    principale (essai de 1d1). True si la touche est prise."""
+    key, ukey = evt.GetKeyCode(), evt.GetUnicodeKey()
+    ctrl, shift, alt = evt.ControlDown(), evt.ShiftDown(), evt.AltDown()
+    if alt and not (ctrl or shift) and 0 < ukey < 128 and chr(ukey).isalpha():
+        return open_menu(win, chr(ukey))
+    if key == wx.WXK_F10 and not (ctrl or shift or alt):
+        return open_first(win)
+    if getattr(win, "_menu_kind", MAIN) != MAIN and accel_of(evt) in _main_items():
+        run_on_main(win, evt)
+        return True
+    return False
 
 
 _KEYS = {"Espace": (wx.WXK_SPACE, ord(" ")), "Entrée": (wx.WXK_RETURN, 13),
@@ -315,22 +411,44 @@ def open_first(win):
 
 
 class MenuBarMixin:
-    """Actions des éléments sans raccourci (fenêtre principale ; 1d1 : les
-    autres fenêtres)."""
+    """Actions des éléments appelés par méthode, pour les trois fenêtres
+    (1d1) : la fenêtre principale est self, ou le parent de l'éditeur MIDI
+    et de Songs."""
+
+    def _menu_main(self):
+        return self if getattr(self, "_menu_kind", MAIN) == MAIN else self._parent
 
     def _menu_quit(self):
-        self.Close()
+        main = self._menu_main()
+        main.Close()
+        _back_to(self, main)            # Annuler : retour à la fenêtre d'origine
+
+    def _menu_nothing_here(self):
+        _status(self, "Aucune commande de ce menu dans cette fenêtre")
 
     def _menu_no_effect(self):
-        self._show_status("Aucun effet pour l'instant")
+        _status(self, "Aucun effet pour l'instant")
 
     def _menu_no_audio_process(self):
-        self._show_status("Aucun traitement audio pour l'instant")
+        _status(self, "Aucun traitement audio pour l'instant")
 
     def _menu_main_window(self):
-        main = getattr(self, "_main", None) or self
+        main = self._menu_main()
         main.Raise()
+        main.SetFocus()
         main._show_status("Fenêtre principale")
+
+    def _menu_midi_editor(self):
+        self._menu_main()._open_midi_editor_window()
+
+    def _menu_songs(self):
+        self._menu_main()._open_song_window()
+
+    def _menu_help(self):
+        from .dialogs import KeyboardHelpDialog
+        dlg = KeyboardHelpDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def _menu_about(self):
         wx.MessageBox("GroovyboxIt\n\nGroovebox : pads, patterns, songs, MIDI et audio.\n"
