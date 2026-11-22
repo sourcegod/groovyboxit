@@ -16279,3 +16279,51 @@ dans une fenêtre y grise l'élément (K5).
   `mw_devices`, prises) gardent leur `CallAfter` synchrone : ils
   attendent le résultat du fil sans boucle d'événements, sans GTK.
 - SPECS : écran virtuel, accessibilité coupée, `main_thread_call_after`.
+
+## Phase 9 étape 1f1 — Clôture : barre de menus
+
+**Bilan.** Une même barre de 13 menus dans la fenêtre principale,
+l'éditeur MIDI et Songs, d'une description unique (`menu_bar.py`, accès
+GTK par ctypes dans `gtk_menu.py`) ; F10 ; Alt+lettre après les commandes
+de la fenêtre, alternance des lettres partagées par GTK, aussi menu
+ouvert ; raccourcis affichés et lus par Orca, déclenchés par le seul
+clavier ; éléments grisés, jamais de menu tout grisé ; Fichier de partout
+avec retour du focus différé ; tests sous écran virtuel et sans
+accessibilité ; 103 tests de la barre, 16 mutations détectées (1c1, 1e1).
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 1a (95e8132) | Plan |
+| 1b1 (f535cd4) | Barre de la fenêtre principale |
+| 1c1 (81802a8) | Tests de la barre |
+| 1d1 (c9f07da) | Éditeur MIDI et Songs, Fichier de partout, retour du focus, Xvfb |
+| 1e1 (ae92018) | Tests ; accessibilité coupée pour les tests (Orca à 100 %) |
+| 1e2 (82aa569) | Correctif : CallAfter synchrone hors du fil principal |
+| 1f1 | Clôture |
+
+**Décisions prises en route.** F10 en attendant Alt seul ; alternance
+gardée parce que GTK la fait ; lettre de menu omise quand une commande la
+prend (Alt+I de l'éditeur) ; Alt+G pour Aller à, Alt+W pour Fenêtres
+(lettres absentes des titres) ; Panic dans Options ; Traitement en
+sous-menus Audio et Midi ; « Midi » plutôt que « MIDI » (Orca épelait) ;
+Fichier et Quitter accessibles de partout, Alt+F4 laissé au gestionnaire
+de fenêtres dans les fenêtres secondaires.
+
+**Trouvailles d'accessibilité** (SPECS, « Astuces d'accessibilité ») :
+retour du focus différé après une boîte d'une autre fenêtre ; menu tout
+grisé qui ne prend pas le clavier ; sous-menu ouvert par GTK sans y
+entrer (Échap) ; raccourci affiché par `GtkAccelLabel` sans être
+enregistré.
+
+**Incidents.** Machine gelée pendant un niveau Avancé (1d1), puis Orca à
+100 % du processeur : les fenêtres de test parlaient au bus
+d'accessibilité du bureau → Xvfb et `NO_AT_BRIDGE=1` dans
+`tools/tests.sh`.
+
+**Suites.** Alt seul pour ouvrir la barre (à la manière de Firefox : au
+relâchement d'Alt sans autre touche) — prochaine étape demandée ; nouveaux
+éléments de menus par l'utilisateur ; Copier / Couper / Coller,
+Sélectionner tout dans Edition ; éléments propres à l'éditeur MIDI
+(insertion, limiteurs) ; SpeechAccess si Orca ne suffit plus.
