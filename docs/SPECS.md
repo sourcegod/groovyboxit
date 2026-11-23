@@ -2411,6 +2411,20 @@ fenêtre d'origine elle-même (le focus y revient alors de lui-même).
 - GTK ouvre de lui-même, sans y entrer, le sous-menu de l'élément
   sélectionné, et lui envoie les touches : un Échap pris pour « remonter »
   doit vérifier qu'un élément du sous-menu est sélectionné.
+- **Lettre partagée, menu déjà ouvert** (Phase 9 étape 3b1, essai) :
+  l'alternance de GTK (`gtk_window_mnemonic_activate`) sélectionne alors le
+  titre suivant de la barre **sans entrer dans son menu** : aucun élément
+  sélectionné, le menu ne prend pas le clavier ; Orca dit « Piste menu »
+  (une fois sur deux), Bas part dans la fenêtre (la grille jouait un pad),
+  et seul F10 puis les flèches marchaient. Remède (paquet menukeys) :
+  l'alternance est calculée par le paquet (menu suivant de celui qui est
+  ouvert) et chaque menu ouvert comme par F10
+  (`gtk_widget_mnemonic_activate` sur le titre : menu ouvert, premier
+  élément sélectionné, le menu prend le clavier).
+- **Action d'un élément différée** (150 ms, `MENU_DELAY_MS`) : le menu
+  refermé, GTK rend le focus à la fenêtre ; une action qui change beaucoup
+  de lignes aussitôt (liste des pistes, des pads, barre d'état) empêchait
+  Orca de lire ce retour.
 
 #### EVT_CHAR_HOOK sur un dialog à boutons : Entrée casse l'activation native
 

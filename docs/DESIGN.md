@@ -16684,3 +16684,26 @@ ouvert, sélectionnait le titre suivant sans entrer dans son menu (Orca :
 « Piste menu », Bas partait dans la fenêtre). Ctrl+P et Shift+P retirés :
 Shift+P ne retombe pas sur Lecture (P seul) ; `Pattern.gen_pattern` gardé
 pour Traitement > Générer.
+
+## Phase 9 étape 3b2 — Avenant : Mute / Solo de piste, sous-menu Métronome
+
+**Demande de l'utilisateur (2026-11-23, essai de 3b1).**
+- A1 — Menu Piste, avant les Mute et Solo exclusifs : Mute de la piste
+  (X), Démuter toutes les pistes (Shift+X), Solo de la piste (S),
+  Désactiver tous les Solos (Shift+S). Au clavier, ces touches n'agissent
+  sur la piste que sur la liste des pistes (ailleurs : le pad) → éléments
+  par méthode, sur la piste courante quel que soit le focus, avec Undo et
+  coupure des notes comme au clavier ; la logique passe dans KeyManager,
+  partagée par la touche et l'élément.
+- A2 — Transport, sous-menu Métronome : Click On / Off (C), Tap Tempo (H),
+  BPM +5 « ( », BPM −5 « ) » (raccourcis rejoués) ; Régler le tempo…
+  (dialogue, avec les autres dialogues en 3d1) : champ BPM (SpinCtrl, le
+  premier tempo du pattern), touches ( ) et H comme dans la fenêtre
+  principale, bouton « Tap Tempo », champ en lecture seule pour le
+  résultat ; à la validation, tous les tempos du pattern changent dans la
+  même proportion, comme ( ) et le champ BPM (réponse de l'utilisateur).
+- A3 — menukeys/keys.py : « ( » et « ) » affichés par GTK (parenleft,
+  parenright).
+
+**Étapes.** 3b3 : A1, A2 sans le dialogue, A3, et essai ; les tests vont
+en 3c1 ; le dialogue Régler le tempo… rejoint 3d1.
