@@ -16541,3 +16541,136 @@ fenêtres et empêche une barre de s'ouvrir → vider les `CallAfter` d'abord.
 **Suites.** Éléments de menus à ajouter par l'utilisateur ; Copier /
 Couper / Coller, Sélectionner tout dans Edition ; éléments propres à
 l'éditeur MIDI ; SpeechAccess si besoin.
+
+## Phase 9 étape 3a — Nouveaux éléments de menus (plan)
+
+**Origine (utilisateur, 2026-11-22, complétée le 2026-11-23).**
+- Edition : Couper / Copier / Coller / Supprimer ; Sélectionner tout /
+  Tout désélectionner ; sous-menu Sélection : Sélectionner la piste
+  courante, Désélectionner la piste courante, Dialogue de sélection des
+  pistes.
+- Transport : limiteurs gauche / droit.
+- Aller à : limiteur gauche / droit ; début / fin de boucle.
+- Piste : piste précédente / suivante.
+- Mixer (nouveau menu, après Effets) : volume et pan globaux, volume et
+  pan de la piste, par pas, par un dialogue « Régler… » et par la remise
+  aux valeurs normales.
+- Pattern (nouveau menu, après Piste) : changer de pattern (précédent,
+  suivant, dialogue de choix), propriétés, redimensionner (doubler,
+  diviser, vider, dialogue).
+- Éditeur MIDI : ses éléments propres.
+- Pattern de démonstration (Ctrl+P) et Pattern aléatoire (Shift+P) : plus
+  d'actualité, ils ne marchent plus comme avant → supprimés, raccourcis
+  libérés ; le pattern aléatoire reviendra plus tard dans Traitement,
+  sous-menu « Générer ».
+
+**État des lieux (fenêtre principale, KeyManager).** « Focus » : la
+touche n'agit que sur un champ précis ; l'élément de menu appellera
+alors une méthode, pour agir quel que soit le focus.
+
+| Commande | Raccourci | Focus |
+|---|---|---|
+| Copier les pistes sélectionnées | Ctrl+C | non |
+| Couper (copie, efface grille et bande entre limiteurs) | Ctrl+X | non |
+| Supprimer avec presse-papier (grille et bande) | Ctrl+D | non |
+| Coller / Coller par fusion | Ctrl+V / Shift+V | non |
+| Supprimer sans presse-papier | Suppr | liste des pistes |
+| Effacer grille et bande sans presse-papier | Ctrl+Suppr | non |
+| Sélectionner tout / Tout désélectionner (et limiteurs) | Ctrl+A / Ctrl+Shift+A | non |
+| Piste courante dans / hors de la sélection (bascule) | Shift+Espace | liste des pistes |
+| Dialogue de sélection des pistes | Ctrl+Entrée | liste des pistes (`_track_select_dialog`) |
+| Limiteur gauche / droit à la position | i / o | non |
+| Limiteur gauche au début / droit à la fin | Shift+I / Shift+O | non |
+| Aller au limiteur gauche / droit | Début / Fin | non |
+| Aller au début / à la fin de la boucle | Shift+Début / Shift+Fin | non |
+| Volume global ±1 | Ctrl+Haut / Ctrl+Bas | non (`_set_master_volume_undo`) |
+| Pan global ±1 | Ctrl+Droite / Ctrl+Gauche | non (`_set_master_pan_undo`) |
+| Volume et pan globaux des préférences | Ctrl+Retour arrière | non |
+| Piste précédente / suivante | Haut / Bas | liste des pistes (`_go_to_track`) |
+| Volume de piste ±5, pan ±10 | Alt+flèches | liste des pistes (ailleurs : pad) ; `_set_track_volume_undo`, `_set_track_pan_undo` |
+| Volume 100 et pan 0 de la piste | Shift+Retour arrière | liste des pistes |
+| Pattern précédent / suivant | Haut / Bas | liste des patterns (`_switch_pattern`) |
+| Propriétés du pattern | Alt+Entrée | liste des patterns |
+| Doubler / Diviser | Ctrl+F / Shift+F | non |
+| Réinitialiser (vider) le pattern | Shift+Suppr | non (`reset_pattern`) |
+| Pattern de démonstration / aléatoire | Ctrl+P / Shift+P | non (à supprimer) |
+
+**Constats.** Suppr (pistes) et Shift+Suppr (pattern) n'ont pas d'Undo ;
+aucun dialogue pour choisir un pattern ni pour le redimensionner
+(`Pattern.resize(num_bars, num_steps)` existe) ; aucun dialogue pour
+régler un volume ou un pan ; `menukeys/keys.py` ne connaît pas les noms
+Haut, Bas, Gauche, Droite, Suppr, Début, Fin, Retour arrière ni le pavé
+numérique. Ctrl+P garde son autre sens, Lecture / Pause dans le
+dialogue des propriétés.
+
+**Proposition.**
+- E1 — Edition (principale et éditeur) : Couper Ctrl+X, Copier Ctrl+C,
+  Coller Ctrl+V, Coller par fusion Shift+V, Supprimer Suppr (principale :
+  par méthode ; éditeur : l'événement), Supprimer avec presse-papier
+  Ctrl+D, Effacer sans presse-papier Ctrl+Suppr ; Sélectionner tout
+  Ctrl+A, Tout désélectionner Ctrl+Shift+A ; sous-menu Sélection
+  (principale) : Sélectionner la piste courante, Désélectionner la piste
+  courante (deux éléments explicites, Shift+Espace affiché), Sélection
+  des pistes… (Ctrl+Entrée, par méthode).
+- E2 — Transport : Limiteur gauche ici (i), Limiteur droit ici (o),
+  Limiteur gauche au début (Shift+I), Limiteur droit à la fin (Shift+O).
+- E3 — Aller à : Au limiteur gauche (Début), Au limiteur droit (Fin),
+  Début de boucle (Shift+Début), Fin de boucle (Shift+Fin).
+- E4 — Piste : Piste précédente / suivante (par méthode, sans raccourci
+  affiché).
+- E5 — Menu Pattern (nouveau, Alt+P, après Piste, fenêtre principale) :
+  - sous-menu Changer de pattern : Pattern précédent, Pattern suivant
+    (`_switch_pattern`, 1..99), Choisir un pattern… (nouveau dialogue :
+    liste des 99 patterns, numéro et nom) ;
+  - Propriétés du pattern… (Alt+Entrée) ;
+  - Enregistrer le pattern (Ctrl+W) et Dupliquer le pattern…
+    (Ctrl+Shift+W), déplacés depuis Fichier ;
+  - sous-menu Redimensionner : Doubler (Ctrl+F), Diviser (Shift+F), Vider
+    le pattern (Shift+Suppr), Redimensionner le pattern… (nouveau
+    dialogue : mesures, pas par mesure).
+- E6 — Menu Mixer (nouveau, Alt+M, après Effets) :
+  - sous-menu Volume : Volume global +1 (Ctrl+Haut), Volume global −1
+    (Ctrl+Bas), Régler le volume global… ; séparateur ; Volume de la
+    piste +5 (Alt+Haut), Volume de la piste −5 (Alt+Bas), Régler le
+    volume de la piste… ;
+  - sous-menu Pan : Pan global à droite +1 (Ctrl+Droite), Pan global à
+    gauche −1 (Ctrl+Gauche), Régler le pan global… ; séparateur ; Pan de
+    la piste à droite +10 (Alt+Droite), Pan de la piste à gauche −10
+    (Alt+Gauche), Régler le pan de la piste… ;
+  - Volume et pan globaux normaux (Ctrl+Retour arrière : valeurs des
+    préférences) ;
+  - Volume et pan de la piste normaux (Shift+Retour arrière : 100 et 0).
+  Les pas des éléments sont ceux des raccourcis (décision de
+  l'utilisateur). Par méthode, avec Undo, sur la piste courante quel que
+  soit le focus.
+  « Régler… » : petit dialogue à un champ numérique (SpinCtrl, lu par
+  Orca), OK / Annuler, Undo comme les pas.
+- E7 — Undo pour Supprimer (Suppr, pistes) et Vider le pattern
+  (Shift+Suppr), au clavier comme au menu.
+- E8 — Suppression du pattern de démonstration (Ctrl+P) et du pattern
+  aléatoire (Shift+P) : code, aide F1, `docs/shortcuts.md`, SPECS, tests ;
+  les deux raccourcis deviennent libres.
+- E9 — Éditeur MIDI : Insertion — Insérer une note (Ctrl+I), sans
+  avancer (Alt+I), avec dialogue (Ctrl+Shift+I), entre deux notes (A),
+  Dupliquer (D), Dupliquer sans avancer (Shift+D) ; Edition — Éditer
+  l'événement (Entrée) ; Affichage — Rafraîchir (R) ; Traitement > Midi,
+  sous-menu Note — Raccourcir / Rallonger (Num 1 / Num 3), Reculer /
+  Avancer (Num 4 / Num 6), Vélocité − / + (Num 7 / Num 9), Demi-ton − / +
+  (Num 2 / Num 8), Octave − / + (Ctrl+Num 2 / Ctrl+Num 8).
+- E10 — `menukeys/keys.py` : noms de touches Haut, Bas, Gauche, Droite,
+  Suppr, Début, Fin, Retour arrière, Num 0-9 (affichage et `key_event`).
+- E11 — Éléments grisés selon la fenêtre ; aide F1 ; tests (raccourcis
+  présents dans l'aide, lettres uniques dans chaque menu, lettres M et P
+  libres dans les trois fenêtres).
+
+**Réponses de l'utilisateur (2026-11-23).** Q1 : un dialogue « Régler… »
+pour le volume et le pan ; Q2 : menu Pattern en Alt+P, y déplacer
+Ctrl+W et Ctrl+Shift+W, y mettre Propriétés (Démonstration et Aléatoire :
+supprimés, voir E8) ; Q3 : ajouter Ctrl+D, Ctrl+Suppr, Shift+V ; Q4 : Undo
+pour Suppr et Shift+Suppr ; Q5 : liste de l'éditeur MIDI acceptée.
+
+**Étapes.** 3b1 : menus de la fenêtre principale sur les commandes
+existantes (E1-E6 sans les nouveaux dialogues, E7, E8, E10, E11) et
+essai ; 3c1 : tests ; 3d1 : dialogues Régler…, Choisir un pattern…,
+Redimensionner le pattern… et essai ; 3e1 : tests ; 3f1 : éditeur MIDI
+(E9) et essai ; 3g1 : tests ; 3h1 : clôture.
