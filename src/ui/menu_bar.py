@@ -9,8 +9,8 @@
       de la fenêtre reste seul à les déclencher (paquet menukeys, 2b3).
     - Un élément refait son raccourci par le vrai chemin du clavier de la
       fenêtre (T3 : jamais une copie du code), ou appelle une méthode quand
-      l'action dépend du focus ou n'a pas de raccourci ; lancé par
-      wx.CallAfter, menu refermé et focus revenu.
+      l'action dépend du focus ou n'a pas de raccourci ; lancé après
+      MENU_DELAY_MS (wx.CallLater, 3b1), menu refermé et focus revenu et lu.
     - F10 ouvre la barre (K1) ; Alt+lettre ouvre un menu, en alternance si la
       lettre est partagée (K2, fait par GTK) ; une lettre déjà prise par une
       commande de la fenêtre n'est pas donnée au menu (K3).
@@ -31,11 +31,12 @@ class Item:
     affiché et rejoué, ou None), call (méthode de la fenêtre, sinon le
     raccourci est rejoué), windows (fenêtres où il est actif), main (le
     raccourci est rejoué par le clavier de la fenêtre principale, depuis
-    toutes les fenêtres : essai de 1d1, Fichier accessible de partout)."""
+    toutes les fenêtres : essai de 1d1, Fichier accessible de partout), args
+    (arguments de la méthode : Phase 9 étape 3b1, pas des volumes)."""
 
-    def __init__(self, label, accel=None, call=None, windows=ALL, main=False):
+    def __init__(self, label, accel=None, call=None, windows=ALL, main=False, args=()):
         self.label, self.accel, self.call, self.windows = label, accel, call, tuple(windows)
-        self.main = main
+        self.main, self.args = main, tuple(args)
 
     def text(self):
         """Libellé sans « & »."""
@@ -69,8 +70,6 @@ MENUS = [
         Item("&Enregistrer", "Ctrl+S", main=True),
         Item("Enregistrer &sous…", "Ctrl+Shift+S", main=True),
         SEP,
-        Item("Enregistrer le &pattern", "Ctrl+W", windows=P),
-        Item("&Dupliquer le pattern…", "Ctrl+Shift+W", windows=P),
         Item("Enre&gistrer le song", "Ctrl+W", windows=S),
         Item("D&upliquer le song…", "Ctrl+Shift+W", windows=S),
         SEP,
@@ -84,6 +83,26 @@ MENUS = [
         Item("&Annuler", "Ctrl+Z", windows=PM),
         Item("&Refaire", "Shift+Z", windows=PM),
         Item("&Historique des annulations…", "Ctrl+Shift+Z", windows=PM),
+        SEP,
+        # Phase 9 étape 3b1 (§ 3a E1) : Suppr par méthode (focus de la liste
+        # des pistes dans la principale ; l'éditeur MIDI rejoue la touche)
+        Item("Co&uper", "Ctrl+X", windows=PM),
+        Item("&Copier", "Ctrl+C", windows=PM),
+        Item("Co&ller", "Ctrl+V", windows=PM),
+        Item("Coller par &fusion", "Shift+V", windows=P),
+        Item("&Supprimer", "Suppr", call="_menu_delete", windows=PM),
+        Item("Supprimer a&vec presse-papier", "Ctrl+D", windows=P),
+        Item("&Effacer sans presse-papier", "Ctrl+Suppr", windows=P),
+        SEP,
+        Item("Sélect&ionner tout", "Ctrl+A", windows=PM),
+        Item("Tout &désélectionner", "Ctrl+Shift+A", windows=PM),
+        Submenu("Sélecti&on", [
+            Item("&Sélectionner la piste courante", "Shift+Espace",
+                 call="_menu_select_track", args=(True,), windows=P),
+            Item("&Désélectionner la piste courante", "Shift+Espace",
+                 call="_menu_select_track", args=(False,), windows=P),
+            Item("Sélection des &pistes…", "Ctrl+Entrée", call="_track_select_dialog", windows=P),
+        ]),
         SEP,
         Item("Renommer la &piste…", "F2", call="_rename_track", windows=P),
         Item("Renommer le pa&ttern…", "F2", call="_rename_pattern", windows=P),
@@ -102,6 +121,11 @@ MENUS = [
         SEP,
         Item("Bo&ucle On / Off", "L"),
         Item("&Points de boucle…", "Ctrl+Shift+L", windows=P),
+        SEP,
+        Item("Limiteur &gauche ici", "I", windows=P),
+        Item("Limiteur dr&oit ici", "O", windows=P),
+        Item("Limiteur gauche au dé&but", "Shift+I", windows=P),
+        Item("Limiteur droit à la &fin", "Shift+O", windows=P),
     ]),
     # Aller à (essai de 1b1) : Alt+G, lettre absente du titre (comme Alt+W)
     ("Aller à", "G", [
@@ -117,16 +141,43 @@ MENUS = [
         Item("Pas p&récédent", "Shift+PageUp"),
         Item("Seconde suiva&nte", "W"),
         Item("Seconde précéd&ente", "B"),
+        SEP,
+        Item("Au limiteur gauc&he", "Début", windows=P),
+        Item("Au limiteur dr&oit", "Fin", windows=P),
+        Item("Au début de &la boucle", "Shift+Début", windows=P),
+        Item("À la f&in de la boucle", "Shift+Fin", windows=P),
     ]),
     ("Insertion", "I", [
         Item("&Tempos…", "Alt+Shift+T", windows=PM),
     ]),
     ("Piste", "T", [
+        Item("Piste pré&cédente", call="_menu_step_track", args=(-1,), windows=P),
+        Item("Piste suiva&nte", call="_menu_step_track", args=(1,), windows=P),
+        SEP,
         Item("&Propriétés de la piste…", "Ctrl+Shift+T", windows=P),
         SEP,
         Item("&Mute exclusif", "F3", windows=P),
         Item("&Solo exclusif", "F4", windows=P),
         Item("&Réinitialiser les Mute et Solo", "F5", windows=P),
+    ]),
+    # Pattern (Phase 9 étape 3b1, § 3a E5) : Alt+P ; Ctrl+W et Ctrl+Shift+W
+    # viennent de Fichier
+    ("Pattern", "P", [
+        Submenu("&Changer de pattern", [
+            Item("Pattern &précédent", call="_menu_step_pattern", args=(-1,), windows=P),
+            Item("Pattern &suivant", call="_menu_step_pattern", args=(1,), windows=P),
+        ]),
+        Item("&Propriétés du pattern…", "Alt+Entrée", call="_pattern_properties_dialog",
+             windows=P),
+        SEP,
+        Item("&Enregistrer le pattern", "Ctrl+W", windows=P),
+        Item("&Dupliquer le pattern…", "Ctrl+Shift+W", windows=P),
+        SEP,
+        Submenu("&Redimensionner", [
+            Item("&Doubler", "Ctrl+F", windows=P),
+            Item("D&iviser", "Shift+F", windows=P),
+            Item("&Vider le pattern", "Shift+Suppr", call="_menu_reset_pattern", windows=P),
+        ]),
     ]),
     ("Affichage", "A", [
         Item("&Grille…", "Ctrl+Shift+G"),
@@ -148,6 +199,33 @@ MENUS = [
     ]),
     ("Effets", "F", [
         Item("&Aucun effet pour l'instant", call="_menu_no_effect"),
+    ]),
+    # Mixer (Phase 9 étape 3b1, § 3a E6) : Alt+M ; pas des raccourcis ;
+    # piste courante par méthode, quel que soit le focus
+    ("Mixer", "M", [
+        Submenu("&Volume", [
+            Item("Volume &global +1", "Ctrl+Haut", windows=P),
+            Item("Volume glo&bal −1", "Ctrl+Bas", windows=P),
+            SEP,
+            Item("Volume de la &piste +5", "Alt+Haut", call="_menu_track_volume",
+                 args=(5,), windows=P),
+            Item("Volume de la pis&te −5", "Alt+Bas", call="_menu_track_volume",
+                 args=(-5,), windows=P),
+        ]),
+        Submenu("&Pan", [
+            Item("Pan global à &droite +1", "Ctrl+Droite", windows=P),
+            Item("Pan global à &gauche −1", "Ctrl+Gauche", windows=P),
+            SEP,
+            Item("Pan de la piste à d&roite +10", "Alt+Droite", call="_menu_track_pan",
+                 args=(10,), windows=P),
+            Item("Pan de la piste à ga&uche −10", "Alt+Gauche", call="_menu_track_pan",
+                 args=(-10,), windows=P),
+        ]),
+        SEP,
+        Item("Volume et pan globaux &normaux", "Ctrl+Retour arrière",
+             call="_menu_master_mix_reset", windows=P),
+        Item("Volume et pan de la pis&te normaux", "Shift+Retour arrière",
+             call="_menu_track_mix_reset", windows=P),
     ]),
     ("Outils", "O", [
         Item("&Explorateur…", "Alt+X", windows=P),
@@ -251,12 +329,19 @@ def _decorate(win, bar, kind):
 # Actions
 # ----------------------------------------------------------------------
 
+# Délai avant l'action d'un élément (Phase 9 étape 3b1, essai : Piste
+# suivante, focus sur la grille, Orca perdait le focus) : le menu refermé,
+# GTK rend le focus à la fenêtre et Orca doit le lire avant le flot de
+# changements de l'action (listes des pistes et des pads, barre d'état)
+MENU_DELAY_MS = 150
+
+
 def _on_menu(win, evt):
     item = getattr(win, "_menu_items", {}).get(evt.GetId())
     if item is None:
         evt.Skip()
         return
-    wx.CallAfter(run, win, item)
+    wx.CallLater(MENU_DELAY_MS, run, win, item)
 
 
 def run(win, item):
@@ -265,19 +350,25 @@ def run(win, item):
     if not win or (hasattr(win, "IsBeingDeleted") and win.IsBeingDeleted()):
         return
     if item.call:
-        getattr(win, item.call)()
+        getattr(win, item.call)(*item.args)
         return
-    evt = key_event(item.accel)
+    replay(win, item.accel, item.text(), main=item.main)
+
+
+def replay(win, accel, text, main=False):
+    """Rejoue le raccourci accel par le clavier de la fenêtre (T3) ; annonce
+    « text : sans effet ici » si la fenêtre ne le prend pas."""
+    evt = key_event(accel)
     evt.SetEventObject(win)
     # clavier de la fenêtre : MainWindow._on_char_hook, éditeur MIDI et
     # Songs : _on_key (1d1)
-    if item.main and win._menu_main() is not win:   # Fichier depuis l'éditeur, Songs
+    if main and win._menu_main() is not win:        # Fichier depuis l'éditeur, Songs
         run_on_main(win, evt)
         return
     handler = getattr(win, "_on_char_hook", None) or win._on_key
     handler(evt)
     if evt.GetSkipped():
-        _status(win, f"{item.text()} : sans effet ici")
+        _status(win, f"{text} : sans effet ici")
 
 
 def _status(win, msg):
@@ -372,6 +463,11 @@ class MenuBarMixin:
 
     def _menu_no_effect(self):
         _status(self, "Aucun effet pour l'instant")
+
+    def _menu_delete(self):
+        """Edition > Supprimer : la touche Suppr de la fenêtre (éditeur MIDI) ;
+        la fenêtre principale a sa méthode (MainMenuActions, 3b1)."""
+        replay(self, "Suppr", "Supprimer")
 
     def _menu_no_audio_process(self):
         _status(self, "Aucun traitement audio pour l'instant")

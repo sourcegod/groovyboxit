@@ -16674,3 +16674,13 @@ existantes (E1-E6 sans les nouveaux dialogues, E7, E8, E10, E11) et
 essai ; 3c1 : tests ; 3d1 : dialogues Régler…, Choisir un pattern…,
 Redimensionner le pattern… et essai ; 3e1 : tests ; 3f1 : éditeur MIDI
 (E9) et essai ; 3g1 : tests ; 3h1 : clôture.
+
+**3b1 — essai.** Deux corrections : (1) un élément de menu s'exécute
+`MENU_DELAY_MS` (150 ms) après la fermeture du menu, pour laisser Orca lire
+le retour du focus ; (2) l'alternance d'une lettre partagée est faite par
+menukeys (`MenuKeys.open_menu` : menu suivant de celui qui est ouvert,
+ouvert comme par F10, premier élément sélectionné) — celle de GTK, menu
+ouvert, sélectionnait le titre suivant sans entrer dans son menu (Orca :
+« Piste menu », Bas partait dans la fenêtre). Ctrl+P et Shift+P retirés :
+Shift+P ne retombe pas sur Lecture (P seul) ; `Pattern.gen_pattern` gardé
+pour Traitement > Générer.

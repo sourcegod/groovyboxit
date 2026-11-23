@@ -4,6 +4,22 @@ import wx
 class AltHandler:
     """Mixin KeyManager — groupe Alt+…"""
 
+    def track_volume_step(self, delta):
+        """Volume de la piste courante ± delta, avec Undo (Alt+Haut / Alt+Bas
+        sur la liste des pistes ; Mixer > Volume, Phase 9 étape 3b1)."""
+        win  = self._win
+        tidx = win._player._cur_track
+        vol  = win._set_track_volume_undo(tidx, win._router.get_track_volume(tidx) + delta)
+        win._show_status(f"Piste {tidx + 1}: Volume {vol}")
+
+    def track_pan_step(self, delta):
+        """Pan de la piste courante ± delta, avec Undo (Alt+Gauche / Alt+Droite
+        sur la liste des pistes ; Mixer > Pan, Phase 9 étape 3b1)."""
+        win  = self._win
+        tidx = win._player._cur_track
+        pan  = win._set_track_pan_undo(tidx, win._router.get_track_pan(tidx) + delta)
+        win._show_status(f"Piste {tidx + 1}: Pan {pan}")
+
     def _handle_alt(self, event, ctx):
         win   = self._win
         key   = ctx.key
@@ -14,10 +30,8 @@ class AltHandler:
         on_pad_list   = ctx.on_pad_list
 
         if not ctrl and not shift and key == wx.WXK_UP:
-            tidx = win._player._cur_track
             if on_track_list:
-                vol = win._set_track_volume_undo(tidx, win._router.get_track_volume(tidx) + 5)
-                win._show_status(f"Piste {tidx + 1}: Volume {vol}")
+                self.track_volume_step(5)
             else:
                 vm = win._player.voice_manager
                 win._set_pad_volume_undo(win._cur_row, vm.get_voice(win._cur_row).volume + 5)
@@ -27,10 +41,8 @@ class AltHandler:
                     win._play(win._cur_row)
             return True
         if not ctrl and not shift and key == wx.WXK_DOWN:
-            tidx = win._player._cur_track
             if on_track_list:
-                vol = win._set_track_volume_undo(tidx, win._router.get_track_volume(tidx) - 5)
-                win._show_status(f"Piste {tidx + 1}: Volume {vol}")
+                self.track_volume_step(-5)
             else:
                 vm = win._player.voice_manager
                 win._set_pad_volume_undo(win._cur_row, vm.get_voice(win._cur_row).volume - 5)
@@ -40,10 +52,8 @@ class AltHandler:
                     win._play(win._cur_row)
             return True
         if not ctrl and not shift and key == wx.WXK_LEFT:
-            tidx = win._player._cur_track
             if on_track_list:
-                pan = win._set_track_pan_undo(tidx, win._router.get_track_pan(tidx) - 10)
-                win._show_status(f"Piste {tidx + 1}: Pan {pan}")
+                self.track_pan_step(-10)
             else:
                 vm = win._player.voice_manager
                 win._set_pad_pan_undo(win._cur_row, vm.get_pan(win._cur_row) - 10)
@@ -53,10 +63,8 @@ class AltHandler:
                     win._play(win._cur_row)
             return True
         if not ctrl and not shift and key == wx.WXK_RIGHT:
-            tidx = win._player._cur_track
             if on_track_list:
-                pan = win._set_track_pan_undo(tidx, win._router.get_track_pan(tidx) + 10)
-                win._show_status(f"Piste {tidx + 1}: Pan {pan}")
+                self.track_pan_step(10)
             else:
                 vm = win._player.voice_manager
                 win._set_pad_pan_undo(win._cur_row, vm.get_pan(win._cur_row) + 10)

@@ -4,6 +4,29 @@ import wx
 class NavigationHandler:
     """Mixin KeyManager — navigation : Tab, flèches, Entrée, Home/End."""
 
+    def reset_pattern_undo(self):
+        """Vide le pattern, avec Undo (Shift+Suppr ; Pattern > Redimensionner >
+        Vider le pattern ; Undo : Phase 9 étape 3b1, § 3a E7)."""
+        win = self._win
+        win._add_undo("Vider le pattern")
+        win._player._pattern.reset_pattern()
+        win._refresh_grid()
+        win._show_status("Pattern réinitialisé")
+
+    def delete_tracks(self):
+        """Efface les pistes sélectionnées (ou la courante) sans presse-papier,
+        avec Undo (Suppr sur la liste des pistes ; Edition > Supprimer ;
+        Undo : Phase 9 étape 3b1, § 3a E7)."""
+        win = self._win
+        te  = win._track_editor
+        cur = win._player._cur_track
+        tracks = te.get_effective_tracks(cur)
+        names  = f"{'s' if len(tracks) > 1 else ''} {', '.join(str(i + 1) for i in tracks)}"
+        win._add_undo(f"Effacer piste{names}")
+        te.erase(win._player._pattern, cur)
+        win._refresh_grid()
+        win._show_status(f"Effacé: Piste{names}")
+
     def _handle_navigation(self, event, ctx):
         win   = self._win
         key   = ctx.key
@@ -127,21 +150,11 @@ class NavigationHandler:
             return True
 
         if shift and key == wx.WXK_DELETE:
-            win._player._pattern.reset_pattern()
-            win._refresh_grid()
-            win._show_status("Pattern réinitialisé")
+            self.reset_pattern_undo()
             return True
 
         if key == wx.WXK_DELETE and on_track_list:
-            te  = win._track_editor
-            cur = win._player._cur_track
-            tracks = te.get_effective_tracks(cur)
-            te.erase(win._player._pattern, cur)
-            win._refresh_grid()
-            win._show_status(
-                f"Effacé: Piste{'s' if len(tracks) > 1 else ''} "
-                f"{', '.join(str(i + 1) for i in tracks)}"
-            )
+            self.delete_tracks()
             return True
 
         if not ctx.ctrl and not shift and key == wx.WXK_HOME:

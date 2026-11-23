@@ -26,8 +26,9 @@
       rien dans les champs de saisie) ;
     - F10 et **Alt seul** (appuyé puis relâché sans autre touche ; pas
       AltGr) ouvrent le premier menu ; Alt seul, menu ouvert, referme ;
-    - Alt+lettre ouvre son menu, aussi menu ouvert ; une lettre partagée
-      ALTERNE entre ses menus (Alt+A : Affichage, Aide, Affichage…) ;
+    - Alt+lettre ouvre son menu, aussi menu ouvert, son premier élément
+      sélectionné ; une lettre partagée ALTERNE entre ses menus (Alt+A :
+      Affichage, Aide, Affichage…) ;
       `letters` donne une lettre à un menu dont le titre ne la contient pas,
       `taken` retire les lettres prises par les commandes de la fenêtre ;
     - Échap dans un sous-menu où l'on est entré remonte d'un niveau ;
@@ -75,10 +76,12 @@ class MenuKeys:
         self.extra_letters = {i: l.upper() for i, l in (letters or {}).items()}
         self.taken = {l.upper() for l in taken}
         self.letters = set()
+        self.menu_letters = {}          # indice de menu → sa lettre (libre)
         for i in range(self.bar.GetMenuCount() if self.bar else 0):
             letter = title_letter(self.bar.GetMenuLabel(i)) or self.extra_letters.get(i)
             if letter and letter not in self.taken:
                 self.letters.add(letter)
+                self.menu_letters[i] = letter
         self.alt_state = gtk_menu.AltState()
         if self.bar and gtk_menu.available():
             self._decorate()
@@ -126,11 +129,21 @@ class MenuKeys:
     # --- commandes ----------------------------------------------------
 
     def open_menu(self, letter):
-        """Ouvre le menu de Alt+lettre (alternance si la lettre est partagée) ;
-        False si ce n'est pas une lettre de menu de la fenêtre."""
+        """Ouvre le menu de Alt+lettre ; une lettre partagée ALTERNE entre ses
+        menus (le suivant de celui qui est ouvert) ; False si ce n'est pas une
+        lettre de menu de la fenêtre.
+        L'alternance est faite ici, et chaque menu ouvert comme par F10
+        (GroovyboxIt, Phase 9 étape 3b1, essai : l'alternance de GTK, menu
+        ouvert, sélectionnait le titre suivant sans entrer dans son menu ;
+        Orca disait « Piste menu » et Bas partait dans la fenêtre)."""
         if not letter or letter.upper() not in self.letters:
             return False
-        return gtk_menu.activate_mnemonic(self.bar, letter)
+        menus = sorted(i for i, l in self.menu_letters.items() if l == letter.upper())
+        opened = self.open_menus()
+        index = menus[0]
+        if opened and opened[0] in menus:
+            index = menus[(menus.index(opened[0]) + 1) % len(menus)]
+        return gtk_menu.open_item(self.bar, index)
 
     def open_first(self):
         """Ouvre le premier menu (F10, Alt seul)."""

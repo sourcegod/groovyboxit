@@ -215,17 +215,10 @@ class CharHandler:
                 win._show_status("Click: On")
             return True
 
-        # Shift+P : générer un pattern aléatoire
-        if shift and not ctrl and (ukey == ord('p') or key == ord('P')):
-            win._add_undo("Pattern aléatoire")
-            win._player._pattern.gen_pattern(win._player._cur_track)
-            win._player._compute_offsets()
-            win._refresh_grid()
-            win._show_status("Pattern aléatoire généré")
-            return True
-
-        # Space / P : play/pause  (Ctrl+Space réservé à handle_transport)
-        if not ctrl and (ukey in (ord(' '), ord('p')) or key in (wx.WXK_SPACE, ord('P'))):
+        # Space / P : play/pause  (Ctrl+Space réservé à handle_transport) ;
+        # Shift+P est libre (pattern aléatoire retiré, Phase 9 étape 3b1, § 3a E8)
+        if not ctrl and (ukey == ord(' ') or key == wx.WXK_SPACE
+                         or (not shift and (ukey == ord('p') or key == ord('P')))):
             p = win._player
             # Espace pendant un enregistrement ou un décompte : l'enregistrement
             # s'arrête aussi (Phase 8 étape 14f1, essai : la prise audio et le

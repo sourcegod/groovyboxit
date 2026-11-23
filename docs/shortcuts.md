@@ -52,8 +52,6 @@ Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le rem
                  choix gardé)
 Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer, Tap Tempo, Click
                  (dialogue Tempo ; Entrée ou Espace sur « Tap Tempo » = une frappe)
-Ctrl+P           Charger le pattern de démonstration
-Shift+P          Générer un pattern aléatoire
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)
 Shift+F          Diviser le pattern par deux (garde la première moitié)
 
@@ -401,8 +399,8 @@ Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste de
   Ctrl+V           Coller le presse-papier sur la piste courante
   Shift+V          Coller par fusion (les événements existants sont conservés)
   Ctrl+Suppr       Effacer grille et tape sans presse-papier
-  Shift+Suppr      Réinitialiser le pattern entier
-  Suppr            Effacer piste(s) sélectionnée(s) sans presse-papier
+  Shift+Suppr      Réinitialiser (vider) le pattern entier (annulable)
+  Suppr            Effacer piste(s) sélectionnée(s) sans presse-papier (annulable)
 
 --- MIDI ---
 Shift+F12        Connecter / déconnecter les entrées MIDI cochées dans les Préférences
@@ -555,10 +553,13 @@ F10 / Alt seul   Ouvrir la barre de menus (menu Fichier) ; Alt seul (appuyé pui
                  voisin, Haut / Bas : élément, Échap : remonter d'un sous-menu ou
                  fermer la barre ; les raccourcis sont affichés dans les éléments
 Alt+lettre       Ouvrir un menu : F Fichier / Effets, E Edition, T Transport /
-                 Piste, G Aller à, I Insertion, A Affichage / Aide, R Traitement,
-                 O Outils, N Options, W Fenêtres ; une lettre partagée alterne,
-                 même menu ouvert ; les commandes Alt+lettre (Alt+X, Alt+L…)
-                 gardent la priorité
+                 Piste, G Aller à, I Insertion, P Pattern, A Affichage / Aide,
+                 R Traitement, M Mixer, O Outils, N Options, W Fenêtres ; une
+                 lettre partagée alterne, même menu ouvert ; les commandes
+                 Alt+lettre (Alt+X, Alt+L…) gardent la priorité
+                 Les éléments des menus Edition (Supprimer, Sélection), Piste
+                 (précédente / suivante), Pattern et Mixer agissent sur la piste
+                 ou le pattern courant quel que soit le focus
 F3 / F4          Mute exclusif / Solo exclusif (voir « Pistes »)
 F5               Réinitialiser tous les Mute et Solo de piste
 F8               Monitoring de l'entrée audio On / Off

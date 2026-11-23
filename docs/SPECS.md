@@ -137,6 +137,7 @@ groovyboxit/
 │       ├── mw_audio_monitor.py # Mixin MainWindow : monitoring de l'entrée audio, F8 (Phase 8 étape 20d1)
 │       ├── mw_audio_rec.py     # Mixin MainWindow : enregistrement d'une prise audio sur la piste audio courante (Phase 8 étape 14f1)
 │       ├── mw_record_options.py # Mixin MainWindow : Options de l'enregistrement, Ctrl+Shift+R (Phase 8 étape 16b1)
+│       ├── mw_menu_actions.py  # Mixin MainWindow : éléments de menus par méthode, quel que soit le focus (Phase 9 étape 3b1)
 │       ├── mw_midi_editor.py   # Mixin MainWindow : ouverture éditeur MIDI
 │       ├── mw_pads.py          # Mixin MainWindow : pads et grille
 │       ├── mw_patterns.py      # Mixin MainWindow : gestion patterns
@@ -1213,14 +1214,27 @@ volume général ne sont pas concernés.
 ### Barre de menus (F10, Phase 9 étape 1)
 - **Même barre** dans la fenêtre principale, l'éditeur MIDI (Alt+4) et la
   fenêtre Songs (Alt+5), d'une description unique (`src/ui/menu_bar.py`) :
-  Fichier, Edition, Transport, Aller à, Insertion, Piste, Affichage,
-  Traitement (sous-menus Audio et Midi), Effets, Outils, Options, Fenêtres
-  (1 - Fenêtre principale, 2 - Éditeur MIDI, 3 - Songs), Aide. Elle se
-  remplira au fil des chantiers, pour ne plus devoir donner un raccourci à
-  chaque nouvelle fonction.
+  Fichier, Edition, Transport, Aller à, Insertion, Piste, Pattern,
+  Affichage, Traitement (sous-menus Audio et Midi), Effets, Mixer, Outils,
+  Options, Fenêtres (1 - Fenêtre principale, 2 - Éditeur MIDI, 3 - Songs),
+  Aide. Elle se remplira au fil des chantiers, pour ne plus devoir donner
+  un raccourci à chaque nouvelle fonction.
+- **Éléments d'édition et de mixage** (Phase 9 étape 3) : Edition (couper,
+  copier, coller, coller par fusion, supprimer, supprimer avec
+  presse-papier, effacer sans presse-papier, tout sélectionner / tout
+  désélectionner, sous-menu Sélection), limiteurs dans Transport et Aller
+  à, piste précédente / suivante, menu Pattern (changer de pattern,
+  propriétés, enregistrer, dupliquer, sous-menu Redimensionner), menu
+  Mixer (sous-menus Volume et Pan, global et piste, aux pas des
+  raccourcis ; valeurs normales). Les éléments dont la touche ne marche
+  que sur une liste (Suppr, Shift+Espace, Ctrl+Entrée, Alt+flèches,
+  Shift+Retour arrière, Haut / Bas) agissent par méthode, quel que soit le
+  focus. Suppr et Shift+Suppr sont annulables. Ctrl+P (pattern de
+  démonstration) et Shift+P (pattern aléatoire) sont retirés.
 - **Ouverture** : F10 (menu Fichier) ; Alt+lettre : F Fichier / Effets,
-  E Edition, T Transport / Piste, G Aller à, I Insertion, A Affichage /
-  Aide, R Traitement, O Outils, N Options, W Fenêtres. Une lettre partagée
+  E Edition, T Transport / Piste, G Aller à, I Insertion, P Pattern,
+  A Affichage / Aide, R Traitement, M Mixer, O Outils, N Options,
+  W Fenêtres. Une lettre partagée
   **alterne** entre ses menus, même menu ouvert (GTK alterne de lui-même ;
   menu ouvert, un rappel GTK sur chaque menu). Gauche / Droite : menu
   voisin ; Haut / Bas : élément ; Échap remonte d'un sous-menu où l'on est
@@ -2617,7 +2631,7 @@ Liste complète dans `docs/shortcuts.md`.
 
 Catégories principales :
 - Projet (Ctrl+N/O/S/Shift+S)
-- Pattern (Ctrl+W/D/P/F/Shift+P/F, Ctrl+Shift+W)
+- Pattern (Ctrl+W/D/F, Shift+F, Ctrl+Shift+W)
 - Quantisation (Ctrl+E/Q, Shift+E/Q, Ctrl+Shift+Q, Ctrl+Shift+G)
 - Lecture (Espace, P, V, Ctrl+Space, g, Shift+G, l, U)
 - Transport (PageUp/Down, Ctrl+PageUp/Down, Shift+PageUp/Down, w, b, Ctrl+G)

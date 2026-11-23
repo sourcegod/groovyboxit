@@ -112,6 +112,29 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
               f"char={chr(ukey) if ukey > 31 else '?'}")
         event.Skip()
 
+    def master_mix_reset(self):
+        """Volume et pan globaux des préférences, une entrée d'Undo, rien si
+        déjà là (Ctrl+Retour arrière ; Mixer, Phase 9 étape 3b1)."""
+        win = self._win
+        vol, pan = win._master_defaults
+        if (vol, pan) != (win._player.volume, win._player.pan):
+            win._add_mix_undo("Volume et pan globaux : préférences")
+            win._apply_master(vol, pan)
+        win._show_status(f"Volume Global: {win.master_volume_text(win._player.volume)}, "
+                         f"Pan Global: {win._player.pan} (préférences)")
+
+    def track_mix_reset(self):
+        """Volume 100 et pan 0 de la piste courante, une entrée d'Undo, rien
+        si déjà là (Shift+Retour arrière sur la liste des pistes ; Mixer,
+        Phase 9 étape 3b1)."""
+        win = self._win
+        r, t = win._router, win._player._cur_track
+        if (r.get_track_volume(t), r.get_track_pan(t)) != (100, 0):
+            win._add_mix_undo(f"Volume et pan piste {t + 1} : 100 / 0")
+            r.set_track_volume(t, 100)
+            r.set_track_pan(t, 0)
+        win._show_status(f"Piste {t + 1}: Volume 100, Pan 0 (centre)")
+
     # Champs de saisie où Retour arrière efface un caractère (19b1)
     _TEXT_FIELDS = ("on_bpm", "on_volume", "on_pan", "on_voice_spin")
 
@@ -129,20 +152,10 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if alt or ctrl == shift:
             return False
         if ctrl:
-            vol, pan = win._master_defaults
-            if (vol, pan) != (win._player.volume, win._player.pan):
-                win._add_mix_undo("Volume et pan globaux : préférences")
-                win._apply_master(vol, pan)
-            win._show_status(f"Volume Global: {win.master_volume_text(win._player.volume)}, "
-                             f"Pan Global: {win._player.pan} (préférences)")
+            self.master_mix_reset()
             return True
         if ctx.on_track_list:
-            r, t = win._router, win._player._cur_track
-            if (r.get_track_volume(t), r.get_track_pan(t)) != (100, 0):
-                win._add_mix_undo(f"Volume et pan piste {t + 1} : 100 / 0")
-                r.set_track_volume(t, 100)
-                r.set_track_pan(t, 0)
-            win._show_status(f"Piste {t + 1}: Volume 100, Pan 0 (centre)")
+            self.track_mix_reset()
             return True
         vm, row = win._player.voice_manager, win._cur_row
         if (vm.get_voice(row).volume, vm.get_pan(row)) != (100, 0):

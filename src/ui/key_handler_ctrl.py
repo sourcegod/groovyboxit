@@ -126,12 +126,6 @@ class CtrlHandler:
                 f"{', '.join(str(i + 1) for i in tracks)}"
             )
             return True
-        if key == ord('P'):
-            win._add_undo("Charger pattern initial")
-            win._player._pattern.build_pattern_01()
-            win._refresh_grid()
-            win._show_status("Pattern initial chargé")
-            return True
         if not shift and key == ord('F'):
             win._add_undo("Doubler pattern")
             if win._player.double_pattern():
