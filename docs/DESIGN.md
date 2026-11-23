@@ -16715,3 +16715,34 @@ l'ancien texte jusqu'à 3c1. Tap Tempo marche depuis le menu, mais on ne
 peut pas y frapper assez vite : le bouton du dialogue Régler le tempo…
 (3d1) servira. Orca lit rarement la barre d'état, occupé par le champ
 courant : ce sera le rôle de SpeechAccess.
+
+## Phase 9 étape 3b4 — Avenant : sous-menu Limiteurs, limiteurs ↔ boucle
+
+**Demande de l'utilisateur (2026-11-24, essai de 3b3).** Les limiteurs du
+menu Transport passent dans un sous-menu, avec deux commandes nouvelles.
+
+- B1 — Transport, sous-menu Limiteurs : Limiteur gauche ici (i), Limiteur
+  droit ici (o), Limiteur gauche au début (Shift+I), Limiteur droit à la
+  fin (Shift+O) ; séparateur ; Assigner la boucle aux limiteurs
+  (Alt+Début) ; Assigner les limiteurs à la boucle (Alt+Fin).
+- B2 — Raccourcis (variante retenue par l'utilisateur : la touche suit le
+  sens de la copie, Début « va aux limiteurs ») : Alt+Début = boucle →
+  limiteurs, Alt+Fin = limiteurs → boucle. Libres dans la fenêtre
+  principale ; jusqu'ici Début / Fin ne testaient pas Alt (Alt+Début
+  faisait Début) : interceptés avant. Famille Début / Fin : Début / Fin
+  aller aux limiteurs, Shift aller à la boucle, Ctrl début / fin absolus,
+  Alt passer de l'un à l'autre.
+- B3 — Limiteurs → boucle (Alt+Fin) : début de boucle = limiteur gauche,
+  fin de boucle = limiteur droit (pas, base 0, comme les limiteurs) ; un
+  limiteur absent vaut le début (gauche) ou la fin (droit) du pattern ;
+  écrit comme Ctrl+L / Shift+L (pattern joué et pattern gardé, 0 et le
+  dernier pas notés « aucun », réveil du lecteur en lecture) ; un seul
+  point d'Undo, rien si rien ne change ; refus annoncé si gauche > droite.
+  Annonce : « Boucle : 2:1:1 à 4:4:4 ».
+- B4 — Boucle → limiteurs (Alt+Début) : limiteur gauche = début de boucle
+  (0 si aucun), limiteur droit = fin de boucle (dernier pas si aucune) ;
+  sans Undo, comme i / o. Annonce : « Limiteurs : 2:1:1 à 4:4:4 ».
+- La logique va dans KeyManager, partagée par la touche et l'élément ;
+  aide F1 et SPECS.
+
+**Étapes.** 3b5 : B1-B4 et essai ; les tests vont en 3c1.
