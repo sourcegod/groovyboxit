@@ -122,6 +122,14 @@ MENUS = [
         Item("Bo&ucle On / Off", "L"),
         Item("&Points de boucle…", "Ctrl+Shift+L", windows=P),
         SEP,
+        # Métronome (avenant 3b2, A2) ; Régler le tempo… en 3d1
+        Submenu("&Métronome", [
+            Item("&Click On / Off", "C", windows=P),
+            Item("&Tap Tempo", "H", call="_menu_tap_tempo", windows=P),
+            Item("&BPM +5", "(", windows=P),
+            Item("BP&M −5", ")", windows=P),
+        ]),
+        SEP,
         Item("Limiteur &gauche ici", "I", windows=P),
         Item("Limiteur dr&oit ici", "O", windows=P),
         Item("Limiteur gauche au dé&but", "Shift+I", windows=P),
@@ -155,6 +163,12 @@ MENUS = [
         Item("Piste suiva&nte", call="_menu_step_track", args=(1,), windows=P),
         SEP,
         Item("&Propriétés de la piste…", "Ctrl+Shift+T", windows=P),
+        SEP,
+        # avenant 3b2 (A1) : piste courante quel que soit le focus
+        Item("M&ute de la piste", "X", call="_menu_track_mute", windows=P),
+        Item("&Démuter toutes les pistes", "Shift+X", call="_menu_unmute_all", windows=P),
+        Item("S&olo de la piste", "S", call="_menu_track_solo", windows=P),
+        Item("Désactiver tous les So&los", "Shift+S", call="_menu_unsolo_all", windows=P),
         SEP,
         Item("&Mute exclusif", "F3", windows=P),
         Item("&Solo exclusif", "F4", windows=P),

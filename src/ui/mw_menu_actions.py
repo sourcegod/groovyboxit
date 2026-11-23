@@ -74,6 +74,25 @@ class MainMenuActions:
         """Pattern > Redimensionner > Vider le pattern (Shift+Suppr), avec Undo."""
         self._key_manager.reset_pattern_undo()
 
+    def _menu_track_mute(self):
+        """Piste > Mute de la piste (X de la liste des pistes, 3b3)."""
+        self._key_manager.track_mute_toggle()
+
+    def _menu_unmute_all(self):
+        self._key_manager.track_unmute_all()
+
+    def _menu_track_solo(self):
+        self._key_manager.track_solo_toggle()
+
+    def _menu_unsolo_all(self):
+        self._key_manager.track_unsolo_all()
+
+    # --- Transport ----------------------------------------------------
+
+    def _menu_tap_tempo(self):
+        """Transport > Métronome > Tap Tempo (H, sauf dans un champ, 3b3)."""
+        self._key_manager.tap_tempo()
+
     # --- Mixer --------------------------------------------------------
 
     def _menu_track_volume(self, delta):

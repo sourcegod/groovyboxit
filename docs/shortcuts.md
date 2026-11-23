@@ -121,6 +121,7 @@ X                Bascule le Mute de la Piste sélectionnée
 Shift+X          Démuter toutes les Pistes
 S                Bascule le Solo de la Piste sélectionnée
 Shift+S          Désolo toutes les Pistes
+                 (menu Piste : les mêmes, sur la piste courante, quel que soit le focus)
 F3               Mute exclusif On / Off (fenêtre principale, quel que soit le focus)
 F4               Solo exclusif On / Off (fenêtre principale, quel que soit le focus)
 F5               Réinitialiser tous les Mute et Solo de piste
@@ -204,7 +205,8 @@ Note: les taux sont des fractions de mesure (1/16 = double croche, quel que
       quand le focus est sur la liste des patterns ou de quantisation.
 
 --- BPM / Volume Global / Pan Global ---
-H                Tap Tempo : frapper au rythme pour définir le BPM
+H                Tap Tempo : frapper au rythme pour définir le BPM (aussi Transport >
+                 Métronome, avec Click, BPM +5 et BPM −5)
                  (4 frappes minimum = 1 mesure ; pause > 2 s repart de zéro)
 ( ou 5           BPM +5
 )                BPM -5

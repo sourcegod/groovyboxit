@@ -16707,3 +16707,11 @@ pour Traitement > Générer.
 
 **Étapes.** 3b3 : A1, A2 sans le dialogue, A3, et essai ; les tests vont
 en 3c1 ; le dialogue Régler le tempo… rejoint 3d1.
+
+**3b3 — essai.** Concluant. BPM +5 / −5 annoncent le tempo dans la barre
+d'état (aussi ( et ) au clavier). Annonces corrigées : « Désolotées »
+(pistes), « Désolotés » (pads) — test_exclusive_mute_solo attend encore
+l'ancien texte jusqu'à 3c1. Tap Tempo marche depuis le menu, mais on ne
+peut pas y frapper assez vite : le bouton du dialogue Régler le tempo…
+(3d1) servira. Orca lit rarement la barre d'état, occupé par le champ
+courant : ce sera le rôle de SpeechAccess.

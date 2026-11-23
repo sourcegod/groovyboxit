@@ -6,6 +6,62 @@ from pattern import Pattern
 class CharHandler:
     """Mixin KeyManager — touches caractères (sans modificateurs principaux, ou Shift seul)."""
 
+    # Mute / Solo de la piste courante : X, Shift+X, S, Shift+S sur la liste
+    # des pistes ; menu Piste quel que soit le focus (Phase 9 étape 3b3, § 3b2 A1)
+
+    def track_mute_toggle(self):
+        win  = self._win
+        tidx = win._player._cur_track
+        win._add_mix_undo(f"Mute piste {tidx + 1}")
+        win._router.cut_all_notes()          # Phase 8 étape 6b1, § 6a N1
+        muted = win._router.toggle_track_mute(tidx)
+        win._refresh_track_list()
+        win._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}"
+                         + win._quit_exclusive())        # N14
+
+    def track_unmute_all(self):
+        win = self._win
+        if any(win._router._track_mutes):
+            win._add_mix_undo("Démuter toutes les pistes")
+        win._router.cut_all_notes()          # N1
+        win._router.unmute_all_tracks()
+        win._refresh_track_list()
+        win._show_status("Toutes les Pistes: Démutées"
+                         + win._quit_exclusive(("mute",)))  # N15
+
+    def track_solo_toggle(self):
+        win  = self._win
+        tidx = win._player._cur_track
+        win._add_mix_undo(f"Solo piste {tidx + 1}")
+        win._router.cut_all_notes()          # N1
+        soloed = win._router.toggle_track_solo(tidx)
+        win._refresh_track_list()
+        win._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}"
+                         + win._quit_exclusive())        # N14
+
+    def track_unsolo_all(self):
+        win = self._win
+        if any(win._router._track_solos):
+            win._add_mix_undo("Désolo toutes les pistes")
+        win._router.cut_all_notes()          # N1
+        win._router.unsolo_all_tracks()
+        win._refresh_track_list()
+        win._show_status("Toutes les Pistes: Désolotées"
+                         + win._quit_exclusive(("solo",)))  # N15
+
+    def tap_tempo(self):
+        """Une frappe de Tap Tempo (H hors des champs de saisie ; Transport >
+        Métronome, quel que soit le focus, Phase 9 étape 3b3)."""
+        win   = self._win
+        metro = win._player._metro
+        if metro.is_fresh_sequence():
+            win._add_undo(f"Tap Tempo (BPM: {format_bpm(win._player.tempo_at())})")
+        bpm = metro.tap()
+        if bpm is not None:
+            win._player.set_tempo_scaled(bpm)    # tous les tempos (19d3, § 19d2 R2)
+            win._bpm_ctrl.SetValue(bpm)
+            win._show_status(f"Tap Tempo: {bpm} BPM")
+
     def _handle_chars(self, event, ctx):
         win   = self._win
         key   = ctx.key
@@ -124,13 +180,7 @@ class CharHandler:
         # X : mute pad ou piste
         if not ctrl and not shift and not alt and (ukey == ord('x') or key == ord('X')):
             if on_track_list:
-                tidx  = win._player._cur_track
-                win._add_mix_undo(f"Mute piste {tidx + 1}")
-                win._router.cut_all_notes()          # Phase 8 étape 6b1, § 6a N1
-                muted = win._router.toggle_track_mute(tidx)
-                win._refresh_track_list()
-                win._show_status(f"Piste {tidx + 1}: Mute {'On' if muted else 'Off'}"
-                                 + win._quit_exclusive())        # N14
+                self.track_mute_toggle()
             else:
                 win._add_mix_undo(f"Mute pad {win._cur_row + 1}")
                 muted = win._player.voice_manager.toggle_mute(win._cur_row)
@@ -141,13 +191,7 @@ class CharHandler:
         # Shift+X : démuter tous
         if not ctrl and shift and not alt and (ukey == ord('x') or key == ord('X')):
             if on_track_list:
-                if any(win._router._track_mutes):
-                    win._add_mix_undo("Démuter toutes les pistes")
-                win._router.cut_all_notes()          # N1
-                win._router.unmute_all_tracks()
-                win._refresh_track_list()
-                win._show_status("Toutes les Pistes: Démutées"
-                                 + win._quit_exclusive(("mute",)))  # N15
+                self.track_unmute_all()
             else:
                 if win._player.voice_manager.any_mute():
                     win._add_mix_undo("Démuter tous les pads")
@@ -159,13 +203,7 @@ class CharHandler:
         # S : solo pad ou piste
         if not ctrl and not shift and not alt and (ukey == ord('s') or key == ord('S')):
             if on_track_list:
-                tidx   = win._player._cur_track
-                win._add_mix_undo(f"Solo piste {tidx + 1}")
-                win._router.cut_all_notes()          # N1
-                soloed = win._router.toggle_track_solo(tidx)
-                win._refresh_track_list()
-                win._show_status(f"Piste {tidx + 1}: Solo {'On' if soloed else 'Off'}"
-                                 + win._quit_exclusive())        # N14
+                self.track_solo_toggle()
             else:
                 win._add_mix_undo(f"Solo pad {win._cur_row + 1}")
                 soloed = win._player.voice_manager.toggle_solo(win._cur_row)
@@ -176,33 +214,20 @@ class CharHandler:
         # Shift+S : désolo tous
         if not ctrl and shift and not alt and (ukey == ord('s') or key == ord('S')):
             if on_track_list:
-                if any(win._router._track_solos):
-                    win._add_mix_undo("Désolo toutes les pistes")
-                win._router.cut_all_notes()          # N1
-                win._router.unsolo_all_tracks()
-                win._refresh_track_list()
-                win._show_status("Toutes les Pistes: Désolées"
-                                 + win._quit_exclusive(("solo",)))  # N15
+                self.track_unsolo_all()
             else:
                 if win._player.voice_manager.any_solo():
                     win._add_mix_undo("Désolo tous les pads")
                 win._player.voice_manager.set_solo_all(False)
                 win._refresh_all_voice_display()
-                win._show_status("Tous les Pads: Désolés")
+                win._show_status("Tous les Pads: Désolotés")
             return True
 
         # H : Tap Tempo
         if not ctrl and not shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('h') or key == ord('H')):
-            metro = win._player._metro
-            if metro.is_fresh_sequence():
-                win._add_undo(f"Tap Tempo (BPM: {format_bpm(win._player.tempo_at())})")
-            bpm = metro.tap()
-            if bpm is not None:
-                win._player.set_tempo_scaled(bpm)    # tous les tempos (19d3, § 19d2 R2)
-                win._bpm_ctrl.SetValue(bpm)
-                win._show_status(f"Tap Tempo: {bpm} BPM")
+            self.tap_tempo()
             return True
 
         # C : toggle click
@@ -388,10 +413,12 @@ class CharHandler:
         if ukey == ord('(') or key == ord('(') or (not shift and not ctrl and key == ord('5')):
             win._player.set_tempo_scaled(round(win._player.tempo_at()) + 5)   # 19d3, R2
             win._update_bpm_display()
+            win._show_status(f"BPM: {format_bpm(win._player.tempo_at())}")   # menu Métronome (3b3)
             return True
         if ukey == ord(')') or key == ord(')'):
             win._player.set_tempo_scaled(round(win._player.tempo_at()) - 5)
             win._update_bpm_display()
+            win._show_status(f"BPM: {format_bpm(win._player.tempo_at())}")   # menu Métronome (3b3)
             return True
         if ukey == ord('+') or key == ord('+'):
             win._set_master_volume_undo(win._player.volume + 1)
