@@ -1238,6 +1238,12 @@ volume général ne sont pas concernés.
   pattern… (mesures, résolution), Régler le tempo… (premier tempo, ( ) et
   H, bouton Tap Tempo, case Click, résultat en lecture seule ; entendu en
   direct, tous les tempos en proportion) ; un point d'Undo chacun, rien si rien ne change.
+  Éléments de l'éditeur MIDI (Phase 9 étape 3f1) : Insertion (insérer une
+  note Ctrl+I, sans avancer Alt+I, avec dialogue Ctrl+Shift+I, entre deux
+  A, dupliquer D, sans avancer Shift+D), Edition > Éditer l'événement…
+  (Entrée), Affichage > Rafraîchir (R), Traitement > Midi > Note (Num 1 /
+  3, 4 / 6, 7 / 9, 2 / 8, Ctrl+Num 2 / 8) ; les limiteurs de Transport
+  aussi actifs dans l'éditeur.
 - **Ouverture** : F10 (menu Fichier) ; Alt+lettre : F Fichier / Effets,
   E Edition, T Transport / Piste, G Aller à, I Insertion, P Pattern,
   A Affichage / Aide, R Traitement, M Mixer, O Outils, N Options,

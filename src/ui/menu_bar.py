@@ -90,6 +90,7 @@ MENUS = [
         Item("&Copier", "Ctrl+C", windows=PM),
         Item("Co&ller", "Ctrl+V", windows=PM),
         Item("Coller par &fusion", "Shift+V", windows=P),
+        Item("Éditer l'événe&ment…", "Entrée", windows=(MIDI,)),      # 3f1 (§ 3a E9)
         Item("&Supprimer", "Suppr", call="_menu_delete", windows=PM),
         Item("Supprimer a&vec presse-papier", "Ctrl+D", windows=P),
         Item("&Effacer sans presse-papier", "Ctrl+Suppr", windows=P),
@@ -133,10 +134,11 @@ MENUS = [
         SEP,
         # Limiteurs (avenant 3b4, B1)
         Submenu("L&imiteurs", [
-            Item("Limiteur &gauche ici", "I", windows=P),
-            Item("Limiteur dr&oit ici", "O", windows=P),
-            Item("Limiteur gauche au dé&but", "Shift+I", windows=P),
-            Item("Limiteur droit à la &fin", "Shift+O", windows=P),
+            # l'éditeur MIDI connaît aussi i, o, Shift+I, Shift+O (3f1)
+            Item("Limiteur &gauche ici", "I", windows=PM),
+            Item("Limiteur dr&oit ici", "O", windows=PM),
+            Item("Limiteur gauche au dé&but", "Shift+I", windows=PM),
+            Item("Limiteur droit à la &fin", "Shift+O", windows=PM),
             SEP,
             Item("&Assigner la boucle aux limiteurs", "Alt+Début", windows=P),
             Item("Assigner les &limiteurs à la boucle", "Alt+Fin", windows=P),
@@ -164,6 +166,14 @@ MENUS = [
     ]),
     ("Insertion", "I", [
         Item("&Tempos…", "Alt+Shift+T", windows=PM),
+        SEP,
+        # éditeur MIDI (Phase 9 étape 3f1, § 3a E9)
+        Item("Insérer une &note", "Ctrl+I", windows=(MIDI,)),
+        Item("Insérer une note sans a&vancer", "Alt+I", windows=(MIDI,)),
+        Item("Insérer une note avec &dialogue…", "Ctrl+Shift+I", windows=(MIDI,)),
+        Item("Insérer une note &entre deux", "A", windows=(MIDI,)),
+        Item("Dupli&quer l'événement", "D", windows=(MIDI,)),
+        Item("Dupliquer sans avan&cer", "Shift+D", windows=(MIDI,)),
     ]),
     ("Piste", "T", [
         Item("Piste pré&cédente", call="_menu_step_track", args=(-1,), windows=P),
@@ -208,6 +218,7 @@ MENUS = [
         SEP,
         Item("&Notes", "Ctrl+1", windows=(MIDI,)),
         Item("&Liste des événements", "Ctrl+2", windows=(MIDI,)),
+        Item("&Rafraîchir", "R", windows=(MIDI,)),                   # 3f1
     ]),
     ("Traitement", "R", [
         Submenu("&Audio", [
@@ -218,6 +229,20 @@ MENUS = [
             Item("Quantiser avec les &derniers réglages", "Shift+Q", windows=PM),
             Item("Quantiser &avec dialogue…", "Ctrl+Shift+Q", windows=PM),
             Item("Quantisation à l'&enregistrement…", "Alt+Shift+Q", windows=PM),
+            SEP,
+            # éditeur MIDI : événement ou accord sélectionné (3f1, § 3a E9)
+            Submenu("&Note", [
+                Item("&Raccourcir", "Num 1", windows=(MIDI,)),
+                Item("Ra&llonger", "Num 3", windows=(MIDI,)),
+                Item("Re&culer", "Num 4", windows=(MIDI,)),
+                Item("&Avancer", "Num 6", windows=(MIDI,)),
+                Item("&Vélocité −", "Num 7", windows=(MIDI,)),
+                Item("Véloc&ité +", "Num 9", windows=(MIDI,)),
+                Item("&Demi-ton −", "Num 2", windows=(MIDI,)),
+                Item("D&emi-ton +", "Num 8", windows=(MIDI,)),
+                Item("&Octave −", "Ctrl+Num 2", windows=(MIDI,)),
+                Item("Oc&tave +", "Ctrl+Num 8", windows=(MIDI,)),
+            ]),
         ]),
     ]),
     ("Effets", "F", [

@@ -16764,3 +16764,7 @@ des propriétés, `_preview_properties_tempo` / `_restore_properties_tempo`),
 Annuler rétablit. Remarque de l'essai : 4 mesures bouclent de 1:1:1 à
 4:4:4 (fin de boucle = dernier pas inclus) — indice pour le délai noté en
 3b5.
+
+**3f1 — essai.** Concluant (Orca lit les raccourcis du pavé « PNum 8 »).
+Noté pour un chantier futur : le dialogue d'édition de note ne couvre pas
+128 notes (hauteur limitée par l'origine grille).

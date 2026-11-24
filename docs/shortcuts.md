@@ -489,13 +489,14 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
   Shift+I        Poser le limiteur gauche au début du pattern (step 0)
   Shift+O        Poser le limiteur droit à la fin du pattern (dernier step)
 
-  -- Édition numpad (événement ou accord sélectionné) --
-  NumPad 1 / 3   Raccourcir / rallonger la durée (KIT/PATCH uniquement, pas GRID)
-  NumPad 4 / 6   Reculer / avancer la position d'une valeur de grille
+  -- Édition numpad (événement ou accord sélectionné ; aussi Traitement >
+     Midi > Note) --
+  Num 1 / Num 3  Raccourcir / rallonger la durée (KIT/PATCH uniquement, pas GRID)
+  Num 4 / Num 6  Reculer / avancer la position d'une valeur de grille
                  (étend le pattern si on dépasse la fin)
-  NumPad 7 / 9   Vélocité -1 / +1 (bornée 1..127)
-  NumPad 2 / 8   Pitch ±1 demi-ton (borné 0..127 pour KIT/PATCH, 0..num_pads-1 pour GRID)
-  Ctrl+NumPad 2/8  Pitch ±1 octave (mêmes bornes)
+  Num 7 / Num 9  Vélocité -1 / +1 (bornée 1..127)
+  Num 2 / Num 8  Pitch ±1 demi-ton (borné 0..127 pour KIT/PATCH, 0..num_pads-1 pour GRID)
+  Ctrl+Num 2 / Ctrl+Num 8  Pitch ±1 octave (mêmes bornes)
   NumPad 5       Afficher la position courante
   Ctrl+NumPad 5  Afficher la valeur de grille courante
   NumPad - / +   Diminuer / augmenter la valeur de grille courante
