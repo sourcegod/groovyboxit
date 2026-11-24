@@ -16768,3 +16768,32 @@ Annuler rétablit. Remarque de l'essai : 4 mesures bouclent de 1:1:1 à
 **3f1 — essai.** Concluant (Orca lit les raccourcis du pavé « PNum 8 »).
 Noté pour un chantier futur : le dialogue d'édition de note ne couvre pas
 128 notes (hauteur limitée par l'origine grille).
+
+## Phase 9 étape 3f2 — Avenant : éléments « Indisponible » au lieu de grisés
+
+**Constat (essai de 3f1).** GTK 3 ne sélectionne jamais au clavier un
+élément de menu désactivé (`_gtk_menu_item_is_selectable` exige un widget
+sensible) : Orca ne lit donc pas les éléments grisés, et l'on ne peut pas
+repérer, d'une fenêtre à l'autre, où sont les commandes. Sous Windows, les
+menus natifs laissent le focus sur un élément désactivé et NVDA dit
+« indisponible » (à vérifier). C'est aussi la cause du menu tout grisé qui
+ne prenait pas le clavier (Phase 9 étape 1d1).
+
+**Choix de l'utilisateur (2026-11-24) : solution A.**
+- I1 — Un élément sans objet dans la fenêtre reste ACTIF (sélectionnable,
+  lu par tout lecteur d'écran) ; son libellé porte « (Indisponible) » :
+  « Notes (Indisponible) Ctrl+1 ». Un sous-menu sans élément disponible
+  aussi.
+- I2 — En gris pour les voyants : le libellé GTK de l'élément (son
+  `GtkAccelLabel`) est rendu insensible, l'élément lui-même reste sensible
+  — la couleur vient du thème (clair ou sombre). Paquet menukeys :
+  `gtk_menu.set_dimmed(gtk_item)`.
+- I3 — Choisi (Entrée, lettre), un élément indisponible annonce « Notes :
+  indisponible dans cette fenêtre » dans la barre d'état, sans rien
+  exécuter.
+- I4 — L'élément « Aucune commande dans cette fenêtre » (1d1) devient
+  inutile : un menu a toujours des éléments sélectionnables ; retiré.
+- Les décisions K5 (même barre partout) et l'alternance restent.
+
+**Étapes.** 3f3 : I1-I4 et essai ; les tests (3f1 et 3f3) vont en 3g1 ;
+puis 3h1 : clôture.
