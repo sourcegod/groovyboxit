@@ -526,6 +526,51 @@ def test_alternating_menu_has_its_first_item_and_the_keyboard(demo):
     assert seen == [("Grille", True), ("À propos", True), ("Grille", True), ("À propos", True)]
 
 
+def test_enable_keeps_the_dimmed_ids(no_gtk):
+    mk = menukeys.enable(_Frame(), dimmed=[12, 13])
+    assert mk.dimmed == {12, 13}
+
+
+@pytest.mark.gui
+def test_dimmed_item_grey_but_selectable():
+    """GroovyboxIt 3f3 : GTK saute au clavier un élément désactivé (le
+    lecteur d'écran ne le lit jamais) ; dimmed : libellé gris, élément
+    sensible, que GTK sélectionne."""
+    if not gtk_menu.available():
+        pytest.skip("GTK seulement")
+    frame = wx.Frame(None)
+    bar, menu = wx.MenuBar(), wx.Menu()
+    plain = menu.Append(wx.ID_ANY, "&Normal")
+    dim = menu.Append(wx.ID_ANY, "&Gris (Indisponible)")
+    off = menu.Append(wx.ID_ANY, "&Désactivé")
+    off.Enable(False)
+    bar.Append(menu, "&Menu")
+    frame.SetMenuBar(bar)
+    try:
+        mk = menukeys.enable(frame, dimmed={dim.GetId()})
+        frame.Show()
+        _pump(10)
+        items = gtk_menu.menu_items(gtk_menu.bar_items(bar)[0])
+        assert [gtk_menu.is_dimmed(i) for i in items] == [
+            (False, True), (True, True), (False, False)]
+        g = _lib()
+        V = ctypes.c_void_p
+        g.gtk_menu_shell_get_selected_item.restype = V
+        g.gtk_menu_shell_get_selected_item.argtypes = [V]
+        mk.open_first()
+        _pump()
+        sub = gtk_menu.submenu(gtk_menu.bar_items(bar)[0])
+        g.gtk_menu_shell_select_item(sub, items[1])
+        assert g.gtk_menu_shell_get_selected_item(sub) == items[1]   # sélectionnable
+        g.gtk_menu_shell_select_item(sub, items[2])
+        assert g.gtk_menu_shell_get_selected_item(sub) != items[2]   # désactivé : non
+        assert gtk_menu.set_dimmed(items[1], False) and gtk_menu.is_dimmed(items[1]) == (False, True)
+        mk.close()
+    finally:
+        frame.Destroy()
+        _pump(5)
+
+
 @pytest.mark.gui
 def test_letter_absent_from_title_and_f10(demo):
     assert demo.keys.handle_key(keys.key_event("Alt+W"))

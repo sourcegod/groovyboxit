@@ -196,6 +196,7 @@ class _Win(menu_bar.MenuBarMixin, wx.EvtHandler):
 
 def test_run_passes_the_arguments():
     win = _Win()
+    win._menu_kind = menu_bar.MAIN                 # éléments de la principale (3f3)
     menu_bar.run(win, _find("Piste suivante"))
     menu_bar.run(win, _find("Piste précédente"))
     assert win.calls == [1, -1] and win.keys == []
@@ -732,3 +733,101 @@ def test_set_tempo_click_box(win, monkeypatch):
         assert "Click: On" in win.status
     finally:
         p.stop_click()
+
+
+# ----------------------------------------------------------------------
+# Éléments de l'éditeur MIDI (Phase 9 étape 3g1, tests de 3f1) et éléments
+# indisponibles (3f3)
+# ----------------------------------------------------------------------
+
+EDITOR_ITEMS = [
+    ("Insérer une note", "Ctrl+I", ("_quick_insert", True)),
+    ("Insérer une note sans avancer", "Alt+I", ("_quick_insert", False)),
+    ("Insérer une note avec dialogue…", "Ctrl+Shift+I", ("_insert_dialog",)),
+    ("Insérer une note entre deux", "A", ("_insert_between",)),
+    ("Dupliquer l'événement", "D", ("_duplicate_event", True)),
+    ("Dupliquer sans avancer", "Shift+D", ("_duplicate_event", False)),
+    ("Éditer l'événement…", "Entrée", ("_edit_note_dialog",)),
+    ("Rafraîchir", "R", ("_refresh",)),
+    ("Raccourcir", "Num 1", ("_numpad_shorten",)),
+    ("Rallonger", "Num 3", ("_numpad_lengthen",)),
+    ("Reculer", "Num 4", ("_numpad_move", -1)),
+    ("Avancer", "Num 6", ("_numpad_move", 1)),
+    ("Vélocité −", "Num 7", ("_numpad_velocity", -1)),
+    ("Vélocité +", "Num 9", ("_numpad_velocity", 1)),
+    ("Demi-ton −", "Num 2", ("_numpad_pitch", -1)),
+    ("Demi-ton +", "Num 8", ("_numpad_pitch", 1)),
+    ("Octave −", "Ctrl+Num 2", ("_numpad_pitch", -12)),
+    ("Octave +", "Ctrl+Num 8", ("_numpad_pitch", 12)),
+    ("Limiteur gauche au début", "Shift+I", ("_set_lim_left", 0)),
+]
+
+
+def test_editor_items_description():
+    for text, accel, _call in EDITOR_ITEMS:
+        it = _find(text)
+        assert it.accel == accel, text
+        expected = {menu_bar.MAIN, menu_bar.MIDI} if text.startswith("Limiteur") \
+            else {menu_bar.MIDI}
+        assert set(it.windows) == expected, text
+    note = _sub(_sub(_menu("Traitement"), "Midi").items, "Note")
+    assert [it.text() for it in note.items][:2] == ["Raccourcir", "Rallonger"]
+    assert _find("Éditer l'événement…") in _menu("Edition")
+
+
+@pytest.fixture
+def editor(main_win, monkeypatch):
+    """L'éditeur MIDI de la vraie fenêtre, ses commandes enregistrées."""
+    main_win._open_midi_editor_window()
+    ed = main_win._midi_editor_window
+    calls = []
+    for name in {c[0] for _t, _a, c in EDITOR_ITEMS}:
+        monkeypatch.setattr(ed, name, lambda *a, n=name: calls.append((n,) + a))
+    status = []
+    monkeypatch.setattr(ed, "_set_status", status.append)
+    ed.calls, ed.status = calls, status
+    yield ed
+    ed.Destroy()
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("text, accel, call", EDITOR_ITEMS)
+def test_editor_items_replay_the_editor_keyboard(editor, text, accel, call):
+    """Chaque élément rejoue sa touche par le vrai clavier de l'éditeur
+    (Alt+I : insérer sans avancer, pas le menu Insertion — K3)."""
+    menu_bar.run(editor, _find(text))
+    assert editor.calls == [call]
+    assert not any("sans effet" in m or "indisponible" in m for m in editor.status)
+
+
+@pytest.mark.gui
+def test_editor_items_unavailable_in_the_main_window(win):
+    for text, _accel, _call in EDITOR_ITEMS:
+        if text.startswith("Limiteur"):
+            continue
+        assert _run(win, text) == f"{text} : indisponible dans cette fenêtre"
+
+
+@pytest.mark.gui
+def test_main_items_unavailable_in_the_editor(editor):
+    for text in ("Piste suivante", "Volume de la piste +5", "Choisir un pattern…",
+                 "Assigner la boucle aux limiteurs"):
+        editor.status.clear()
+        menu_bar.run(editor, _find(text))
+        assert editor.status == [f"{text} : indisponible dans cette fenêtre"]
+    assert editor.calls == []
+
+
+@pytest.mark.gui
+def test_unavailable_labels_in_the_real_windows(main_win, editor):
+    """Libellés réels : « (Indisponible) » dans la fenêtre où l'élément n'a
+    pas d'objet, et là seulement ; tout élément reste actif."""
+    def label(win, text):
+        ids = [i for i, it in win._menu_items.items() if it.text() == text]
+        mi = win.GetMenuBar().FindItemById(ids[0])
+        assert mi.IsEnabled()
+        return mi.GetItemLabelText()
+    assert label(main_win, "Rafraîchir") == "Rafraîchir (Indisponible)"
+    assert label(editor, "Rafraîchir") == "Rafraîchir"
+    assert label(editor, "Piste suivante") == "Piste suivante (Indisponible)"
+    assert label(main_win, "Piste suivante") == "Piste suivante"

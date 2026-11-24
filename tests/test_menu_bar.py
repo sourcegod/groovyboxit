@@ -128,8 +128,10 @@ def test_treatment_has_audio_and_midi_submenus():
     items = dict((t, i) for t, _l, i in MENUS)["Traitement"]
     assert [s.text() for s in items] == ["Audio", "Midi"]
     assert all(isinstance(s, Submenu) for s in items)
-    assert {it.accel for it in items[1].items} == {"Ctrl+Q", "Shift+Q", "Ctrl+Shift+Q",
-                                                   "Alt+Shift+Q"}
+    midi = [it for it in items[1].items if it is not SEP]
+    assert {it.accel for it in midi if not isinstance(it, Submenu)} == {
+        "Ctrl+Q", "Shift+Q", "Ctrl+Shift+Q", "Alt+Shift+Q"}
+    assert [s.text() for s in midi if isinstance(s, Submenu)] == ["Note"]      # 3f1
 
 
 def test_requests_of_the_trial():
@@ -502,12 +504,39 @@ def test_shortcuts_shown_but_not_registered(bar):
 
 
 @pytest.mark.gui
-def test_items_without_object_are_greyed(bar):
+def test_items_without_object_are_unavailable_not_disabled(bar):
+    """Phase 9 étape 3f3 (§ 3f2) : GTK saute au clavier un élément
+    désactivé ; l'élément reste actif, marqué « (Indisponible) », et seul
+    son libellé GTK est gris."""
     frame, mb = bar
     ids = {it.text(): i for i, it in frame._menu_items.items()}
-    assert not mb.FindItemById(ids["Notes"]).IsEnabled()            # éditeur MIDI
-    assert mb.FindItemById(ids["Grille…"]).IsEnabled()
-    assert mb.FindItemById(ids["Aucun traitement audio pour l'instant"]).IsEnabled()
+    notes = mb.FindItemById(ids["Notes"])                           # éditeur MIDI
+    assert notes.IsEnabled() and notes.GetItemLabelText() == "Notes (Indisponible)"
+    assert ids["Notes"] in frame._menu_unavailable
+    grid = mb.FindItemById(ids["Grille…"])
+    assert grid.IsEnabled() and grid.GetItemLabelText() == "Grille…"
+    view = gtk_menu.menu_items(gtk_menu.bar_items(mb)[TITLES.index("Affichage")])
+    by_label = {gtk_menu.label(i): i for i in view}
+    assert gtk_menu.is_dimmed(by_label["Notes (Indisponible)"]) == (True, True)
+    assert gtk_menu.is_dimmed(by_label["Grille…"]) == (False, True)
+
+
+@pytest.mark.gui
+def test_unavailable_items_are_selectable_in_an_open_menu(bar):
+    """GTK sélectionne l'élément indisponible (Orca le lit) : le menu
+    Affichage s'ouvre sur Grille…, Bas va jusqu'aux éléments de l'éditeur."""
+    frame, mb = bar
+    g = _lib()
+    g.gtk_menu_shell_get_selected_item.restype = ctypes.c_void_p
+    g.gtk_menu_shell_get_selected_item.argtypes = [ctypes.c_void_p]
+    view_item = gtk_menu.bar_items(mb)[TITLES.index("Affichage")]
+    gtk_menu.open_item(mb, TITLES.index("Affichage"))
+    _yield()
+    sub = _submenu(view_item)
+    notes = [i for i in gtk_menu.menu_items(view_item)
+             if gtk_menu.label(i) == "Notes (Indisponible)"][0]
+    g.gtk_menu_shell_select_item(sub, notes)                 # refusé à un élément désactivé
+    assert g.gtk_menu_shell_get_selected_item(sub) == notes
 
 
 @pytest.mark.gui
@@ -890,7 +919,20 @@ def test_help_item_opens_the_keyboard_help_on_the_window(monkeypatch):
     assert shown == [c, "modal", "destroy"]
 
 
-def test_nothing_here_is_announced_in_the_status_bar():
+def test_unavailable_item_is_announced_and_not_run():
+    """3f3 (§ 3f2 I3) : choisi, un élément indisponible l'annonce dans la
+    barre d'état de la fenêtre, sans rien exécuter."""
+    win = _Child(menu_bar.SONGS, _Main())
+    win._set_status = win.status.append
+    win._show_status = None                          # Songs : _set_status seul
+    menu_bar.run(win, _find("Mute exclusif"))
+    menu_bar.run(win, _find("Renommer la piste…"))      # méthode : pas appelée
+    assert win.status == ["Mute exclusif : indisponible dans cette fenêtre",
+                          "Renommer la piste… : indisponible dans cette fenêtre"]
+    assert win.keys == [] and win.calls == []
+
+
+def test_no_effect_is_announced_in_a_child_status_bar():
     class _C(menu_bar.MenuBarMixin):
         def __init__(self):
             self.msgs = []
@@ -898,10 +940,9 @@ def test_nothing_here_is_announced_in_the_status_bar():
         def _set_status(self, msg):                    # éditeur MIDI, Songs
             self.msgs.append(msg)
     c = _C()
-    c._menu_nothing_here()
     c._menu_no_effect()
-    assert c.msgs == ["Aucune commande de ce menu dans cette fenêtre",
-                      "Aucun effet pour l'instant"]
+    assert c.msgs == ["Aucun effet pour l'instant"]
+    assert not hasattr(menu_bar, "NOTHING_HERE")       # retiré en 3f3
 
 
 def test_skipped_shortcut_announced_in_a_child_status_bar():
@@ -925,36 +966,41 @@ def _built(kind):
     return frame, bar
 
 
-def _enabled_texts(bar, title):
-    menu = bar.GetMenu(TITLES.index(title))
-    return [it.GetItemLabelText() for it in menu.GetMenuItems()
-            if not it.IsSeparator() and it.IsEnabled()]
-
-
 def _greyed(frame, bar):
-    return {it.text() for i, it in frame._menu_items.items()
-            if not bar.FindItemById(i).IsEnabled()}
+    """Éléments indisponibles de la fenêtre (3f3 : marqués, plus désactivés)."""
+    return {it.text() for i, it in frame._menu_items.items() if i in frame._menu_unavailable}
 
 
-@pytest.mark.parametrize("kind, filled", [
+def _all_wx_items(menu):
+    for it in menu.GetMenuItems():
+        if it.IsSeparator():
+            continue
+        yield it
+        if it.GetSubMenu() is not None:
+            yield from _all_wx_items(it.GetSubMenu())
+
+
+@pytest.mark.parametrize("kind, whole", [
     (menu_bar.MAIN, set()),
     (menu_bar.MIDI, {"Piste", "Pattern", "Mixer", "Outils"}),
     (menu_bar.SONGS, {"Insertion", "Piste", "Pattern", "Mixer", "Outils"}),
 ])
-def test_menu_without_active_item_gets_one(kind, filled):
-    """Essai de 1d1 : GTK ne prenait pas le clavier dans un menu tout grisé
-    (flèches et Échap retombaient sur l'éditeur)."""
+def test_every_item_enabled_unavailable_ones_say_so(kind, whole):
+    """3f3 : aucun élément désactivé (GTK les saute, et un menu tout grisé
+    ne prenait pas le clavier, essai de 1d1) ; un élément sans objet dit
+    « (Indisponible) » — des menus entiers dans l'éditeur et Songs."""
     frame, bar = _built(kind)
     try:
-        nothing = menu_bar.NOTHING_HERE.replace("&", "")
         got = set()
         for title in TITLES:
-            enabled = _enabled_texts(bar, title)
-            assert enabled, (kind, title)                       # jamais tout grisé
-            if nothing in enabled:
+            items = list(_all_wx_items(bar.GetMenu(TITLES.index(title))))
+            assert all(it.IsEnabled() for it in items), (kind, title)
+            marked = [it.GetItemLabelText().endswith(menu_bar.UNAVAILABLE) for it in items]
+            assert all((it.GetId() in frame._menu_unavailable) == m
+                       for it, m in zip(items, marked)), (kind, title)
+            if all(marked):
                 got.add(title)
-                assert enabled == [nothing]
-        assert got == filled
+        assert got == whole
     finally:
         frame.Destroy()
 
@@ -962,7 +1008,12 @@ def test_menu_without_active_item_gets_one(kind, filled):
 def test_greyed_items_of_each_window():
     expected = {
         menu_bar.MAIN: {"Enregistrer le song", "Dupliquer le song…", "Renommer le song…",
-                        "Notes", "Liste des événements"},
+                        "Notes", "Liste des événements", "Éditer l'événement…",
+                        "Insérer une note", "Insérer une note sans avancer",
+                        "Insérer une note avec dialogue…", "Insérer une note entre deux",
+                        "Dupliquer l'événement", "Dupliquer sans avancer", "Rafraîchir",
+                        "Raccourcir", "Rallonger", "Reculer", "Avancer", "Vélocité −",
+                        "Vélocité +", "Demi-ton −", "Demi-ton +", "Octave −", "Octave +"},
     }
     frames = []
     try:
@@ -973,8 +1024,9 @@ def test_greyed_items_of_each_window():
             greyed[kind] = _greyed(frame, bar)
         assert greyed[menu_bar.MAIN] == expected[menu_bar.MAIN]
         # 20 / 29 en 1e1 ; + 42 / 48 éléments de la fenêtre principale (3b1-3b5),
-        # + 7 dialogues (3d1)
-        assert len(greyed[menu_bar.MIDI]) == 69 and len(greyed[menu_bar.SONGS]) == 84
+        # + 7 dialogues (3d1) ; 3f1 : limiteurs actifs dans l'éditeur (− 4),
+        # 18 éléments de l'éditeur indisponibles dans Songs
+        assert len(greyed[menu_bar.MIDI]) == 65 and len(greyed[menu_bar.SONGS]) == 102
         # Fichier, Fenêtres, Aide jamais grisés
         for kind in menu_bar.ALL:
             for text in ("Nouveau projet", "Ouvrir un projet…", "Enregistrer sous…",
@@ -990,12 +1042,13 @@ def test_greyed_items_of_each_window():
             f.Destroy()
 
 
-def test_midi_submenu_greyed_in_songs_audio_kept():
+def test_midi_submenu_unavailable_in_songs_audio_kept():
     frame, bar = _built(menu_bar.SONGS)
     try:
         menu = bar.GetMenu(TITLES.index("Traitement"))
-        state = {it.GetItemLabelText(): it.IsEnabled() for it in menu.GetMenuItems()}
-        assert state == {"Audio": True, "Midi": False}
+        state = {it.GetItemLabelText(): it.GetId() in frame._menu_unavailable
+                 for it in menu.GetMenuItems()}
+        assert state == {"Audio": False, "Midi (Indisponible)": True}
     finally:
         frame.Destroy()
 
