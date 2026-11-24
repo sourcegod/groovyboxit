@@ -16884,3 +16884,63 @@ Ctrl+Shift+Z historique vide (fenêtre principale et éditeur MIDI).
 Les fenêtres factices des tests sans LimitersMixin restent valables
 (appels protégés par hasattr dans mw_project, comme les options de
 l'enregistrement).
+
+## Phase 9 étape 3h1 — Clôture : nouveaux éléments de menus
+
+**Bilan.** La barre de menus porte désormais l'essentiel des commandes de
+la fenêtre principale et de l'éditeur MIDI : Edition (couper, copier,
+coller, supprimer, sélection), Transport (Métronome, Limiteurs), Aller à,
+Piste (précédente / suivante, Mute / Solo), deux menus nouveaux — Pattern
+(Alt+P) et Mixer (Alt+M) —, les éléments propres à l'éditeur MIDI, et sept
+dialogues (Régler… volume et pan, Choisir un pattern, Redimensionner,
+Régler le tempo, Sélection des limiteurs). Les éléments qui dépendent du
+focus agissent par méthode, sur la piste ou le pattern courant. Deux
+défauts d'accessibilité de GTK contournés : l'alternance des lettres
+partagées (faite par menukeys) et les éléments désactivés sautés au
+clavier (éléments « (Indisponible) », lus mais gris). Les limiteurs
+deviennent une donnée du projet, avec leur Undo. 5121 et 28 tests verts.
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 3a (faa5ef4) | Plan |
+| 3b1 (ac272d4) | Menus de la fenêtre principale (Edition, Transport, Aller à, Piste, Pattern, Mixer) |
+| 3b2 (52d6d05) | Avenant : Mute / Solo de piste, sous-menu Métronome |
+| 3b3 (bbb8c30) | Mute / Solo, Métronome |
+| 3b4 (bbd79ae) | Avenant : sous-menu Limiteurs, limiteurs ↔ boucle |
+| 3b5 (266b50d) | Limiteurs, Alt+Début / Alt+Fin |
+| 3c1 (02f4b9a) | Tests (test_menu_items, menukeys) |
+| 3d1 (50dac48) | Dialogues des menus |
+| 3e1 (13468aa) | Tests des dialogues |
+| 3f1 (a4d425a) | Éléments de l'éditeur MIDI |
+| 3f2 (5b0a23f) | Avenant : éléments « (Indisponible) » |
+| 3f3 (9c37b20) | Éléments « (Indisponible) » |
+| 3g1 (15213a9) | Tests (éditeur, indisponibles) |
+| 3g2 (caba6f6) | Avenant : Undo des limiteurs, dialogue des limiteurs |
+| 3g3 (6acdaa0) | Révision : Ctrl+Shift+I (limiteurs), Ctrl+Shift+N (insertion) |
+| 3g4 (9776005) | Undo des limiteurs, dialogue, bips de l'historique |
+| 3g5 (e0b2708) | Tests des limiteurs |
+| 3h1 | Clôture |
+
+**Décisions.** Pas des éléments = pas des raccourcis ; sous-menus Volume
+et Pan regroupant global et piste ; tous les tempos en proportion ;
+Ctrl+P et Shift+P retirés (pattern aléatoire à venir dans Traitement >
+Générer) ; Undo de Suppr et Shift+Suppr ; Alt+Début = boucle → limiteurs,
+Alt+Fin = limiteurs → boucle ; i / o sans contrôle de croisement ;
+limiteurs dans le .gvp, une entrée d'Undo par commande ; Ctrl+Shift+I =
+limiteurs dans les deux fenêtres, Ctrl+Shift+N = insertion de l'éditeur ;
+« (Indisponible) » plutôt que grisé ; bips de l'historique (système) et du
+refus des limiteurs (alerte de l'appli).
+
+**Trouvailles.** Alternance GTK menu ouvert : titre sélectionné sans
+entrer dans le menu → menukeys alterne et ouvre comme F10 ; GTK 3 ne
+sélectionne jamais un élément désactivé → élément sensible, libellé GTK
+seul insensible (`set_dimmed`) ; action d'un élément différée de 150 ms
+pour qu'Orca lise le retour du focus ; un pattern de 4 mesures boucle de
+1:1:1 à 4:4:4 (fin incluse).
+
+**Suites.** Délai au retour de boucle (essai_audio_14d1, fin à 5:1:1 ?) ;
+édition de note sur 128 notes dans l'éditeur MIDI ; gris des éléments
+indisponibles à vérifier par un voyant ; NVDA sous Windows à vérifier ;
+pattern aléatoire dans Traitement > Générer ; SpeechAccess (barre d'état).
