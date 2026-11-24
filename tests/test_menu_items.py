@@ -83,7 +83,8 @@ def test_transport_metronome_and_limiters():
     tr = _menu("Transport")
     assert _row(_sub(tr, "Métronome").items) == [
         ("Click On / Off", "C", None, ()), ("Tap Tempo", "H", "_menu_tap_tempo", ()),
-        ("BPM +5", "(", None, ()), ("BPM −5", ")", None, ())]
+        ("BPM +5", "(", None, ()), ("BPM −5", ")", None, ()),
+        ("Régler le tempo…", None, "_menu_set_tempo", ())]
     assert _row(_sub(tr, "Limiteurs").items) == [
         ("Limiteur gauche ici", "I", None, ()), ("Limiteur droit ici", "O", None, ()),
         ("Limiteur gauche au début", "Shift+I", None, ()),
@@ -117,14 +118,16 @@ def test_pattern_menu_and_file_without_pattern_items():
     pat = _menu("Pattern")
     assert _row(_sub(pat, "Changer de pattern").items) == [
         ("Pattern précédent", None, "_menu_step_pattern", (-1,)),
-        ("Pattern suivant", None, "_menu_step_pattern", (1,))]
+        ("Pattern suivant", None, "_menu_step_pattern", (1,)),
+        ("Choisir un pattern…", None, "_menu_choose_pattern", ())]
     assert _row(pat) == [
         ("Propriétés du pattern…", "Alt+Entrée", "_pattern_properties_dialog", ()),
         ("Enregistrer le pattern", "Ctrl+W", None, ()),
         ("Dupliquer le pattern…", "Ctrl+Shift+W", None, ())]
     assert _row(_sub(pat, "Redimensionner").items) == [
         ("Doubler", "Ctrl+F", None, ()), ("Diviser", "Shift+F", None, ()),
-        ("Vider le pattern", "Shift+Suppr", "_menu_reset_pattern", ())]
+        ("Vider le pattern", "Shift+Suppr", "_menu_reset_pattern", ()),
+        ("Redimensionner le pattern…", None, "_menu_resize_pattern", ())]
     assert all("pattern" not in it.text() for it in _flat(_menu("Fichier")))
     assert all(set(it.windows) == {menu_bar.MAIN} for it in _flat(pat))
 
@@ -135,13 +138,17 @@ def test_mixer_steps_are_those_of_the_shortcuts():
     assert _row(_sub(mixer, "Volume").items) == [
         ("Volume global +1", "Ctrl+Haut", None, ()),
         ("Volume global −1", "Ctrl+Bas", None, ()),
+        ("Régler le volume global…", None, "_menu_set_master_volume", ()),
         ("Volume de la piste +5", "Alt+Haut", "_menu_track_volume", (5,)),
-        ("Volume de la piste −5", "Alt+Bas", "_menu_track_volume", (-5,))]
+        ("Volume de la piste −5", "Alt+Bas", "_menu_track_volume", (-5,)),
+        ("Régler le volume de la piste…", None, "_menu_set_track_volume", ())]
     assert _row(_sub(mixer, "Pan").items) == [
         ("Pan global à droite +1", "Ctrl+Droite", None, ()),
         ("Pan global à gauche −1", "Ctrl+Gauche", None, ()),
+        ("Régler le pan global…", None, "_menu_set_master_pan", ()),
         ("Pan de la piste à droite +10", "Alt+Droite", "_menu_track_pan", (10,)),
-        ("Pan de la piste à gauche −10", "Alt+Gauche", "_menu_track_pan", (-10,))]
+        ("Pan de la piste à gauche −10", "Alt+Gauche", "_menu_track_pan", (-10,)),
+        ("Régler le pan de la piste…", None, "_menu_set_track_pan", ())]
     assert _row(mixer) == [
         ("Volume et pan globaux normaux", "Ctrl+Retour arrière", "_menu_master_mix_reset", ()),
         ("Volume et pan de la piste normaux", "Shift+Retour arrière",
@@ -424,3 +431,304 @@ def test_replayed_items_go_through_the_real_keyboard(win):
     assert te._lim_left == 0
     assert _run(win, "Click On / Off") == "Click: On"
     assert _run(win, "Click On / Off") == "Click: Off"
+
+
+# ----------------------------------------------------------------------
+# Dialogues des menus (Phase 9 étape 3e1, tests de 3d1)
+# ----------------------------------------------------------------------
+
+def _children(dlg):
+    return [c for c in dlg.GetChildren() if c.IsShown()]
+
+
+def _label_before(dlg, field):
+    """Libellé créé juste avant le champ (Orca le lit, recette des dialogues)."""
+    kids = list(dlg.GetChildren())
+    prev = kids[kids.index(field) - 1]
+    assert isinstance(prev, wx.StaticText)
+    return prev.GetLabel()
+
+
+@pytest.fixture
+def parent():
+    frame = wx.Frame(None)
+    yield frame
+    frame.Destroy()
+
+
+@pytest.mark.gui
+def test_value_dialog_bounds_label_and_value(parent):
+    from ui.dialogs_menu import ValueDialog
+    dlg = ValueDialog(parent, "Régler le pan global", "Pan global", 250, -100, 100)
+    try:
+        assert dlg.GetTitle() == "Régler le pan global"
+        assert _label_before(dlg, dlg._spin) == "Pan global (-100 à 100) :"
+        assert dlg._spin.GetName() == "Pan global (-100 à 100) :"
+        assert (dlg._spin.GetMin(), dlg._spin.GetMax()) == (-100, 100)
+        assert dlg.get_value() == 100                                # borné
+        ok = [c for c in dlg.GetChildren() if isinstance(c, wx.Button)
+              and c.GetId() == wx.ID_OK][0]
+        assert ok.IsDefault() if hasattr(ok, "IsDefault") else True
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.gui
+def test_enter_in_the_field_validates(parent, monkeypatch):
+    from ui.dialogs_menu import ValueDialog
+    dlg = ValueDialog(parent, "t", "Volume", 10, 0, 100)
+    try:
+        ended = []
+        monkeypatch.setattr(dlg, "EndModal", ended.append)
+        dlg._spin.ProcessEvent(wx.CommandEvent(wx.wxEVT_TEXT_ENTER, dlg._spin.GetId()))
+        assert ended == [wx.ID_OK]
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.gui
+def test_pattern_choice_dialog(parent, monkeypatch):
+    from ui.dialogs_menu import PatternChoiceDialog
+    dlg = PatternChoiceDialog(parent, ["Pat_01", "Pat_02 - Intro", "Pat_03"], 1)
+    try:
+        assert _label_before(dlg, dlg._list) == "Patterns :"
+        assert dlg.get_index() == 1
+        ended = []
+        monkeypatch.setattr(dlg, "EndModal", ended.append)
+        dlg._list.ProcessEvent(wx.CommandEvent(wx.wxEVT_LISTBOX_DCLICK, dlg._list.GetId()))
+        assert ended == [wx.ID_OK]                      # Entrée sur la liste (GTK : DCLICK)
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.gui
+def test_resize_dialog(parent):
+    from ui.dialogs_menu import ResizePatternDialog
+    dlg = ResizePatternDialog(parent, 4, 999, 32, (16, 32, 64, 128))
+    try:
+        assert _label_before(dlg, dlg._bars) == "Mesures (1 à 999) :"
+        assert _label_before(dlg, dlg._res) == "Résolution :"
+        assert (dlg.get_num_bars(), dlg.get_resolution()) == (4, 32)
+        assert dlg._res.GetString(1) == "1/32 (triple croche)"
+    finally:
+        dlg.Destroy()
+
+
+def _key(ch, ctrl=False):
+    evt = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    evt.SetKeyCode(ord(ch.upper()) if ch.isalpha() else ord(ch))
+    evt.SetUnicodeKey(ord(ch))
+    evt.SetControlDown(ctrl)
+    return evt
+
+
+@pytest.mark.gui
+def test_tempo_dialog_keys_tap_click_and_live_tempo(parent):
+    from ui.dialogs_menu import TempoSetDialog
+    heard, taps, clicks = [], iter([None, None, 132.4]), []
+    state = {"click": False}
+    dlg = TempoSetDialog(parent, 100.4, lambda: next(taps), lambda: 2, on_change=heard.append,
+                         click=(lambda: state["click"], clicks.append))
+    try:
+        assert _label_before(dlg, dlg._spin) == "Premier tempo, BPM (1 à 600) :"
+        assert dlg.get_value() == 100 and heard == []
+        assert dlg.get_result() == "Premier tempo : 100 BPM (avant : 100)"
+        for ch in "((":
+            dlg._on_char_hook(_key(ch))
+        dlg._on_char_hook(_key(")"))
+        assert dlg.get_value() == 105 and heard == [105, 110, 105]      # entendu en direct
+        assert dlg.get_result() == "Premier tempo : 105 BPM (avant : 100), tous les tempos × 1,05"
+        dlg._on_char_hook(_key("h"))
+        assert dlg.get_result() == "Tap Tempo : frappe 2, continuez (4 frappes au moins)"
+        dlg.tap()
+        dlg.tap()                                                 # le BPM tapé arrive
+        assert dlg.get_value() == 132 and heard[-1] == 132
+        assert dlg.get_result().startswith("Tap Tempo — Premier tempo : 132 BPM")
+        other = _key("h", ctrl=True)                              # Ctrl+H : pas une frappe
+        dlg._on_char_hook(other)
+        assert other.GetSkipped()
+        digit = _key("7")
+        dlg._on_char_hook(digit)
+        assert digit.GetSkipped()                                 # le champ le prend
+        assert dlg._click.IsShown() and not dlg._click.GetValue()
+        dlg._click.SetValue(True)
+        dlg._click.ProcessEvent(wx.CommandEvent(wx.wxEVT_CHECKBOX, dlg._click.GetId()))
+        assert clicks == [True]
+        dlg.step(1000)
+        assert dlg.get_value() == 600                             # borné
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.gui
+def test_tempo_dialog_without_click_hides_the_box(parent):
+    from ui.dialogs_menu import TempoSetDialog
+    dlg = TempoSetDialog(parent, 90, lambda: None)
+    try:
+        assert not dlg._click.IsShown()
+    finally:
+        dlg.Destroy()
+
+
+# --- Actions de la fenêtre principale ---------------------------------
+
+def _answer(monkeypatch, cls, setup, rc=wx.ID_OK):
+    """ShowModal du dialogue cls : setup(dlg) puis rc (dialogue réel, non
+    affiché)."""
+    def show(dlg):
+        setup(dlg)
+        return rc
+    monkeypatch.setattr(cls, "ShowModal", show)
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("text, value, check, announce", [
+    ("Régler le volume global…", 150, lambda w: w._player.volume, "Volume Global: 150"),
+    ("Régler le pan global…", -30, lambda w: w._player.pan, "Pan Global: -30"),
+    ("Régler le volume de la piste…", 70, lambda w: w._router.get_track_volume(0),
+     "Piste 1: Volume 70"),
+    ("Régler le pan de la piste…", 40, lambda w: w._router.get_track_pan(0), "Piste 1: Pan 40"),
+])
+def test_set_value_items(win, monkeypatch, text, value, check, announce):
+    from ui.dialogs_menu import ValueDialog
+    before, count = check(win), len(_titles(win))
+    _answer(monkeypatch, ValueDialog, lambda d: d._spin.SetValue(before), wx.ID_CANCEL)
+    assert _run(win, text) is None and check(win) == before         # Annuler
+    _answer(monkeypatch, ValueDialog, lambda d: d._spin.SetValue(value))
+    assert _run(win, text).startswith(announce)
+    assert check(win) == value and len(_titles(win)) == count + 1
+    _run(win, text)                                                  # inchangé : pas d'Undo
+    assert len(_titles(win)) == count + 1
+    win._undo_action()
+    assert check(win) == before
+
+
+@pytest.mark.gui
+def test_value_dialog_opens_on_the_current_value(win, monkeypatch):
+    from ui.dialogs_menu import ValueDialog
+    seen = []
+    win._router.set_track_pan(0, -20)
+    _answer(monkeypatch, ValueDialog, lambda d: seen.append(
+        (d.get_value(), d._spin.GetMin(), d._spin.GetMax())), wx.ID_CANCEL)
+    _run(win, "Régler le pan de la piste…")
+    _run(win, "Régler le volume global…")
+    assert seen[0] == (-20, -100, 100)
+    assert seen[1] == (win._player.volume, 0, win.MASTER_VOLUME_MAX)
+    win._router.set_track_pan(0, 0)
+
+
+@pytest.mark.gui
+def test_choose_pattern(win, monkeypatch):
+    from ui.dialogs_menu import PatternChoiceDialog
+    seen = []
+
+    def pick(d):
+        seen.append((d._list.GetCount(), d.get_index(), d._list.GetString(0)))
+        d._list.SetSelection(4)
+    _answer(monkeypatch, PatternChoiceDialog, pick)
+    assert _run(win, "Choisir un pattern…").startswith("Pattern 05")
+    assert seen == [(99, 0, win._pattern_label(0))]
+    assert win._cur_pattern_idx == 4 and win._pattern_listbox.GetSelection() == 4
+    _answer(monkeypatch, PatternChoiceDialog, lambda d: None)        # le courant
+    assert _run(win, "Choisir un pattern…") == "Pattern 05: déjà le pattern courant"
+    _answer(monkeypatch, PatternChoiceDialog, lambda d: d._list.SetSelection(0), wx.ID_CANCEL)
+    _run(win, "Choisir un pattern…")
+    assert win._cur_pattern_idx == 4
+
+
+@pytest.mark.gui
+def test_resize_pattern(win, monkeypatch):
+    from ui.dialogs_menu import ResizePatternDialog
+    live = win._player._pattern
+    bars, steps = live._num_bars, live._num_steps
+    seen = []
+
+    def resize(d):
+        seen.append((d.get_num_bars(), d.get_resolution()))
+        d._bars.SetValue(3)
+        d._res.SetSelection(d._resolutions.index(32))
+    _answer(monkeypatch, ResizePatternDialog, resize)
+    assert _run(win, "Redimensionner le pattern…") == "Pattern 01: 3 mesures, résolution 1/32"
+    live = win._player._pattern
+    assert (live._num_bars, live._num_steps) == (3, 32 * live._num_beats // live._denumerator)
+    assert win._pattern_list[0]._num_bars == 3                       # pattern gardé aussi
+    assert _titles(win)[0] == "Redimensionner pattern 01"
+    assert seen[0] == (bars, round(steps * live._denumerator / live._num_beats))
+    count = len(_titles(win))
+    _answer(monkeypatch, ResizePatternDialog, lambda d: None)        # inchangé
+    _run(win, "Redimensionner le pattern…")
+    assert len(_titles(win)) == count
+    win._undo_action()
+    live = win._player._pattern
+    assert (live._num_bars, live._num_steps) == (bars, steps)
+
+
+@pytest.mark.gui
+def test_resize_refuses_a_resolution_impossible_in_the_signature(win, monkeypatch):
+    from pattern import Pattern
+    from ui.dialogs_menu import ResizePatternDialog
+    monkeypatch.setattr(Pattern, "steps_for", staticmethod(lambda *a: None))
+    count = len(_titles(win))
+    _answer(monkeypatch, ResizePatternDialog, lambda d: None)
+    assert _run(win, "Redimensionner le pattern…").startswith("Résolution 1/")
+    assert len(_titles(win)) == count
+
+
+@pytest.mark.gui
+def test_set_tempo_live_cancel_and_ok(win, monkeypatch):
+    from ui.dialogs_menu import TempoSetDialog
+    p = win._player
+    start = round(p.tempo_at(0))
+    heard = []
+
+    def listen(d):
+        d.step(10)
+        heard.append(round(p.tempo_at(0)))                 # entendu, dialogue ouvert
+    _answer(monkeypatch, TempoSetDialog, listen, wx.ID_CANCEL)
+    count = len(_titles(win))
+    _run(win, "Régler le tempo…")
+    assert heard == [start + 10] and round(p.tempo_at(0)) == start   # Annuler rétablit
+    assert len(_titles(win)) == count
+    _answer(monkeypatch, TempoSetDialog, lambda d: None)              # OK sans changement
+    _run(win, "Régler le tempo…")
+    assert len(_titles(win)) == count                                 # pas d'Undo
+    _answer(monkeypatch, TempoSetDialog, lambda d: d.step(5))
+    assert _run(win, "Régler le tempo…") == f"Premier tempo : {start + 5} BPM"
+    assert round(p.tempo_at(0)) == start + 5
+    assert _titles(win)[0] == f"Tempo : {start + 5} BPM (tous les tempos en proportion)"
+    assert len(_titles(win)) == count + 1
+    win._undo_action()
+    assert round(win._player.tempo_at(0)) == start
+
+
+@pytest.mark.gui
+def test_set_tempo_scales_every_tempo(win, monkeypatch):
+    from ui.dialogs_menu import TempoSetDialog
+    p = win._player
+    start = p.tempo_at(0)
+    p._pattern._tempo_changes = [(p._pattern._num_steps, start * 2)]
+    _answer(monkeypatch, TempoSetDialog, lambda d: d._spin.SetValue(round(start) * 2) or d._show())
+    _run(win, "Régler le tempo…")
+    assert round(p.tempo_at(0)) == round(start) * 2
+    assert round(p._pattern._tempo_changes[0][1]) == round(start * 2 * round(start) * 2 / start)
+    win._undo_action()
+    win._player._pattern._tempo_changes = []
+
+
+@pytest.mark.gui
+def test_set_tempo_click_box(win, monkeypatch):
+    from ui.dialogs_menu import TempoSetDialog
+    p = win._player
+    if p.clicking:
+        p.stop_click()
+
+    def tick(d):
+        d._click.SetValue(True)
+        d._click.ProcessEvent(wx.CommandEvent(wx.wxEVT_CHECKBOX, d._click.GetId()))
+    _answer(monkeypatch, TempoSetDialog, tick, wx.ID_CANCEL)
+    _run(win, "Régler le tempo…")
+    try:
+        assert p.clicking                               # gardé après le dialogue
+        assert "Click: On" in win.status
+    finally:
+        p.stop_click()

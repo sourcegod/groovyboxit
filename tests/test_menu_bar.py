@@ -972,8 +972,9 @@ def test_greyed_items_of_each_window():
             frames.append(frame)
             greyed[kind] = _greyed(frame, bar)
         assert greyed[menu_bar.MAIN] == expected[menu_bar.MAIN]
-        # 20 / 29 en 1e1 ; + 42 / 48 éléments de la fenêtre principale (3b1-3b5)
-        assert len(greyed[menu_bar.MIDI]) == 62 and len(greyed[menu_bar.SONGS]) == 77
+        # 20 / 29 en 1e1 ; + 42 / 48 éléments de la fenêtre principale (3b1-3b5),
+        # + 7 dialogues (3d1)
+        assert len(greyed[menu_bar.MIDI]) == 69 and len(greyed[menu_bar.SONGS]) == 84
         # Fichier, Fenêtres, Aide jamais grisés
         for kind in menu_bar.ALL:
             for text in ("Nouveau projet", "Ouvrir un projet…", "Enregistrer sous…",
