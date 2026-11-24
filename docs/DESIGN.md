@@ -16854,3 +16854,20 @@ sélection (ni dans le `.gvp`, ni dans l'état capturé par l'Undo).
 - L4 — Aide F1, SPECS.
 
 **Étapes.** 3g3 : U1-U3, L1-L4 et essai ; 3g4 : tests ; 3h1 : clôture.
+
+## Phase 9 étape 3g3 — Révision de l'avenant 3g2 : Ctrl+Shift+I pour les limiteurs
+
+**Idée de l'utilisateur (2026-11-24), à la place de Ctrl+Shift+O (L1).**
+- R1 — Éditeur MIDI : le dialogue d'insertion de note (note, durée,
+  vélocité ; Insertion > « Insérer une note avec dialogue… ») passe de
+  Ctrl+Shift+I à **Ctrl+Shift+N** — libre dans l'éditeur (aucune touche N ;
+  la barre n'y renvoie à la principale que Ctrl+N, Nouveau projet).
+- R2 — **Ctrl+Shift+I** ouvre le dialogue Sélection des limiteurs dans les
+  deux fenêtres (libre dans la principale ; libéré dans l'éditeur par R1) :
+  I comme les limiteurs i / Shift+I. Menu : Transport > Limiteurs >
+  « Sélection des limiteurs… » (Ctrl+Shift+I).
+- Ctrl+Shift+O reste libre. Le reste de 3g2 (U1-U3, L2-L4) ne change pas.
+- Aide F1 (section de l'éditeur : Ctrl+Shift+N), SPECS.
+
+**Étapes.** 3g4 : U1-U3, L1-L4 révisés, R1-R2 et essai ; 3g5 : tests ;
+3h1 : clôture.
