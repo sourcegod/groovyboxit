@@ -16805,3 +16805,52 @@ pour un voyant reste à regarder (pas urgent). Astuce d'accessibilité
 documentée dans SPECS (§ Astuces d'accessibilité, barre de menus) :
 GTK 3 saute au clavier tout élément désactivé — garder l'élément sensible,
 le dire dans son libellé, ne griser que son libellé GTK.
+
+## Phase 9 étape 3g2 — Avenant : Undo des limiteurs, dialogue Sélection des limiteurs (Ctrl+Shift+O)
+
+**Demande de l'utilisateur (2026-11-24).** Un dialogue pour poser les deux
+limiteurs, bâti sur celui des Points de boucle (Ctrl+Shift+L,
+`LoopSelectDialog`) ; et, question de l'utilisateur, l'Undo des
+limiteurs — absent jusqu'ici : depuis i / o, les limiteurs étaient une
+sélection (ni dans le `.gvp`, ni dans l'état capturé par l'Undo).
+
+**Undo des limiteurs (réponses : A, une entrée par commande).**
+- U1 — Les deux limiteurs sont enregistrés dans le projet : clé
+  `"limiters": {"left": …, "right": …}` du `.gvp` (pas, base 0, ou
+  null) ; absente (anciens projets) ou Ctrl+N : aucun limiteur. Ctrl+O
+  les relit.
+- U2 — L'état capturé par l'Undo comprend les limiteurs ; Ctrl+Z / Shift+Z
+  les rétablissent (toute entrée d'Undo rétablit donc aussi les limiteurs
+  de son moment, comme la boucle). Le projet est marqué modifié, ce qui
+  est juste puisqu'ils sont enregistrés.
+- U3 — Une entrée par commande, rien si rien ne change : i, o, Shift+I,
+  Shift+O (fenêtre principale et éditeur MIDI), Alt+Début (boucle →
+  limiteurs), Ctrl+A / Ctrl+Shift+A (qui posent ou effacent les
+  limiteurs : une seule entrée pour la commande), Ctrl+Entrée (dialogue
+  de sélection des pistes et de plage), Ctrl+Début / Ctrl+Fin de l'éditeur
+  (limiteurs réinitialisés), le nouveau dialogue. Titres : « Limiteur
+  gauche : 2:1:1 », « Limiteurs : 2:1:1 à 4:4:4 », « Limiteurs effacés ».
+  Les limiteurs suivis par la sélection de l'éditeur (Shift+flèches) ou par
+  un dialogue de quantisation n'ont pas d'entrée propre (ils sont dans
+  l'état capturé par l'action suivante).
+
+**Dialogue Sélection des limiteurs.**
+- L1 — Raccourci **Ctrl+Shift+O** (demande de l'utilisateur), libre dans
+  la fenêtre principale ET dans l'éditeur MIDI (Ctrl+O : Ouvrir, sans
+  Shift ; Shift+O de l'éditeur : sans Ctrl) — disponible dans les deux.
+  Menu : Transport > Limiteurs > « Sélection des limiteurs… »
+  (Ctrl+Shift+O), après Limiteur droit à la fin.
+- L2 — Le dialogue des Points de boucle généralisé (pas une copie) : deux
+  panneaux « Limiteur gauche » / « Limiteur droit », chacun une liste de
+  sources et un champ « Position (bar:beat:tick) » ; sources : Position
+  courante, Début du pattern, Fin du pattern, Début de boucle, Fin de
+  boucle, Personnalisé ; sans « Boucle Active » ni « Répétitions ».
+  Ouvert sur les limiteurs posés (absents : début et fin du pattern) ;
+  Entrée valide, Échap annule, Ctrl+P lecture / pause, comme les Points
+  de boucle.
+- L3 — Ok : les deux limiteurs posés, une entrée d'Undo (U3) ; annonce
+  « Limiteurs : 2:1:1 à 4:4:4 » ; refus annoncé si gauche > droite (le
+  dialogue reste ouvert). Annuler : rien.
+- L4 — Aide F1, SPECS.
+
+**Étapes.** 3g3 : U1-U3, L1-L4 et essai ; 3g4 : tests ; 3h1 : clôture.
