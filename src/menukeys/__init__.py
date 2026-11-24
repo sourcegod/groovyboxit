@@ -32,7 +32,9 @@
       `letters` donne une lettre à un menu dont le titre ne la contient pas,
       `taken` retire les lettres prises par les commandes de la fenêtre ;
     - Échap dans un sous-menu où l'on est entré remonte d'un niveau ;
-      ailleurs, il ferme la barre.
+      ailleurs, il ferme la barre ;
+    - `dimmed` : éléments en gris mais sélectionnables et lus (un élément
+      wx désactivé est sauté par GTK, le lecteur d'écran ne le lit jamais).
     Recettes d'accessibilité (dans la doc de GroovyboxIt) : garder au moins
     un élément actif par menu (GTK ne prend pas le clavier dans un menu tout
     grisé) ; après une boîte modale d'une AUTRE fenêtre, rendre le focus en
@@ -69,10 +71,11 @@ def title_letter(label):
 class MenuKeys:
     """Clavier de la barre de menus d'une wx.Frame (voir le paquet)."""
 
-    def __init__(self, frame, accels=None, letters=None, taken=()):
+    def __init__(self, frame, accels=None, letters=None, taken=(), dimmed=()):
         self.frame = frame
         self.bar = frame.GetMenuBar()
         self.accels = dict(accels or {})
+        self.dimmed = set(dimmed)
         self.extra_letters = {i: l.upper() for i, l in (letters or {}).items()}
         self.taken = {l.upper() for l in taken}
         self.letters = set()
@@ -105,6 +108,8 @@ class MenuKeys:
         gtk_menu.on_menu_alt_letter(gtk_parent, self.open_menu, keep=frame,
                                     escape_to_parent=nested)
         for item, gtk_item in zip(menu.GetMenuItems(), gtk_menu.menu_items(gtk_parent)):
+            if item.GetId() in self.dimmed:
+                gtk_menu.set_dimmed(gtk_item)
             if item.GetSubMenu() is not None:
                 self._decorate_menu(item.GetSubMenu(), gtk_item, nested=True)
             elif item.GetId() in self.accels:
@@ -168,12 +173,14 @@ class MenuKeys:
         return False
 
 
-def enable(frame, accels=None, letters=None, taken=()):
+def enable(frame, accels=None, letters=None, taken=(), dimmed=()):
     """Donne à la barre de menus de frame (déjà posée) le clavier du paquet ;
     rend l'objet MenuKeys, gardé aussi sur frame._menukeys.
     accels : {id d'élément wx : « Ctrl+S »} — raccourcis affichés ;
     letters : {indice de menu : lettre} — lettres absentes des titres ;
-    taken : lettres prises par les commandes Alt+lettre de la fenêtre."""
-    mk = MenuKeys(frame, accels, letters, taken)
+    taken : lettres prises par les commandes Alt+lettre de la fenêtre ;
+    dimmed : ids d'éléments affichés en gris mais sélectionnables et lus
+    (GTK saute les éléments désactivés : le lecteur d'écran ne les lit pas)."""
+    mk = MenuKeys(frame, accels, letters, taken, dimmed)
     frame._menukeys = mk
     return mk

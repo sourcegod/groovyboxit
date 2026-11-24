@@ -14,7 +14,10 @@
     - on_menu_alt_letter : Alt+lettre dans un menu ouvert, Échap dans un
       sous-menu où l'on est entré ;
     - AltState, watch_alt : Alt seul (appuyé puis relâché sans autre touche) ;
-    - bar_items(menubar), menu_items(bar_item) : éléments GTK, dans l'ordre.
+    - bar_items(menubar), menu_items(bar_item) : éléments GTK, dans l'ordre ;
+    - set_dimmed(item) : élément affiché en gris mais toujours sélectionnable
+      et lu par le lecteur d'écran (GroovyboxIt, Phase 9 étape 3f3 : GTK
+      saute au clavier les éléments désactivés, Orca ne les lit jamais).
     Hors de GTK, ou si GTK est introuvable : rien (fonctions sans effet).
     Date: Sat, 21/11/2026
     Author: Coolbrother
@@ -54,6 +57,8 @@ def _lib():
                     ("gtk_window_mnemonic_activate", ctypes.c_int,
                      [V, ctypes.c_uint, ctypes.c_int]),
                     ("gtk_widget_get_mapped", ctypes.c_int, [V]),
+                    ("gtk_widget_set_sensitive", None, [V, ctypes.c_int]),
+                    ("gtk_widget_get_sensitive", ctypes.c_int, [V]),
                     ("gtk_widget_mnemonic_activate", ctypes.c_int, [V, ctypes.c_int]),
                     ("gtk_menu_shell_deactivate", None, [V]),
                     ("gtk_menu_shell_get_selected_item", V, [V])):
@@ -118,6 +123,26 @@ def set_accel_text(item, accel):
         return False
     g.gtk_accel_label_set_accel(child, key.value, mods.value)
     return True
+
+
+def set_dimmed(item, dimmed=True):
+    """Élément GTK item en gris (son libellé rendu insensible : la couleur
+    vient du thème), l'élément lui-même restant sensible — donc
+    sélectionnable au clavier et lu par le lecteur d'écran."""
+    g, _gl = _lib()
+    child = g.gtk_bin_get_child(item)
+    if not child:
+        return False
+    g.gtk_widget_set_sensitive(child, 0 if dimmed else 1)
+    return True
+
+
+def is_dimmed(item):
+    """(libellé gris, élément sensible) : pour les tests."""
+    g, _gl = _lib()
+    child = g.gtk_bin_get_child(item)
+    return (bool(child) and not g.gtk_widget_get_sensitive(child),
+            bool(g.gtk_widget_get_sensitive(item)))
 
 
 def accel_text(item):

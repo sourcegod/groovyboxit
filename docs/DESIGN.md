@@ -16797,3 +16797,11 @@ ne prenait pas le clavier (Phase 9 étape 1d1).
 
 **Étapes.** 3f3 : I1-I4 et essai ; les tests (3f1 et 3f3) vont en 3g1 ;
 puis 3h1 : clôture.
+
+**3f3 — essai.** Concluant : dans les trois fenêtres, Orca lit les
+éléments « (Indisponible) », flèches comprises ; Entrée annonce
+« indisponible dans cette fenêtre » ; Échap ferme normalement. Le gris
+pour un voyant reste à regarder (pas urgent). Astuce d'accessibilité
+documentée dans SPECS (§ Astuces d'accessibilité, barre de menus) :
+GTK 3 saute au clavier tout élément désactivé — garder l'élément sensible,
+le dire dans son libellé, ne griser que son libellé GTK.

@@ -334,6 +334,7 @@ def install(win, kind):
     bar = wx.MenuBar()
     win._menu_kind = kind
     win._menu_items = {}
+    win._menu_unavailable = set()
     for title, letter, items in MENUS:
         bar.Append(_build_menu(win, kind, items), title_label(title, letter, kind))
     win.SetMenuBar(bar)
@@ -342,28 +343,28 @@ def install(win, kind):
     return bar
 
 
-NOTHING_HERE = "&Aucune commande dans cette fenêtre"
+UNAVAILABLE = " (Indisponible)"
 
 
 def _build_menu(win, kind, items):
-    """Menu de la fenêtre kind ; un menu dont tous les éléments seraient
-    grisés reçoit en dernier un élément actif « Aucune commande dans cette
-    fenêtre » (essai de 1d1 : GTK ne prenait pas le clavier dans un tel
-    menu, Gauche / Droite et Échap retombaient sur la fenêtre)."""
+    """Menu de la fenêtre kind. Un élément sans objet dans la fenêtre reste
+    ACTIF, marqué « (Indisponible) » et affiché en gris (Phase 9 étape 3f3,
+    § 3f2 : GTK saute au clavier un élément désactivé, Orca ne le lisait
+    jamais ; un menu tout grisé ne prenait même pas le clavier, 1d1) ;
+    choisi, il l'annonce sans rien faire. win._menu_unavailable : ids."""
     menu = wx.Menu()
-    if not any(it is not SEP and kind in it.windows for it in items):
-        items = list(items) + [SEP, Item(NOTHING_HERE, call="_menu_nothing_here")]
     for item in items:
         if item is SEP:
             menu.AppendSeparator()
             continue
+        label = item.label + ("" if kind in item.windows else UNAVAILABLE)
         if isinstance(item, Submenu):
-            mi = menu.AppendSubMenu(_build_menu(win, kind, item.items), item.label)
+            mi = menu.AppendSubMenu(_build_menu(win, kind, item.items), label)
         else:
-            mi = menu.Append(wx.ID_ANY, item.label)
+            mi = menu.Append(wx.ID_ANY, label)
             win._menu_items[mi.GetId()] = item
         if kind not in item.windows:
-            mi.Enable(False)
+            win._menu_unavailable.add(mi.GetId())
     return menu
 
 
@@ -374,7 +375,8 @@ def _decorate(win, bar, kind):
     accels = {i: it.accel for i, it in win._menu_items.items() if it.accel}
     letters = {i: letter for i, (title, letter, _it) in enumerate(MENUS)
                if letter.lower() not in title.lower()}
-    menukeys.enable(win, accels=accels, letters=letters, taken=TAKEN.get(kind, ()))
+    menukeys.enable(win, accels=accels, letters=letters, taken=TAKEN.get(kind, ()),
+                    dimmed=win._menu_unavailable)
 
 
 # ----------------------------------------------------------------------
@@ -400,6 +402,10 @@ def run(win, item):
     """Exécute l'élément : sa méthode, sinon son raccourci rejoué par le
     clavier de la fenêtre ; annonce si le raccourci est sans effet ici."""
     if not win or (hasattr(win, "IsBeingDeleted") and win.IsBeingDeleted()):
+        return
+    kind = getattr(win, "_menu_kind", None)
+    if kind is not None and kind not in item.windows:      # 3f3 (§ 3f2 I3)
+        _status(win, f"{item.text()} : indisponible dans cette fenêtre")
         return
     if item.call:
         getattr(win, item.call)(*item.args)
@@ -509,9 +515,6 @@ class MenuBarMixin:
         main = self._menu_main()
         main.Close()
         _back_to(self, main)            # Annuler : retour à la fenêtre d'origine
-
-    def _menu_nothing_here(self):
-        _status(self, "Aucune commande de ce menu dans cette fenêtre")
 
     def _menu_no_effect(self):
         _status(self, "Aucun effet pour l'instant")
