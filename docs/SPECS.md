@@ -115,6 +115,7 @@ groovyboxit/
 │       ├── dialogs_bank.py     # BankSlotDialog : fichier et emplacement d'un slot Banque
 │       ├── dialogs_sfz.py      # SfzSlotDialog (source et gain d'un slot Synth SFZ), SfzBankDialog (composer une banque SFZ)
 │       ├── dialogs_properties.py # Boîtes de propriétés (Pad, Track, Pattern, GridDialog)
+│       ├── dialogs_menu.py     # Dialogues des menus : Régler…, Choisir un pattern, Redimensionner, Régler le tempo (Phase 9 étape 3d1)
 │       ├── dialogs_preferences.py # PreferencesDialog : Préférences à onglets (Alt+Shift+P)
 │       ├── prefs_hardware.py   # HardwarePage : onglet Matériel (pilote, entrées et sorties audio / MIDI)
 │       ├── dialogs_simple.py   # Boîtes simples (GenRow, Save, Rename…)
@@ -1231,7 +1232,12 @@ volume général ne sont pas concernés.
   que sur une liste (Suppr, Shift+Espace, Ctrl+Entrée, Alt+flèches,
   Shift+Retour arrière, Haut / Bas) agissent par méthode, quel que soit le
   focus. Suppr et Shift+Suppr sont annulables. Ctrl+P (pattern de
-  démonstration) et Shift+P (pattern aléatoire) sont retirés.
+  démonstration) et Shift+P (pattern aléatoire) sont retirés. Dialogues des
+  menus (`ui/dialogs_menu.py`, Phase 9 étape 3d1) : Régler… le volume ou
+  le pan (global, piste), Choisir un pattern…, Redimensionner le
+  pattern… (mesures, résolution), Régler le tempo… (premier tempo, ( ) et
+  H, bouton Tap Tempo, case Click, résultat en lecture seule ; entendu en
+  direct, tous les tempos en proportion) ; un point d'Undo chacun, rien si rien ne change.
 - **Ouverture** : F10 (menu Fichier) ; Alt+lettre : F Fichier / Effets,
   E Edition, T Transport / Piste, G Aller à, I Insertion, P Pattern,
   A Affichage / Aide, R Traitement, M Mixer, O Outils, N Options,

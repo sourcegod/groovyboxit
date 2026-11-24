@@ -565,6 +565,11 @@ Alt+lettre       Ouvrir un menu : F Fichier / Effets, E Edition, T Transport /
                  Les éléments des menus Edition (Supprimer, Sélection), Piste
                  (précédente / suivante), Pattern et Mixer agissent sur la piste
                  ou le pattern courant quel que soit le focus
+                 Dialogues sans raccourci : Mixer > Régler… (volume, pan),
+                 Pattern > Choisir un pattern…, Redimensionner le pattern…,
+                 Transport > Métronome > Régler le tempo… (( et ) : ±5, H :
+                 Tap Tempo, case Click ; entendu en direct, tous les tempos
+                 changent en proportion ; Annuler rétablit)
 F3 / F4          Mute exclusif / Solo exclusif (voir « Pistes »)
 F5               Réinitialiser tous les Mute et Solo de piste
 F8               Monitoring de l'entrée audio On / Off

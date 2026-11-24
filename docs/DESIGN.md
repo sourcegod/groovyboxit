@@ -16751,3 +16751,16 @@ menu Transport passent dans un sous-menu, avec deux commandes nouvelles.
 Orca lit le sous-menu et ses raccourcis). À fixer plus tard, hors de ce
 chantier : dans le projet essai_audio_14d1, une boucle de 1:1:1 à 5:1:1
 marque un délai avant de reprendre — le pattern ne boucle pas exactement.
+
+**3d1 — dialogues** (`ui/dialogs_menu.py`). ValueDialog (Régler… volume
+et pan, global et piste : un champ numérique aux bornes dites dans le
+libellé), PatternChoiceDialog (liste des 99 patterns, libellés de la liste
+principale), ResizePatternDialog (mesures, résolution ; signature gardée ;
+même chemin que les propriétés, `_resize_live_pattern`), TempoSetDialog
+(premier tempo, ( ) et H, bouton Tap Tempo, résultat en lecture seule).
+Un point d'Undo chacun, rien si rien ne change. Essai : ajout de la case
+Click (comme C) et du tempo entendu en direct (mécanisme du champ Tempo
+des propriétés, `_preview_properties_tempo` / `_restore_properties_tempo`),
+Annuler rétablit. Remarque de l'essai : 4 mesures bouclent de 1:1:1 à
+4:4:4 (fin de boucle = dernier pas inclus) — indice pour le délai noté en
+3b5.

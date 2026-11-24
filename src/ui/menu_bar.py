@@ -122,12 +122,13 @@ MENUS = [
         Item("Bo&ucle On / Off", "L"),
         Item("&Points de boucle…", "Ctrl+Shift+L", windows=P),
         SEP,
-        # Métronome (avenant 3b2, A2) ; Régler le tempo… en 3d1
+        # Métronome (avenant 3b2, A2 ; Régler le tempo… : 3d1)
         Submenu("&Métronome", [
             Item("&Click On / Off", "C", windows=P),
             Item("&Tap Tempo", "H", call="_menu_tap_tempo", windows=P),
             Item("&BPM +5", "(", windows=P),
             Item("BP&M −5", ")", windows=P),
+            Item("&Régler le tempo…", call="_menu_set_tempo", windows=P),
         ]),
         SEP,
         # Limiteurs (avenant 3b4, B1)
@@ -186,6 +187,7 @@ MENUS = [
         Submenu("&Changer de pattern", [
             Item("Pattern &précédent", call="_menu_step_pattern", args=(-1,), windows=P),
             Item("Pattern &suivant", call="_menu_step_pattern", args=(1,), windows=P),
+            Item("&Choisir un pattern…", call="_menu_choose_pattern", windows=P),   # 3d1
         ]),
         Item("&Propriétés du pattern…", "Alt+Entrée", call="_pattern_properties_dialog",
              windows=P),
@@ -197,6 +199,7 @@ MENUS = [
             Item("&Doubler", "Ctrl+F", windows=P),
             Item("D&iviser", "Shift+F", windows=P),
             Item("&Vider le pattern", "Shift+Suppr", call="_menu_reset_pattern", windows=P),
+            Item("&Redimensionner le pattern…", call="_menu_resize_pattern", windows=P),
         ]),
     ]),
     ("Affichage", "A", [
@@ -226,20 +229,24 @@ MENUS = [
         Submenu("&Volume", [
             Item("Volume &global +1", "Ctrl+Haut", windows=P),
             Item("Volume glo&bal −1", "Ctrl+Bas", windows=P),
+            Item("&Régler le volume global…", call="_menu_set_master_volume", windows=P),
             SEP,
             Item("Volume de la &piste +5", "Alt+Haut", call="_menu_track_volume",
                  args=(5,), windows=P),
             Item("Volume de la pis&te −5", "Alt+Bas", call="_menu_track_volume",
                  args=(-5,), windows=P),
+            Item("Régler le &volume de la piste…", call="_menu_set_track_volume", windows=P),
         ]),
         Submenu("&Pan", [
             Item("Pan global à &droite +1", "Ctrl+Droite", windows=P),
             Item("Pan global à &gauche −1", "Ctrl+Gauche", windows=P),
+            Item("Rég&ler le pan global…", call="_menu_set_master_pan", windows=P),
             SEP,
             Item("Pan de la piste à d&roite +10", "Alt+Droite", call="_menu_track_pan",
                  args=(10,), windows=P),
             Item("Pan de la piste à ga&uche −10", "Alt+Gauche", call="_menu_track_pan",
                  args=(-10,), windows=P),
+            Item("Régler le &pan de la piste…", call="_menu_set_track_pan", windows=P),
         ]),
         SEP,
         Item("Volume et pan globaux &normaux", "Ctrl+Retour arrière",
