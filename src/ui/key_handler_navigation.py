@@ -4,6 +4,50 @@ import wx
 class NavigationHandler:
     """Mixin KeyManager — navigation : Tab, flèches, Entrée, Home/End."""
 
+    def _bbt(self, step):
+        pat   = self._win._player._pattern
+        total = pat._num_bars * pat._num_steps
+        return self._win._track_editor.fmt_bbt(
+            step, pat._num_steps, max(1, pat._num_steps // pat._num_beats), total)
+
+    def lims_to_loop(self):
+        """Limiteurs → boucle (Alt+Fin ; Transport > Limiteurs, Phase 9 étape
+        3b5, § 3b4 B3) : limiteur absent = début / fin du pattern ; écrit
+        comme Ctrl+L / Shift+L, un point d'Undo, rien si rien ne change."""
+        win   = self._win
+        p     = win._player
+        pat   = p._pattern
+        te    = win._track_editor
+        total = pat._num_bars * pat._num_steps
+        left  = te._lim_left if te._lim_left is not None else 0
+        right = te._lim_right if te._lim_right is not None else total - 1
+        if left > right:
+            win._show_status("Boucle : limiteur gauche après le limiteur droit")
+            return
+        start = None if left == 0 else left
+        end   = None if right == total - 1 else right
+        if (start, end) != (pat._loop_start, pat._loop_end):
+            win._add_undo(f"Boucle : limiteurs {self._bbt(left)} à {self._bbt(right)}")
+            pat._loop_start, pat._loop_end = start, end
+            saved = win._pattern_list[win._cur_pattern_idx]
+            saved._loop_start, saved._loop_end = start, end
+            if p.playing or p.clicking or p._note_repeat_active:
+                p._wakeup.set()
+        win._show_status(f"Boucle : {self._bbt(left)} à {self._bbt(right)}")
+
+    def loop_to_lims(self):
+        """Boucle → limiteurs (Alt+Début ; Transport > Limiteurs, Phase 9
+        étape 3b5, § 3b4 B4) : pas de début de boucle = 0, pas de fin = le
+        dernier pas ; sans Undo, comme i / o."""
+        win   = self._win
+        pat   = win._player._pattern
+        total = pat._num_bars * pat._num_steps
+        left  = pat._loop_start if pat._loop_start is not None else 0
+        right = pat._loop_end if pat._loop_end is not None else total - 1
+        win._track_editor.set_lim_left(left)
+        win._track_editor.set_lim_right(right)
+        win._show_status(f"Limiteurs : {self._bbt(left)} à {self._bbt(right)}")
+
     def reset_pattern_undo(self):
         """Vide le pattern, avec Undo (Shift+Suppr ; Pattern > Redimensionner >
         Vider le pattern ; Undo : Phase 9 étape 3b1, § 3a E7)."""
@@ -155,6 +199,15 @@ class NavigationHandler:
 
         if key == wx.WXK_DELETE and on_track_list:
             self.delete_tracks()
+            return True
+
+        # Alt+Début / Alt+Fin : boucle → limiteurs / limiteurs → boucle
+        # (Phase 9 étape 3b5, § 3b4 B2 ; avant, Alt+Début faisait Début)
+        if ctx.alt and not ctx.ctrl and not shift and key in (wx.WXK_HOME, wx.WXK_END):
+            if key == wx.WXK_HOME:
+                self.loop_to_lims()
+            else:
+                self.lims_to_loop()
             return True
 
         if not ctx.ctrl and not shift and key == wx.WXK_HOME:

@@ -391,6 +391,9 @@ Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste de
   Fin   (End)      Aller au limiteur droit  (ou fin du pattern si non défini)
   Shift+Début      Aller au début de la boucle (ou step 0 si non défini)
   Shift+Fin        Aller à la fin de la boucle  (ou dernier step si non défini)
+  Alt+Début        Assigner la boucle aux limiteurs (sans boucle : tout le pattern)
+  Alt+Fin          Assigner les limiteurs à la boucle (annulable ; limiteur absent :
+                   début / fin du pattern) ; aussi Transport > Limiteurs
   Ctrl+Début       Aller au début absolu du pattern (step 0)
   Ctrl+Fin         Aller à la fin absolue du pattern (dernier step)
 

@@ -16746,3 +16746,8 @@ menu Transport passent dans un sous-menu, avec deux commandes nouvelles.
   aide F1 et SPECS.
 
 **Étapes.** 3b5 : B1-B4 et essai ; les tests vont en 3c1.
+
+**3b5 — essai.** Concluant (limiteurs → boucle, boucle → limiteurs, Undo,
+Orca lit le sous-menu et ses raccourcis). À fixer plus tard, hors de ce
+chantier : dans le projet essai_audio_14d1, une boucle de 1:1:1 à 5:1:1
+marque un délai avant de reprendre — le pattern ne boucle pas exactement.

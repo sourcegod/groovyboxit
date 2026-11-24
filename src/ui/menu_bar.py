@@ -130,10 +130,16 @@ MENUS = [
             Item("BP&M −5", ")", windows=P),
         ]),
         SEP,
-        Item("Limiteur &gauche ici", "I", windows=P),
-        Item("Limiteur dr&oit ici", "O", windows=P),
-        Item("Limiteur gauche au dé&but", "Shift+I", windows=P),
-        Item("Limiteur droit à la &fin", "Shift+O", windows=P),
+        # Limiteurs (avenant 3b4, B1)
+        Submenu("L&imiteurs", [
+            Item("Limiteur &gauche ici", "I", windows=P),
+            Item("Limiteur dr&oit ici", "O", windows=P),
+            Item("Limiteur gauche au dé&but", "Shift+I", windows=P),
+            Item("Limiteur droit à la &fin", "Shift+O", windows=P),
+            SEP,
+            Item("&Assigner la boucle aux limiteurs", "Alt+Début", windows=P),
+            Item("Assigner les &limiteurs à la boucle", "Alt+Fin", windows=P),
+        ]),
     ]),
     # Aller à (essai de 1b1) : Alt+G, lettre absente du titre (comme Alt+W)
     ("Aller à", "G", [
