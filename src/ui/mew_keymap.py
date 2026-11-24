@@ -177,9 +177,15 @@ class KeymapMixin:
         # Ctrl+I : insérer une note (instrument de la piste) + avancer le
         # playhead d'une grille. Alt+I : insérer sans avancer (Shift+I est
         # déjà pris par le limiteur gauche début de pattern, voir plus bas).
-        # Ctrl+Shift+I : dialog note/durée/vélocité (étape 7i).
-        if ctrl and shift and (ukey == ord('i') or key == ord('I')):
+        # Ctrl+Shift+N : dialog note/durée/vélocité (étape 7i ; Ctrl+Shift+I
+        # jusqu'à la Phase 9 étape 3g4, § 3g3 R1). Ctrl+Shift+I : Sélection
+        # des limiteurs, comme dans la fenêtre principale (R2).
+        if ctrl and shift and (ukey in (ord('n'), ord('N')) or key == ord('N')):
             self._insert_dialog()
+            return
+        if ctrl and shift and (ukey == ord('i') or key == ord('I')):
+            if self._parent._limiter_select_dialog(parent=self, status=self._set_status):
+                self._refresh()
             return
         if ctrl and not shift and (ukey == ord('i') or key == ord('I')):
             self._quick_insert(True)

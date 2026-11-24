@@ -25,6 +25,7 @@ class UndoMixin:
         from ui.dialogs import UndoHistoryDialog
         entries = self._parent._undo.history_list()
         if not entries:
+            wx.Bell()                      # bip système (Phase 9 étape 3g4, essai)
             self._set_status("Historique Undo: vide")
             return
         prev_focus = wx.Window.FindFocus()

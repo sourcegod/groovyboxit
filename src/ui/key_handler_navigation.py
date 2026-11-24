@@ -38,14 +38,13 @@ class NavigationHandler:
     def loop_to_lims(self):
         """Boucle → limiteurs (Alt+Début ; Transport > Limiteurs, Phase 9
         étape 3b5, § 3b4 B4) : pas de début de boucle = 0, pas de fin = le
-        dernier pas ; sans Undo, comme i / o."""
+        dernier pas ; une entrée d'Undo (3g4, U3)."""
         win   = self._win
         pat   = win._player._pattern
         total = pat._num_bars * pat._num_steps
         left  = pat._loop_start if pat._loop_start is not None else 0
         right = pat._loop_end if pat._loop_end is not None else total - 1
-        win._track_editor.set_lim_left(left)
-        win._track_editor.set_lim_right(right)
+        win._set_limiters_undo(left, right)                     # Undo (3g4, U3)
         win._show_status(f"Limiteurs : {self._bbt(left)} à {self._bbt(right)}")
 
     def reset_pattern_undo(self):

@@ -433,7 +433,7 @@ class CharHandler:
         if not ctrl and not alt and shift and key == ord('I'):
             pat         = win._player._pattern
             total_steps = pat._num_bars * pat._num_steps
-            win._track_editor.set_lim_left(0)
+            win._set_limiters_undo(0, win._track_editor._lim_right)       # Undo (3g4, U3)
             bbt = win._track_editor.fmt_bbt(0, pat._num_steps,
                       max(1, pat._num_steps // pat._num_beats), total_steps)
             win._show_status(f"Limiteur Gauche: {bbt}")
@@ -444,7 +444,7 @@ class CharHandler:
             pat         = win._player._pattern
             total_steps = pat._num_bars * pat._num_steps
             step        = total_steps - 1
-            win._track_editor.set_lim_right(step)
+            win._set_limiters_undo(win._track_editor._lim_left, step)    # Undo (3g4, U3)
             bbt = win._track_editor.fmt_bbt(step, pat._num_steps,
                       max(1, pat._num_steps // pat._num_beats), total_steps)
             win._show_status(f"Limiteur Droit: {bbt}")
@@ -455,7 +455,7 @@ class CharHandler:
                 and (ukey in (ord('i'), ord('I')) or key == ord('I')):
             pat  = win._player._pattern
             step = int(win._player._current_offset())
-            win._track_editor.set_lim_left(step)
+            win._set_limiters_undo(step, win._track_editor._lim_right)    # Undo (3g4, U3)
             bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
                        max(1, pat._num_steps // pat._num_beats),
                        pat._num_bars * pat._num_steps)
@@ -467,7 +467,7 @@ class CharHandler:
                 and (ukey in (ord('o'), ord('O')) or key == ord('O')):
             pat  = win._player._pattern
             step = int(win._player._current_offset())
-            win._track_editor.set_lim_right(step)
+            win._set_limiters_undo(win._track_editor._lim_left, step)     # Undo (3g4, U3)
             bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
                        max(1, pat._num_steps // pat._num_beats),
                        pat._num_bars * pat._num_steps)

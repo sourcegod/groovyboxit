@@ -334,8 +334,7 @@ class PatternMixin:
             end   = dlg.get_end_step()
             if start > end:
                 start, end = end, start
-            te._lim_left  = start
-            te._lim_right = end
+            self._set_limiters_undo(start, end)        # Undo (Phase 9 étape 3g4, U3)
             sel = sorted(new_sel)
             msg_tracks = (
                 f"Piste{'s' if len(sel) > 1 else ''} {', '.join(str(i+1) for i in sel)}"

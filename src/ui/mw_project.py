@@ -105,6 +105,8 @@ class ProjectMixin:
         new = self._pattern_list[0]
         self._apply_pattern_from_store(new)
         self._apply_master(*self._master_defaults)     # 15d1 D3
+        if hasattr(self, "_limiters_from_dict"):       # aucun limiteur (3g4, U1)
+            self._limiters_from_dict(None)
         self._player._compute_offsets()
         self._refresh_pattern_listbox()
         self._refresh_grid()
@@ -1163,6 +1165,8 @@ class ProjectMixin:
                 "songs":    [s.to_dict() for s in self._song_list],
                 "cur_song": self._cur_song_idx,
                 "master":   self._master_dict(),        # 15d1 D2
+                "limiters": self._limiters_dict() if hasattr(self, "_limiters_dict")
+                            else None,                  # Phase 9 étape 3g4 (U1)
                 "audio_dir": getattr(self, "_audio_dir", ""),   # 14b1 : chemin des prises
                 "record_options": dict(getattr(self, "_record_options",
                                                record_modes.DEFAULTS)),   # 16b1, O10
@@ -1349,6 +1353,8 @@ class ProjectMixin:
         new = self._pattern_list[0]
         self._apply_pattern_from_store(new)
         self._apply_master(*self._master_from_dict(data.get("master")))   # 15d1 D2, D3
+        if hasattr(self, "_limiters_from_dict"):         # absente : aucun (3g4, U1)
+            self._limiters_from_dict(data.get("limiters"))
         self._router.clear_slot_synths()
         for track_idx, slot_idx in enumerate(new._track_slots):
             slot = self._rack.get_slot(slot_idx)
@@ -1423,6 +1429,8 @@ class ProjectMixin:
             "quant_params": self._quant_params(),
             "event_filter_params": p._event_filter_state,
             "master":              self._master_dict(),      # 15d1 D2
+            "limiters":            (self._limiters_dict()    # Phase 9 étape 3g4 (U2)
+                                    if hasattr(self, "_limiters_dict") else None),
             "record_options":      dict(getattr(self, "_record_options",
                                                 record_modes.DEFAULTS)),   # 16b1
             "exclusive":           self._exclusive_dict(),   # 18c3
@@ -1573,6 +1581,8 @@ class ProjectMixin:
         self._clipboard_from_dict(state.get("clipboard"))
         if "master" in state:
             self._apply_master(*self._master_from_dict(state["master"]))
+        if state.get("limiters") is not None and hasattr(self, "_limiters_from_dict"):  # 3g4
+            self._limiters_from_dict(state["limiters"])
         if "record_options" in state and hasattr(self, "_apply_record_options"):
             self._apply_record_options(state["record_options"])          # 16b1, O10
         excl = state.get("exclusive") or {}                            # 18c3
@@ -1758,6 +1768,7 @@ class ProjectMixin:
         """Ctrl+Z : annule la dernière action."""
         entry = self._undo.undo()
         if entry is None:
+            wx.Bell()                      # bip système (Phase 9 étape 3g4, essai)
             self._show_status("Undo: rien à annuler")
             return
         current = self._capture_state()
@@ -1765,12 +1776,15 @@ class ProjectMixin:
         self._restore_state(entry.state)
         self._undo.current_id = entry.state_id     # point propre (16d1, D1)
         self._update_title()
+        if not self._undo.can_undo():
+            wx.Bell()                      # premier de l'historique atteint (3g4, essai)
         self._show_status(f"Undo: {entry.title}  ({entry.rel_time()})")
 
     def _redo_action(self):
         """Shift+Z : refait la dernière action annulée."""
         entry = self._undo.redo()
         if entry is None:
+            wx.Bell()                      # bip système (Phase 9 étape 3g4, essai)
             self._show_status("Redo: rien à refaire")
             return
         current = self._capture_state()
@@ -1778,6 +1792,8 @@ class ProjectMixin:
         self._restore_state(entry.state)
         self._undo.current_id = entry.state_id     # point propre (16d1, D1)
         self._update_title()
+        if not self._undo.can_redo():
+            wx.Bell()                      # dernier de l'historique atteint (3g4, essai)
         self._show_status(f"Redo: {entry.title}  ({entry.rel_time()})")
 
     def _undo_history_dialog(self):
@@ -1785,6 +1801,7 @@ class ProjectMixin:
         from ui.dialogs import UndoHistoryDialog
         entries = self._undo.history_list()
         if not entries:
+            wx.Bell()                      # bip système (Phase 9 étape 3g4, essai)
             self._show_status("Historique Undo: vide")
             return
         dlg = UndoHistoryDialog(self, entries)

@@ -47,6 +47,7 @@ from ui.mw_record_options import RecordOptionsMixin
 from ui import menu_bar
 from ui.menu_bar import MenuBarMixin
 from ui.mw_menu_actions import MainMenuActions
+from ui.mw_limiters import LimitersMixin
 from midi.midi_manager import MidiManager
 from track_editor import TrackEditor
 from project_manager import ProjectManager
@@ -78,7 +79,7 @@ class _LoadingDialog(wx.Dialog):
 
 class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
                  MidiEditorMixin, TempoMixin, DevicesMixin, AudioRecMixin,
-                 AudioMonitorMixin, RecordOptionsMixin, MainMenuActions, MenuBarMixin,
+                 AudioMonitorMixin, RecordOptionsMixin, LimitersMixin, MainMenuActions, MenuBarMixin,
                  wx.Frame):
     ROWS = 16
     COLS = 16

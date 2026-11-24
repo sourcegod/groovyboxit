@@ -118,18 +118,21 @@ class DeleteClipboardMixin:
         total = pat._num_bars * ns
         return self._parent._track_editor.fmt_bbt(step, ns, spb, total)
 
+    # Une entrée d'Undo par commande (Phase 9 étape 3g4, § 3g2 U3)
     def _set_lim_left(self, step):
-        self._parent._track_editor.set_lim_left(step)
+        te = self._parent._track_editor
+        self._parent._set_limiters_undo(step, te._lim_right)
         self._refresh()
         wx.CallAfter(self._set_status, f"Limiteur Gauche: {self._lim_bbt(step)}")
 
     def _set_lim_right(self, step):
-        self._parent._track_editor.set_lim_right(step)
+        te = self._parent._track_editor
+        self._parent._set_limiters_undo(te._lim_left, step)
         self._refresh()
         wx.CallAfter(self._set_status, f"Limiteur Droit: {self._lim_bbt(step)}")
 
     def _reset_lims(self):
-        self._parent._track_editor.reset_lims()
+        self._parent._set_limiters_undo(None, None)
         self._refresh()
         wx.CallAfter(self._set_status, "Limiteurs réinitialisés")
 

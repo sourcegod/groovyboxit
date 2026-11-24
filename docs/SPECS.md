@@ -138,6 +138,7 @@ groovyboxit/
 │       ├── mw_audio_monitor.py # Mixin MainWindow : monitoring de l'entrée audio, F8 (Phase 8 étape 20d1)
 │       ├── mw_audio_rec.py     # Mixin MainWindow : enregistrement d'une prise audio sur la piste audio courante (Phase 8 étape 14f1)
 │       ├── mw_record_options.py # Mixin MainWindow : Options de l'enregistrement, Ctrl+Shift+R (Phase 8 étape 16b1)
+│       ├── mw_limiters.py      # Mixin MainWindow : limiteurs dans le projet et l'Undo, dialogue Ctrl+Shift+I (Phase 9 étape 3g4)
 │       ├── mw_menu_actions.py  # Mixin MainWindow : éléments de menus par méthode, quel que soit le focus (Phase 9 étape 3b1)
 │       ├── mw_midi_editor.py   # Mixin MainWindow : ouverture éditeur MIDI
 │       ├── mw_pads.py          # Mixin MainWindow : pads et grille
@@ -1239,11 +1240,17 @@ volume général ne sont pas concernés.
   H, bouton Tap Tempo, case Click, résultat en lecture seule ; entendu en
   direct, tous les tempos en proportion) ; un point d'Undo chacun, rien si rien ne change.
   Éléments de l'éditeur MIDI (Phase 9 étape 3f1) : Insertion (insérer une
-  note Ctrl+I, sans avancer Alt+I, avec dialogue Ctrl+Shift+I, entre deux
+  note Ctrl+I, sans avancer Alt+I, avec dialogue Ctrl+Shift+N (3g4), entre deux
   A, dupliquer D, sans avancer Shift+D), Edition > Éditer l'événement…
   (Entrée), Affichage > Rafraîchir (R), Traitement > Midi > Note (Num 1 /
   3, 4 / 6, 7 / 9, 2 / 8, Ctrl+Num 2 / 8) ; les limiteurs de Transport
   aussi actifs dans l'éditeur.
+  Limiteurs (Phase 9 étape 3g4) : enregistrés dans le projet (clé
+  `limiters` du `.gvp`, `ui/mw_limiters.py`), capturés par l'Undo, une
+  entrée par commande (i, o, Shift+I, Shift+O, Alt+Début, Ctrl+A /
+  Ctrl+Shift+A, Ctrl+Entrée, Ctrl+Début / Fin de l'éditeur) ; dialogue
+  Sélection des limiteurs, Ctrl+Shift+I dans la fenêtre principale et
+  l'éditeur (Points de boucle généralisés, `LimiterSelectDialog`).
 - **Ouverture** : F10 (menu Fichier) ; Alt+lettre : F Fichier / Effets,
   E Edition, T Transport / Piste, G Aller à, I Insertion, P Pattern,
   A Affichage / Aide, R Traitement, M Mixer, O Outils, N Options,
@@ -2691,7 +2698,7 @@ Catégories principales :
 - Pistes (Ctrl+T, Ctrl+Entrée, Entrée, F2)
 - MIDI (Alt+M, Alt+Shift+M)
 - Undo/Redo (Ctrl+Z, Shift+Z, Ctrl+Shift+Z)
-- Éditeur MIDI (Alt+4, ←/→/↑/↓, Ctrl+A, Shift+←/→/↑/↓, Numpad édition, D/Shift+D, Ctrl+I/Alt+I/Ctrl+Shift+I, A, Ctrl+G/Ctrl+Shift+G)
+- Éditeur MIDI (Alt+4, ←/→/↑/↓, Ctrl+A, Shift+←/→/↑/↓, Numpad édition, D/Shift+D, Ctrl+I/Alt+I/Ctrl+Shift+N, A, Ctrl+G/Ctrl+Shift+G)
 - Songs (Alt+5, Entrée, Ctrl+Entrée, Suppr, Alt+↑/↓)
 - Aide (F1)
 - Renommer (F2)

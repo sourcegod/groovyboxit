@@ -139,6 +139,7 @@ MENUS = [
             Item("Limiteur dr&oit ici", "O", windows=PM),
             Item("Limiteur gauche au dé&but", "Shift+I", windows=PM),
             Item("Limiteur droit à la &fin", "Shift+O", windows=PM),
+            Item("&Sélection des limiteurs…", "Ctrl+Shift+I", windows=PM),       # 3g4
             SEP,
             Item("&Assigner la boucle aux limiteurs", "Alt+Début", windows=P),
             Item("Assigner les &limiteurs à la boucle", "Alt+Fin", windows=P),
@@ -170,7 +171,7 @@ MENUS = [
         # éditeur MIDI (Phase 9 étape 3f1, § 3a E9)
         Item("Insérer une &note", "Ctrl+I", windows=(MIDI,)),
         Item("Insérer une note sans a&vancer", "Alt+I", windows=(MIDI,)),
-        Item("Insérer une note avec &dialogue…", "Ctrl+Shift+I", windows=(MIDI,)),
+        Item("Insérer une note avec &dialogue…", "Ctrl+Shift+N", windows=(MIDI,)),   # 3g4
         Item("Insérer une note &entre deux", "A", windows=(MIDI,)),
         Item("Dupli&quer l'événement", "D", windows=(MIDI,)),
         Item("Dupliquer sans avan&cer", "Shift+D", windows=(MIDI,)),

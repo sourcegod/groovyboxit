@@ -8,9 +8,10 @@ Ctrl+Shift+S     Enregistrer le projet sous... ; case « Créer un nouveau dossi
                  ce projet » (cochée par défaut : MonProjet/MonProjet.gvp) ; champ
                  « Chemin des fichiers audios » (défaut : Audios dans le dossier du
                  projet) et « Parcourir… » ; les prises audio y suivent, au nom du projet
-Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc)
-Shift+Z          Refaire
-Ctrl+Shift+Z     Afficher l'historique des annulations
+Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc) ; bip si
+                 rien à annuler ou si l'on revient à la première entrée
+Shift+Z          Refaire ; bip si rien à refaire ou si l'on atteint la dernière
+Ctrl+Shift+Z     Afficher l'historique des annulations (bip s'il est vide)
 Alt+F4           Quitter (demande d'enregistrer si le projet est modifié) ; dans
                  l'éditeur MIDI et Songs, Alt+F4 ferme cette fenêtre seulement
                  (menu Fichier → Quitter : toute l'appli)
@@ -385,13 +386,19 @@ Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste de
                    Affichés dans la barre de statut en BBT + step
                    Ctrl+Entrée pré-remplit le dialog avec les limiteurs courants
                    Ctrl+A / Ctrl+Shift+A gèrent aussi les limiteurs
+  Ctrl+Shift+I     Sélection des limiteurs (dialogue : sources Position courante,
+                   début / fin du pattern, début / fin de boucle, Personnalisé ;
+                   refus si le gauche est après le droit) ; aussi dans l'éditeur
+                   Les limiteurs sont enregistrés dans le projet, et chaque
+                   commande qui les change est annulable (Ctrl+Z)
 
   -- Navigation par les limiteurs --
   Début (Home)     Aller au limiteur gauche (ou début du pattern si non défini)
   Fin   (End)      Aller au limiteur droit  (ou fin du pattern si non défini)
   Shift+Début      Aller au début de la boucle (ou step 0 si non défini)
   Shift+Fin        Aller à la fin de la boucle  (ou dernier step si non défini)
-  Alt+Début        Assigner la boucle aux limiteurs (sans boucle : tout le pattern)
+  Alt+Début        Assigner la boucle aux limiteurs (annulable ; sans boucle : tout
+                   le pattern)
   Alt+Fin          Assigner les limiteurs à la boucle (annulable ; limiteur absent :
                    début / fin du pattern) ; aussi Transport > Limiteurs
   Ctrl+Début       Aller au début absolu du pattern (step 0)
@@ -473,7 +480,7 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
   Ctrl+I         Insérer une note (instrument de la piste courante) à la position du
                  playhead + avancer le playhead d'une valeur de grille
   Alt+I          Insérer une note sans avancer le playhead
-  Ctrl+Shift+I   Ouvrir le dialog d'insertion (note, durée, vélocité)
+  Ctrl+Shift+N   Ouvrir le dialog d'insertion (note, durée, vélocité)
   A              Insérer une note entre l'événement courant et le suivant (au pas
                  médian entre les deux), curseur sur la nouvelle note
   R              Rafraîchir la liste des événements (utile si le pattern a été modifié
@@ -488,6 +495,7 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
   o              Poser le limiteur droit (Out) à la position courante du playhead
   Shift+I        Poser le limiteur gauche au début du pattern (step 0)
   Shift+O        Poser le limiteur droit à la fin du pattern (dernier step)
+  Ctrl+Shift+I   Sélection des limiteurs (même dialogue que la fenêtre principale)
 
   -- Édition numpad (événement ou accord sélectionné ; aussi Traitement >
      Midi > Note) --

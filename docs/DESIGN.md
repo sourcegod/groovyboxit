@@ -16871,3 +16871,16 @@ sélection (ni dans le `.gvp`, ni dans l'état capturé par l'Undo).
 
 **Étapes.** 3g4 : U1-U3, L1-L4 révisés, R1-R2 et essai ; 3g5 : tests ;
 3h1 : clôture.
+
+**3g4 — essai.** Concluant (Undo des limiteurs, limiteurs relus avec le
+projet, Ctrl+Shift+I dans les deux fenêtres, Ctrl+Shift+N dans l'éditeur).
+Demandes de l'essai : le refus du dialogue (gauche après droite) joue le
+bip d'alerte de l'appli (`ui_beep.alert`, comme le matériel non trouvé) ;
+les touches i / o / Shift+I / Shift+O restent sans contrôle de
+croisement (choix de l'utilisateur) ; bip système (`wx.Bell`) dans
+l'historique : Ctrl+Z sans rien à annuler ou qui atteint la première
+entrée, Shift+Z sans rien à refaire ou qui atteint la dernière,
+Ctrl+Shift+Z historique vide (fenêtre principale et éditeur MIDI).
+Les fenêtres factices des tests sans LimitersMixin restent valables
+(appels protégés par hasattr dans mw_project, comme les options de
+l'enregistrement).

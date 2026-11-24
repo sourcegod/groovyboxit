@@ -375,29 +375,50 @@ _SRC_CUSTOM = 5
 
 
 class LoopSelectDialog(wx.Dialog):
-    """Définit la fenêtre de boucle du pattern (_loop_start/_loop_end/_loop_count)."""
+    """Définit la fenêtre de boucle du pattern (_loop_start/_loop_end/_loop_count).
+    Base aussi du dialogue des limiteurs (LimiterSelectDialog, Phase 9 étape
+    3g4) : titre, panneaux et sources en attributs de classe, valeurs de
+    départ et options de boucle selon le dialogue."""
+
+    TITLE        = "Points de boucle"
+    PANELS       = ("Début de boucle", "Fin de boucle")
+    LOOP_OPTIONS = True            # « Boucle Active » et « Répétitions »
 
     def __init__(self, parent,
                  num_bars, num_beats, num_steps,
                  cur_step, loop_start, loop_end, loop_count,
                  looping=True, lim_left=None, lim_right=None,
                  on_play_toggle=None):
-        super().__init__(parent, title="Points de boucle")
+        total = num_bars * num_steps
+        # Sources (indices _SRC_*) : les limiteurs servent de repères
+        self._sources = list(zip(_LOOP_SOURCES, [
+            None, 0, total - 1,
+            lim_left if lim_left is not None else 0,
+            lim_right if lim_right is not None else total - 1, None]))
+        self._lim_left, self._lim_right = lim_left, lim_right
+        self._build(parent, num_bars, num_beats, num_steps, cur_step,
+                    loop_start if loop_start is not None else 0,
+                    loop_end if loop_end is not None else total - 1,
+                    loop_count, looping, on_play_toggle)
+
+    def _build(self, parent, num_bars, num_beats, num_steps, cur_step,
+               start_val, end_val, loop_count, looping, on_play_toggle):
+        super().__init__(parent, title=self.TITLE)
         self._on_play_toggle = on_play_toggle
 
         self._num_steps      = num_steps
         self._steps_per_beat = max(1, num_steps // num_beats)
         self._total_steps    = num_bars * num_steps
         self._cur_step       = max(0, min(cur_step, self._total_steps - 1))
-        self._lim_left       = lim_left
-        self._lim_right      = lim_right
+        self._sources[_SRC_CUR] = (self._sources[_SRC_CUR][0], self._cur_step)
         self._updating       = False   # évite les boucles de MAJ ListBox ↔ TextCtrl
         self._bbt            = BBTHelper(num_steps, self._steps_per_beat, self._total_steps)
+        labels = [label for label, _step in self._sources]
 
         # --- Fenêtre Début ---
-        start_box    = wx.StaticBox(self, label="Début de boucle")
+        start_box    = wx.StaticBox(self, label=self.PANELS[0])
         start_sizer  = wx.StaticBoxSizer(start_box, wx.VERTICAL)
-        self._start_list = wx.ListBox(self, choices=_LOOP_SOURCES, style=wx.LB_SINGLE,
+        self._start_list = wx.ListBox(self, choices=labels, style=wx.LB_SINGLE,
                                       size=(-1, 110))
         start_label = wx.StaticText(self, label="Position (bar:beat:tick) :")
         self._start_ctrl = wx.TextCtrl(self, size=(140, -1), style=wx.TE_PROCESS_ENTER)
@@ -406,9 +427,9 @@ class LoopSelectDialog(wx.Dialog):
         start_sizer.Add(self._start_ctrl,  0, wx.EXPAND | wx.ALL, 4)
 
         # --- Fenêtre Fin ---
-        end_box   = wx.StaticBox(self, label="Fin de boucle")
+        end_box   = wx.StaticBox(self, label=self.PANELS[1])
         end_sizer = wx.StaticBoxSizer(end_box, wx.VERTICAL)
-        self._end_list = wx.ListBox(self, choices=_LOOP_SOURCES, style=wx.LB_SINGLE,
+        self._end_list = wx.ListBox(self, choices=labels, style=wx.LB_SINGLE,
                                     size=(-1, 110))
         end_label = wx.StaticText(self, label="Position (bar:beat:tick) :")
         self._end_ctrl = wx.TextCtrl(self, size=(140, -1), style=wx.TE_PROCESS_ENTER)
@@ -447,10 +468,12 @@ class LoopSelectDialog(wx.Dialog):
         vbox.Add(rep_row,          0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         vbox.Add(btn_sizer,        0, wx.EXPAND | wx.ALL, 6)
         self.SetSizer(vbox)
+        if not self.LOOP_OPTIONS:                      # dialogue des limiteurs
+            for w in (self._looping_cb, rep_label, self._rep_spin):
+                w.Hide()
+        self._ok_btn.Bind(wx.EVT_BUTTON, self._on_ok)
 
         # Initialiser les valeurs
-        start_val = loop_start if loop_start is not None else 0
-        end_val   = loop_end   if loop_end   is not None else self._total_steps - 1
         self._start_ctrl.SetValue(self._bbt.fmt(start_val))
         self._end_ctrl.SetValue(self._bbt.fmt(end_val))
         self._start_list.SetSelection(self._step_to_source(start_val))
@@ -484,32 +507,17 @@ class LoopSelectDialog(wx.Dialog):
     # ------------------------------------------------------------------
 
     def _step_to_source(self, step):
-        """Trouve l'indice de source correspondant à step, ou _SRC_CUSTOM."""
-        if step == self._cur_step:
-            return _SRC_CUR
-        if step == 0:
-            return _SRC_START
-        if step == self._total_steps - 1:
-            return _SRC_END
-        if self._lim_left is not None and step == self._lim_left:
-            return _SRC_LIM_L
-        if self._lim_right is not None and step == self._lim_right:
-            return _SRC_LIM_R
+        """Trouve l'indice de la première source qui vaut step, ou _SRC_CUSTOM."""
+        for i, (_label, value) in enumerate(self._sources):
+            if value is not None and value == step:
+                return i
         return _SRC_CUSTOM
 
     def _source_to_step(self, src_idx):
         """Retourne la valeur de step pour une source, ou None si Personnalisé."""
-        if src_idx == _SRC_CUR:
-            return self._cur_step
-        if src_idx == _SRC_START:
-            return 0
-        if src_idx == _SRC_END:
-            return self._total_steps - 1
-        if src_idx == _SRC_LIM_L:
-            return self._lim_left if self._lim_left is not None else 0
-        if src_idx == _SRC_LIM_R:
-            return self._lim_right if self._lim_right is not None else self._total_steps - 1
-        return None  # Personnalisé
+        if 0 <= src_idx < len(self._sources):
+            return self._sources[src_idx][1]
+        return None
 
     # ------------------------------------------------------------------
     # Événements
@@ -564,9 +572,28 @@ class LoopSelectDialog(wx.Dialog):
             if focused in (self._start_ctrl, self._end_ctrl):
                 self._on_start_text(None)
                 self._on_end_text(None)
-            self.EndModal(wx.ID_OK)
+            if self._validate():
+                self.EndModal(wx.ID_OK)
             return
         event.Skip()
+
+    def _on_ok(self, event):
+        if self._validate():
+            self.EndModal(wx.ID_OK)
+
+    def _validate(self):
+        """Ok permis ? (le dialogue des limiteurs refuse gauche > droite)"""
+        return True
+
+    def get_start_step(self):
+        """Pas de début (base 0), début du pattern si le champ est invalide."""
+        v = self._bbt.parse(self._start_ctrl.GetValue())
+        return v if v is not None else 0
+
+    def get_end_step(self):
+        """Pas de fin (base 0), fin du pattern si le champ est invalide."""
+        v = self._bbt.parse(self._end_ctrl.GetValue())
+        return v if v is not None else self._total_steps - 1
 
     # ------------------------------------------------------------------
     # API publique
@@ -589,6 +616,42 @@ class LoopSelectDialog(wx.Dialog):
 
     def get_loop_count(self):
         return self._rep_spin.GetValue()
+
+
+class LimiterSelectDialog(LoopSelectDialog):
+    """Sélection des limiteurs (Ctrl+Shift+I, Phase 9 étape 3g4, § 3g2 L2) :
+    le dialogue des Points de boucle généralisé — panneaux Limiteur gauche /
+    droit, la boucle pour repères, sans Boucle Active ni Répétitions ; Ok
+    refusé si le gauche est après le droit."""
+
+    TITLE        = "Sélection des limiteurs"
+    PANELS       = ("Limiteur gauche", "Limiteur droit")
+    LOOP_OPTIONS = False
+    SOURCES      = ["Position courante", "Début du pattern", "Fin du pattern",
+                    "Début de boucle", "Fin de boucle", "Personnalisé"]
+
+    def __init__(self, parent, num_bars, num_beats, num_steps, cur_step,
+                 lim_left, lim_right, loop_start=None, loop_end=None,
+                 on_play_toggle=None):
+        total = num_bars * num_steps
+        self._sources = list(zip(self.SOURCES, [
+            None, 0, total - 1,
+            loop_start if loop_start is not None else 0,
+            loop_end if loop_end is not None else total - 1, None]))
+        self._lim_left, self._lim_right = lim_left, lim_right
+        self._build(parent, num_bars, num_beats, num_steps, cur_step,
+                    lim_left if lim_left is not None else 0,
+                    lim_right if lim_right is not None else total - 1,
+                    0, False, on_play_toggle)
+
+    def _validate(self):
+        if self.get_start_step() <= self.get_end_step():
+            return True
+        from .ui_beep import alert                 # bip d'alerte de l'appli (essai de 3g4),
+        alert(self)                                # comme le matériel non trouvé
+        wx.MessageBox("Le limiteur gauche est après le limiteur droit.",
+                      self.TITLE, wx.OK | wx.ICON_WARNING, self)
+        return False
 
 
 # ---------------------------------------------------------------------------

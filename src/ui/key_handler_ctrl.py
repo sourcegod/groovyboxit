@@ -31,7 +31,7 @@ class CtrlHandler:
             return True
         if shift and not alt and key == ord('A'):
             win._track_editor.clear_selection()
-            win._track_editor.reset_lims()
+            win._set_limiters_undo(None, None)                  # Undo (3g4, U3)
             win._refresh_track_list()
             win._show_status("Sélection effacée | Limiteurs réinitialisés")
             return True
@@ -39,7 +39,8 @@ class CtrlHandler:
             pat = win._player._pattern
             n   = pat._num_tracks
             win._track_editor.select_all(n)
-            win._track_editor.set_full_range(pat._num_bars * pat._num_steps)
+            win._set_limiters_undo(0, pat._num_bars * pat._num_steps - 1,
+                                   "Limiteurs : plage complète")   # Undo (3g4, U3)
             win._refresh_track_list()
             win._show_status(f"Toutes les pistes sélectionnées ({n}) | Plage complète")
             return True
@@ -216,6 +217,9 @@ class CtrlHandler:
             return True
         if shift and not alt and key == ord('G'):          # Ctrl+Shift+G : Grille
             win._grid_dialog()
+            return True
+        if shift and not alt and key == ord('I'):         # Ctrl+Shift+I : limiteurs (3g4, R2)
+            win._limiter_select_dialog()
             return True
         if shift and not alt and key == ord('L'):         # Ctrl+Shift+L : dialog loop points
             win._loop_select_dialog()
