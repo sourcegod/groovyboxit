@@ -275,7 +275,7 @@ def test_shift_s_quits_solo_mode(win):
     win._toggle_exclusive("solo")
     _char(win, "S", shift=True, on_track_list=True)
     assert win._exclusive is None and win.state()[1] == []
-    assert win.statuses[-1] == "Toutes les Pistes: Désolées — Solo exclusif : Off"
+    assert win.statuses[-1] == "Toutes les Pistes: Désolotées — Solo exclusif : Off"
 
 
 def test_midi_editor_x_quits_main_window_mode(win):

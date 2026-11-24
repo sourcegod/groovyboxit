@@ -80,6 +80,39 @@ def test_keys_gtk_syntax():
     assert gtk_menu.gtk_accel is keys.gtk_accel                 # même fonction
 
 
+# --- Touches nommées (GroovyboxIt, Phase 9 étapes 3b1 et 3b3) ------------
+
+@pytest.mark.parametrize("accel, code, uni, gtk", [
+    ("Haut", wx.WXK_UP, 0, "Up"), ("Ctrl+Bas", wx.WXK_DOWN, 0, "<Control>Down"),
+    ("Alt+Gauche", wx.WXK_LEFT, 0, "<Alt>Left"), ("Droite", wx.WXK_RIGHT, 0, "Right"),
+    ("Suppr", wx.WXK_DELETE, 127, "Delete"), ("Shift+Suppr", wx.WXK_DELETE, 127, "<Shift>Delete"),
+    ("Début", wx.WXK_HOME, 0, "Home"), ("Alt+Fin", wx.WXK_END, 0, "<Alt>End"),
+    ("Ctrl+Retour arrière", wx.WXK_BACK, 8, "<Control>BackSpace"),
+    ("Num 0", wx.WXK_NUMPAD0, 0, "KP_0"), ("Ctrl+Num 8", wx.WXK_NUMPAD8, 0, "<Control>KP_8"),
+    ("(", ord("("), ord("("), "parenleft"), (")", ord(")"), ord(")"), "parenright"),
+])
+def test_named_keys(accel, code, uni, gtk):
+    evt = keys.key_event(accel)
+    assert (evt.GetKeyCode(), evt.GetUnicodeKey()) == (code, uni)
+    assert keys.gtk_accel(accel) == gtk
+    if accel not in ("(", ")"):                    # accel_of : lettres, chiffres, nommées
+        assert keys.accel_of(evt) == accel
+
+
+def test_gtk_parses_every_named_key():
+    """Chaque nom donne un raccourci que GTK sait afficher (keyval non nul)."""
+    if not gtk_menu.available():
+        pytest.skip("GTK seulement")
+    g, _gl = gtk_menu._lib()
+    g.gtk_accelerator_parse.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint),
+                                        ctypes.POINTER(ctypes.c_int)]
+    for name in list(keys._GTK_KEYS) + ["Ctrl+S", "F10"]:
+        key, mods = ctypes.c_uint(), ctypes.c_int()
+        g.gtk_accelerator_parse(keys.gtk_accel(name).encode(), ctypes.byref(key),
+                                ctypes.byref(mods))
+        assert key.value, name
+
+
 # ----------------------------------------------------------------------
 # AltState : Alt seul (A1-A4)
 # ----------------------------------------------------------------------
@@ -193,6 +226,25 @@ def test_letters_from_titles_extra_and_taken(no_gtk):
 def test_extra_letter_can_be_taken(no_gtk):
     mk = menukeys.enable(_Frame(), letters={3: "W"}, taken=("W",))
     assert "W" not in mk.letters
+
+
+def test_open_menu_alternates_itself(no_gtk, monkeypatch):
+    """Essai de GroovyboxIt 3b1 : l'alternance est calculée par le paquet
+    (menu suivant de celui qui est ouvert) et chaque menu ouvert comme par
+    F10 (open_item), jamais par l'alternance de GTK."""
+    frame = _Frame(("&Fichier", "&Affichage", "E&ffets", "&Aide", "Fenêtre"))
+    mk = menukeys.enable(frame, letters={4: "A"})
+    opened, now = [], []
+    monkeypatch.setattr(gtk_menu, "open_item", lambda bar, i: opened.append(i) or True)
+    monkeypatch.setattr(gtk_menu, "activate_mnemonic", lambda *a: pytest.fail("GTK"))
+    monkeypatch.setattr(mk, "open_menus", lambda: now)
+    for expected in ([], [1], [3], [4], [2]):
+        now[:] = expected
+        assert mk.open_menu("a")
+    assert opened == [1, 3, 4, 1, 1]          # fermée → 1 ; 1 → 3 ; 3 → 4 ; 4 → 1 ; autre → 1
+    opened.clear()
+    now[:] = [0]
+    assert mk.open_menu("F") and opened == [2]           # Fichier ouvert : Effets
 
 
 def test_open_menu_refuses_other_letters(no_gtk):
@@ -443,6 +495,35 @@ def test_alt_letter_alternates_in_an_open_menu(demo):
         _pump()
         seq.append(demo.keys.open_menus())
     assert seq == [[2], [5], [2]]                             # Affichage, Aide, Affichage
+
+
+def _selected_and_grab(frame, index):
+    g = _lib()
+    V = ctypes.c_void_p
+    g.gtk_menu_shell_get_selected_item.restype = V
+    g.gtk_menu_shell_get_selected_item.argtypes = [V]
+    g.gtk_grab_get_current.restype = V
+    sub = _menu_of(frame, index)
+    item = g.gtk_menu_shell_get_selected_item(sub)
+    return (gtk_menu.label(item) if item else None), g.gtk_grab_get_current() == sub
+
+
+@pytest.mark.gui
+def test_alternating_menu_has_its_first_item_and_the_keyboard(demo):
+    """Essai de GroovyboxIt 3b1 : l'alternance de GTK, menu ouvert,
+    sélectionnait le titre suivant sans entrer dans son menu (Orca « Piste
+    menu », Bas partait dans la fenêtre) ; chaque menu doit avoir son premier
+    élément sélectionné et prendre le clavier (grab)."""
+    demo.keys.open_menu("a")
+    _pump()
+    seen = [_selected_and_grab(demo, 2)]
+    for index in (5, 2, 5):
+        cur = demo.keys.open_menus()[0]
+        _send(_menu_of(demo, cur), GDK_KEY_PRESS, ord("a"), GDK_MOD1_MASK)
+        _pump()
+        assert demo.keys.open_menus() == [index]
+        seen.append(_selected_and_grab(demo, index))
+    assert seen == [("Grille", True), ("À propos", True), ("Grille", True), ("À propos", True)]
 
 
 @pytest.mark.gui

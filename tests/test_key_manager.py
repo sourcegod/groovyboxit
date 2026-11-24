@@ -514,16 +514,23 @@ def test_shift_delete_resets_pattern():
     km.handle(FakeEvent(key=wx.WXK_DELETE, shift=True))
     assert 'reset_pattern' in win._player._pattern.calls
     assert '_refresh_grid' in win.calls
+    assert ('_add_undo', "Vider le pattern") in win.calls      # Phase 9 étape 3b1 (E7)
     teardown(app)
     print("  Shift+Suppr → reset_pattern() + _refresh_grid() : OK")
 
-def test_ctrl_p_loads_demo_pattern():
+def test_ctrl_p_and_shift_p_are_free():
+    """Phase 9 étape 3b1 (§ 3a E8) : pattern de démonstration et pattern
+    aléatoire retirés ; Shift+P ne retombe pas sur Lecture (P seul)."""
     app, win, km = make_km()
-    km.handle(FakeEvent(key=ord('P'), ctrl=True))
-    assert 'build_pattern_01' in win._player._pattern.calls
-    assert '_refresh_grid' in win.calls
+    for ctrl, shift in ((True, False), (False, True)):
+        ev = FakeEvent(key=ord('P'), ctrl=ctrl, shift=shift)
+        km.handle(ev)
+        assert ev.skipped
+    assert win._player._pattern.calls == [] and win._player.calls == []
+    assert not win._player.playing
+    km.handle(FakeEvent(key=ord('P')))                  # P seul : lecture
+    assert win._player.playing
     teardown(app)
-    print("  Ctrl+P → build_pattern_01() + _refresh_grid() : OK")
 
 def test_ctrl_f_doubles_pattern():
     app, win, km = make_km()

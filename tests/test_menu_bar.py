@@ -32,8 +32,9 @@ from ui.menu_bar import Item, MENUS, SEP, Submenu
 
 DOC = os.path.join(os.path.dirname(__file__), "..", "docs", "shortcuts.md")
 
-TITLES = ["Fichier", "Edition", "Transport", "Aller à", "Insertion", "Piste",
-          "Affichage", "Traitement", "Effets", "Outils", "Options", "Fenêtres", "Aide"]
+TITLES = ["Fichier", "Edition", "Transport", "Aller à", "Insertion", "Piste", "Pattern",
+          "Affichage", "Traitement", "Effets", "Mixer", "Outils", "Options", "Fenêtres",
+          "Aide"]                       # Pattern et Mixer : Phase 9 étape 3b1
 
 
 def _all_items(items):
@@ -60,8 +61,9 @@ def test_menus_in_order_with_their_letter():
     assert [t for t, _l, _i in MENUS] == TITLES
     letters = {t: l for t, l, _i in MENUS}
     assert letters == {"Fichier": "F", "Edition": "E", "Transport": "T", "Aller à": "G",
-                       "Insertion": "I", "Piste": "T", "Affichage": "A",
-                       "Traitement": "R", "Effets": "F", "Outils": "O", "Options": "N",
+                       "Insertion": "I", "Piste": "T", "Pattern": "P", "Affichage": "A",
+                       "Traitement": "R", "Effets": "F", "Mixer": "M", "Outils": "O",
+                       "Options": "N",
                        "Fenêtres": "W", "Aide": "A"}
 
 
@@ -141,6 +143,18 @@ def test_requests_of_the_trial():
     assert _find("Au début").accel == "G" and _find("Mesure suivante").accel == "PageDown"
 
 
+# L'aide écrit les flèches « ↑ », les menus « Haut » (Phase 9 étape 3c1)
+_ARROWS = {"Haut": "↑", "Bas": "↓", "Gauche": "←", "Droite": "→"}
+
+
+def _help_spellings(accel):
+    *mods, key = accel.split("+")
+    names = [accel, accel.lower()]
+    if key in _ARROWS:
+        names.append("+".join(mods + [_ARROWS[key]]))
+    return names
+
+
 def test_every_shortcut_shown_is_in_the_keyboard_help():
     with open(DOC, encoding="utf-8") as f:
         doc = f.read()
@@ -149,7 +163,7 @@ def test_every_shortcut_shown_is_in_the_keyboard_help():
             if not it.accel:
                 continue
             found = any(re.search(r"(?<![\w+])" + re.escape(a) + r"(?![\w+])", doc)
-                        for a in (it.accel, it.accel.lower()))
+                        for a in _help_spellings(it.accel))
             assert found, f"{it.accel} ({it.text()}) absent de shortcuts.md"
 
 
@@ -270,8 +284,10 @@ def test_run_ignores_a_window_being_deleted():
 
 
 def test_menu_event_runs_after_the_menu_closes(monkeypatch):
+    """Essai de 3b1 : l'action attend MENU_DELAY_MS, le temps qu'Orca lise
+    le retour du focus."""
     later = []
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a: later.append((fn, a)))
+    monkeypatch.setattr(wx, "CallLater", lambda ms, fn, *a: later.append((ms, fn, a)))
     win = _Win()
     item = _find("Grille…")
     win._menu_items = {123: item}
@@ -280,7 +296,8 @@ def test_menu_event_runs_after_the_menu_closes(monkeypatch):
         def GetId(self):
             return 123
     menu_bar._on_menu(win, _Evt())
-    assert later == [(menu_bar.run, (win, item))] and win.keys == []
+    assert later == [(menu_bar.MENU_DELAY_MS, menu_bar.run, (win, item))] and win.keys == []
+    assert 100 <= menu_bar.MENU_DELAY_MS <= 300
 
 
 def test_mixin_actions():
@@ -495,7 +512,7 @@ def test_items_without_object_are_greyed(bar):
 
 @pytest.mark.gui
 def test_menu_event_runs_the_item(bar, monkeypatch):
-    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a: fn(*a))
+    monkeypatch.setattr(wx, "CallLater", lambda ms, fn, *a: fn(*a))     # 3b1 : différé
     frame, mb = bar
     ids = {it.text(): i for i, it in frame._menu_items.items()}
     frame.keys.clear()
@@ -673,9 +690,13 @@ def test_accel_of_is_the_inverse_of_key_event(accel):
     assert menu_bar.accel_of(menu_bar.key_event(accel)) == accel
 
 
-def test_accel_of_other_keys():
-    assert menu_bar.accel_of(menu_bar.key_event("Espace")) is None
-    assert menu_bar.accel_of(menu_bar.key_event("PageDown")) is None
+def test_accel_of_named_keys_and_others():
+    """Phase 9 étape 3b1 : les touches nommées ont leur nom ; Tab, non."""
+    assert menu_bar.accel_of(menu_bar.key_event("Espace")) == "Espace"
+    assert menu_bar.accel_of(menu_bar.key_event("Shift+PageDown")) == "Shift+PageDown"
+    evt = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    evt.SetKeyCode(wx.WXK_TAB)
+    assert menu_bar.accel_of(evt) is None
 
 
 # --- Clavier de l'éditeur et de Songs : handle_key --------------------
@@ -917,8 +938,8 @@ def _greyed(frame, bar):
 
 @pytest.mark.parametrize("kind, filled", [
     (menu_bar.MAIN, set()),
-    (menu_bar.MIDI, {"Piste", "Outils"}),
-    (menu_bar.SONGS, {"Insertion", "Piste", "Outils"}),
+    (menu_bar.MIDI, {"Piste", "Pattern", "Mixer", "Outils"}),
+    (menu_bar.SONGS, {"Insertion", "Piste", "Pattern", "Mixer", "Outils"}),
 ])
 def test_menu_without_active_item_gets_one(kind, filled):
     """Essai de 1d1 : GTK ne prenait pas le clavier dans un menu tout grisé
@@ -951,7 +972,8 @@ def test_greyed_items_of_each_window():
             frames.append(frame)
             greyed[kind] = _greyed(frame, bar)
         assert greyed[menu_bar.MAIN] == expected[menu_bar.MAIN]
-        assert len(greyed[menu_bar.MIDI]) == 20 and len(greyed[menu_bar.SONGS]) == 29
+        # 20 / 29 en 1e1 ; + 42 / 48 éléments de la fenêtre principale (3b1-3b5)
+        assert len(greyed[menu_bar.MIDI]) == 62 and len(greyed[menu_bar.SONGS]) == 77
         # Fichier, Fenêtres, Aide jamais grisés
         for kind in menu_bar.ALL:
             for text in ("Nouveau projet", "Ouvrir un projet…", "Enregistrer sous…",
