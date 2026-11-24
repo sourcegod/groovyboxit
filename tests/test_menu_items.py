@@ -89,6 +89,7 @@ def test_transport_metronome_and_limiters():
         ("Limiteur gauche ici", "I", None, ()), ("Limiteur droit ici", "O", None, ()),
         ("Limiteur gauche au début", "Shift+I", None, ()),
         ("Limiteur droit à la fin", "Shift+O", None, ()),
+        ("Sélection des limiteurs…", "Ctrl+Shift+I", None, ()),          # 3g4
         ("Assigner la boucle aux limiteurs", "Alt+Début", None, ()),
         ("Assigner les limiteurs à la boucle", "Alt+Fin", None, ())]
     assert not [it for it in tr if it is not SEP and not isinstance(it, Submenu)
@@ -378,9 +379,12 @@ def test_limiters_to_loop_and_back(win):
     te.reset_lims()
     assert _run(win, "Assigner la boucle aux limiteurs").startswith("Limiteurs : 2:1:1 à ")
     assert (te._lim_left, te._lim_right) == (pat._num_steps, 2 * pat._num_steps - 1)
+    win._undo_action()                     # 3g4 : boucle → limiteurs a son entrée
+    assert (te._lim_left, te._lim_right) == (None, None)
     win._undo_action()                                         # la boucle d'avant
     pat = win._player._pattern
     assert (pat._loop_start, pat._loop_end) == (None, None)
+    te.reset_lims()
     te.reset_lims()                                            # absents : tout le pattern
     _run(win, "Assigner les limiteurs à la boucle")
     assert (pat._loop_start, pat._loop_end) == (None, None)
@@ -743,7 +747,7 @@ def test_set_tempo_click_box(win, monkeypatch):
 EDITOR_ITEMS = [
     ("Insérer une note", "Ctrl+I", ("_quick_insert", True)),
     ("Insérer une note sans avancer", "Alt+I", ("_quick_insert", False)),
-    ("Insérer une note avec dialogue…", "Ctrl+Shift+I", ("_insert_dialog",)),
+    ("Insérer une note avec dialogue…", "Ctrl+Shift+N", ("_insert_dialog",)),   # 3g4
     ("Insérer une note entre deux", "A", ("_insert_between",)),
     ("Dupliquer l'événement", "D", ("_duplicate_event", True)),
     ("Dupliquer sans avancer", "Shift+D", ("_duplicate_event", False)),

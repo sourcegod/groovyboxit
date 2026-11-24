@@ -202,6 +202,7 @@ groovyboxit/
     ├── test_live_limiter.py
     ├── test_live_volume_pan.py
     ├── test_live_take.py
+    ├── test_limiters.py
     ├── test_load_project_cache.py
     ├── test_loop_points_pattern.py
     ├── test_loop_points_player.py
@@ -2833,6 +2834,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_kit_channel_migration.py` | Règle « kit → canal 10 » des données (Phase 8 étape 3c1) : piste kit restée sur son canal par défaut au canal 10, canal choisi gardé, synthé et banque intacts, projet sans canaux, seconde application sans effet ; démarrage (projet absent compris, routeur aligné), Ctrl+N, Ctrl+O sur tous les patterns, ni Undo ni « modifié », compte rendu (16 tests) |
 | `test_live_limiter.py` | Limiteur du mix à l'écoute et volume global jusqu'à 200 (Phase 8 étape 8d1) : LiveLimiter comparé au calcul échantillon par échantillon (blocs de tailles diverses), seuil jamais dépassé, attaque immédiate, retour de 50 ms, état entre blocs, stéréo liée, signal sous le seuil intact, réduction mesurée ; callback avec et sans limiteur, set_limiter, Mixer de l'export non limité ; set_master_volume (entier = %, réel = rapport, volume 1 = ×0,01, jusqu'à ×2) ; volume 0..200 du lecteur et de SoundManager, annonce en dB, clés live_limiter et master_volume ; vraie fenêtre principale (clé transmise au pilote) ; export à 200 (46 tests) |
 | `test_live_take.py` | Prise d'enregistrement live : Undo avant la prise, retiré si _tape n'a pas changé |
+| `test_limiters.py` | Limiteurs dans le projet et l'Undo (Phase 9 étape 3g5, tests de 3g4) : LimiterSelectDialog (panneaux, sources dont la boucle, sans options de boucle, ouvert sur les limiteurs ou tout le pattern, refus si gauche > droite avec le bip d'alerte, Points de boucle inchangés) ; vraie fenêtre principale : une entrée d'Undo par commande et rien si inchangé (Shift+I / Shift+O, i / o, Ctrl+A / Ctrl+Shift+A, Alt+Début, Ctrl+Entrée), Ctrl+Z / Shift+Z, limiteurs rétablis par toute entrée, Ctrl+Shift+I (principale, menu, éditeur), Ctrl+Shift+N dans l'éditeur, touches de l'éditeur annulables, sélection de l'éditeur sans entrée ; .gvp écrit et relu, ancien projet, Ctrl+N, clé invalide, état d'Undo ; bips de l'historique (vide, premier, dernier, dialogue vide) (22 tests) |
 | `test_load_project_cache.py` | Non-régression : Ctrl+O invalide le cache des patterns sérialisés de l'Undo |
 | `test_loop_points_pattern.py` | Loop points : données Pattern (29 tests) |
 | `test_loop_points_player.py` | Loop points : DrumPlayer (21 tests) |

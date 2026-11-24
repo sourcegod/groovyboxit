@@ -1025,8 +1025,9 @@ def test_greyed_items_of_each_window():
         assert greyed[menu_bar.MAIN] == expected[menu_bar.MAIN]
         # 20 / 29 en 1e1 ; + 42 / 48 éléments de la fenêtre principale (3b1-3b5),
         # + 7 dialogues (3d1) ; 3f1 : limiteurs actifs dans l'éditeur (− 4),
-        # 18 éléments de l'éditeur indisponibles dans Songs
-        assert len(greyed[menu_bar.MIDI]) == 65 and len(greyed[menu_bar.SONGS]) == 102
+        # 18 éléments de l'éditeur indisponibles dans Songs ; 3g4 : Sélection
+        # des limiteurs (principale et éditeur)
+        assert len(greyed[menu_bar.MIDI]) == 65 and len(greyed[menu_bar.SONGS]) == 103
         # Fichier, Fenêtres, Aide jamais grisés
         for kind in menu_bar.ALL:
             for text in ("Nouveau projet", "Ouvrir un projet…", "Enregistrer sous…",
