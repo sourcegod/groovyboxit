@@ -16944,3 +16944,73 @@ pour qu'Orca lise le retour du focus ; un pattern de 4 mesures boucle de
 édition de note sur 128 notes dans l'éditeur MIDI ; gris des éléments
 indisponibles à vérifier par un voyant ; NVDA sous Windows à vérifier ;
 pattern aléatoire dans Traitement > Générer ; SpeechAccess (barre d'état).
+
+## Phase 9 étape 4a — Fin de boucle exclue, comme dans Sonar (plan)
+
+**Constat (essai de 3b5, indice de 3d1).** Dans essai_audio_14d1 (8
+mesures de 16 pas), une boucle « de 1:1:1 à 5:1:1 » marque un délai avant
+de reprendre. La fin de boucle est aujourd'hui le DERNIER pas JOUÉ
+(incluse) : Shift+L posé à 5:1:1 donne `_loop_end = 64`, la boucle joue
+65 pas — le premier pas de la mesure 5 en trop, entendu comme un délai.
+
+**Demande de l'utilisateur (2026-11-25).** Comme dans Sonar : fin de
+boucle EXCLUE ; quatre mesures vont de 1:1:1 à 5:1:1 — sans changer toute
+la structure.
+
+**Relevé.** Le lecteur reçoit la fenêtre de boucle de
+`LoopManager.compute_window` (`lp_end` inclus, utilisé par dp_playback et
+tape_events) ; ailleurs, `_loop_end` n'est lu que par l'interface (une
+douzaine d'endroits) et sérialisé par `Pattern.to_dict` (.gvp, Undo).
+Aucun projet de l'utilisateur n'a de boucle enregistrée (vérifié).
+
+**Proposition.**
+- B1 — `_loop_end` devient le pas de fin EXCLU (None = fin du pattern,
+  inchangé). Le lecteur garde son `lp_end` inclus : seule
+  `compute_window` convertit (`lp_end = _loop_end − 1`). Structure du
+  lecteur inchangée.
+- B2 — Shift+L : fin de boucle à la position (exclue) ; refusée à 1:1:1 ou
+  au début de boucle et avant (boucle vide), avec le bip d'alerte.
+  Annonce « Boucle fin: 5:1:1 ».
+- B3 — Points de boucle (Ctrl+Shift+L) : le champ Fin affiche la fin
+  exclue ; « Fin du pattern » = la mesure après la dernière (9:1:1 pour 8
+  mesures) ; le champ Fin accepte jusqu'à cette position (`BBTHelper` :
+  borne propre au champ) ; Ok refusé si fin ≤ début (bip d'alerte, comme
+  les limiteurs).
+- B4 — Limiteurs ↔ boucle (Alt+Fin, Alt+Début, sources des dialogues) :
+  les limiteurs restent inclus ; fin de boucle = limiteur droit + 1, et
+  limiteur droit = fin de boucle − 1.
+- B5 — Shift+Fin (aller à la fin de boucle) : la position de la fin exclue
+  (5:1:1) ; fin du pattern : son dernier pas, comme aujourd'hui (la
+  position après n'existe pas).
+- B6 — Anciens projets (.gvp version 1) : fin de boucle + 1 à la lecture
+  (même boucle entendue qu'avant) ; `ProjectManager.VERSION` = 2.
+- B7 — Aide F1, SPECS ; tests.
+
+**Réponses de l'utilisateur (2026-11-25).** Q1 (Shift+Fin) : la position
+de la fin exclue (5:1:1) — B5 ; Q2 (anciens projets) : fin + 1 — B6 ;
+Q3 : les limiteurs deviennent eux aussi exclus, pour être cohérents avec la
+boucle.
+
+**Limiteurs exclus (réponse à Q3).** Relevé : le code des plages
+(TrackEditor : copie, effacement ; éditeur MIDI ; export audio de la
+sélection ; quantisation) traite déjà le limiteur droit comme la plage
+[gauche, droit + 1) — « lim_r inclut tout son pas ». On garde donc
+`_lim_right` interne INCLUS (structure inchangée) et l'on change ce que
+l'utilisateur voit et pose :
+- L1 — Affichage et saisie du limiteur droit en position exclue
+  (interne + 1) : annonces (« Limiteur Droit: 5:1:1 »), titres d'Undo,
+  dialogues (Sélection des limiteurs, Ctrl+Entrée : plage de / à, export
+  audio de la sélection), barre d'état de la sélection.
+- L2 — o : limiteur droit à la position, exclue (interne = position − 1) ;
+  refusé à 1:1:1 ou au limiteur gauche et avant (plage vide), avec le bip
+  d'alerte — les touches restent sans autre contrôle de croisement.
+  Shift+O : fin du pattern (9:1:1 pour 8 mesures ; interne : dernier pas).
+- L3 — Fin (aller au limiteur droit) : la position exclue (5:1:1) ; sans
+  limiteur ou à la fin du pattern : son dernier pas, comme Shift+Fin.
+- L4 — Limiteurs ↔ boucle : la même position des deux côtés (5:1:1) —
+  fin de boucle = interne droit + 1.
+- L5 — .gvp : la clé "limiters" (3g4) garde la valeur interne incluse ;
+  rien à migrer.
+
+**Étapes.** 4b1 : boucle exclue (B1-B7) et essai ; 4c1 : tests ;
+4d1 : limiteurs exclus (L1-L5) et essai ; 4e1 : tests ; 4f1 : clôture.
