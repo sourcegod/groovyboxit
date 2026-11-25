@@ -49,6 +49,32 @@ class CharHandler:
         win._show_status("Toutes les Pistes: Désolotées"
                          + win._quit_exclusive(("solo",)))  # N15
 
+    def set_loop_end_here(self):
+        """Shift+L (fenêtre principale, éditeur MIDI, Songs) : fin de boucle à
+        la position, EXCLUE (Phase 9 étape 4b1, § 4a B2) ; refusée si la
+        boucle serait vide (au début de boucle ou avant), avec le bip
+        d'alerte ; Undo si elle change (Phase 7 étape 15f1, D5)."""
+        win  = self._win
+        p    = win._player
+        pat  = p._pattern
+        step = int(p._current_offset())
+        start = pat._loop_start or 0
+        if step <= start:
+            from .ui_beep import alert
+            alert(win)
+            win._show_status("Fin de boucle refusée : elle doit être après le début de boucle")
+            return False
+        total = pat._num_bars * pat._num_steps
+        new_end = None if step >= total else step
+        if new_end != pat._loop_end:                 # Undo, Phase 7 étape 15f1 (D5)
+            win._add_undo(f"Fin de boucle: {p.position_str().split(' / ')[0]}")
+        pat._loop_end = new_end
+        win._pattern_list[win._cur_pattern_idx]._loop_end = pat._loop_end
+        if p.playing or p.clicking or p._note_repeat_active:
+            p._wakeup.set()
+        win._show_status(f"Boucle fin: {p.position_str()}")
+        return True
+
     def tap_tempo(self):
         """Une frappe de Tap Tempo (H hors des champs de saisie ; Transport >
         Métronome, quel que soit le focus, Phase 9 étape 3b3)."""
@@ -370,18 +396,7 @@ class CharHandler:
         if not ctrl and shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('l') or key == ord('L')):
-            p    = win._player
-            pat  = p._pattern
-            step = int(p._current_offset())
-            total = pat._num_bars * pat._num_steps
-            new_end = None if step == total - 1 else step
-            if new_end != pat._loop_end:                 # Undo, Phase 7 étape 15f1 (D5)
-                win._add_undo(f"Fin de boucle: {p.position_str().split(' / ')[0]}")
-            pat._loop_end = new_end
-            win._pattern_list[win._cur_pattern_idx]._loop_end = pat._loop_end
-            if p.playing or p.clicking or p._note_repeat_active:
-                p._wakeup.set()
-            win._show_status(f"Boucle fin: {p.position_str()}")
+            self.set_loop_end_here()
             return True
 
         # l : toggle boucle

@@ -100,14 +100,7 @@ class TransportHandler:
             p   = win._player
             pat = p._pattern
             if shift:
-                step  = int(p._current_offset())
-                total = pat._num_bars * pat._num_steps
-                new_end = None if step == total - 1 else step
-                if new_end != pat._loop_end:     # Undo comme la fenêtre principale (16d2)
-                    win._add_undo(f"Fin de boucle: {p.position_str().split(' / ')[0]}")
-                pat._loop_end = new_end
-                win._pattern_list[win._cur_pattern_idx]._loop_end = pat._loop_end
-                win._show_status(f"Boucle fin: {p.position_str()}")
+                self.set_loop_end_here()        # comme la fenêtre principale (4b1)
             else:
                 # point d'Undo (Phase 8 étape 16d2, essai : la bascule n'en avait pas)
                 win._add_undo(f"Boucle: {'Off' if pat._looping else 'On'}")

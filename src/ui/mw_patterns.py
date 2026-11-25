@@ -298,7 +298,7 @@ class PatternMixin:
                 p._wakeup.set()
             total = pat._num_bars * pat._num_steps
             start_str = dlg._fmt_bbt(ls if ls is not None else 0)
-            end_str   = dlg._fmt_bbt(le if le is not None else total - 1)
+            end_str   = dlg._fmt_end(le if le is not None else total)     # exclue (4b1)
             rep_str   = f"{lc} fois" if lc else "infini"
             loop_str  = "On" if looping else "Off"
             self._show_status(

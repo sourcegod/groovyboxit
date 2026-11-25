@@ -17014,3 +17014,9 @@ l'utilisateur voit et pose :
 
 **Étapes.** 4b1 : boucle exclue (B1-B7) et essai ; 4c1 : tests ;
 4d1 : limiteurs exclus (L1-L5) et essai ; 4e1 : tests ; 4f1 : clôture.
+
+**4b1 — essai.** Concluant : dans essai_audio_14d1, la boucle de 1:1:1 à
+5:1:1 reprend sans délai ; Shift+Fin va à 5:1:1 ; Points de boucle et refus
+(bip d'alerte) conformes. Les deux Shift+L (fenêtre principale ;
+éditeur MIDI et Songs par handle_transport) passent par
+`KeyManager.set_loop_end_here`.

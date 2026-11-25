@@ -25,15 +25,15 @@ class NavigationHandler:
             win._show_status("Boucle : limiteur gauche après le limiteur droit")
             return
         start = None if left == 0 else left
-        end   = None if right == total - 1 else right
+        end   = None if right == total - 1 else right + 1   # fin de boucle exclue (4b1)
         if (start, end) != (pat._loop_start, pat._loop_end):
-            win._add_undo(f"Boucle : limiteurs {self._bbt(left)} à {self._bbt(right)}")
+            win._add_undo(f"Boucle : limiteurs {self._bbt(left)} à {self._bbt(right + 1)}")
             pat._loop_start, pat._loop_end = start, end
             saved = win._pattern_list[win._cur_pattern_idx]
             saved._loop_start, saved._loop_end = start, end
             if p.playing or p.clicking or p._note_repeat_active:
                 p._wakeup.set()
-        win._show_status(f"Boucle : {self._bbt(left)} à {self._bbt(right)}")
+        win._show_status(f"Boucle : {self._bbt(left)} à {self._bbt(right + 1)}")   # fin exclue
 
     def loop_to_lims(self):
         """Boucle → limiteurs (Alt+Début ; Transport > Limiteurs, Phase 9
@@ -43,7 +43,7 @@ class NavigationHandler:
         pat   = win._player._pattern
         total = pat._num_bars * pat._num_steps
         left  = pat._loop_start if pat._loop_start is not None else 0
-        right = pat._loop_end if pat._loop_end is not None else total - 1
+        right = pat._loop_end - 1 if pat._loop_end is not None else total - 1   # 4b1
         win._set_limiters_undo(left, right)                     # Undo (3g4, U3)
         win._show_status(f"Limiteurs : {self._bbt(left)} à {self._bbt(right)}")
 

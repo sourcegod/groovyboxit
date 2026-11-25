@@ -383,6 +383,9 @@ class LoopSelectDialog(wx.Dialog):
     TITLE        = "Points de boucle"
     PANELS       = ("Début de boucle", "Fin de boucle")
     LOOP_OPTIONS = True            # « Boucle Active » et « Répétitions »
+    # Fin EXCLUE, comme dans Sonar (Phase 9 étape 4b1, § 4a B3) : quatre
+    # mesures vont de 1:1:1 à 5:1:1 ; « Fin du pattern » = la mesure suivante
+    END_EXCLUSIVE = True
 
     def __init__(self, parent,
                  num_bars, num_beats, num_steps,
@@ -390,15 +393,20 @@ class LoopSelectDialog(wx.Dialog):
                  looping=True, lim_left=None, lim_right=None,
                  on_play_toggle=None):
         total = num_bars * num_steps
-        # Sources (indices _SRC_*) : les limiteurs servent de repères
+        # Sources (indices _SRC_*) : les limiteurs servent de repères ; la fin
+        # (exclue) a les siennes : fin du pattern = total, limiteur droit + 1
         self._sources = list(zip(_LOOP_SOURCES, [
             None, 0, total - 1,
             lim_left if lim_left is not None else 0,
             lim_right if lim_right is not None else total - 1, None]))
+        self._end_sources = list(zip(_LOOP_SOURCES, [
+            None, 0, total,
+            lim_left if lim_left is not None else 0,
+            lim_right + 1 if lim_right is not None else total, None]))
         self._lim_left, self._lim_right = lim_left, lim_right
         self._build(parent, num_bars, num_beats, num_steps, cur_step,
                     loop_start if loop_start is not None else 0,
-                    loop_end if loop_end is not None else total - 1,
+                    loop_end if loop_end is not None else total,
                     loop_count, looping, on_play_toggle)
 
     def _build(self, parent, num_bars, num_beats, num_steps, cur_step,
@@ -410,9 +418,15 @@ class LoopSelectDialog(wx.Dialog):
         self._steps_per_beat = max(1, num_steps // num_beats)
         self._total_steps    = num_bars * num_steps
         self._cur_step       = max(0, min(cur_step, self._total_steps - 1))
-        self._sources[_SRC_CUR] = (self._sources[_SRC_CUR][0], self._cur_step)
+        if getattr(self, "_end_sources", None) is None:
+            self._end_sources = list(self._sources)
+        for sources in (self._sources, self._end_sources):
+            sources[_SRC_CUR] = (sources[_SRC_CUR][0], self._cur_step)
         self._updating       = False   # évite les boucles de MAJ ListBox ↔ TextCtrl
         self._bbt            = BBTHelper(num_steps, self._steps_per_beat, self._total_steps)
+        # champ Fin : jusqu'à la position après le dernier pas si elle est exclue
+        self._bbt_end        = BBTHelper(num_steps, self._steps_per_beat,
+                                         self._total_steps + (1 if self.END_EXCLUSIVE else 0))
         labels = [label for label, _step in self._sources]
 
         # --- Fenêtre Début ---
@@ -475,9 +489,9 @@ class LoopSelectDialog(wx.Dialog):
 
         # Initialiser les valeurs
         self._start_ctrl.SetValue(self._bbt.fmt(start_val))
-        self._end_ctrl.SetValue(self._bbt.fmt(end_val))
+        self._end_ctrl.SetValue(self._bbt_end.fmt(end_val))
         self._start_list.SetSelection(self._step_to_source(start_val))
-        self._end_list.SetSelection(self._step_to_source(end_val))
+        self._end_list.SetSelection(self._step_to_source(end_val, self._end_sources))
 
         self.Fit()
         # GTK réinitialise SpinCtrl au layout ; réappliquer après Fit()
@@ -506,17 +520,21 @@ class LoopSelectDialog(wx.Dialog):
     # Helpers source ↔ step
     # ------------------------------------------------------------------
 
-    def _step_to_source(self, step):
+    def _fmt_end(self, step):
+        return self._bbt_end.fmt(step)
+
+    def _step_to_source(self, step, sources=None):
         """Trouve l'indice de la première source qui vaut step, ou _SRC_CUSTOM."""
-        for i, (_label, value) in enumerate(self._sources):
+        for i, (_label, value) in enumerate(self._sources if sources is None else sources):
             if value is not None and value == step:
                 return i
         return _SRC_CUSTOM
 
-    def _source_to_step(self, src_idx):
+    def _source_to_step(self, src_idx, sources=None):
         """Retourne la valeur de step pour une source, ou None si Personnalisé."""
-        if 0 <= src_idx < len(self._sources):
-            return self._sources[src_idx][1]
+        sources = self._sources if sources is None else sources
+        if 0 <= src_idx < len(sources):
+            return sources[src_idx][1]
         return None
 
     # ------------------------------------------------------------------
@@ -537,10 +555,10 @@ class LoopSelectDialog(wx.Dialog):
         src = self._end_list.GetSelection()
         if src == wx.NOT_FOUND or src == _SRC_CUSTOM or self._updating:
             return
-        step = self._source_to_step(src)
+        step = self._source_to_step(src, self._end_sources)
         if step is not None:
             self._updating = True
-            self._end_ctrl.SetValue(self._bbt.fmt(step))
+            self._end_ctrl.SetValue(self._bbt_end.fmt(step))
             self._updating = False
 
     def _on_start_text(self, event):
@@ -582,8 +600,17 @@ class LoopSelectDialog(wx.Dialog):
             self.EndModal(wx.ID_OK)
 
     def _validate(self):
-        """Ok permis ? (le dialogue des limiteurs refuse gauche > droite)"""
-        return True
+        """Ok permis ? Boucle (fin exclue, 4b1) : la fin doit être après le
+        début ; le dialogue des limiteurs refuse gauche > droite."""
+        if not self.END_EXCLUSIVE or self.get_end_step() > self.get_start_step():
+            return True
+        self._refuse("La fin de boucle doit être après son début.")
+        return False
+
+    def _refuse(self, message):
+        from .ui_beep import alert                 # bip d'alerte de l'appli (3g4)
+        alert(self)
+        wx.MessageBox(message, self.TITLE, wx.OK | wx.ICON_WARNING, self)
 
     def get_start_step(self):
         """Pas de début (base 0), début du pattern si le champ est invalide."""
@@ -591,9 +618,11 @@ class LoopSelectDialog(wx.Dialog):
         return v if v is not None else 0
 
     def get_end_step(self):
-        """Pas de fin (base 0), fin du pattern si le champ est invalide."""
-        v = self._bbt.parse(self._end_ctrl.GetValue())
-        return v if v is not None else self._total_steps - 1
+        """Pas de fin (base 0 ; exclu pour la boucle), fin du pattern si le
+        champ est invalide."""
+        v = self._bbt_end.parse(self._end_ctrl.GetValue())
+        end = self._total_steps if self.END_EXCLUSIVE else self._total_steps - 1
+        return v if v is not None else end
 
     # ------------------------------------------------------------------
     # API publique
@@ -609,10 +638,9 @@ class LoopSelectDialog(wx.Dialog):
         return None if step == 0 else step
 
     def get_loop_end(self):
-        """None si fin du pattern, sinon step 0-based."""
-        v = self._bbt.parse(self._end_ctrl.GetValue())
-        step = v if v is not None else self._total_steps - 1
-        return None if step == self._total_steps - 1 else step
+        """None si fin du pattern, sinon le pas de fin EXCLU (4b1)."""
+        step = self.get_end_step()
+        return None if step >= self._total_steps else step
 
     def get_loop_count(self):
         return self._rep_spin.GetValue()
@@ -627,6 +655,7 @@ class LimiterSelectDialog(LoopSelectDialog):
     TITLE        = "Sélection des limiteurs"
     PANELS       = ("Limiteur gauche", "Limiteur droit")
     LOOP_OPTIONS = False
+    END_EXCLUSIVE = False          # limiteur droit inclus jusqu'à 4d1
     SOURCES      = ["Position courante", "Début du pattern", "Fin du pattern",
                     "Début de boucle", "Fin de boucle", "Personnalisé"]
 
@@ -637,7 +666,7 @@ class LimiterSelectDialog(LoopSelectDialog):
         self._sources = list(zip(self.SOURCES, [
             None, 0, total - 1,
             loop_start if loop_start is not None else 0,
-            loop_end if loop_end is not None else total - 1, None]))
+            loop_end - 1 if loop_end is not None else total - 1, None]))    # fin exclue (4b1)
         self._lim_left, self._lim_right = lim_left, lim_right
         self._build(parent, num_bars, num_beats, num_steps, cur_step,
                     lim_left if lim_left is not None else 0,
@@ -647,10 +676,7 @@ class LimiterSelectDialog(LoopSelectDialog):
     def _validate(self):
         if self.get_start_step() <= self.get_end_step():
             return True
-        from .ui_beep import alert                 # bip d'alerte de l'appli (essai de 3g4),
-        alert(self)                                # comme le matériel non trouvé
-        wx.MessageBox("Le limiteur gauche est après le limiteur droit.",
-                      self.TITLE, wx.OK | wx.ICON_WARNING, self)
+        self._refuse("Le limiteur gauche est après le limiteur droit.")
         return False
 
 

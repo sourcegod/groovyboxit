@@ -90,8 +90,11 @@ g                Transport : Aller au début du pattern (Goto Start)
 Shift+G          Transport : Aller à la fin du pattern (Goto End)
 l                Boucle On / Off (le pattern redémarre ou s'arrête en fin de cycle)
 Ctrl+L           Poser le point de début de boucle à la position courante du playhead
-Shift+L          Poser le point de fin de boucle à la position courante du playhead
-Ctrl+Shift+L     Ouvrir le dialog de points de boucle (début, fin, répétitions)
+Shift+L          Poser le point de fin de boucle à la position courante du playhead ;
+                 la fin est EXCLUE, comme dans Sonar : quatre mesures vont de 1:1:1
+                 à 5:1:1 (refusée au début de boucle ou avant)
+Ctrl+Shift+L     Ouvrir le dialog de points de boucle (début, fin exclue — « Fin du
+                 pattern » = la mesure suivante —, répétitions)
 Alt+L            Réinitialiser les points de boucle (début et fin) à la longueur du pattern
 Ctrl+Shift+F     Ouvrir l'éditeur MIDI (si besoin) puis le dialog de filtre d'événements
 PageDown         Transport : +1 mesure
@@ -396,7 +399,8 @@ Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste de
   Début (Home)     Aller au limiteur gauche (ou début du pattern si non défini)
   Fin   (End)      Aller au limiteur droit  (ou fin du pattern si non défini)
   Shift+Début      Aller au début de la boucle (ou step 0 si non défini)
-  Shift+Fin        Aller à la fin de la boucle  (ou dernier step si non défini)
+  Shift+Fin        Aller à la fin de la boucle, exclue (5:1:1 pour quatre mesures ;
+                   dernier step si non définie)
   Alt+Début        Assigner la boucle aux limiteurs (annulable ; sans boucle : tout
                    le pattern)
   Alt+Fin          Assigner les limiteurs à la boucle (annulable ; limiteur absent :
@@ -529,7 +533,7 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
   Shift+PageDown   +1 tick (pas)
   Shift+PageUp     -1 tick (pas)
   l                Boucle On / Off
-  Shift+L          Poser le point de fin de boucle à la position courante du playhead
+  Shift+L          Poser le point de fin de boucle (exclue) à la position courante
   U                Afficher l'état du player et la position courante
   Ctrl+G           Aller à une position (dialog bar:beat:tick)
   Ctrl+Shift+G     Ouvrir la boîte de grille

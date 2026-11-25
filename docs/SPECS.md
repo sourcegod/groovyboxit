@@ -1215,6 +1215,18 @@ volume général ne sont pas concernés.
   absente ou Ctrl+N → les défauts (le comportement d'avant) ; changer les
   options est un point d'Undo.
 
+### Boucle : fin exclue (Phase 9 étape 4b1)
+- **Fin de boucle EXCLUE**, comme dans Sonar : quatre mesures vont de
+  1:1:1 à 5:1:1 (`Pattern._loop_end` = premier pas hors de la boucle,
+  None = fin du pattern) ; le lecteur garde sa fenêtre incluse, seule
+  `LoopManager.compute_window` convertit.
+- Shift+L pose la fin à la position (refusée au début de boucle ou avant,
+  bip d'alerte) ; Points de boucle : « Fin du pattern » = la mesure
+  suivante, Ok refusé si la fin n'est pas après le début ; Shift+Fin va à
+  la fin exclue ; limiteurs ↔ boucle : fin = limiteur droit + 1.
+- Projets : `.gvp` version 2 ; un projet version 1 (fin incluse) reçoit fin
+  + 1 à la lecture (`ProjectManager.migrate`), même boucle entendue.
+
 ### Barre de menus (F10, Phase 9 étape 1)
 - **Même barre** dans la fenêtre principale, l'éditeur MIDI (Alt+4) et la
   fenêtre Songs (Alt+5), d'une description unique (`src/ui/menu_bar.py`) :

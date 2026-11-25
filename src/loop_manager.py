@@ -31,7 +31,10 @@ class LoopManager:
                            or pattern._loop_end is not None))
         if use_window:
             lp_start = pattern._loop_start if pattern._loop_start is not None else 0
-            lp_end   = pattern._loop_end   if pattern._loop_end   is not None else total_pat_steps - 1
+            # _loop_end : pas de fin EXCLU (Phase 9 étape 4b1, comme Sonar) ;
+            # le lecteur garde lp_end INCLUS — seule conversion
+            lp_end   = (pattern._loop_end - 1 if pattern._loop_end is not None
+                        else total_pat_steps - 1)
             lp_start = max(0, min(lp_start, total_pat_steps - 1))
             lp_end   = max(lp_start, min(lp_end, total_pat_steps - 1))
             total_steps = lp_end - lp_start + 1
