@@ -205,6 +205,7 @@ groovyboxit/
     ├── test_limiters.py
     ├── test_load_project_cache.py
     ├── test_loop_points_pattern.py
+    ├── test_loop_end_excluded.py
     ├── test_loop_points_player.py
     ├── test_loop_select_dialog.py
     ├── test_loop_undo.py
@@ -2849,6 +2850,7 @@ Cette table et l'arborescence plus haut doivent lister chaque `tests/test_*.py` 
 | `test_limiters.py` | Limiteurs dans le projet et l'Undo (Phase 9 étape 3g5, tests de 3g4) : LimiterSelectDialog (panneaux, sources dont la boucle, sans options de boucle, ouvert sur les limiteurs ou tout le pattern, refus si gauche > droite avec le bip d'alerte, Points de boucle inchangés) ; vraie fenêtre principale : une entrée d'Undo par commande et rien si inchangé (Shift+I / Shift+O, i / o, Ctrl+A / Ctrl+Shift+A, Alt+Début, Ctrl+Entrée), Ctrl+Z / Shift+Z, limiteurs rétablis par toute entrée, Ctrl+Shift+I (principale, menu, éditeur), Ctrl+Shift+N dans l'éditeur, touches de l'éditeur annulables, sélection de l'éditeur sans entrée ; .gvp écrit et relu, ancien projet, Ctrl+N, clé invalide, état d'Undo ; bips de l'historique (vide, premier, dernier, dialogue vide) (22 tests) |
 | `test_load_project_cache.py` | Non-régression : Ctrl+O invalide le cache des patterns sérialisés de l'Undo |
 | `test_loop_points_pattern.py` | Loop points : données Pattern (29 tests) |
+| `test_loop_end_excluded.py` | Fin de boucle exclue, comme dans Sonar (Phase 9 étape 4c1, tests de 4b1) : LoopManager (quatre mesures = 64 pas, fin du pattern, bornes) ; migration des projets version 1 (fin + 1, sans version, version 2 inchangée, lecture) ; Points de boucle (Fin du pattern = mesure suivante, champ borné, ouvert sur la fin exclue, refus d'une boucle vide avec le bip d'alerte) ; Sélection des limiteurs (Fin de boucle = son dernier pas) ; vraie fenêtre principale : Shift+L (fin exclue, refus au début de boucle ou avant, même Shift+L pour l'éditeur et Songs), Shift+Fin, limiteurs ↔ boucle, projet enregistré en version 2 (18 tests) |
 | `test_loop_points_player.py` | Loop points : DrumPlayer (21 tests) |
 | `test_loop_select_dialog.py` | LoopSelectDialog (42 tests) |
 | `test_loop_undo.py` | Undo des points de boucle (Ctrl+L, Shift+L, Alt+L, dialogue) et de la case Boucler du song |

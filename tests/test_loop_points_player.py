@@ -153,7 +153,7 @@ def test_window_active_cur_loop_steps():
     p = _make_player()
     p._pattern._looping    = True
     p._pattern._loop_start = 4
-    p._pattern._loop_end   = 11   # 11 - 4 + 1 = 8 pas
+    p._pattern._loop_end   = 12   # fin exclue (Phase 9 étape 4b1) : 12 - 4 = 8 pas
     _start_and_wait(p)
     assert p._cur_loop_steps == 8
     _stop(p)
@@ -165,7 +165,7 @@ def test_window_single_step():
     p = _make_player()
     p._pattern._looping    = True
     p._pattern._loop_start = 5
-    p._pattern._loop_end   = 5
+    p._pattern._loop_end   = 6    # fin exclue (4b1)
     _start_and_wait(p)
     assert p._cur_lp_start   == 5
     assert p._cur_loop_steps == 1
@@ -195,10 +195,10 @@ def test_window_loop_end_only():
     p = _make_player(num_bars=1, num_steps=16)
     p._pattern._looping    = True
     p._pattern._loop_start = None
-    p._pattern._loop_end   = 7
+    p._pattern._loop_end   = 8
     _start_and_wait(p)
     assert p._cur_lp_start   == 0
-    assert p._cur_loop_steps == 8    # 7 - 0 + 1 = 8
+    assert p._cur_loop_steps == 8    # fin exclue (4b1) : 8 - 0 = 8
     _stop(p)
     print("  loop_end=7 seul : _cur_lp_start=0, steps=8 : OK")
 
@@ -254,7 +254,7 @@ def test_multibar_window_active():
     p = _make_player(num_bars=4, num_steps=16)
     p._pattern._looping    = True
     p._pattern._loop_start = 16
-    p._pattern._loop_end   = 47
+    p._pattern._loop_end   = 48   # fin exclue (4b1) : [16, 48) = 32 pas
     _start_and_wait(p)
     assert p._cur_lp_start   == 16
     assert p._cur_loop_steps == 32

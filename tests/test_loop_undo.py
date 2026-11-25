@@ -111,11 +111,22 @@ def test_shift_l_sets_end_with_entry_and_undo(win):
     assert win.loop()[1] is None
 
 
-def test_shift_l_on_last_step_without_end_adds_nothing(win):
-    win.go(63)                                       # dernier pas → None, déjà None
+def test_shift_l_on_last_step_sets_an_excluded_end(win):
+    """Fin exclue (Phase 9 étape 4b1) : Shift+L au dernier pas le laisse hors
+    de la boucle (fin = 63) ; la fin du pattern s'obtient par le dialogue."""
+    win.go(63)
     _shift_l(win)
-    assert win.titles() == []
-    assert win._project_modified is False
+    assert win.loop()[1] == 63
+    assert win.titles() == ["Fin de boucle: 4:4:4"]
+
+
+def test_shift_l_at_the_start_is_refused(win, monkeypatch):
+    import ui.ui_beep as ui_beep
+    beeps = []
+    monkeypatch.setattr(ui_beep, "alert", lambda w=None: beeps.append(w))
+    win.go(0)
+    _shift_l(win)
+    assert win.loop()[1] is None and win.titles() == [] and beeps
 
 
 def test_start_then_end_undone_one_by_one(win):
@@ -164,6 +175,7 @@ class _FakeLoopDialog:
     def get_loop_count(self):    return self._vals[2]
     def get_looping(self):       return self._vals[3]
     def _fmt_bbt(self, step):    return str(step)
+    def _fmt_end(self, step):    return str(step)       # fin exclue (Phase 9 étape 4b1)
     def Destroy(self):           pass
 
 

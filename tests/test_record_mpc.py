@@ -303,6 +303,7 @@ def _loop_win(looping=True, loop_end=None):
     win = FakeWindow()
     pat = win._player._pattern
     pat._looping, pat._loop_end = looping, loop_end
+    pat._loop_start = None                       # Shift+L le lit (Phase 9 étape 4b1)
     win._pattern_list = [SimpleNamespace(_loop_end=loop_end)]
     win._cur_pattern_idx = 0
     return win, KeyManager(win), pat

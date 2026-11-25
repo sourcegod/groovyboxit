@@ -36,7 +36,8 @@ def parent():
     frame.Destroy()
 
 
-def _dlg(parent, lim_left=16, lim_right=47, loop_start=8, loop_end=63, cur=4):
+def _dlg(parent, lim_left=16, lim_right=47, loop_start=8, loop_end=64, cur=4):
+    # loop_end exclu (Phase 9 étape 4b1) : la source « Fin de boucle » vaut 63
     # 8 mesures de 16 pas, 4 temps
     return LimiterSelectDialog(parent, 8, 4, 16, cur, lim_left, lim_right,
                                loop_start, loop_end)
@@ -109,9 +110,15 @@ def test_dialog_refuses_crossed_limiters_with_the_alert_beep(parent, monkeypatch
 
 
 @pytest.mark.gui
-def test_loop_dialog_keeps_its_sources_and_options(parent):
-    """Généralisé, le dialogue des Points de boucle ne change pas."""
-    dlg = LoopSelectDialog(parent, 8, 4, 16, 4, 16, 47, 2, looping=True,
+def test_loop_dialog_keeps_its_sources_and_options(parent, monkeypatch):
+    """Généralisé, le dialogue des Points de boucle garde ses sources et ses
+    options ; depuis 4b1 (fin exclue), il refuse une fin qui n'est pas après
+    le début."""
+    import ui.ui_beep as ui_beep
+    beeps = []
+    monkeypatch.setattr(ui_beep, "alert", lambda w=None: beeps.append(w))
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: None)
+    dlg = LoopSelectDialog(parent, 8, 4, 16, 4, 16, 48, 2, looping=True,
                            lim_left=8, lim_right=63)
     try:
         assert dlg.GetTitle() == "Points de boucle"
@@ -119,7 +126,7 @@ def test_loop_dialog_keeps_its_sources_and_options(parent):
         assert dlg._looping_cb.IsShown() and dlg._rep_spin.IsShown()
         dlg._start_ctrl.SetValue("5:1:1")
         dlg._end_ctrl.SetValue("2:1:1")
-        assert dlg._validate()                                  # pas de refus ici
+        assert not dlg._validate() and beeps == [dlg]
         dlg._start_list.SetSelection(3)
         dlg._on_start_source(None)
         assert dlg.get_loop_start() == 8
@@ -217,7 +224,7 @@ def test_select_all_and_deselect_all(win):
 @pytest.mark.gui
 def test_loop_to_limiters_has_its_entry(win):
     pat = win._player._pattern
-    pat._loop_start, pat._loop_end = 16, 47
+    pat._loop_start, pat._loop_end = 16, 48          # fin exclue (Phase 9 étape 4b1)
     _key(win, "Alt+Début")
     assert _lims(win) == (16, 47)
     assert _titles(win) == ["Limiteurs : 2:1:1 à 3:4:4"]
@@ -290,6 +297,7 @@ def editor(main_win):
     ed = main_win._midi_editor_window
     yield ed
     ed.Destroy()
+    main_win._midi_editor_window = None    # sinon la fixture suivante reprend un éditeur détruit
 
 
 @pytest.mark.gui

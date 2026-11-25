@@ -118,12 +118,14 @@ def test_loop_start_zero_returns_none():
     print("  get_loop_start() == None quand TextCtrl = '1:1:1' (step 0) : OK")
 
 def test_loop_end_last_returns_none():
-    # step=63 correspond à la fin → get_loop_end() retourne None
+    # fin exclue (Phase 9 étape 4b1) : 5:1:1 (pas 64) = fin du pattern → None ;
+    # 4:4:4 (pas 63) laisse le dernier pas hors de la boucle
     app, frame, dlg = make_dlg(loop_end=None)
-    dlg._end_ctrl.SetValue("4:4:4")
+    assert dlg._end_ctrl.GetValue() == "5:1:1"
     assert dlg.get_loop_end() is None
+    dlg._end_ctrl.SetValue("4:4:4")
+    assert dlg.get_loop_end() == 63
     teardown(app, frame, dlg)
-    print("  get_loop_end() == None quand TextCtrl = '4:4:4' (step 63) : OK")
 
 def test_initial_loop_count():
     app, frame, dlg = make_dlg(loop_count=3)
@@ -179,7 +181,7 @@ def test_source_lim_left():
     print("  loop_start == lim_left → source = Limiteur gauche : OK")
 
 def test_source_lim_right():
-    app, frame, dlg = make_dlg(loop_end=28)    # lim_right=28
+    app, frame, dlg = make_dlg(loop_end=29)    # lim_right=28 inclus → fin exclue 29 (4b1)
     assert dlg._end_list.GetSelection() == _SRC_LIM_R
     teardown(app, frame, dlg)
     print("  loop_end == lim_right → source = Limiteur droit : OK")
@@ -207,9 +209,8 @@ def test_select_end_updates_ctrl():
     app, frame, dlg = make_dlg(loop_end=20)
     dlg._end_list.SetSelection(_SRC_END)
     dlg._on_end_source(None)
-    assert dlg._end_ctrl.GetValue() == "4:4:4"
+    assert dlg._end_ctrl.GetValue() == "5:1:1"          # mesure suivante (4b1)
     teardown(app, frame, dlg)
-    print("  source Fin → TextCtrl = '4:4:4' : OK")
 
 def test_select_cur_step_updates_ctrl():
     app, frame, dlg = make_dlg(loop_start=20)   # cur_step=8
@@ -231,9 +232,8 @@ def test_select_lim_right_updates_ctrl():
     app, frame, dlg = make_dlg(loop_end=20)    # lim_right=28
     dlg._end_list.SetSelection(_SRC_LIM_R)
     dlg._on_end_source(None)
-    assert dlg._end_ctrl.GetValue() == "2:4:1"   # step 28
+    assert dlg._end_ctrl.GetValue() == "2:4:2"   # lim_right 28 + 1 (fin exclue, 4b1)
     teardown(app, frame, dlg)
-    print("  source Limiteur droit → TextCtrl = '2:4:1' (step 28) : OK")
 
 def test_select_custom_does_not_update_ctrl():
     app, frame, dlg = make_dlg(loop_start=20)

@@ -369,8 +369,8 @@ def test_limiters_to_loop_and_back(win):
     te.set_lim_left(pat._num_steps)
     te.set_lim_right(2 * pat._num_steps - 1)
     msg = _run(win, "Assigner les limiteurs à la boucle")
-    assert msg.startswith("Boucle : 2:1:1 à ")
-    assert (pat._loop_start, pat._loop_end) == (pat._num_steps, 2 * pat._num_steps - 1)
+    assert msg == "Boucle : 2:1:1 à 3:1:1"                  # fin exclue (Phase 9 étape 4b1)
+    assert (pat._loop_start, pat._loop_end) == (pat._num_steps, 2 * pat._num_steps)
     saved = win._pattern_list[win._cur_pattern_idx]
     assert (saved._loop_start, saved._loop_end) == (pat._loop_start, pat._loop_end)
     undo_count = len(_titles(win))
@@ -792,6 +792,7 @@ def editor(main_win, monkeypatch):
     ed.calls, ed.status = calls, status
     yield ed
     ed.Destroy()
+    main_win._midi_editor_window = None    # sinon la fixture suivante reprend un éditeur détruit
 
 
 @pytest.mark.gui
