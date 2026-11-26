@@ -451,13 +451,16 @@ def test_update_bpm_display_rounds_tempo_at_position():
 
 def test_bpm_spin_scales_all_tempos():
     pl = _player(bpm=100, changes=[(16, 50)])
-    win = SimpleNamespace(_player=pl, _bpm_ctrl=_Ctrl(50), statuses=[])
+    win = SimpleNamespace(_player=pl, _bpm_ctrl=_Ctrl(50), statuses=[], undo=[])
     win._show_status = win.statuses.append
+    win._add_mix_undo = lambda title, key=None: win.undo.append((title, key))
+    win._set_tempo_undo = lambda bpm: main_window.MainWindow._set_tempo_undo(win, bpm)
     pl._resume_offset = 20.0
     win._bpm_ctrl.value = 25
     main_window.MainWindow._on_bpm_spin(win, None)
     assert pl.bpm == 50 and pl._pattern._tempo_changes == [(16, 25)]
     assert win.statuses == ["BPM: 25"]
+    assert win.undo == [("BPM: 25", ("tempo",))]                 # Undo (Phase 9 étape 4c8)
 
 
 def test_on_play_stopped_resets_controllers_and_shows_tempo(monkeypatch):

@@ -19,6 +19,7 @@ from track_editor import TrackEditor
 from ui.mw_tracks import TrackMixin
 from ui.mw_pads import PadMixin
 from ui.mw_project import ProjectMixin
+from ui.mw_tempo import TempoMixin
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +322,7 @@ class FakeWindow:
     MASTER_VOLUME_MAX  = ProjectMixin.MASTER_VOLUME_MAX                # Phase 8 étape 8c1
     master_volume_text = staticmethod(ProjectMixin.master_volume_text)
     _set_master_pan_undo    = ProjectMixin._set_master_pan_undo
+    _set_tempo_undo         = TempoMixin._set_tempo_undo        # Phase 9 étape 4c8
     def _take_begin(self, title):
         # Noté avec l'état du player : la prise doit s'ouvrir AVANT le Rec/Erase
         self.calls.append(('_take_begin', title,
@@ -894,6 +896,7 @@ def test_bpm_increase_via_key5():
     win._player.bpm = 120
     km.handle(FakeEvent(key=ord('5')))   # '5' AZERTY = '(' position US
     assert ('set_tempo_scaled', 125) in win._player.calls     # 19d3, R2
+    assert ('_add_mix_undo', "BPM: 125", ("tempo",)) in win.calls   # Undo (4c8)
     teardown(app)
     print("  Touche '5' → tous les tempos à +5 depuis le tempo affiché : OK")
 

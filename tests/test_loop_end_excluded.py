@@ -430,3 +430,103 @@ def test_loop_off_while_playing_goes_on_to_the_end_of_the_pattern(win):
         p.stop_all()
         p.set_bpm(old_bpm)
         pat._looping, pat._loop_end = True, None
+
+
+# ----------------------------------------------------------------------
+# Correctif 4c8 : Undo du BPM (tests de 4c9)
+# ----------------------------------------------------------------------
+
+@pytest.fixture
+def clock(win, monkeypatch):
+    t = [100.0]
+    monkeypatch.setattr(win, "_mix_clock", lambda: t[0])
+    win._mix_undo_last = None
+    return t
+
+
+def _tempo(w):
+    return round(w._player.tempo_at())
+
+
+def _titles(w):
+    return [e.title for e in w._undo.history_list()]
+
+
+@pytest.mark.gui
+def test_close_bpm_steps_are_one_undo_entry(win, clock):
+    start = _tempo(win)
+    for _ in range(3):
+        _key(win, "(")
+        clock[0] += 0.3
+    assert _tempo(win) == start + 15
+    assert _titles(win) == [f"BPM: {start + 15}"]
+    assert win.status[-1] == f"BPM: {start + 15}"
+    win._undo_action()
+    assert _tempo(win) == start
+
+
+@pytest.mark.gui
+def test_spaced_bpm_steps_are_separate_entries(win, clock):
+    start = _tempo(win)
+    _key(win, ")")
+    clock[0] += 2.0
+    _key(win, ")")
+    assert _titles(win) == [f"BPM: {start - 10}", f"BPM: {start - 5}"]
+    win._undo_action()
+    assert _tempo(win) == start - 5
+    win._undo_action()
+    assert _tempo(win) == start
+
+
+@pytest.mark.gui
+def test_bpm_field_has_its_undo_and_nothing_if_unchanged(win, clock):
+    start = _tempo(win)
+    win._bpm_ctrl.SetValue(start)
+    win._on_bpm_spin(None)
+    assert _titles(win) == []                                     # inchangé
+    win._bpm_ctrl.SetValue(start + 20)
+    win._on_bpm_spin(None)
+    assert _tempo(win) == start + 20 and _titles(win) == [f"BPM: {start + 20}"]
+    assert win._project_modified
+    win._undo_action()
+    assert _tempo(win) == start
+
+
+@pytest.mark.gui
+def test_bpm_menu_items_are_undoable(win, clock):
+    start = _tempo(win)
+    it = [i for i in win._menu_items.values() if i.text() == "BPM +5"][0]
+    menu_bar.run(win, it)
+    assert _titles(win) == [f"BPM: {start + 5}"]
+    win._undo_action()
+    assert _tempo(win) == start
+
+
+@pytest.mark.gui
+def test_bpm_undo_brings_back_every_tempo(win, clock):
+    p = win._player
+    pat = p._pattern
+    start = p.bpm
+    pat._tempo_changes = [(pat._num_steps, start * 2)]
+    try:
+        win._set_tempo_undo(round(start) * 2)                     # tous ×2 (pas 0 : départ)
+        assert round(pat._tempo_changes[0][1]) == round(start * 4)
+        win._undo_action()
+        pat = win._player._pattern
+        assert round(p.bpm) == round(start)
+        assert round(pat._tempo_changes[0][1]) == round(start * 2)
+    finally:
+        win._player._pattern._tempo_changes = []
+
+
+def test_set_tempo_undo_refuses_out_of_range():
+    from ui.mw_tempo import TempoMixin
+
+    class _P:
+        def tempo_at(self, pos=None):
+            return 120
+    w = SimpleNamespace(_player=_P(), undo=[])
+    w._add_mix_undo = lambda *a: w.undo.append(a)
+    assert TempoMixin._set_tempo_undo(w, 0) == 120
+    assert TempoMixin._set_tempo_undo(w, 601) == 120
+    assert TempoMixin._set_tempo_undo(w, 120.2) == 120 and w.undo == []

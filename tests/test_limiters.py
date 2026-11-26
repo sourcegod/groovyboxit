@@ -402,23 +402,33 @@ def bells(monkeypatch):
 
 
 @pytest.mark.gui
-def test_history_beeps_at_both_ends(win, bells):
-    win._undo_action()
-    win._redo_action()
-    win._undo_history_dialog()
-    assert len(bells) == 3                                      # vide : les trois
+def test_history_beeps_only_when_nothing_can_be_done(win, bells, monkeypatch):
+    """Essai de 4c8 : bip seulement quand la commande ne peut rien faire —
+    jamais en atteignant la première ou la dernière entrée (3g4, retiré)."""
+    from ui import dialogs
+    monkeypatch.setattr(dialogs, "UndoHistoryDialog",
+                        type("_D", (), {"__init__": lambda s, *a: None,
+                                        "ShowModal": lambda s: wx.ID_CANCEL,
+                                        "Destroy": lambda s: None}))
+
+    def beeps(fn):
+        n = len(bells)
+        fn()
+        return len(bells) > n
+    # niveau 0 (lancement) : les trois
+    assert beeps(win._undo_action) and beeps(win._redo_action)
+    assert beeps(win._undo_history_dialog)
     assert win.status[-1] == "Historique Undo: vide"
-    win._add_undo("A")
-    win._add_undo("B")
-    bells.clear()
-    win._undo_action()
-    assert bells == []                                          # il en reste une
-    win._undo_action()
-    assert bells == [1]                                         # la première atteinte
-    win._redo_action()
-    assert bells == [1]
-    win._redo_action()
-    assert bells == [1, 1]                                      # la dernière atteinte
+    win._add_undo("A")                                          # niveau 1
+    assert beeps(win._redo_action)                              # rien à refaire
+    assert not beeps(win._undo_history_dialog)
+    win._add_undo("B")                                          # niveau 2
+    assert beeps(win._redo_action)
+    assert not beeps(win._undo_action)                          # → 1, sans bip
+    assert not beeps(win._redo_action)                          # → 2, la dernière : sans bip
+    assert not beeps(win._undo_action)                          # → 1
+    assert not beeps(win._undo_action)                          # → 0, la première : sans bip
+    assert beeps(win._undo_action)                              # plus rien
 
 
 @pytest.mark.gui
