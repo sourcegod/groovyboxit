@@ -118,8 +118,10 @@ def test_track_menu():
 def test_pattern_menu_and_file_without_pattern_items():
     pat = _menu("Pattern")
     assert _row(_sub(pat, "Changer de pattern").items) == [
-        ("Pattern précédent", None, "_menu_step_pattern", (-1,)),
-        ("Pattern suivant", None, "_menu_step_pattern", (1,)),
+        ("Pattern précédent", "<", "_menu_step_pattern", (-1,)),                 # 4c6
+        ("Pattern suivant", ">", "_menu_step_pattern", (1,)),
+        ("Premier pattern", "Ctrl+<", "_menu_edge_pattern", (False,)),
+        ("Dernier pattern utilisé", "Ctrl+>", "_menu_edge_pattern", (True,)),
         ("Choisir un pattern…", None, "_menu_choose_pattern", ())]
     assert _row(pat) == [
         ("Propriétés du pattern…", "Alt+Entrée", "_pattern_properties_dialog", ()),
@@ -836,3 +838,94 @@ def test_unavailable_labels_in_the_real_windows(main_win, editor):
     assert label(editor, "Rafraîchir") == "Rafraîchir"
     assert label(editor, "Piste suivante") == "Piste suivante (Indisponible)"
     assert label(main_win, "Piste suivante") == "Piste suivante"
+
+
+# ----------------------------------------------------------------------
+# Raccourcis de changement de pattern (Phase 9 étape 4c7, tests de 4c6)
+# ----------------------------------------------------------------------
+
+@pytest.fixture
+def bells(monkeypatch):
+    rang = []
+    monkeypatch.setattr(wx, "Bell", lambda: rang.append(1))
+    return rang
+
+
+def _pkey(w, accel):
+    w.status.clear()
+    w._key_manager.handle(menu_bar.key_event(accel))
+    return w.status[-1] if w.status else None
+
+
+@pytest.mark.gui
+def test_less_and_greater_step_through_the_patterns(win, bells):
+    assert _pkey(win, "<") == "Pattern 01: premier pattern" and bells == [1]
+    _pkey(win, ">")
+    assert win._cur_pattern_idx == 1 and win._pattern_listbox.GetSelection() == 1
+    _pkey(win, "<")
+    assert win._cur_pattern_idx == 0 and bells == [1]
+    win._switch_pattern(98)
+    assert _pkey(win, ">") == "Pattern 99: dernier pattern" and bells == [1, 1]
+    win._switch_pattern(0)
+
+
+@pytest.mark.gui
+def test_shift_less_is_greater_on_a_french_keyboard(win):
+    """> = Shift+< : code de « < » avec Shift, ou caractère « > »."""
+    evt = menu_bar.key_event("<")
+    evt.SetShiftDown(True)
+    win._key_manager.handle(evt)
+    assert win._cur_pattern_idx == 1
+    win._switch_pattern(0)
+
+
+@pytest.mark.gui
+def test_ctrl_less_and_ctrl_greater_go_to_the_ends(win, bells, monkeypatch):
+    used = {0, 2, 6}                                    # patterns non vides
+    monkeypatch.setattr(win, "_last_used_pattern",
+                        lambda: max(i for i in used))
+    assert _pkey(win, "Ctrl+>") == "Pattern 07" and win._cur_pattern_idx == 6
+    assert _pkey(win, "Ctrl+>") == "Pattern 07: dernier pattern utilisé" and bells == [1]
+    assert _pkey(win, "Ctrl+<") == "Pattern 01" and win._cur_pattern_idx == 0
+    assert _pkey(win, "Ctrl+<") == "Pattern 01: premier pattern" and bells == [1, 1]
+    evt = menu_bar.key_event("Ctrl+<")                  # Ctrl+Shift+< = Ctrl+>
+    evt.SetShiftDown(True)
+    win._key_manager.handle(evt)
+    assert win._cur_pattern_idx == 6
+    win._switch_pattern(0)
+
+
+@pytest.mark.gui
+def test_last_used_pattern_is_the_last_non_empty(win, monkeypatch):
+    from pattern import Pattern
+    empty = {i for i in range(99)} - {0, 3, 11}
+    monkeypatch.setattr(Pattern, "is_empty",
+                        lambda self: self._idx_for_test in empty, raising=False)
+    for i, pat in enumerate(win._pattern_list):
+        pat._idx_for_test = i
+    win._player._pattern._idx_for_test = win._cur_pattern_idx
+    assert win._last_used_pattern() == 11
+    empty |= {0, 3, 11}
+    assert win._last_used_pattern() == 0                # tous vides : le premier
+
+
+@pytest.mark.gui
+def test_pattern_keys_do_nothing_in_a_text_field(win, monkeypatch):
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: win._bpm_ctrl))
+    evt = menu_bar.key_event(">")
+    win._key_manager.handle(evt)
+    assert win._cur_pattern_idx == 0
+
+
+@pytest.mark.gui
+def test_pattern_items_unavailable_in_the_editor(editor):
+    for text in ("Premier pattern", "Dernier pattern utilisé", "Pattern suivant"):
+        editor.status.clear()
+        menu_bar.run(editor, _find(text))
+        assert editor.status == [f"{text} : indisponible dans cette fenêtre"]
+
+
+def test_less_and_greater_keys_in_menukeys():
+    from menukeys.keys import accel_of, gtk_accel, key_event
+    assert accel_of(key_event("<")) == "<" and accel_of(key_event("Ctrl+>")) == "Ctrl+>"
+    assert gtk_accel("Ctrl+<") == "<Control>less" and gtk_accel(">") == "greater"
