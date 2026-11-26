@@ -17046,3 +17046,30 @@ principale, éditeur MIDI, Songs) — en lecture, position gardée
 (`_resync_offset`, mécanisme du tempo changé en lecture, 19d1) et fil
 réveillé : nouvelle fenêtre aussitôt. Essai concluant. Tests de 4c2 et
 4c3 : 4c4.
+
+## Phase 9 étape 4c5 — Avenant : raccourcis de changement de pattern
+
+**Demande de l'utilisateur (2026-11-26, essai de 4c2).**
+- P1 — **<** : pattern précédent ; **>** : pattern suivant ; **Ctrl+<** :
+  premier pattern de la liste ; **Ctrl+>** : dernier pattern NON VIDE
+  (réponse de l'utilisateur ; `Pattern.is_empty`, comme « (Unused) » dans
+  la liste ; tous vides : le premier). Bip système (`wx.Bell`) si l'on y est déjà, avec une annonce
+  (« Pattern 01: premier pattern »), comme Pattern > Changer de pattern
+  (3b1).
+- P2 — Libres (aucune commande sur < ni >). Clavier français : > est
+  Shift+<, Ctrl+> est Ctrl+Shift+< : la touche est reconnue par son
+  caractère (< ou >) ou par son code, Shift choisissant le sens.
+- P3 — Même chemin que les éléments du menu (`_menu_step_pattern`, et un
+  nouveau `_menu_edge_pattern` pour premier / dernier) : liste des patterns
+  qui suit (curseur GTK), boucle et clips audio du pattern suivis (4c2).
+  Pas dans un champ de saisie (BPM, Vol, Pan) — comme les autres touches
+  caractères.
+- P4 — Menu Pattern > Changer de pattern : Pattern précédent (<), Pattern
+  suivant (>), Premier pattern (Ctrl+<), Dernier pattern utilisé (Ctrl+>), Choisir
+  un pattern… ; aide F1, SPECS.
+- P5 — Fenêtre principale seulement (réponse de l'utilisateur ; les
+  éléments du menu Pattern y sont propres) ; « (Indisponible) » dans
+  l'éditeur MIDI et Songs.
+
+**Étapes.** 4c6 : P1-P5 et essai ; 4c7 : tests ; puis 4d1 (limiteurs
+exclus).
