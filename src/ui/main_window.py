@@ -590,8 +590,7 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
         ]
 
     def _on_bpm_spin(self, event):
-        bpm = self._bpm_ctrl.GetValue()
-        self._player.set_tempo_scaled(bpm)      # tous les tempos (19d3, § 19d2 R2)
+        bpm = self._set_tempo_undo(self._bpm_ctrl.GetValue())   # Undo (4c8)
         self._show_status(f"BPM: {bpm}")
 
     def _on_volume_spin(self, event):

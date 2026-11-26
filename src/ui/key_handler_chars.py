@@ -440,12 +440,12 @@ class CharHandler:
 
         # BPM / Volume
         if ukey == ord('(') or key == ord('(') or (not shift and not ctrl and key == ord('5')):
-            win._player.set_tempo_scaled(round(win._player.tempo_at()) + 5)   # 19d3, R2
+            win._set_tempo_undo(round(win._player.tempo_at()) + 5)   # 19d3, R2 ; Undo (4c8)
             win._update_bpm_display()
             win._show_status(f"BPM: {format_bpm(win._player.tempo_at())}")   # menu Métronome (3b3)
             return True
         if ukey == ord(')') or key == ord(')'):
-            win._player.set_tempo_scaled(round(win._player.tempo_at()) - 5)
+            win._set_tempo_undo(round(win._player.tempo_at()) - 5)   # Undo (4c8)
             win._update_bpm_display()
             win._show_status(f"BPM: {format_bpm(win._player.tempo_at())}")   # menu Métronome (3b3)
             return True

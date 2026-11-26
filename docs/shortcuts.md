@@ -8,9 +8,9 @@ Ctrl+Shift+S     Enregistrer le projet sous... ; case « Créer un nouveau dossi
                  ce projet » (cochée par défaut : MonProjet/MonProjet.gvp) ; champ
                  « Chemin des fichiers audios » (défaut : Audios dans le dossier du
                  projet) et « Parcourir… » ; les prises audio y suivent, au nom du projet
-Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc) ; bip si
-                 rien à annuler ou si l'on revient à la première entrée
-Shift+Z          Refaire ; bip si rien à refaire ou si l'on atteint la dernière
+Ctrl+Z           Annuler (une prise d'enregistrement s'annule d'un bloc) ; bip s'il
+                 n'y a rien à annuler
+Shift+Z          Refaire ; bip s'il n'y a rien à refaire
 Ctrl+Shift+Z     Afficher l'historique des annulations (bip s'il est vide)
 Alt+F4           Quitter (demande d'enregistrer si le projet est modifié) ; dans
                  l'éditeur MIDI et Songs, Alt+F4 ferme cette fenêtre seulement
@@ -218,6 +218,8 @@ H                Tap Tempo : frapper au rythme pour définir le BPM (aussi Trans
                  (4 frappes minimum = 1 mesure ; pause > 2 s repart de zéro)
 ( ou 5           BPM +5
 )                BPM -5
+                 Champ BPM, ( et ) : annulables (Ctrl+Z ; des pas rapprochés
+                 de moins d'une seconde ne font qu'une entrée)
                  Champ BPM, H, ( et ) : tous les tempos du pattern changent
                  dans la même proportion ; le champ affiche le tempo en
                  vigueur à la position (et le suit pendant la lecture)

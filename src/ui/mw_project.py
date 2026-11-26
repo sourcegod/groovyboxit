@@ -1768,7 +1768,7 @@ class ProjectMixin:
         """Ctrl+Z : annule la dernière action."""
         entry = self._undo.undo()
         if entry is None:
-            wx.Bell()                      # bip système (Phase 9 étape 3g4, essai)
+            wx.Bell()                      # rien à annuler (3g4 ; seulement là : 4c8, essai)
             self._show_status("Undo: rien à annuler")
             return
         current = self._capture_state()
@@ -1776,15 +1776,13 @@ class ProjectMixin:
         self._restore_state(entry.state)
         self._undo.current_id = entry.state_id     # point propre (16d1, D1)
         self._update_title()
-        if not self._undo.can_undo():
-            wx.Bell()                      # premier de l'historique atteint (3g4, essai)
         self._show_status(f"Undo: {entry.title}  ({entry.rel_time()})")
 
     def _redo_action(self):
         """Shift+Z : refait la dernière action annulée."""
         entry = self._undo.redo()
         if entry is None:
-            wx.Bell()                      # bip système (Phase 9 étape 3g4, essai)
+            wx.Bell()                      # rien à refaire (3g4 ; seulement là : 4c8, essai)
             self._show_status("Redo: rien à refaire")
             return
         current = self._capture_state()
@@ -1792,8 +1790,6 @@ class ProjectMixin:
         self._restore_state(entry.state)
         self._undo.current_id = entry.state_id     # point propre (16d1, D1)
         self._update_title()
-        if not self._undo.can_redo():
-            wx.Bell()                      # dernier de l'historique atteint (3g4, essai)
         self._show_status(f"Redo: {entry.title}  ({entry.rel_time()})")
 
     def _undo_history_dialog(self):

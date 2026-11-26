@@ -17078,3 +17078,16 @@ exclus).
 dans le champ BPM, raccourcis lus par Orca). Signalé : le champ BPM, ( / )
 et BPM +5 / −5 n'ont pas d'Undo → correctif 4c8 (Undo regroupé comme les
 volumes, accord de l'utilisateur), tests 4c9 ; tests de 4c6 : 4c7.
+
+## Phase 9 étape 4c8 — Correctif : Undo du BPM, bips de l'historique
+
+- Le champ BPM, ( et ), BPM +5 / −5 changeaient les tempos sans Undo
+  (essai de 4c6) : `TempoMixin._set_tempo_undo`, Undo regroupé comme les
+  volumes (`_add_mix_undo`, clé « tempo », pas rapprochés de moins d'une
+  seconde : une entrée « BPM: 135 », valeur atteinte), rien si le tempo
+  ne change pas.
+- Bips de l'historique revus à l'essai : seulement quand la commande ne
+  peut rien faire — Ctrl+Z sans rien à annuler, Shift+Z sans rien à
+  refaire, Ctrl+Shift+Z historique vide ; les bips de 3g4 joués en
+  atteignant la première ou la dernière entrée sont retirés (mal placés).
+- Essai concluant. Tests : 4c9.

@@ -15,6 +15,22 @@ class TempoMixin:
     """Tempos du pattern courant : le player les applique (position gardée
     en lecture), la fenêtre pose l'Undo et rafraîchit l'affichage."""
 
+    def _set_tempo_undo(self, bpm):
+        """Champ BPM, ( et ), BPM +5 / −5 (Phase 9 étape 4c8, essai de 4c6 :
+        sans Undo) : le tempo en vigueur à la position devient bpm, tous les
+        tempos en proportion (19d3, § 19d2 R2) ; Undo regroupé comme les
+        volumes (des pas rapprochés de moins d'une seconde : une entrée,
+        « BPM: 135 », valeur atteinte) ; rien si le tempo ne change pas.
+        Retourne le tempo à la position (arrondi)."""
+        p   = self._player
+        old = round(p.tempo_at())
+        bpm = int(round(bpm))
+        if bpm == old or not 1 <= bpm <= 600:
+            return old
+        self._add_mix_undo(f"BPM: {bpm}", ("tempo",))
+        p.set_tempo_scaled(bpm)
+        return round(p.tempo_at())
+
     def _tempo_dialog(self, parent=None):
         """Alt+Shift+T : dialogue Tempo, ouvert sur le tempo en vigueur."""
         from ui.dialogs_tempo import TempoDialog
