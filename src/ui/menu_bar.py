@@ -196,8 +196,13 @@ MENUS = [
     # viennent de Fichier
     ("Pattern", "P", [
         Submenu("&Changer de pattern", [
-            Item("Pattern &précédent", call="_menu_step_pattern", args=(-1,), windows=P),
-            Item("Pattern &suivant", call="_menu_step_pattern", args=(1,), windows=P),
+            Item("Pattern &précédent", "<", call="_menu_step_pattern", args=(-1,), windows=P),
+            Item("Pattern &suivant", ">", call="_menu_step_pattern", args=(1,), windows=P),
+            # 4c6 (§ 4c5) : premier, dernier non vide
+            Item("Pre&mier pattern", "Ctrl+<", call="_menu_edge_pattern", args=(False,),
+                 windows=P),
+            Item("&Dernier pattern utilisé", "Ctrl+>", call="_menu_edge_pattern", args=(True,),
+                 windows=P),
             Item("&Choisir un pattern…", call="_menu_choose_pattern", windows=P),   # 3d1
         ]),
         Item("&Propriétés du pattern…", "Alt+Entrée", call="_pattern_properties_dialog",

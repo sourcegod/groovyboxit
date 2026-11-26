@@ -70,6 +70,28 @@ class MainMenuActions:
         self._switch_pattern(new)
         select_with_cursor(self._pattern_listbox, new)
 
+    def _last_used_pattern(self):
+        """Indice du dernier pattern non vide (le courant tel qu'il est
+        joué), 0 si tous sont vides (Phase 9 étape 4c6, § 4c5 P1)."""
+        for i in range(len(self._pattern_list) - 1, -1, -1):
+            pat = self._player._pattern if i == self._cur_pattern_idx else self._pattern_list[i]
+            if not pat.is_empty():
+                return i
+        return 0
+
+    def _menu_edge_pattern(self, last):
+        """Ctrl+< : premier pattern ; Ctrl+> : dernier pattern utilisé (non
+        vide) ; bip si l'on y est déjà (4c6, § 4c5 P1, P3)."""
+        cur = self._cur_pattern_idx
+        new = self._last_used_pattern() if last else 0
+        if new == cur:
+            wx.Bell()
+            self._show_status(f"Pattern {cur + 1:02d}: "
+                              + ("dernier pattern utilisé" if last else "premier pattern"))
+            return
+        self._switch_pattern(new)
+        select_with_cursor(self._pattern_listbox, new)
+
     def _menu_choose_pattern(self):
         """Pattern > Changer de pattern > Choisir un pattern… (3d1)."""
         from .dialogs_menu import PatternChoiceDialog

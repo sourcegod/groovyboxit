@@ -17073,3 +17073,8 @@ réveillé : nouvelle fenêtre aussitôt. Essai concluant. Tests de 4c2 et
 
 **Étapes.** 4c6 : P1-P5 et essai ; 4c7 : tests ; puis 4d1 (limiteurs
 exclus).
+
+**4c6 — essai.** Concluant (< / >, Ctrl+< / Ctrl+> et leurs bips, rien
+dans le champ BPM, raccourcis lus par Orca). Signalé : le champ BPM, ( / )
+et BPM +5 / −5 n'ont pas d'Undo → correctif 4c8 (Undo regroupé comme les
+volumes, accord de l'utilisateur), tests 4c9 ; tests de 4c6 : 4c7.

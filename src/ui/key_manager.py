@@ -99,6 +99,17 @@ class KeyManager(AltHandler, TransportHandler, CtrlHandler,
         if key == wx.WXK_F10 and not (ctx.ctrl or ctx.alt or ctx.shift) \
                 and menu_bar.open_first(win):
             return
+        # < / > : pattern précédent / suivant ; Ctrl+< / Ctrl+> : premier /
+        # dernier pattern utilisé (Phase 9 étape 4c6, § 4c5) ; > = Shift+<
+        # au clavier français : caractère ou code, Shift donne le sens
+        if not ctx.alt and (ukey in (60, 62) or key in (60, 62)) \
+                and not any(getattr(ctx, n) for n in self._TEXT_FIELDS):
+            forward = ctx.shift or 62 in (ukey, key)
+            if ctx.ctrl:
+                win._menu_edge_pattern(forward)
+            else:
+                win._menu_step_pattern(1 if forward else -1)
+            return
         if ctx.ctrl and self._handle_ctrl(event, ctx):
             return
         if self._handle_navigation(event, ctx):

@@ -53,6 +53,10 @@ Alt+Shift+I      Importer un fichier MIDI (.mid) dans le pattern courant (le rem
                  choix gardé)
 Alt+Shift+T      Tempos du pattern : insérer, modifier, supprimer, Tap Tempo, Click
                  (dialogue Tempo ; Entrée ou Espace sur « Tap Tempo » = une frappe)
+< / >            Pattern précédent / suivant, quel que soit le focus (> = Shift+<) ;
+                 bip si l'on est déjà au premier / au dernier
+Ctrl+< / Ctrl+>  Premier pattern / dernier pattern utilisé (non vide) ; bip si l'on
+                 y est déjà (aussi Pattern > Changer de pattern)
 Ctrl+F           Doubler le pattern (duplique les mesures existantes)
 Shift+F          Diviser le pattern par deux (garde la première moitié)
 

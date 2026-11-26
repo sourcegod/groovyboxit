@@ -1259,6 +1259,9 @@ volume général ne sont pas concernés.
   (Entrée), Affichage > Rafraîchir (R), Traitement > Midi > Note (Num 1 /
   3, 4 / 6, 7 / 9, 2 / 8, Ctrl+Num 2 / 8) ; les limiteurs de Transport
   aussi actifs dans l'éditeur.
+  Changement de pattern (Phase 9 étape 4c6) : < / > pattern précédent /
+  suivant, Ctrl+< premier, Ctrl+> dernier pattern non vide, bip aux bouts ;
+  fenêtre principale seulement.
   Limiteurs (Phase 9 étape 3g4) : enregistrés dans le projet (clé
   `limiters` du `.gvp`, `ui/mw_limiters.py`), capturés par l'Undo, une
   entrée par commande (i, o, Shift+I, Shift+O, Alt+Début, Ctrl+A /

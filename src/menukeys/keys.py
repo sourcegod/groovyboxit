@@ -11,7 +11,7 @@
     Noms de touches : Ctrl, Shift, Alt ; Espace, Entrée, Échap, PageUp,
     PageDown, Haut, Bas, Gauche, Droite, Suppr, Début, Fin, Retour arrière ;
     Num 0 à Num 9 (pavé numérique) ; F1 à F12 ; une lettre, un chiffre,
-    « ( » ou « ) »
+    « ( », « ) », « < » ou « > »
     (noms de flèches, Suppr… et pavé : GroovyboxIt, Phase 9 étape 3b1).
     Date: Sun, 22/11/2026
     Author: Coolbrother
@@ -24,14 +24,16 @@ _KEYS = {"Espace": (wx.WXK_SPACE, ord(" ")), "Entrée": (wx.WXK_RETURN, 13),
          "Haut": (wx.WXK_UP, 0), "Bas": (wx.WXK_DOWN, 0),
          "Gauche": (wx.WXK_LEFT, 0), "Droite": (wx.WXK_RIGHT, 0),
          "Suppr": (wx.WXK_DELETE, 127), "Début": (wx.WXK_HOME, 0),
-         "Fin": (wx.WXK_END, 0), "Retour arrière": (wx.WXK_BACK, 8)}
+         "Fin": (wx.WXK_END, 0), "Retour arrière": (wx.WXK_BACK, 8),
+         "<": (ord("<"), ord("<")), ">": (ord(">"), ord(">"))}
 _KEYS.update({f"Num {d}": (wx.WXK_NUMPAD0 + d, 0) for d in range(10)})
 
 _GTK_KEYS = {"Espace": "space", "Entrée": "Return", "Échap": "Escape",
              "PageUp": "Page_Up", "PageDown": "Page_Down",
              "Haut": "Up", "Bas": "Down", "Gauche": "Left", "Droite": "Right",
              "Suppr": "Delete", "Début": "Home", "Fin": "End",
-             "Retour arrière": "BackSpace", "(": "parenleft", ")": "parenright"}
+             "Retour arrière": "BackSpace", "(": "parenleft", ")": "parenright",
+             "<": "less", ">": "greater"}
 _GTK_KEYS.update({f"Num {d}": f"KP_{d}" for d in range(10)})
 
 # touche wx → nom (accel_of)
