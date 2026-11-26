@@ -172,7 +172,7 @@ class NavigationHandler:
             return True
 
         if key == wx.WXK_NUMPAD_ENTER:
-            win._play(win._cur_row)
+            win._play_grid_row(win._cur_row)            # instrument de la piste (5b3)
             return True
 
         if key == wx.WXK_RETURN:
@@ -189,7 +189,7 @@ class NavigationHandler:
                 r, c = win._cur_row, win._cur_col
                 new_val = False if shift else not win._cells[r][c].GetValue()
                 win._set_cell(r, c, new_val)
-                win._play(r)
+                win._play_grid_row(r)                   # instrument de la piste (5b3)
             return True
 
         if shift and key == wx.WXK_DELETE:

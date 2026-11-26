@@ -759,8 +759,20 @@ class MainWindow(PatternMixin, SongMixin, ProjectMixin, TrackMixin, PadMixin,
             wx.Bell()
         else:
             if dr != 0 and self._autoplay:
-                self._play(r)
+                self._play_grid_row(r)                 # instrument de la piste (5b3)
         self._cells[r][c].SetFocus()
+
+    def _play_grid_row(self, row):
+        """Écoute d'une rangée de la grille (Haut / Bas, Entrée, Entrée du
+        pavé) : jouée comme le lecteur la jouera sur la piste courante —
+        synthé, banque, SFZ, kit, mode Rack, port externe —, volume, pan et
+        durée du pad compris ; même muette (Phase 9 étape 5b3, § 5b2 G1, G3 :
+        elle jouait toujours le kit chargé). Le jeu direct garde _play."""
+        vm  = self._player.voice_manager
+        vol = min(1.0, vm.get_volume_factor(row))
+        pan = max(-100, min(100, self._player.pan + vm.get_pan(row)))
+        self._router.on_play(self._player._cur_track, row, vol, pan,
+                             vm.get_duration_ms(row), audition=True)
 
     def _play(self, idx):
         slot = self._rack.get_slot(self._cur_slot)

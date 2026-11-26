@@ -239,6 +239,8 @@ Ctrl+Retour arrière   Volume et Pan Global aux valeurs des Préférences
 --- Grille (navigation) ---
 Flèches          Déplacer le curseur
 Entrée           Cocher / décocher la cellule + jouer la ligne courante
+                 La grille joue l'instrument de la piste courante, comme la
+                 lecture (synthé, banque, SFZ, kit), même si la piste est muette
 Shift+Entrée     Décocher la cellule + jouer la ligne courante
 Tab / Shift+Tab  Passer au widget suivant / précédent
 

@@ -17236,3 +17236,10 @@ toujours les sons du kit chargé.
 
 **Étapes.** 5b3 : G1-G4 et essai ; 5c1 : tests de 5b1 et 5b3 ; 5d1 :
 clôture.
+
+**5b3 — essai.** Concluant (synthé et kit à l'écoute de la grille, piste
+muette audible, jeu direct inchangé, conversion de 5b1 annoncée). Ajout de
+l'essai : après une conversion dans l'éditeur MIDI, la case de la grille
+restait cochée alors que la note de grille n'existait plus — le
+rafraîchissement de l'éditeur (`_refresh`, après toute édition, Undo, R)
+rafraîchit aussi la grille de la fenêtre principale.

@@ -172,6 +172,12 @@ class DisplayMixin:
             self._skip_listbox_announce = True
             self._event_lb.SetSelection(cur)
         self._update_mode_label()
+        # La grille de la fenêtre principale suit les éditions de l'éditeur
+        # (Phase 9 étape 5b3, essai : après une conversion en note PATCH, la
+        # case restait cochée alors que la note de grille n'existait plus)
+        refresh_grid = getattr(self._parent, "_refresh_grid", None)
+        if refresh_grid is not None:
+            refresh_grid()
 
     def _event_pitch_number(self, e):
         """Numéro affiché à côté du nom (_event_note_name) : note MIDI brute

@@ -1224,6 +1224,10 @@ volume général ne sont pas concernés.
   sinon elle devient une note PATCH (comme une note enregistrée : même
   position, vélocité, canal, durée du pad) et quitte la grille 16×16.
   Pistes de kit : inchangées (16 pads).
+- Écoute de la grille de la fenêtre principale (Phase 9 étape 5b3) : Haut /
+  Bas, Entrée, Entrée du pavé jouent la rangée comme le lecteur sur la
+  piste courante (`TrackRouter.on_play`, audition : même muette) ; le jeu
+  direct (pavé, liste des pads) suit toujours le mode d'entrée.
 
 ### Boucle : fin exclue (Phase 9 étape 4b1)
 - **Fin de boucle EXCLUE**, comme dans Sonar : quatre mesures vont de

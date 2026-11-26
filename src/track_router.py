@@ -1228,9 +1228,12 @@ class TrackRouter(TrackMidiOutMixin, TrackAudioMixin, TrackLiveMixMixin):
         self.reset_all_controls()
         self.ext_notes_off(panic=True)
 
-    def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500):
-        """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback)."""
-        if not self._track_is_audible(track_idx):
+    def on_play(self, track_idx, pad_idx, vol_factor, pan, duration_ms=500,
+                audition=False):
+        """Dispatch sonore lors de la lecture multi-piste (DrumPlayer callback).
+        audition : écoute de la grille de la fenêtre principale (Phase 9 étape
+        5b3, § 5b2 G3) — une piste muette ou hors solo sonne quand même."""
+        if not audition and not self._track_is_audible(track_idx):
             return
         if self.ext_grid(track_idx, pad_idx, vol_factor, duration_ms):   # port externe (12b1)
             return
