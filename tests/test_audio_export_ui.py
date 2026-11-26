@@ -358,7 +358,7 @@ def test_selection_source_then_file(tmp_path, env):
     assert kw["window"] == (16, 32) and kw["tracks"] == {2, 5}
     assert kw["pattern"] is not pat
     assert win.statuses[-1].startswith(
-        "Sélection (pistes 3, 6 ; 2:1:1 à 2:4:4) exportée en WAV : s.wav")
+        "Sélection (pistes 3, 6 ; 2:1:1 à 3:1:1) exportée en WAV : s.wav")
 
 
 def test_selection_without_selected_tracks_uses_current_track(tmp_path, env):
@@ -368,7 +368,7 @@ def test_selection_without_selected_tracks_uses_current_track(tmp_path, env):
     win._export_audio_choose()
     _wait(win)
     assert env.rendered[0]["tracks"] == {4}
-    assert "Sélection (piste 5 ; 1:1:1 à 1:1:4)" in win.statuses[-1]
+    assert "Sélection (piste 5 ; 1:1:1 à 1:2:1)" in win.statuses[-1]
 
 
 def test_selection_cancel(tmp_path, env):
@@ -522,13 +522,17 @@ def test_dialog_selection_fields():
     dlg = _dialog(source_idx=2, num_bars=4, num_beats=4, num_steps=16,
                   lim_left=16, lim_right=47)
     try:
-        assert (dlg._left.GetValue(), dlg._right.GetValue()) == ("2:1:1", "3:4:4")
+        # fin exclue (Phase 9 étape 4d1) : limiteur droit 47 → 4:1:1
+        assert (dlg._left.GetValue(), dlg._right.GetValue()) == ("2:1:1", "4:1:1")
         assert dlg._left.GetName() == "Début de la sélection"
         assert dlg._right.GetName() == "Fin de la sélection"
         assert dlg.get_window() == (16, 47) and dlg._validate() is None
-        dlg._left.SetValue("4:1:1")
-        assert dlg._validate() == "La fin de la sélection est avant son début"
+        dlg._left.SetValue("4:1:1")                              # vide : refusée
+        assert dlg._validate() == "La fin de la sélection doit être après son début"
         assert dlg.get_window() is None
+        dlg._left.SetValue("1:1:1")
+        dlg._right.SetValue("5:1:1")                             # fin du pattern
+        assert dlg.get_window() == (0, 63) and dlg._validate() is None
         dlg._left.SetValue("x")
         assert dlg._validate().startswith("Position invalide")
         dlg._source_lb.SetSelection(0)
@@ -541,7 +545,7 @@ def test_dialog_selection_fields():
 def test_dialog_whole_pattern_without_limiters():
     dlg = _dialog(source_idx=2, num_bars=2, num_beats=3, num_steps=12)
     try:
-        assert (dlg._left.GetValue(), dlg._right.GetValue()) == ("1:1:1", "2:3:4")
+        assert (dlg._left.GetValue(), dlg._right.GetValue()) == ("1:1:1", "3:1:1")   # 4d1
     finally:
         dlg.Destroy()
 
@@ -557,7 +561,7 @@ def test_dialog_invalid_selection_keeps_dialog_open(monkeypatch):
     try:
         dlg._right.SetValue("1:1:1")
         dlg._on_ok(None)
-        assert shown == [("bip", dlg), "La fin de la sélection est avant son début"] \
+        assert shown == [("bip", dlg), "La fin de la sélection doit être après son début"] \
             and ended == []
         dlg._right.SetValue("4:1:1")
         dlg._on_ok(None)
@@ -757,7 +761,7 @@ def test_real_render_selection_to_file(tmp_path, monkeypatch):
     assert sf.info(out).subtype == "FLOAT" and len(y) == 2 * SR
     onsets = list(np.flatnonzero(np.abs(y[:, 0]) > 1e-3))
     assert onsets[:2] == [round(4 * 0.125 * SR), round(8 * 0.125 * SR)]
-    assert win.statuses[-1].startswith("Sélection (pistes 2, 3 ; 2:1:1 à 2:4:4) exportée")
+    assert win.statuses[-1].startswith("Sélection (pistes 2, 3 ; 2:1:1 à 3:1:1) exportée")
 
 
 
@@ -987,7 +991,7 @@ def test_selection_all_tracks_job(tmp_path, env):
     assert kw["tracks"] is None and kw["window"] == (16, 32)
     assert win._audio_sel_only is False
     assert win.statuses[-1].startswith(
-        "Sélection (toutes les pistes ; 2:1:1 à 2:4:4) exportée en WAV : s.wav")
+        "Sélection (toutes les pistes ; 2:1:1 à 3:1:1) exportée en WAV : s.wav")
 
 
 def test_tracks_choice_kept_for_session_not_on_cancel(tmp_path, env):

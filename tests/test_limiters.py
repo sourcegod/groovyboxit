@@ -54,7 +54,7 @@ def test_dialog_panels_sources_and_no_loop_options(parent):
             "Position courante", "Début du pattern", "Fin du pattern", "Début de boucle",
             "Fin de boucle", "Personnalisé"]
         assert not dlg._looping_cb.IsShown() and not dlg._rep_spin.IsShown()
-        assert (dlg.get_start_step(), dlg.get_end_step()) == (16, 47)   # limiteurs posés
+        assert (dlg.get_start_step(), dlg.get_end_step()) == (16, 48)   # droit exclu (4d1)
         assert dlg._start_list.GetSelection() == _SRC_CUSTOM
     finally:
         dlg.Destroy()
@@ -64,13 +64,16 @@ def test_dialog_panels_sources_and_no_loop_options(parent):
 def test_dialog_sources_give_their_step(parent):
     dlg = _dlg(parent)
     try:
-        for src, step in ((0, 4), (1, 0), (2, 127), (3, 8), (4, 63)):
+        for src, step in ((0, 4), (1, 0), (2, 127), (3, 8), (4, 64)):     # boucle exclue
             dlg._start_list.SetSelection(src)
             dlg._on_start_source(None)
             assert dlg.get_start_step() == step, src
         dlg._end_list.SetSelection(3)                           # Début de boucle
         dlg._on_end_source(None)
         assert dlg.get_end_step() == 8
+        dlg._end_list.SetSelection(2)                           # Fin du pattern (4d1)
+        dlg._on_end_source(None)
+        assert dlg._end_ctrl.GetValue() == "9:1:1" and dlg.get_end_step() == 128
     finally:
         dlg.Destroy()
 
@@ -79,7 +82,7 @@ def test_dialog_sources_give_their_step(parent):
 def test_dialog_opens_on_the_whole_pattern_without_limiters(parent):
     dlg = _dlg(parent, None, None, None, None, cur=30)
     try:
-        assert (dlg.get_start_step(), dlg.get_end_step()) == (0, 127)
+        assert (dlg.get_start_step(), dlg.get_end_step()) == (0, 128)   # droit exclu (4d1)
         assert dlg._start_list.GetSelection() == 1 and dlg._end_list.GetSelection() == 2
         dlg._start_list.SetSelection(3)                         # sans boucle : début
         dlg._on_start_source(None)
@@ -101,10 +104,13 @@ def test_dialog_refuses_crossed_limiters_with_the_alert_beep(parent, monkeypatch
         dlg._end_ctrl.SetValue("2:1:1")
         dlg._on_ok(None)
         assert ended == [] and beeps == [dlg]
-        assert boxes == ["Le limiteur gauche est après le limiteur droit."]
-        dlg._end_ctrl.SetValue("5:1:1")                         # égaux : permis
+        assert boxes == ["Le limiteur droit doit être après le limiteur gauche."]
+        dlg._end_ctrl.SetValue("5:1:1")                         # égaux : plage vide (4d1)
         dlg._on_ok(None)
-        assert ended == [wx.ID_OK] and len(beeps) == 1
+        assert ended == [] and len(beeps) == 2
+        dlg._end_ctrl.SetValue("5:1:2")                         # un pas
+        dlg._on_ok(None)
+        assert ended == [wx.ID_OK] and len(beeps) == 2
     finally:
         dlg.Destroy()
 
@@ -183,7 +189,7 @@ def test_each_limiter_key_is_one_undo_entry(win):
     _key(win, "Shift+I")
     _key(win, "Shift+O")
     assert _lims(win) == (0, _last(win))
-    assert _titles(win)[:2] == [f"Limiteur droit : {win._lim_bbt(_last(win))}",
+    assert _titles(win)[:2] == [f"Limiteur droit : {win._lim_bbt(_last(win) + 1)}",  # 4d1
                                 "Limiteur gauche : 1:1:1"]
     _key(win, "Shift+O")                                        # inchangé : rien
     assert len(_titles(win)) == 2
@@ -200,10 +206,10 @@ def test_each_limiter_key_is_one_undo_entry(win):
 def test_i_and_o_at_the_position(win):
     win._player._go_to_offset(16.0)
     _key(win, "I")
-    win._player._go_to_offset(31.0)
-    _key(win, "O")
+    win._player._go_to_offset(32.0)
+    _key(win, "O")                                              # exclu (4d1) : dernier pas 31
     assert _lims(win) == (16, 31)
-    assert _titles(win)[:2] == ["Limiteur droit : 2:4:4", "Limiteur gauche : 2:1:1"]
+    assert _titles(win)[:2] == ["Limiteur droit : 3:1:1", "Limiteur gauche : 2:1:1"]
     win._player._go_to_offset(0.0)
 
 
@@ -227,7 +233,7 @@ def test_loop_to_limiters_has_its_entry(win):
     pat._loop_start, pat._loop_end = 16, 48          # fin exclue (Phase 9 étape 4b1)
     _key(win, "Alt+Début")
     assert _lims(win) == (16, 47)
-    assert _titles(win) == ["Limiteurs : 2:1:1 à 3:4:4"]
+    assert _titles(win) == ["Limiteurs : 2:1:1 à 4:1:1"]                 # droit exclu (4d1)
     win._undo_action()
     assert _lims(win) == (None, None)
     pat = win._player._pattern
@@ -252,9 +258,9 @@ def test_track_select_dialog_limiters_undo(win, monkeypatch):
         return wx.ID_OK
     monkeypatch.setattr(TrackSelectDialog, "ShowModal", show)
     monkeypatch.setattr(TrackSelectDialog, "get_start_step", lambda dlg: 40)
-    monkeypatch.setattr(TrackSelectDialog, "get_end_step", lambda dlg: 8)
+    monkeypatch.setattr(TrackSelectDialog, "get_end_step", lambda dlg: 8)   # fin exclue
     win._track_select_dialog()
-    assert _lims(win) == (8, 40)                               # échangés, comme avant
+    assert _lims(win) == (8, 39)                               # échangés ; droit = 40 − 1
     assert _titles(win) == [f"Limiteurs : {win._lim_bbt(8)} à {win._lim_bbt(40)}"]
 
 
@@ -271,13 +277,13 @@ def test_limiter_dialog_from_the_main_window(win, monkeypatch):
     pat = win._player._pattern
     pat._loop_start = 8
     _key(win, "Ctrl+Shift+I")
-    assert seen == [(0, _last(win), 8)]                         # boucle pour repère
-    assert _lims(win) == (16, 47)
+    assert seen == [(0, _last(win) + 1, 8)]                     # droit exclu (4d1)
+    assert _lims(win) == (16, 46)                               # 3:4:4 exclu → dernier pas 46
     assert win.status[-1] == "Limiteurs : 2:1:1 à 3:4:4"
     assert _titles(win) == ["Limiteurs : 2:1:1 à 3:4:4"]
     monkeypatch.setattr(LimiterSelectDialog, "ShowModal", lambda dlg: wx.ID_CANCEL)
     _key(win, "Ctrl+Shift+I")
-    assert _lims(win) == (16, 47) and len(_titles(win)) == 1     # Annuler : rien
+    assert _lims(win) == (16, 46) and len(_titles(win)) == 1     # Annuler : rien
     pat._loop_start = None
 
 
@@ -309,14 +315,14 @@ def test_editor_ctrl_shift_n_inserts_and_ctrl_shift_i_sets_limiters(win, editor,
 
     def show(dlg):
         dlg._start_ctrl.SetValue("1:1:1")
-        dlg._end_ctrl.SetValue("1:4:4")
+        dlg._end_ctrl.SetValue("2:1:1")                         # une mesure, droit exclu
         return wx.ID_OK
     monkeypatch.setattr(LimiterSelectDialog, "ShowModal", show)
     editor._on_key(menu_bar.key_event("Ctrl+Shift+N"))
     assert calls == ["insert"] and _lims(win) == (None, None)
     editor._on_key(menu_bar.key_event("Ctrl+Shift+I"))
     assert calls == ["insert"] and _lims(win) == (0, 15)
-    assert status == ["Limiteurs : 1:1:1 à 1:4:4"]
+    assert status == ["Limiteurs : 1:1:1 à 2:1:1"]
 
 
 @pytest.mark.gui
@@ -437,3 +443,165 @@ def test_editor_history_dialog_beeps_when_empty(win, editor, bells, monkeypatch)
     monkeypatch.setattr(editor, "_set_status", status.append)
     editor._undo_history_dialog()
     assert bells == [1] and status == ["Historique Undo: vide"]
+
+
+# ----------------------------------------------------------------------
+# Limiteur droit exclu (Phase 9 étape 4e1, tests de 4d1) et focus rendu
+# après l'export audio (4d2)
+# ----------------------------------------------------------------------
+
+@pytest.fixture
+def alerts(monkeypatch):
+    import ui.ui_beep as ui_beep
+    got = []
+    monkeypatch.setattr(ui_beep, "alert", lambda w=None: got.append(w))
+    return got
+
+
+def _ns(w):
+    return w._player._pattern._num_steps
+
+
+@pytest.mark.gui
+def test_o_sets_the_excluded_right_limiter(win, alerts):
+    win._player._go_to_offset(2.0 * _ns(win))                     # 3:1:1
+    _key(win, "O")
+    assert _lims(win) == (None, 2 * _ns(win) - 1)                  # dernier pas inclus
+    assert win.status[-1] == "Limiteur Droit: 3:1:1" and alerts == []
+    assert _titles(win) == ["Limiteur droit : 3:1:1"]
+    win._player._go_to_offset(0.0)
+
+
+@pytest.mark.gui
+def test_o_refuses_an_empty_range(win, alerts):
+    win._player._go_to_offset(0.0)
+    _key(win, "O")                                                 # 1:1:1 sans gauche
+    assert _lims(win) == (None, None) and alerts == [win]
+    assert win.status[-1].startswith("Limiteur droit refusé")
+    win._track_editor.set_lim_left(_ns(win))
+    win._player._go_to_offset(float(_ns(win)))                     # au limiteur gauche
+    _key(win, "O")
+    assert _lims(win) == (_ns(win), None) and len(alerts) == 2
+    assert _titles(win) == []
+    win._player._go_to_offset(0.0)
+
+
+@pytest.mark.gui
+def test_shift_o_announces_the_bar_after_the_last(win):
+    pat = win._player._pattern
+    total = pat._num_bars * _ns(win)
+    _key(win, "Shift+O")
+    assert _lims(win) == (None, total - 1)
+    assert win.status[-1] == f"Limiteur Droit: {pat._num_bars + 1}:1:1"
+
+
+@pytest.mark.gui
+def test_end_goes_to_the_excluded_right_limiter(win):
+    pat = win._player._pattern
+    total = pat._num_bars * _ns(win)
+    win._track_editor.set_lim_right(_ns(win) // 2 - 1)           # dans le pattern
+    _key(win, "Fin")
+    assert win.status[-1].startswith(f"Mesure: {win._lim_bbt(_ns(win) // 2)}")
+    win._track_editor.set_lim_right(total - 1)                     # à la fin du pattern
+    _key(win, "Fin")
+    assert win.status[-1].startswith(f"Mesure: {win._lim_bbt(total - 1)}")
+    win._track_editor.reset_lims()                                 # sans limiteur
+    _key(win, "Fin")
+    assert win.status[-1].startswith(f"Mesure: {win._lim_bbt(total - 1)}")
+
+
+@pytest.mark.gui
+def test_alt_home_and_alt_end_use_the_same_position(win):
+    pat = win._player._pattern
+    pat._loop_start, pat._loop_end = _ns(win), 3 * _ns(win)
+    _key(win, "Alt+Début")
+    assert _lims(win) == (_ns(win), 3 * _ns(win) - 1)
+    assert win.status[-1] == "Limiteurs : 2:1:1 à 4:1:1"
+    pat._loop_start = pat._loop_end = None
+    _key(win, "Alt+Fin")
+    assert (pat._loop_start, pat._loop_end) == (_ns(win), 3 * _ns(win))
+    assert win.status[-1] == "Boucle : 2:1:1 à 4:1:1"
+    pat._loop_start = pat._loop_end = None
+
+
+@pytest.mark.gui
+def test_editor_o_and_shift_o_are_excluded(win, editor, alerts, monkeypatch):
+    status = []
+    monkeypatch.setattr(editor, "_set_status", status.append)
+    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a: fn(*a))
+    win._player._go_to_offset(float(_ns(win)))
+    editor._on_key(menu_bar.key_event("O"))
+    assert _lims(win) == (None, _ns(win) - 1) and status[-1] == "Limiteur Droit: 2:1:1"
+    win._player._go_to_offset(0.0)
+    editor._on_key(menu_bar.key_event("O"))                        # 1:1:1 : refusé
+    assert alerts == [win] and _lims(win) == (None, _ns(win) - 1)
+    editor._on_key(menu_bar.key_event("Shift+O"))
+    pat = win._player._pattern
+    assert status[-1] == f"Limiteur Droit: {pat._num_bars + 1}:1:1"
+
+
+@pytest.mark.gui
+def test_track_select_dialog_end_is_excluded_and_never_empty(win, monkeypatch):
+    from ui.dialogs_temporal import TrackSelectDialog
+    seen = []
+
+    def show(dlg):
+        seen.append(dlg._end.GetValue())
+        return wx.ID_OK
+    monkeypatch.setattr(TrackSelectDialog, "ShowModal", show)
+    win._track_editor.set_lim_left(0)
+    win._track_editor.set_lim_right(_ns(win) - 1)
+    monkeypatch.setattr(TrackSelectDialog, "get_start_step", lambda dlg: 8)
+    monkeypatch.setattr(TrackSelectDialog, "get_end_step", lambda dlg: 8)   # vide
+    win._track_select_dialog()
+    assert seen == ["2:1:1"]                                       # 15 + 1, exclu
+    assert _lims(win) == (8, 8)                                    # au moins un pas
+    assert win.status[-1].endswith("1:3:1 → 1:3:2")
+
+
+@pytest.mark.gui
+def test_limiter_dialog_refuses_an_empty_range(win, alerts, monkeypatch):
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda msg, *a, **k: boxes.append(msg))
+    dlg = LimiterSelectDialog(win, 8, 4, 16, 0, 16, 31)
+    try:
+        assert dlg._end_ctrl.GetValue() == "3:1:1"                  # 31 + 1
+        dlg._end_ctrl.SetValue("2:1:1")                            # = gauche : vide
+        assert not dlg._validate() and alerts == [dlg]
+        assert boxes == ["Le limiteur droit doit être après le limiteur gauche."]
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.gui
+def test_audio_export_selection_report_has_the_excluded_end(win):
+    win._track_editor.set_lim_left(_ns(win))
+    win._track_editor.set_lim_right(2 * _ns(win) - 1)
+    job = win._selection_job((_ns(win), 2 * _ns(win) - 1), all_tracks=True)
+    assert job["label"] == "Sélection (toutes les pistes ; 2:1:1 à 3:1:1)"
+    assert job["window"] == (_ns(win), 2 * _ns(win))
+
+
+@pytest.mark.gui
+def test_reader_refocus_after_a_long_task(win, monkeypatch):
+    later, calls = [], []
+    monkeypatch.setattr(wx, "CallLater", lambda ms, fn, *a: later.append((ms, fn)))
+    monkeypatch.setattr(wx, "CallAfter", lambda fn, *a: fn(*a))
+    field = win._track_list
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: field))
+    monkeypatch.setattr(win, "Raise", lambda: calls.append("raise"))
+    monkeypatch.setattr(win, "SetFocus", lambda: calls.append("fenêtre"))
+    monkeypatch.setattr(field, "SetFocus", lambda: calls.append("widget"))
+    win._reader_refocus(win)
+    assert calls == [] and later[0][0] == win.REFOCUS_DELAY_MS >= 100    # différé
+    later[0][1]()
+    assert calls == ["raise", "fenêtre", "widget"]
+
+
+@pytest.mark.gui
+def test_reader_refocus_outside_the_main_thread_does_nothing(win, monkeypatch):
+    later = []
+    monkeypatch.setattr(wx, "CallLater", lambda *a: later.append(a))
+    monkeypatch.setattr(wx, "IsMainThread", lambda: False)
+    win._reader_refocus(win)
+    assert later == []

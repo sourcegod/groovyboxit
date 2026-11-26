@@ -153,13 +153,14 @@ def test_dialog_refuses_an_empty_loop(parent, monkeypatch):
 
 
 @pytest.mark.gui
-def test_limiter_dialog_end_of_loop_is_its_last_step(parent):
+def test_limiter_dialog_end_of_loop_is_the_same_position(parent):
     from ui.dialogs_temporal import LimiterSelectDialog
     dlg = LimiterSelectDialog(parent, 8, 4, 16, 4, None, None, 16, 48)
     try:
         dlg._end_list.SetSelection(4)                             # Fin de boucle
         dlg._on_end_source(None)
-        assert dlg.get_end_step() == 47                           # limiteur inclus (4d1 : exclu)
+        assert dlg.get_end_step() == 48                           # droit exclu (4d1) : 4:1:1
+        assert dlg._end_ctrl.GetValue() == "4:1:1"
     finally:
         dlg.Destroy()
 

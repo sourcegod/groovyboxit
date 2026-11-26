@@ -106,9 +106,8 @@ def test_start_field_prefilled_with_cur_step():
 
 def test_end_field_prefilled_with_last_step():
     app, frame, dlg = make_dlg()
-    assert dlg._end.GetValue() == "4:4:4"
+    assert dlg._end.GetValue() == "5:1:1"     # fin exclue (Phase 9 étape 4d1)
     teardown(app, frame, dlg)
-    print("  Fin sélection pré-remplie avec fin du pattern (4:4:4) : OK")
 
 
 def test_start_at_origin():
@@ -291,9 +290,8 @@ def test_get_start_step_initial():
 
 def test_get_end_step_initial():
     app, frame, dlg = make_dlg()
-    assert dlg.get_end_step() == LAST_STEP
+    assert dlg.get_end_step() == LAST_STEP + 1    # exclue (4d1)
     teardown(app, frame, dlg)
-    print("  get_end_step() initial == LAST_STEP : OK")
 
 
 def test_get_start_step_after_edit():
@@ -323,7 +321,7 @@ def test_get_start_step_fallback_on_invalid():
 def test_get_end_step_fallback_on_invalid():
     app, frame, dlg = make_dlg()
     dlg._end.SetValue("???")
-    assert dlg.get_end_step() == LAST_STEP
+    assert dlg.get_end_step() == LAST_STEP + 1    # fin du pattern, exclue (4d1)
     teardown(app, frame, dlg)
     print("  get_end_step() invalide → repli sur LAST_STEP : OK")
 
@@ -343,7 +341,7 @@ def test_lim_left_overrides_cur_step():
 
 def test_lim_right_overrides_default_end():
     app, frame, dlg = make_dlg(lim_right=16)
-    assert dlg._end.GetValue() == "2:1:1"     # step 16, pas LAST_STEP
+    assert dlg._end.GetValue() == "2:1:2"     # lim_right 16 + 1 (exclu, 4d1)
     teardown(app, frame, dlg)
     print("  lim_right remplace fin du pattern dans Fin sélection : OK")
 
@@ -357,7 +355,7 @@ def test_lim_left_none_uses_cur_step():
 
 def test_lim_right_none_uses_last_step():
     app, frame, dlg = make_dlg(lim_right=None)
-    assert dlg._end.GetValue() == "4:4:4"     # LAST_STEP utilisé
+    assert dlg._end.GetValue() == "5:1:1"     # fin du pattern, exclue (4d1)
     teardown(app, frame, dlg)
     print("  lim_right=None → Fin sélection depuis LAST_STEP : OK")
 
@@ -365,7 +363,7 @@ def test_lim_right_none_uses_last_step():
 def test_both_lims_set():
     app, frame, dlg = make_dlg(cur_step=0, lim_left=8, lim_right=32)
     assert dlg._start.GetValue() == "1:3:1"   # step 8
-    assert dlg._end.GetValue()   == "3:1:1"   # step 32
+    assert dlg._end.GetValue()   == "3:1:2"   # lim_right 32 + 1 (exclu, 4d1)
     teardown(app, frame, dlg)
     print("  lim_left=8 lim_right=32 → champs BBT corrects : OK")
 
@@ -379,7 +377,7 @@ def test_get_start_step_from_lim_left():
 
 def test_get_end_step_from_lim_right():
     app, frame, dlg = make_dlg(lim_right=32)
-    assert dlg.get_end_step() == 32
+    assert dlg.get_end_step() == 33               # exclu (4d1)
     teardown(app, frame, dlg)
     print("  get_end_step() == lim_right quand défini : OK")
 
