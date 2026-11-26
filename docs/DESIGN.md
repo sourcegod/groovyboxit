@@ -17210,3 +17210,29 @@ la conversion est annoncée (« … — hors grille : note enregistrée ») apr�
 le dialogue et Num 2 / 8. Signalé : dans la grille de la fenêtre
 principale, Haut / Bas jouent le kit TR-707 quelle que soit la piste →
 avenant 5b2.
+
+## Phase 9 étape 5b2 — Avenant : la grille joue l'instrument de la piste
+
+**Constat (essai de 5b1).** Dans la grille de la fenêtre principale, Haut /
+Bas (et la case cochée) jouent le kit TR-707 quelle que soit la piste :
+`MainWindow._play(rangée)` sert aussi au jeu direct (pavé, liste des pads)
+et ne joue un synthé qu'en mode d'entrée Clavier, avec le slot sous le
+curseur de la liste des slots et la gamme d'ENTRÉE ; en mode Pads, il joue
+toujours les sons du kit chargé.
+
+**Décisions.**
+- G1 — Écoute de la grille (déplacement Haut / Bas avec l'écoute
+  automatique, Entrée qui coche une case, Entrée du pavé) : la rangée est
+  jouée comme le lecteur la jouera sur la piste courante —
+  `TrackRouter.on_play(piste, pad, …)` : synthé et SFZ par la gamme de
+  lecture, banque (36 + pad au canal 10), kit par ses sons, mode Rack,
+  port MIDI externe ; volume et pan de la piste et du pad, durée du pad.
+- G2 — Le jeu direct (pavé numérique, liste des pads, contrôleur) ne
+  change pas : il suit le mode d'entrée, comme aujourd'hui.
+- G3 — Piste muette (Mute, hors Solo) : l'écoute de la grille la joue
+  quand même (réponse de l'utilisateur : on veut entendre la case qu'on
+  parcourt).
+- G4 — Aide F1 ; tests en 5c1 avec ceux de 5b1.
+
+**Étapes.** 5b3 : G1-G4 et essai ; 5c1 : tests de 5b1 et 5b3 ; 5d1 :
+clôture.
