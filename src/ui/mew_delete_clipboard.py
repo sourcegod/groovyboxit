@@ -129,7 +129,7 @@ class DeleteClipboardMixin:
         te = self._parent._track_editor
         self._parent._set_limiters_undo(te._lim_left, step)
         self._refresh()
-        wx.CallAfter(self._set_status, f"Limiteur Droit: {self._lim_bbt(step)}")
+        wx.CallAfter(self._set_status, f"Limiteur Droit: {self._lim_bbt(step + 1)}")   # 4d1
 
     def _reset_lims(self):
         self._parent._set_limiters_undo(None, None)

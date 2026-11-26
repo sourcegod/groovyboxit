@@ -17091,3 +17091,9 @@ volumes, accord de l'utilisateur), tests 4c9 ; tests de 4c6 : 4c7.
   refaire, Ctrl+Shift+Z historique vide ; les bips de 3g4 joués en
   atteignant la première ou la dernière entrée sont retirés (mal placés).
 - Essai concluant. Tests : 4c9.
+
+**4d1 — essai.** Concluant après relance de l'appli (le premier essai
+avait été fait sur l'appli lancée avant les changements : ses trois
+anomalies — Shift+O à 9:4:4, Alt+Fin à 5:1:2, un pas de trop à l'export —
+étaient celles de l'ancien limiteur inclus). Signalé : après l'export
+audio, Orca reste sur le dernier pourcentage → correctif 4d2.

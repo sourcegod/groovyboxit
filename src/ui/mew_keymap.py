@@ -285,7 +285,9 @@ class KeymapMixin:
         # o : limiteur droit à la position du playhead
         if not ctrl and not shift and (ukey == ord('o') or ukey == ord('O')):
             step = int(self._parent._player._current_offset())
-            self._set_lim_right(step)
+            if self._parent._right_limiter_here(            # exclu (Phase 9 étape 4d1)
+                    step, status=lambda m: wx.CallAfter(self._set_status, m)):
+                self._refresh()
             return
 
         # Alt+Shift+T : dialogue Tempo (même raccourci que la fenêtre

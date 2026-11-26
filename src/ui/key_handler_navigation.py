@@ -45,7 +45,7 @@ class NavigationHandler:
         left  = pat._loop_start if pat._loop_start is not None else 0
         right = pat._loop_end - 1 if pat._loop_end is not None else total - 1   # 4b1
         win._set_limiters_undo(left, right)                     # Undo (3g4, U3)
-        win._show_status(f"Limiteurs : {self._bbt(left)} à {self._bbt(right)}")
+        win._show_status(f"Limiteurs : {self._bbt(left)} à {self._bbt(right + 1)}")   # 4d1
 
     def reset_pattern_undo(self):
         """Vide le pattern, avec Undo (Shift+Suppr ; Pattern > Redimensionner >
@@ -222,8 +222,11 @@ class NavigationHandler:
         if not ctx.ctrl and not shift and key == wx.WXK_END:
             te  = win._track_editor
             lim = te._lim_right
-            if lim is not None:
-                win._player._go_to_offset(float(lim))
+            pat = win._player._pattern
+            # limiteur droit exclu (Phase 9 étape 4d1, § 4a L3) : sa position ;
+            # à la fin du pattern (ou sans limiteur) : le dernier pas
+            if lim is not None and lim + 1 < pat._num_bars * pat._num_steps:
+                win._player._go_to_offset(float(lim + 1))
             else:
                 win._player.goto_end()
             win._show_status(f"Mesure: {win._player.position_str()}")

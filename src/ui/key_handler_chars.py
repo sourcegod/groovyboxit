@@ -474,7 +474,7 @@ class CharHandler:
             total_steps = pat._num_bars * pat._num_steps
             step        = total_steps - 1
             win._set_limiters_undo(win._track_editor._lim_left, step)    # Undo (3g4, U3)
-            bbt = win._track_editor.fmt_bbt(step, pat._num_steps,
+            bbt = win._track_editor.fmt_bbt(total_steps, pat._num_steps,  # exclu (4d1)
                       max(1, pat._num_steps // pat._num_beats), total_steps)
             win._show_status(f"Limiteur Droit: {bbt}")
             return True
@@ -494,13 +494,7 @@ class CharHandler:
         # o : poser le limiteur droit (Out) à la position courante du playhead
         if not ctrl and not alt and not shift \
                 and (ukey in (ord('o'), ord('O')) or key == ord('O')):
-            pat  = win._player._pattern
-            step = int(win._player._current_offset())
-            win._set_limiters_undo(win._track_editor._lim_left, step)     # Undo (3g4, U3)
-            bbt  = win._track_editor.fmt_bbt(step, pat._num_steps,
-                       max(1, pat._num_steps // pat._num_beats),
-                       pat._num_bars * pat._num_steps)
-            win._show_status(f"Limiteur Droit: {bbt}")
+            win._right_limiter_here(int(win._player._current_offset()))   # exclu (4d1)
             return True
 
         return False

@@ -387,8 +387,10 @@ class AudioExportDialog(wx.Dialog):
         names = source_labels or self.SOURCE_UNITS
         total = num_bars * num_steps
         self._bbt = BBTHelper(num_steps, max(1, num_steps // max(1, num_beats)), total)
+        # Fin de la sélection = limiteur droit EXCLU (Phase 9 étape 4d1)
+        self._bbt_end = BBTHelper(num_steps, max(1, num_steps // max(1, num_beats)), total + 1)
         left  = 0 if lim_left is None else lim_left
-        right = total - 1 if lim_right is None else lim_right
+        right = total if lim_right is None else lim_right + 1
 
         self._source_lb = wx.ListBox(self, choices=[f"Source : {n}" for n in names],
                                      style=wx.LB_SINGLE)
@@ -403,7 +405,7 @@ class AudioExportDialog(wx.Dialog):
         self._left  = wx.TextCtrl(self, value=self._bbt.fmt(left), size=(140, -1))
         self._left.SetName("Début de la sélection")
         right_label = wx.StaticText(self, label="Fin de la sélection (mesure:temps:pas) :")
-        self._right = wx.TextCtrl(self, value=self._bbt.fmt(right), size=(140, -1))
+        self._right = wx.TextCtrl(self, value=self._bbt_end.fmt(right), size=(140, -1))
         self._right.SetName("Fin de la sélection")
         self._end_lb = wx.ListBox(self, choices=list(self.END_LABELS), style=wx.LB_SINGLE)
         self._end_lb.SetSelection(max(0, min(end_idx, len(self.END_LABELS) - 1)))
@@ -477,11 +479,11 @@ class AudioExportDialog(wx.Dialog):
         if self.get_source_idx() != self.SOURCE_SELECTION:
             return None
         left  = self._bbt.parse(self._left.GetValue())
-        right = self._bbt.parse(self._right.GetValue())
+        right = self._bbt_end.parse(self._right.GetValue())
         if left is None or right is None:
             return "Position invalide : mesure:temps:pas attendu (par exemple 2:1:1)"
-        if right < left:
-            return "La fin de la sélection est avant son début"
+        if right <= left:                                   # fin exclue (4d1)
+            return "La fin de la sélection doit être après son début"
         return None
 
     def _on_ok(self, event):
@@ -508,10 +510,10 @@ class AudioExportDialog(wx.Dialog):
     def get_window(self):
         """(début, fin) de la sélection en pas, fin comprise ; None si invalide."""
         left  = self._bbt.parse(self._left.GetValue())
-        right = self._bbt.parse(self._right.GetValue())
-        if left is None or right is None or right < left:
+        right = self._bbt_end.parse(self._right.GetValue())   # exclue (4d1)
+        if left is None or right is None or right <= left:
             return None
-        return left, right
+        return left, right - 1                              # dernier pas, interne
 
     def get_end_idx(self):
         sel = self._end_lb.GetSelection()

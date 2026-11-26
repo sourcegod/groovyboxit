@@ -246,6 +246,9 @@ class TrackSelectDialog(wx.Dialog):
         self._steps_per_beat = max(1, num_steps // num_beats)
         self._total_steps    = num_bars * num_steps
         self._bbt            = BBTHelper(num_steps, self._steps_per_beat, self._total_steps)
+        # Fin de sélection = limiteur droit EXCLU (Phase 9 étape 4d1) : jusqu'à
+        # la mesure qui suit la dernière
+        self._bbt_end        = BBTHelper(num_steps, self._steps_per_beat, self._total_steps + 1)
 
         # --- Checkboxes pistes ---
         checks_box   = wx.StaticBox(self, label="Pistes")
@@ -260,7 +263,7 @@ class TrackSelectDialog(wx.Dialog):
         checks_sizer.AddSpacer(4)
 
         start_step = lim_left  if lim_left  is not None else cur_step
-        end_step   = lim_right if lim_right is not None else (self._total_steps - 1)
+        end_step   = lim_right + 1 if lim_right is not None else self._total_steps   # 4d1
 
         # --- Champs BBT ---
         start_label = wx.StaticText(self, label="Début sélection :")
@@ -269,7 +272,7 @@ class TrackSelectDialog(wx.Dialog):
 
         end_label = wx.StaticText(self, label="Fin sélection :")
         self._end  = wx.TextCtrl(self, size=(120, -1), style=wx.TE_PROCESS_ENTER)
-        self._end.SetValue(self._bbt.fmt(end_step))
+        self._end.SetValue(self._bbt_end.fmt(end_step))
 
         range_grid = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=8)
         range_grid.AddGrowableCol(1)
@@ -351,9 +354,9 @@ class TrackSelectDialog(wx.Dialog):
         return v if v is not None else 0
 
     def get_end_step(self):
-        """Step de fin (0-based) ; total_steps-1 si saisie invalide."""
-        v = self._bbt.parse(self._end.GetValue())
-        return v if v is not None else self._total_steps - 1
+        """Pas de fin EXCLU (4d1) ; la fin du pattern si saisie invalide."""
+        v = self._bbt_end.parse(self._end.GetValue())
+        return v if v is not None else self._total_steps
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +401,8 @@ class LoopSelectDialog(wx.Dialog):
         self._sources = list(zip(_LOOP_SOURCES, [
             None, 0, total - 1,
             lim_left if lim_left is not None else 0,
-            lim_right if lim_right is not None else total - 1, None]))
+            min(lim_right + 1, total - 1) if lim_right is not None else total - 1,  # 4d1
+            None]))
         self._end_sources = list(zip(_LOOP_SOURCES, [
             None, 0, total,
             lim_left if lim_left is not None else 0,
@@ -655,7 +659,7 @@ class LimiterSelectDialog(LoopSelectDialog):
     TITLE        = "Sélection des limiteurs"
     PANELS       = ("Limiteur gauche", "Limiteur droit")
     LOOP_OPTIONS = False
-    END_EXCLUSIVE = False          # limiteur droit inclus jusqu'à 4d1
+    END_EXCLUSIVE = True           # limiteur droit exclu (Phase 9 étape 4d1)
     SOURCES      = ["Position courante", "Début du pattern", "Fin du pattern",
                     "Début de boucle", "Fin de boucle", "Personnalisé"]
 
@@ -666,17 +670,22 @@ class LimiterSelectDialog(LoopSelectDialog):
         self._sources = list(zip(self.SOURCES, [
             None, 0, total - 1,
             loop_start if loop_start is not None else 0,
-            loop_end - 1 if loop_end is not None else total - 1, None]))    # fin exclue (4b1)
+            loop_end if loop_end is not None else total - 1, None]))
+        # limiteur droit exclu (4d1) : mêmes positions que la boucle
+        self._end_sources = list(zip(self.SOURCES, [
+            None, 0, total,
+            loop_start if loop_start is not None else 0,
+            loop_end if loop_end is not None else total, None]))
         self._lim_left, self._lim_right = lim_left, lim_right
         self._build(parent, num_bars, num_beats, num_steps, cur_step,
                     lim_left if lim_left is not None else 0,
-                    lim_right if lim_right is not None else total - 1,
+                    lim_right + 1 if lim_right is not None else total,
                     0, False, on_play_toggle)
 
     def _validate(self):
-        if self.get_start_step() <= self.get_end_step():
+        if self.get_start_step() < self.get_end_step():
             return True
-        self._refuse("Le limiteur gauche est après le limiteur droit.")
+        self._refuse("Le limiteur droit doit être après le limiteur gauche.")
         return False
 
 

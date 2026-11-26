@@ -389,9 +389,11 @@ Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste de
 
   -- Limiteurs temporels (in/out points) --
   i                Poser le limiteur gauche (In)  à la position courante du playhead
-  o                Poser le limiteur droit  (Out) à la position courante du playhead
+  o                Poser le limiteur droit  (Out) à la position courante du playhead ;
+                   il est EXCLU, comme la fin de boucle : quatre mesures vont de 1:1:1
+                   à 5:1:1 (refusé au limiteur gauche ou avant)
   Shift+I          Poser le limiteur gauche (In)  au début du pattern (step 0)
-  Shift+O          Poser le limiteur droit  (Out) à la fin du pattern (dernier step)
+  Shift+O          Poser le limiteur droit  (Out) à la fin du pattern (9:1:1 pour 8 mesures)
                    Affichés dans la barre de statut en BBT + step
                    Ctrl+Entrée pré-remplit le dialog avec les limiteurs courants
                    Ctrl+A / Ctrl+Shift+A gèrent aussi les limiteurs
@@ -403,7 +405,8 @@ Shift+Retour arrière  Volume de la piste à 100 et Pan à 0 (depuis la liste de
 
   -- Navigation par les limiteurs --
   Début (Home)     Aller au limiteur gauche (ou début du pattern si non défini)
-  Fin   (End)      Aller au limiteur droit  (ou fin du pattern si non défini)
+  Fin   (End)      Aller au limiteur droit, exclu (dernier step sans limiteur ou s'il
+                   est à la fin du pattern)
   Shift+Début      Aller au début de la boucle (ou step 0 si non défini)
   Shift+Fin        Aller à la fin de la boucle, exclue (5:1:1 pour quatre mesures ;
                    dernier step si non définie)
@@ -502,9 +505,9 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
 
   -- Limiteurs temporels --
   i              Poser le limiteur gauche (In) à la position courante du playhead
-  o              Poser le limiteur droit (Out) à la position courante du playhead
+  o              Poser le limiteur droit (Out, exclu) à la position courante du playhead
   Shift+I        Poser le limiteur gauche au début du pattern (step 0)
-  Shift+O        Poser le limiteur droit à la fin du pattern (dernier step)
+  Shift+O        Poser le limiteur droit à la fin du pattern
   Ctrl+Shift+I   Sélection des limiteurs (même dialogue que la fenêtre principale)
 
   -- Édition numpad (événement ou accord sélectionné ; aussi Traitement >

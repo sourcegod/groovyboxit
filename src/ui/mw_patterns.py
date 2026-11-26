@@ -346,17 +346,18 @@ class PatternMixin:
             te._sel_tracks = new_sel
             self._refresh_track_list()
             start = dlg.get_start_step()
-            end   = dlg.get_end_step()
-            if start > end:
+            end   = dlg.get_end_step()                 # exclue (Phase 9 étape 4d1)
+            if end < start:
                 start, end = end, start
-            self._set_limiters_undo(start, end)        # Undo (Phase 9 étape 3g4, U3)
+            end = max(end, start + 1)                  # au moins un pas
+            self._set_limiters_undo(start, end - 1)    # Undo (Phase 9 étape 3g4, U3)
             sel = sorted(new_sel)
             msg_tracks = (
                 f"Piste{'s' if len(sel) > 1 else ''} {', '.join(str(i+1) for i in sel)}"
                 if sel else "Aucune piste"
             )
             self._show_status(
-                f"Sélection : {msg_tracks} | {dlg._fmt_bbt(start)} → {dlg._fmt_bbt(end)}"
+                f"Sélection : {msg_tracks} | {dlg._fmt_bbt(start)} → {dlg._bbt_end.fmt(end)}"
             )
         dlg.Destroy()
 

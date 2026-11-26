@@ -1227,6 +1227,13 @@ volume général ne sont pas concernés.
   la fin exclue ; limiteurs ↔ boucle : fin = limiteur droit + 1.
 - Projets : `.gvp` version 2 ; un projet version 1 (fin incluse) reçoit fin
   + 1 à la lecture (`ProjectManager.migrate`), même boucle entendue.
+- **Limiteur droit exclu** lui aussi (Phase 9 étape 4d1) : o le pose à la
+  position (refusé au limiteur gauche ou avant), Shift+O à la fin du
+  pattern (mesure suivante), Fin y va ; annonces, titres d'Undo, dialogues
+  (Sélection des limiteurs, Ctrl+Entrée, export audio de la sélection) en
+  position exclue. En interne, `_lim_right` reste le dernier pas inclus
+  (le code des plages traitait déjà [gauche, droit + 1)) ; la clé
+  `limiters` du `.gvp` est inchangée.
 
 ### Barre de menus (F10, Phase 9 étape 1)
 - **Même barre** dans la fenêtre principale, l'éditeur MIDI (Alt+4) et la

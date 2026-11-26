@@ -46,18 +46,39 @@ class LimitersMixin:
         return self._track_editor.fmt_bbt(
             step, pat._num_steps, max(1, pat._num_steps // pat._num_beats), total)
 
+    def _lim_end_bbt(self, right):
+        """Limiteur droit tel que l'utilisateur le voit : la position EXCLUE
+        (interne + 1), comme la fin de boucle (Phase 9 étape 4d1, § 4a L1)."""
+        return self._lim_bbt(right + 1)
+
     def _limiters_title(self, left, right):
-        """« Limiteurs : 2:1:1 à 4:4:4 », « Limiteur gauche : 2:1:1 »,
-        « Limiteurs effacés »."""
+        """« Limiteurs : 2:1:1 à 5:1:1 », « Limiteur gauche : 2:1:1 »,
+        « Limiteurs effacés » — droit exclu (4d1)."""
         te = self._track_editor
         if left is None and right is None:
             return "Limiteurs effacés"
         if right == te._lim_right and left is not None:
             return f"Limiteur gauche : {self._lim_bbt(left)}"
         if left == te._lim_left and right is not None:
-            return f"Limiteur droit : {self._lim_bbt(right)}"
+            return f"Limiteur droit : {self._lim_end_bbt(right)}"
         return (f"Limiteurs : {self._lim_bbt(left) if left is not None else '—'} à "
-                f"{self._lim_bbt(right) if right is not None else '—'}")
+                f"{self._lim_end_bbt(right) if right is not None else '—'}")
+
+    def _right_limiter_here(self, position, status=None):
+        """o (fenêtre principale, éditeur MIDI) : limiteur droit à la
+        position, EXCLUE (interne = position − 1 ; 4d1, § 4a L2) ; refusé
+        si la plage serait vide (au limiteur gauche ou avant, 1:1:1 sans
+        limiteur gauche), avec le bip d'alerte. True si posé."""
+        status = status or self._show_status
+        te = self._track_editor
+        if position <= (te._lim_left or 0):
+            from .ui_beep import alert
+            alert(self)
+            status("Limiteur droit refusé : il doit être après le limiteur gauche")
+            return False
+        self._set_limiters_undo(te._lim_left, position - 1)
+        status(f"Limiteur Droit: {self._lim_bbt(position)}")
+        return True
 
     def _set_limiters_undo(self, left, right, title=None):
         """Pose les deux limiteurs (pas, base 0, ou None), avec une entrée
@@ -83,11 +104,11 @@ class LimitersMixin:
             int(p._current_offset()), te._lim_left, te._lim_right,
             pat._loop_start, pat._loop_end, on_play_toggle=self._play_toggle)
         ok = dlg.ShowModal() == wx.ID_OK
-        left, right = dlg.get_start_step(), dlg.get_end_step()
+        left, end = dlg.get_start_step(), dlg.get_end_step()     # fin exclue (4d1)
         dlg.Destroy()
         if not ok:
             return False
-        self._set_limiters_undo(left, right, f"Limiteurs : {self._lim_bbt(left)} à "
-                                             f"{self._lim_bbt(right)}")
-        status(f"Limiteurs : {self._lim_bbt(left)} à {self._lim_bbt(right)}")
+        text = f"Limiteurs : {self._lim_bbt(left)} à {self._lim_bbt(end)}"
+        self._set_limiters_undo(left, end - 1, text)
+        status(text)
         return True
