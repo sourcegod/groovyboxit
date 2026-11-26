@@ -577,6 +577,15 @@ class _FakeDialogChoicesWindow:
 
     def __init__(self, slot_type=InstrumentType.SYNTH, kb_notes_play=None):
         self._parent = _FakeLabelParent(slot_type, kb_notes_play)
+        self._slot_type, self._kb = slot_type, list(kb_notes_play or [])
+
+    # Phase 9 étape 5b1 : piste à notes → 128 notes, note jouée présélectionnée
+    def _grid_plays_notes(self, track_idx):
+        return self._slot_type in (InstrumentType.SYNTH, InstrumentType.BANK,
+                                   InstrumentType.SFZ)
+
+    def _grid_note_of(self, ev):
+        return self._kb[ev["pad"]] if ev["pad"] < len(self._kb) else None
 
 
 def test_dialog_note_choices_patch_is_raw_midi_note():
@@ -601,10 +610,9 @@ def test_dialog_note_choices_grid_synth_resolves_real_note():
     win = _FakeDialogChoicesWindow(slot_type=InstrumentType.SYNTH, kb_notes_play=[48, 50, 52])
     ev  = {"etype": ETYPE_GRID, "pad": 1, "track": 0}
     choices, sel = win._dialog_note_choices(ev, _FakeDialogPattern(num_pads=3))
-    assert sel == 1
-    assert len(choices) == 3
-    assert midi_to_note_name(50) in choices[1]                # jouée (15c2)
-    assert midi_to_note_name(38) not in choices[1]
+    # Phase 9 étape 5b1 : 128 notes, la note jouée (15c2) présélectionnée
+    assert len(choices) == 128 and sel == 50
+    assert midi_to_note_name(50) in choices[50]
 
 
 def test_dialog_note_choices_grid_kit_uses_pad_name():

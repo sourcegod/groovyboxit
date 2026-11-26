@@ -305,6 +305,7 @@ class FakeWindow:
     def _on_tab_order(self, shift):       self.calls.append(('_on_tab_order', shift))
     def _on_track_select(self, ev):       self.calls.append('_on_track_select')
     def _play(self, idx):                 self.calls.append(('_play', idx))
+    def _play_grid_row(self, idx):        self.calls.append(('_play_grid_row', idx))   # 5b3
     def _play_kit_pitched(self, idx):     self.calls.append(('_play_kit_pitched', idx))
     def _nr_arm_release(self):            self.calls.append('_nr_arm_release')
     def _nr_cancel_release(self):         self.calls.append('_nr_cancel_release')
@@ -996,17 +997,16 @@ def test_enter_on_grid_plays_row():
     app, win, km = make_km()
     win._cur_row = 3; win._cur_col = 0
     km.handle(FakeEvent(key=wx.WXK_RETURN))
-    assert ('_play', 3) in win.calls
+    # instrument de la piste, pas le jeu direct (Phase 9 étape 5b3)
+    assert ('_play_grid_row', 3) in win.calls and ('_play', 3) not in win.calls
     teardown(app)
-    print("  Entrée sur grille → _play(row) : OK")
 
 def test_shift_enter_on_grid_plays_row():
     app, win, km = make_km()
     win._cur_row = 5; win._cur_col = 2
     km.handle(FakeEvent(key=wx.WXK_RETURN, shift=True))
-    assert ('_play', 5) in win.calls
+    assert ('_play_grid_row', 5) in win.calls                    # 5b3
     teardown(app)
-    print("  Shift+Entrée sur grille → _play(row) : OK")
 
 
 # ---------------------------------------------------------------------------
