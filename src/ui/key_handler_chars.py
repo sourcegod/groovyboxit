@@ -49,6 +49,24 @@ class CharHandler:
         win._show_status("Toutes les Pistes: Désolotées"
                          + win._quit_exclusive(("solo",)))  # N15
 
+    def toggle_loop(self):
+        """L (fenêtre principale, éditeur MIDI, Songs ; Transport > Boucle On /
+        Off) : bascule la boucle, avec Undo (Phase 8 étape 16d2). En lecture,
+        le lecteur est réveillé à la même position (Phase 9 étape 4c3, essai :
+        Boucle Off pendant la lecture arrêtait le pattern à la fin de la
+        boucle — le fil finissait sa passe avec l'ancienne fenêtre)."""
+        win = self._win
+        p   = win._player
+        pat = p._pattern
+        win._add_undo(f"Boucle: {'Off' if pat._looping else 'On'}")
+        running = p.playing or p.clicking or p._note_repeat_active
+        if running:
+            p._resync_offset = p._current_offset()     # position gardée (19d1)
+        pat._looping = not pat._looping
+        if running:
+            p._wakeup.set()                            # nouvelle fenêtre aussitôt
+        win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
+
     def set_loop_end_here(self):
         """Shift+L (fenêtre principale, éditeur MIDI, Songs) : fin de boucle à
         la position, EXCLUE (Phase 9 étape 4b1, § 4a B2) ; refusée si la
@@ -403,11 +421,7 @@ class CharHandler:
         if not ctrl and not shift and not alt \
                 and not on_bpm and not on_volume and not on_pan and not on_voice_spin \
                 and (ukey == ord('l') or key == ord('L')):
-            pat = win._player._pattern
-            # point d'Undo (Phase 8 étape 16d2, essai : la bascule n'en avait pas)
-            win._add_undo(f"Boucle: {'Off' if pat._looping else 'On'}")
-            pat._looping = not pat._looping
-            win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
+            self.toggle_loop()
             return True
 
         # g : GotoStart — G : GotoEnd

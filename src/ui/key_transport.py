@@ -102,10 +102,7 @@ class TransportHandler:
             if shift:
                 self.set_loop_end_here()        # comme la fenêtre principale (4b1)
             else:
-                # point d'Undo (Phase 8 étape 16d2, essai : la bascule n'en avait pas)
-                win._add_undo(f"Boucle: {'Off' if pat._looping else 'On'}")
-                pat._looping = not pat._looping
-                win._show_status(f"Boucle: {'On' if pat._looping else 'Off'}")
+                self.toggle_loop()              # comme la fenêtre principale (4c3)
             return True
 
         return False

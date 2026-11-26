@@ -17034,3 +17034,15 @@ après un Undo), ceux du nouveau reprennent au rappel suivant. Essai
 concluant (boucle relue à la réouverture du projet). Défaut ancien signalé
 à l'essai : Boucle Off pendant la lecture → le pattern s'arrête à la fin
 de la boucle au lieu d'aller jusqu'à la fin du pattern (à suivre).
+
+## Phase 9 étape 4c3 — Correctif : Boucle On / Off pendant la lecture
+
+Défaut ancien signalé à l'essai de 4c2 : pattern de 8 mesures, boucle de
+1:1:1 à 5:1:1, Boucle Off en lecture → le pattern s'arrêtait à la fin de
+la boucle. Cause : la bascule L ne changeait que `_looping`, sans réveiller
+le fil de lecture, qui finissait sa passe avec l'ancienne fenêtre puis,
+boucle Off, s'arrêtait. Correctif : `KeyManager.toggle_loop` (fenêtre
+principale, éditeur MIDI, Songs) — en lecture, position gardée
+(`_resync_offset`, mécanisme du tempo changé en lecture, 19d1) et fil
+réveillé : nouvelle fenêtre aussitôt. Essai concluant. Tests de 4c2 et
+4c3 : 4c4.
