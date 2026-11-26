@@ -287,3 +287,146 @@ def test_saved_project_is_version_2(win, tmp_path, monkeypatch):
         3 * _ns(win)                                               # relu tel quel (v2)
     pat._loop_end = None
     win._pattern_list[win._cur_pattern_idx]._loop_end = None
+
+
+# ----------------------------------------------------------------------
+# Correctif 4c2 : la boucle et les clips audio suivent le changement de
+# pattern (tests de 4c4)
+# ----------------------------------------------------------------------
+
+def _set_loop(w, idx, start, end, count=0):
+    stored = w._pattern_list[idx]
+    stored._loop_start, stored._loop_end, stored._loop_count = start, end, count
+    if idx == w._cur_pattern_idx:
+        live = w._player._pattern
+        live._loop_start, live._loop_end, live._loop_count = start, end, count
+
+
+def _live_loop(w):
+    live = w._player._pattern
+    return (live._loop_start, live._loop_end, live._loop_count)
+
+
+@pytest.fixture
+def two_patterns(win):
+    if win._cur_pattern_idx:
+        win._switch_pattern(0)
+    _set_loop(win, 0, 16, 32, 2)
+    _set_loop(win, 1, None, None, 0)
+    yield win
+    _set_loop(win, 1, None, None, 0)
+    if win._cur_pattern_idx:
+        win._switch_pattern(0)
+    _set_loop(win, 0, None, None, 0)
+
+
+@pytest.mark.gui
+def test_switching_pattern_loads_its_loop(two_patterns):
+    w = two_patterns
+    w._switch_pattern(1)
+    assert _live_loop(w) == (None, None, 0)                        # pas celle du pattern 1
+    _set_loop(w, 1, 0, 8, 0)
+    w._switch_pattern(0)
+    assert _live_loop(w) == (16, 32, 2)
+    assert w._player._loop_remaining == 2                          # compteur rechargé
+    w._switch_pattern(1)
+    assert _live_loop(w) == (0, 8, 0)
+
+
+@pytest.mark.gui
+def test_reopened_project_has_the_loop_of_its_pattern(two_patterns, tmp_path, monkeypatch):
+    w = two_patterns
+    monkeypatch.setattr(w, "_remember_project", lambda: None)
+    w._project_path = str(tmp_path / "boucle.gvp")
+    w._save_project()
+    _set_loop(w, 0, None, None, 0)                                 # oubliée en mémoire
+    w._load_project()
+    assert _live_loop(w) == (16, 32, 2)
+
+
+@pytest.mark.gui
+def test_switching_pattern_cuts_the_audio_clips(two_patterns, monkeypatch):
+    w = two_patterns
+    cuts = []
+    monkeypatch.setattr(w._router, "stop_audio_clips", lambda *a: cuts.append(a))
+    w._switch_pattern(1)
+    assert cuts == [()]                                            # tous les clips
+    w._switch_pattern(1)                                           # le même : rien
+    assert cuts == [()]
+    w._switch_pattern(0)
+    assert len(cuts) == 2
+
+
+def test_copy_from_still_leaves_the_loop():
+    """copy_from sert aussi à la lecture du song et à l'export : il ne recopie
+    pas la boucle (4c2 corrige le seul chargement d'un pattern du store)."""
+    from pattern import Pattern
+    a, b = Pattern(), Pattern()
+    a._loop_start, a._loop_end, a._loop_count = 4, 12, 3
+    b.copy_from(a)
+    assert (b._loop_start, b._loop_end, b._loop_count) == (None, None, 0)
+
+
+# ----------------------------------------------------------------------
+# Correctif 4c3 : Boucle On / Off pendant la lecture
+# ----------------------------------------------------------------------
+
+@pytest.mark.gui
+def test_toggle_loop_while_playing_keeps_the_position(win, monkeypatch):
+    p = win._player
+    monkeypatch.setattr(p, "playing", True, raising=False)
+    monkeypatch.setattr(p, "_current_offset", lambda: 20.5)
+    p._pattern._looping = True
+    p._wakeup.clear()
+    p._resync_offset = None
+    assert _key(win, "L") == "Boucle: Off"
+    assert p._pattern._looping is False
+    assert p._resync_offset == 20.5 and p._wakeup.is_set()
+    assert [e.title for e in win._undo.history_list()] == ["Boucle: Off"]
+    p._resync_offset = None
+    p._wakeup.clear()
+
+
+@pytest.mark.gui
+def test_toggle_loop_stopped_does_not_wake_the_player(win):
+    p = win._player
+    p._pattern._looping = False
+    p._wakeup.clear()
+    p._resync_offset = None
+    assert _key(win, "L") == "Boucle: On"
+    assert p._resync_offset is None and not p._wakeup.is_set()
+
+
+@pytest.mark.gui
+def test_toggle_loop_of_the_editor_and_songs_is_the_same(win, monkeypatch):
+    calls = []
+    monkeypatch.setattr(win._key_manager, "toggle_loop", lambda: calls.append(1))
+    win._key_manager.handle_transport(menu_bar.key_event("L"))
+    assert calls == [1]
+
+
+@pytest.mark.gui
+@pytest.mark.slow
+def test_loop_off_while_playing_goes_on_to_the_end_of_the_pattern(win):
+    """Essai de 4c2 : Boucle Off en lecture arrêtait le pattern à la fin de
+    la boucle ; la lecture doit continuer au-delà."""
+    import time
+    p = win._player
+    pat = p._pattern
+    old_bpm = p.bpm
+    p.set_bpm(480)
+    pat._looping, pat._loop_start, pat._loop_end = True, None, pat._num_steps
+    try:
+        p.play_pattern()
+        time.sleep(0.2)
+        assert p._current_offset() < pat._num_steps                 # dans la boucle
+        _key(win, "L")                                              # Boucle Off
+        t0 = time.time()
+        while p._current_offset() <= pat._num_steps + 2 and time.time() - t0 < 3:
+            time.sleep(0.02)
+        assert p.playing and p._current_offset() > pat._num_steps + 2
+        assert p._cur_loop_steps == 0                               # fenêtre : tout le pattern
+    finally:
+        p.stop_all()
+        p.set_bpm(old_bpm)
+        pat._looping, pat._loop_end = True, None
