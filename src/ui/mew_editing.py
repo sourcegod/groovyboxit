@@ -28,7 +28,17 @@ class EditingMixin:
         )
         dlg = _MidiEventEditDialog(self, ev, pat)
         if dlg.ShowModal() == wx.ID_OK:
-            if etype == ETYPE_GRID:
+            if etype == ETYPE_GRID and self._grid_plays_notes(ev["track"]):
+                # 128 notes : grille si un pad joue la note, sinon note PATCH
+                # (Phase 9 étape 5b1, § 5a N1)
+                new_ev = self._edit_grid_pitch(
+                    pat, ev, dlg.get_note(),
+                    new_vel     = dlg.get_vel(),
+                    new_bar     = dlg.get_bar(),
+                    new_step    = dlg.get_step(),
+                    new_channel = dlg.get_channel(),
+                )
+            elif etype == ETYPE_GRID:
                 new_note = min(dlg.get_note(), pat._num_pads - 1)
                 new_ev = self._midi_editor.edit_grid_note(
                     pat, ev,
@@ -70,7 +80,9 @@ class EditingMixin:
                     self._play_group_at(found)
                 bbt  = self._bbt_str(new_ev["bar"], new_ev["step"])
                 name = self._event_note_name(new_ev)
-                self._set_status(f"Note modifiée → ({name})  {bbt}  Vel:{new_ev['vel']}")
+                converted = etype == ETYPE_GRID and new_ev["etype"] == ETYPE_PATCH
+                self._set_status(f"Note modifiée → ({name})  {bbt}  Vel:{new_ev['vel']}"
+                                 + (" — hors grille : note enregistrée" if converted else ""))
             else:
                 self._parent._pop_last_undo()
                 self._set_status("Édition annulée (hors limites)")

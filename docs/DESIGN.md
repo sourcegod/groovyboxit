@@ -17203,3 +17203,10 @@ enregistrée. Le chantier « 128 pads » pourra ajouter une commande
 d'un pad redevient une note GRID) — noté pour ce chantier.
 
 **Étapes.** 5b1 : N1-N5 et essai ; 5c1 : tests ; 5d1 : clôture.
+
+**5b1 — essai.** Concluant. Ajouts de l'essai : préécoute de la note
+choisie dans la liste des 128 notes (elle jouait encore le numéro de pad) ;
+la conversion est annoncée (« … — hors grille : note enregistrée ») après
+le dialogue et Num 2 / 8. Signalé : dans la grille de la fenêtre
+principale, Haut / Bas jouent le kit TR-707 quelle que soit la piste →
+avenant 5b2.

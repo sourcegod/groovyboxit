@@ -1,6 +1,6 @@
 import wx
 from audio.synth_engine import midi_to_note_name
-from pattern import ETYPE_GRID
+from pattern import ETYPE_GRID, ETYPE_PATCH
 
 
 class _NoteEditDialog(wx.Dialog):
@@ -284,6 +284,11 @@ class _MidiEventEditDialog(wx.Dialog):
             return
         temp = dict(self._ev)
         temp["pad"] = idx
+        # note de grille d'une piste à notes : la liste est celle des 128
+        # notes (Phase 9 étape 5b1) → préécoute de la note elle-même
+        if self._etype == ETYPE_GRID and \
+                self._parent_window._grid_plays_notes(self._ev["track"]):
+            temp["etype"] = ETYPE_PATCH
         self._parent_window._play_event(temp)
 
     def get_note(self):

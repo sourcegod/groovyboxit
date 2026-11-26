@@ -42,6 +42,38 @@ class DisplayMixin:
             return f"Note_{pad_val+1:02d}"
         return self._pad_name(pad_val)
 
+    # Notes de grille sur 128 notes (Phase 9 étape 5b1, § 5a) ----------
+
+    def _grid_plays_notes(self, track_idx):
+        """La piste joue-t-elle des notes (synthé, banque, SFZ) ? Ses notes de
+        grille s'éditent alors sur 128 notes ; une piste de kit garde ses
+        pads (§ 5a N3)."""
+        _idx, slot = self._parent._router._eff_slot(track_idx)
+        return slot.plays_notes
+
+    def _grid_note_of(self, ev):
+        """Note MIDI que joue une note de grille (comme le lecteur), ou None."""
+        return self._parent._router.grid_play_note(ev["track"], ev["pad"])
+
+    def _grid_pad_for_note(self, track_idx, note, num_pads):
+        """Pad de grille qui joue `note` sur la piste, ou None (la note sort
+        des notes de la grille : conversion, § 5a N1)."""
+        router = self._parent._router
+        for pad in range(num_pads):
+            if router.grid_play_note(track_idx, pad) == note:
+                return pad
+        return None
+
+    def _edit_grid_pitch(self, pat, ev, note, **changes):
+        """Hauteur d'une note de grille changée en `note` (0..127) : la note
+        reste une note de grille si un pad joue cette hauteur, sinon elle
+        devient une note PATCH (§ 5a N1, N2). changes : new_vel, new_bar,
+        new_step, new_channel."""
+        pad = self._grid_pad_for_note(ev["track"], note, pat._num_pads)
+        if pad is not None:
+            return self._midi_editor.edit_grid_note(pat, ev, new_pad=pad, **changes)
+        return self._midi_editor.convert_grid_to_patch(pat, ev, note, **changes)
+
     def _pad_names_list(self, num_pads, track_idx):
         """Liste des noms pour le dialog d'édition (notes ou pads selon le slot)."""
         slot_idx = self._parent._router.slot_for_track(track_idx)
@@ -64,7 +96,12 @@ class DisplayMixin:
         ne correspondait pas à l'item présélectionné dans le dialog)."""
         etype   = ev.get("etype", ETYPE_GRID)
         pad_val = ev.get("pad", 0)
-        if etype == ETYPE_GRID:
+        if etype == ETYPE_GRID and self._grid_plays_notes(ev["track"]):
+            # 128 notes, la note jouée présélectionnée (Phase 9 étape 5b1)
+            note    = self._grid_note_of(ev)
+            choices = [f"{i:3d}  {midi_to_note_name(i)}" for i in range(128)]
+            sel     = min(max(note if note is not None else 60, 0), 127)
+        elif etype == ETYPE_GRID:
             num_pads  = pattern._num_pads
             names     = self._pad_names_list(num_pads, ev["track"])
             choices   = [f"{i+1:3d}  {name}" for i, name in enumerate(names)]

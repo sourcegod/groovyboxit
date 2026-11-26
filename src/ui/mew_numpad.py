@@ -1,3 +1,6 @@
+from pattern import ETYPE_GRID
+
+
 class NumpadMixin:
     """MidiEditorWindow — édition numpad de l'événement/groupe sélectionné (étape 7d)."""
 
@@ -129,14 +132,36 @@ class NumpadMixin:
         else:
             self._set_status("Vélocité: déjà à la borne (1..127)")
 
+    def _shift_pitch(self, pat, ev, delta):
+        """Num 2 / 8, Ctrl+Num 2 / 8 : une note de grille d'une piste à notes
+        se décale de ±delta demi-tons sur sa hauteur réelle (0..127) et
+        devient une note PATCH hors des notes de la grille (Phase 9 étape
+        5b1, § 5a N2) ; ailleurs, MidiEditor.shift_pitch (pads, notes
+        brutes)."""
+        if ev.get("etype") == ETYPE_GRID and self._grid_plays_notes(ev["track"]):
+            note = self._grid_note_of(ev)
+            if note is None:
+                return None
+            target = max(0, min(127, note + delta))
+            if target == note:
+                return None
+            new_ev = self._edit_grid_pitch(pat, ev, target)
+            if new_ev is not None and new_ev["etype"] != ETYPE_GRID:
+                self._converted_by_pitch = True          # annoncé (5b1, essai)
+            return new_ev
+        return self._midi_editor.shift_pitch(pat, ev, delta)
+
     def _numpad_pitch(self, delta):
         title   = f"{'Octave' if abs(delta) == 12 else 'Demi-ton'} {'+' if delta > 0 else '-'}"
         results = self._apply_numpad_edit(
-            title, lambda pat, ev: self._midi_editor.shift_pitch(pat, ev, delta))
+            title, lambda pat, ev: self._shift_pitch(pat, ev, delta))
         if results:
             self._navigate_and_play_after_edit(results[-1])
             name = self._event_note_name(results[-1])
-            self._set_status(f"({name})")
+            converted = getattr(self, "_converted_by_pitch", False)
+            self._converted_by_pitch = False
+            self._set_status(f"({name})" + (" — hors grille : note enregistrée"
+                                            if converted else ""))
         else:
             self._set_status("Décalage: déjà à la borne")
 

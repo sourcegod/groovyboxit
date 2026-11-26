@@ -484,6 +484,48 @@ class MidiEditor:
             "event_idx": new_idx,
         }
 
+    def convert_grid_to_patch(self, pattern, ev, note, new_vel=None, new_bar=None,
+                              new_step=None, new_channel=None):
+        """Note de grille → note PATCH (Phase 9 étape 5b1, § 5a N1) : la case
+        GRID est retirée et une note MIDI brute `note` (0..127) la remplace,
+        comme une note enregistrée — même position, vélocité, canal (sauf
+        nouvelles valeurs) ; durée = celle que jouait le pad (ev["dur"] : sa
+        durée propre, sinon celle du pad). Retourne le nouvel event_info, ou
+        None (hors limites)."""
+        from pattern import TapeEvent
+        if ev.get("etype") != ETYPE_GRID:
+            return None
+        t     = ev["track"]
+        n_bar  = new_bar  if new_bar  is not None else ev["bar"]
+        n_step = new_step if new_step is not None else ev["step"]
+        n_vel  = max(1, min(127, new_vel if new_vel is not None else ev["vel"]))
+        n_channel = max(0, min(15, new_channel if new_channel is not None
+                               else ev.get("channel", 0)))
+        n_dur = max(10, ev.get("dur", 500))
+        if not (0 <= t < pattern._num_tracks and 0 <= note <= 127
+                and 0 <= n_bar < pattern._num_bars and 0 <= n_step < pattern._num_steps):
+            return None
+        pattern.set_cell(t, ev["pad"], ev["bar"], ev["step"], 0)
+        new_time = pattern._bar_step_to_time(n_bar, n_step)
+        with pattern._lock:
+            track_list = pattern._tape[t]
+            track_list.append(TapeEvent(ETYPE_PATCH, dur=n_dur, channel=n_channel,
+                                        payload={"note": note, "vel": n_vel}, time=new_time))
+            new_idx = sum(1 for e in track_list if e.time == new_time) - 1   # comme edit_tape_note
+        return {
+            "type":      "note",
+            "etype":     ETYPE_PATCH,
+            "track":     t,
+            "bar":       n_bar,
+            "step":      n_step,
+            "offset":    new_time,
+            "pad":       note,
+            "vel":       n_vel,
+            "dur":       n_dur,
+            "channel":   n_channel,
+            "event_idx": new_idx,
+        }
+
     def edit_grid_note(self, pattern, ev, new_pad=None, new_vel=None,
                        new_bar=None, new_step=None, new_channel=None, new_dur=None):
         """Modifie un événement grille (etype GRID). Retourne le nouvel event_info ou None.

@@ -474,7 +474,9 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
   Ctrl+Q         Quantiser le pattern depuis la grille courante (sans dialog)
   Shift+Q        Quantiser le pattern avec les derniers paramètres mémorisés (sans dialog)
   Ctrl+Shift+Q   Ouvrir le dialog de quantisation (résolution, force, swing, fenêtre)
-  Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity) ;
+  Entrée         Éditer la note sélectionnée (dialog : pitch, position, longueur, velocity ;
+                 note de grille d'une piste à notes : 128 notes, convertie en note
+                 enregistrée si la hauteur sort des notes de la grille) ;
                  un CC ou un Program Change : valeur, position, canal (1 à 16) — un
                  Program Change à 1.1.1 d'une piste Banque lui donne son canal ;
                  une ligne Tempo : position, BPM et portée (le plus récent, tous à
@@ -516,7 +518,9 @@ Alt+Shift+T      Dialogue Tempo, comme la fenêtre principale
   Num 4 / Num 6  Reculer / avancer la position d'une valeur de grille
                  (étend le pattern si on dépasse la fin)
   Num 7 / Num 9  Vélocité -1 / +1 (bornée 1..127)
-  Num 2 / Num 8  Pitch ±1 demi-ton (borné 0..127 pour KIT/PATCH, 0..num_pads-1 pour GRID)
+  Num 2 / Num 8  Pitch ±1 demi-ton (0..127 ; note de grille d'une piste à notes :
+                 sur sa hauteur réelle, convertie en note enregistrée hors des notes
+                 de la grille ; piste de kit : 0..num_pads-1)
   Ctrl+Num 2 / Ctrl+Num 8  Pitch ±1 octave (mêmes bornes)
   NumPad 5       Afficher la position courante
   Ctrl+NumPad 5  Afficher la valeur de grille courante

@@ -1216,6 +1216,15 @@ volume général ne sont pas concernés.
   absente ou Ctrl+N → les défauts (le comportement d'avant) ; changer les
   options est un point d'Undo.
 
+### Notes de grille sur 128 notes (Phase 9 étape 5b1)
+- Éditeur MIDI, piste qui joue des notes (synthé, banque, SFZ) : Éditer
+  l'événement… propose 128 notes pour une note de grille (la note jouée
+  présélectionnée) ; Num 2 / 8 et Ctrl+Num 2 / 8 la décalent sur sa hauteur
+  réelle. Elle reste une note de grille si un pad joue la nouvelle hauteur,
+  sinon elle devient une note PATCH (comme une note enregistrée : même
+  position, vélocité, canal, durée du pad) et quitte la grille 16×16.
+  Pistes de kit : inchangées (16 pads).
+
 ### Boucle : fin exclue (Phase 9 étape 4b1)
 - **Fin de boucle EXCLUE**, comme dans Sonar : quatre mesures vont de
   1:1:1 à 5:1:1 (`Pattern._loop_end` = premier pas hors de la boucle,
