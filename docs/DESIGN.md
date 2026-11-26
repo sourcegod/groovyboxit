@@ -17097,3 +17097,14 @@ avait été fait sur l'appli lancée avant les changements : ses trois
 anomalies — Shift+O à 9:4:4, Alt+Fin à 5:1:2, un pas de trop à l'export —
 étaient celles de l'ancien limiteur inclus). Signalé : après l'export
 audio, Orca reste sur le dernier pourcentage → correctif 4d2.
+
+## Phase 9 étape 4d2 — Correctif : focus rendu après l'export audio
+
+Essai de 4d1 : après l'export audio, Orca restait sur le dernier
+pourcentage de la barre d'état et ne voyait plus la fenêtre. Fin du rendu :
+`MainWindow._reader_refocus(fenêtre)` — en différé (200 ms), la fenêtre
+d'où l'export est parti est réactivée et le focus repasse par elle puis
+revient au widget, pour qu'Orca l'annonce (astuce du retour du focus,
+1d1 ; utilisable pour toute tâche longue). Oubli de 4d1 corrigé : le
+compte rendu de l'export de la sélection donne la fin exclue (« 1:1:1 à
+5:1:1 »). Essai concluant (grille, éditeur MIDI).

@@ -594,7 +594,7 @@ class ProjectMixin:
         return dict(pattern=pattern, tempo_map=player.tempo_map(),
                     window=audio_export.selection_window(left, right),
                     tracks=None if tracks is None else set(tracks),
-                    label=f"Sélection ({which} ; {bbt(left)} à {bbt(right)})",
+                    label=f"Sélection ({which} ; {bbt(left)} à {bbt(right + 1)})",   # exclue (4d1)
                     verb="exportée", unit="sélection")
 
     def _clipboard_job(self, editor):
@@ -704,10 +704,33 @@ class ProjectMixin:
             wx.CallAfter(say, self._audio_export_report(
                 label, path, res, end_idx, format_idx, gain_db, limit_db, notes, norm,
                 verb, unit=unit, detail=detail, stems=stems_info))
+            wx.CallAfter(self._reader_refocus, getattr(status, "__self__", None))
 
         status("Export audio : 0 %")
         self._audio_export_thread = threading.Thread(target=run, daemon=True)
         self._audio_export_thread.start()
+
+    REFOCUS_DELAY_MS = 200
+
+    def _reader_refocus(self, window=None):
+        """Fin d'une tâche longue (Phase 9 étape 4d2, essai de l'export audio :
+        Orca restait sur le dernier pourcentage de la barre d'état et ne
+        voyait plus la fenêtre) : le focus est rendu, en différé, au widget
+        qui l'a — d'abord à la fenêtre, puis au widget, pour qu'Orca
+        l'annonce de nouveau (astuce du retour du focus, 1d1)."""
+        if not wx.IsMainThread():         # CallAfter rendu synchrone par un test
+            return
+        window = window if isinstance(window, wx.TopLevelWindow) else self
+        focused = wx.Window.FindFocus()
+
+        def go():
+            if not window or window.IsBeingDeleted():
+                return
+            window.Raise()
+            if focused and focused.GetTopLevelParent() is window:
+                window.SetFocus()
+                wx.CallAfter(lambda: focused and focused.SetFocus())
+        wx.CallLater(self.REFOCUS_DELAY_MS, go)
 
     def _stem_names(self, job, tracks):
         """{piste: nom} des stems : nom du slot de la piste, comme l'export
