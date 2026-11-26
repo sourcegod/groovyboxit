@@ -17163,3 +17163,43 @@ tâche longue : rendre le focus en différé pour Orca.
 **Suites.** Édition de note sur 128 notes ; gris des éléments indisponibles
 à vérifier par un voyant ; NVDA sous Windows ; pattern aléatoire dans
 Traitement > Générer ; SpeechAccess (barre d'état).
+
+## Phase 9 étape 5a — Édition des notes de grille sur 128 notes (plan)
+
+**Constat (essai de la Phase 9 étape 3f1).** Dans l'éditeur MIDI, Éditer
+l'événement… (Entrée) sur une note de grille ne propose que les 16 pads :
+une note GRID n'a pas de hauteur propre, son `payload["pad"]` (0..15)
+désigne un pad, que le lecteur traduit en note par la gamme de lecture du
+pattern (`TrackRouter.playback_kb_notes`, 16 notes) — ou, au canal 10,
+36 + pad (D12). Même borne pour Num 2 / Num 8 et Ctrl+Num 2 / 8
+(`MidiEditor.shift_pitch` : 0..num_pads-1 pour GRID). Les notes
+enregistrées (PATCH : note MIDI brute) vont, elles, de 0 à 127.
+
+**Décisions (réponses de l'utilisateur, 2026-11-26).**
+- N1 — Pistes qui jouent des notes (synthé, banque, SFZ) : le dialogue
+  d'une note de grille propose les 128 notes, la note jouée présélectionnée.
+  Conversion seulement quand la HAUTEUR sort des notes de la grille
+  (réponse B) : choisir l'une des notes de la grille garde une note GRID
+  (son pad) ; vélocité, position, canal gardent aussi une note GRID ;
+  choisir une autre note CONVERTIT l'événement en note PATCH (comme une
+  note enregistrée) : même position, vélocité, canal ; durée = celle que
+  jouait le pad (sa durée propre si elle en a une, sinon celle du pad).
+- N2 — Num 2 / Num 8, Ctrl+Num 2 / 8 aussi : au-delà des notes de la
+  grille, la note est convertie et continue jusqu'à 0..127.
+- N3 — Pistes de kit (échantillonneur, 16 pads) : inchangé, jamais
+  converties ; le chantier « 128 pads » y répondra.
+- N4 — Une note convertie n'est plus une case de la grille 16×16 de la
+  fenêtre principale (on ne la coche ni ne la décoche plus à la grille ;
+  recocher la case ajouterait une note de grille) ; tout le reste marche
+  comme pour une note enregistrée : effacement (Ctrl+X, Ctrl+D, Suppr,
+  Ctrl+Suppr, limiteurs), copie, collage, quantisation, lecture, export,
+  édition dans l'éditeur MIDI. Un point d'Undo, comme toute édition.
+- N5 — Aide F1, SPECS ; tests.
+
+**Question de l'utilisateur : avec 128 pads, la note reviendra-t-elle
+dans la grille ?** Pas d'elle-même : une note PATCH reste une note
+enregistrée. Le chantier « 128 pads » pourra ajouter une commande
+« Convertir en note de grille » (une note PATCH dont la hauteur est celle
+d'un pad redevient une note GRID) — noté pour ce chantier.
+
+**Étapes.** 5b1 : N1-N5 et essai ; 5c1 : tests ; 5d1 : clôture.
