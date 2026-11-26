@@ -17243,3 +17243,41 @@ l'essai : après une conversion dans l'éditeur MIDI, la case de la grille
 restait cochée alors que la note de grille n'existait plus — le
 rafraîchissement de l'éditeur (`_refresh`, après toute édition, Undo, R)
 rafraîchit aussi la grille de la fenêtre principale.
+
+## Phase 9 étape 5d1 — Clôture : notes de grille sur 128 notes
+
+**Bilan.** Dans l'éditeur MIDI, une note de grille d'une piste à notes
+(synthé, banque, SFZ) s'édite sur 128 notes : dialogue (note jouée
+présélectionnée, préécoute), Num 2 / 8 et Ctrl+Num 2 / 8 sur sa hauteur
+réelle. Elle reste une note de grille tant qu'un pad joue la hauteur, sinon
+elle devient une note enregistrée (PATCH, durée du pad), conversion
+annoncée ; les pistes de kit gardent leurs 16 pads. En chemin : la grille
+de la fenêtre principale joue l'instrument de la piste courante (elle
+jouait toujours le kit chargé), même piste muette, et suit les éditions de
+l'éditeur. 5186 et 28 tests verts.
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 5a (dc090a2) | Plan |
+| 5b1 (fb20ed2) | Notes de grille sur 128 notes |
+| 5b2 (b3582cb) | Avenant : la grille joue l'instrument de la piste |
+| 5b3 (8093487) | Écoute de la grille, grille qui suit l'éditeur |
+| 5c1 (67414af) | Tests |
+| 5d1 | Clôture |
+
+**Décisions.** Conversion seulement quand la hauteur sort des notes de la
+grille (réponse B) ; durée du pad gardée ; pistes de kit inchangées ; une
+piste muette sonne à l'écoute de la grille ; le jeu direct suit le mode
+d'entrée.
+
+**Trouvailles.** `TrackRouter.grid_play_note` donne la note réellement
+jouée par un pad (gamme de lecture, 36 + pad au canal 10) ;
+`TrackRouter.on_play(…, audition=True)` joue une rangée comme le lecteur ;
+le rafraîchissement de l'éditeur doit aussi rafraîchir la grille de la
+fenêtre principale.
+
+**Suites.** « Convertir en note de grille » avec le chantier 128 pads ;
+gris des éléments indisponibles à vérifier par un voyant ; NVDA sous
+Windows ; pattern aléatoire dans Traitement > Générer ; SpeechAccess.
