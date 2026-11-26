@@ -17108,3 +17108,58 @@ revient au widget, pour qu'Orca l'annonce (astuce du retour du focus,
 1d1 ; utilisable pour toute tâche longue). Oubli de 4d1 corrigé : le
 compte rendu de l'export de la sélection donne la fin exclue (« 1:1:1 à
 5:1:1 »). Essai concluant (grille, éditeur MIDI).
+
+## Phase 9 étape 4f1 — Clôture : fin de boucle et limiteur droit exclus
+
+**Bilan.** Le délai au retour de boucle venait d'une fin de boucle incluse
+(Shift+L à 5:1:1 jouait 65 pas). Comme dans Sonar, la fin de boucle et le
+limiteur droit sont désormais EXCLUS : quatre mesures vont de 1:1:1 à
+5:1:1, partout (Shift+L, o, Shift+O, Shift+Fin, Fin, dialogues, annonces,
+export) ; la structure est restée (lecteur et code des plages inchangés,
+seules `compute_window` et la couche d'affichage convertissent ; .gvp
+version 2 avec migration). En chemin, quatre défauts anciens corrigés —
+boucle et clips audio qui ne suivaient pas le changement de pattern, Boucle
+Off en lecture qui arrêtait le pattern, BPM sans Undo — et deux demandes
+ajoutées : raccourcis de changement de pattern (< > Ctrl+< Ctrl+>) et
+focus rendu à Orca après l'export audio. 5172 et 28 tests verts.
+
+**Commits.**
+
+| Commit | Contenu |
+|---|---|
+| 4a (fd4fa2d) | Plan |
+| 4b1 (ef7af19) | Fin de boucle exclue |
+| 4c1 (8c355f7) | Tests |
+| 4c2 (4faddc5) | Correctif : boucle et clips audio au changement de pattern |
+| 4c3 (8e78c36) | Correctif : Boucle On / Off en lecture |
+| 4c4 (95dd14a) | Tests des correctifs |
+| 4c5 (8bef753) | Avenant : raccourcis de changement de pattern |
+| 4c6 (4bc4504) | < > Ctrl+< Ctrl+> |
+| 4c7 (32c69fa) | Tests |
+| 4c8 (262945b) | Correctif : Undo du BPM, bips de l'historique |
+| 4c9 (2ff5760) | Tests |
+| 4d1 (8d30c9a) | Limiteur droit exclu |
+| 4d2 (899d386) | Correctif : focus rendu après l'export audio |
+| 4e1 (29600aa) | Tests |
+| 4f1 | Clôture |
+
+**Décisions.** Fin de boucle et limiteur droit exclus (Sonar) ; Shift+Fin
+et Fin vont à la position exclue (dernier pas en fin de pattern) ; anciens
+projets : fin + 1 ; interne du limiteur inchangé ; refus d'une boucle ou
+d'une plage vide avec le bip d'alerte ; Ctrl+> = dernier pattern non vide ;
+Undo du BPM regroupé ; bips de l'historique seulement quand la commande ne
+peut rien faire.
+
+**Trouvailles.** Un essai fait sur l'appli lancée avant les changements
+montre exactement les anomalies de l'ancien code : relancer l'appli avant
+chaque essai. `Pattern.copy_from` sert aussi au song et à l'export : la
+boucle du pattern se recharge ailleurs. Un réveil du lecteur
+(`_wakeup`) avec la position gardée (`_resync_offset`) applique aussitôt
+une nouvelle fenêtre. Tests : une vraie boîte modale bloque la suite sous
+écran virtuel ; le délai de sécurité doit être DANS la garde mémoire ; une
+fixture qui détruit une fenêtre doit en effacer la référence. Fin d'une
+tâche longue : rendre le focus en différé pour Orca.
+
+**Suites.** Édition de note sur 128 notes ; gris des éléments indisponibles
+à vérifier par un voyant ; NVDA sous Windows ; pattern aléatoire dans
+Traitement > Générer ; SpeechAccess (barre d'état).
