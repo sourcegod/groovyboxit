@@ -89,6 +89,14 @@ class PatternMixin:
         self._player.set_bpm(new._bpm)
         self._bpm_ctrl.SetValue(int(round(new._bpm)))
         live._looping  = new._looping
+        # Boucle du pattern chargé (Phase 9 étape 4c2) : copy_from ne la
+        # recopie pas (lecture du song, export : sans boucle de pattern) ;
+        # sans ces lignes, changer de pattern ou ouvrir un projet gardait
+        # les points de boucle du pattern précédent
+        live._loop_start = new._loop_start
+        live._loop_end   = new._loop_end
+        live._loop_count = new._loop_count
+        self._player._loop_remaining = new._loop_count
         self._player.voice_manager.from_list(new._voices)
         self._router._track_slots[:]   = new._track_slots
         self._router._track_mutes[:]   = new._track_mutes
@@ -124,9 +132,16 @@ class PatternMixin:
         cur._voices = self._player.voice_manager.to_list()
         self._flush_pattern_to_store(cur)
         self._pattern_cache_dirty.add(self._cur_pattern_idx)  # ancien courant flushé
+        changed = idx != self._cur_pattern_idx
         self._cur_pattern_idx = idx
         new = self._pattern_list[idx]
         was_rack = cur._rack_mode
+        # clips audio de l'ancien pattern coupés (Phase 9 étape 4c2, essai :
+        # ils continuaient sur le pattern suivant) ; ceux du nouveau
+        # reprennent au rappel suivant, comme après un Undo (14f1)
+        stop_clips = getattr(self._router, "stop_audio_clips", None)
+        if stop_clips is not None and changed:
+            stop_clips()
         self._apply_pattern_from_store(new)
         self._player._compute_offsets()
         if was_rack or new._rack_mode:              # slot courant du canal (5d1, M16)

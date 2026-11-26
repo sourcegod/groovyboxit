@@ -17020,3 +17020,17 @@ l'utilisateur voit et pose :
 (bip d'alerte) conformes. Les deux Shift+L (fenêtre principale ;
 éditeur MIDI et Songs par handle_transport) passent par
 `KeyManager.set_loop_end_here`.
+
+## Phase 9 étape 4c2 — Correctif : la boucle et les clips audio suivent le changement de pattern
+
+Défaut ancien trouvé en écrivant les tests de 4c1 : changer de pattern ou
+ouvrir un projet gardait les points de boucle du pattern précédent
+(`Pattern.copy_from` ne les recopie pas, `_apply_pattern_from_store` ne
+recopiait que « Boucle Active »). Correctif dans `_apply_pattern_from_store`
+(début, fin, répétitions, compteur du lecteur) — pas dans `copy_from`,
+qui sert aussi à la lecture du song et à l'export. Essai : les clips audio
+du pattern quitté continuaient → coupés au changement de pattern (comme
+après un Undo), ceux du nouveau reprennent au rappel suivant. Essai
+concluant (boucle relue à la réouverture du projet). Défaut ancien signalé
+à l'essai : Boucle Off pendant la lecture → le pattern s'arrête à la fin
+de la boucle au lieu d'aller jusqu'à la fin du pattern (à suivre).
